@@ -1,0 +1,13 @@
+{
+  "name": "thirty-one-crossplay",
+  "version": "1.0.0",
+  "description": "Cross-platform 31 card game with real-time multiplayer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
