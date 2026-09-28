@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>31 Card Game</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; padding: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #1b4d3e; color: #fff;
+      display: flex; flex-direction: column; height: 100vh;
+    }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .status-box { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; font-size: 14px; text-align: center; }
+    .table {
+      flex: 1; display: flex; flex-direction: column; justify-content: space-around;
+      align-items: center; background: #164033; border-radius: 12px; margin: 8px 0; padding: 10px;
+    }
+    .players-list { display: flex; gap: 8px; width: 100%; justify-content: center; flex-wrap: wrap; }
+    .player-tag {
+      background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; font-size: 13px;
+    }
+    .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; }
+    .middle-piles { display: flex; gap: 20px; align-items: center; }
+    .card {
+      width: 70px; height: 100px; background: white; border-radius: 8px;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      user-select: none;
+    }
+    .card.red { color: #d32f2f; }
+    .card.black { color: #111; }
+    .card.back { background: #0d47a1; border: 2px solid white; color: white; font-size: 14px; }
+    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .hand-cards { display: flex; gap: 10px; }
+    .action-bar { display: flex; gap: 8px; width: 100%; justify-content: center; }
+    button {
+      padding: 12px 18px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold;
+      background: #ffcc00; color: #111; cursor: pointer;
+    }
+    button:disabled { background: #888; color: #444; }
+    .lobby-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;
+    }
+    input { padding: 12px; border-radius: 8px; border: none; font-size: 16px; width: 220px; }
+  </style>
+</head>
+<body>
+
+  <div id="lobby" class="lobby-modal">
+    <h2>31 Card Game</h2>
+    <input id="playerName" placeholder="Your Name" />
+    <input id="roomId" placeholder="Room Code (e.g. 777)" />
+    <button onclick="joinGame()">Enter Game Room</button>
+  </div>
+
+  <div class="header">
+    <div id="roomLabel">Room: -</div>
+    <div id="scoreLabel">Score: 0</div>
+  </div>
+
+  <div class="status-box" id="statusBar">Waiting for players...</div>
+
+  <div class="table">
+    <div class="players-list" id="playersArea"></div>
+
+    <div class="middle-piles">
+      <div id="drawPile" class="card back" onclick="draw('deck')">DRAW</div>
+      <div id="discardPile" class="card" onclick="draw('discard')">--</div>
+    </div>
+
+    <div class="hand-area">
+      <div>Your Hand (tap to discard)</div>
+      <div class="hand-cards" id="handArea"></div>
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <button id="startBtn" onclick="startGame()">Start Game</button>
+    <button id="knockBtn" onclick="knock()" disabled>Knock (21+)</button>
+  </div>
+
+  <script>
+    const socket = io();
+    let currentRoom = '';
+    let myHand = [];
+    let isTurn = false;
+    let hasDrawn = false;
+
+    function joinGame() {
+      const name = document.getElementById('playerName').value.trim();
+      const room = document.getElementById('roomId').value.trim();
+      if (!room) return alert('Enter a room code');
+      currentRoom = room;
+      socket.emit('joinRoom', { roomId: room, playerName: name });
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('roomLabel').innerText = `Room: ${room}`;
+    }
+
+    function startGame() {
+      socket.emit('startGame', currentRoom);
+    }
+
+    function draw(source) {
+      if (!isTurn || hasDrawn) return;
+      socket.emit('drawCard', { roomId: currentRoom, source });
+    }
+
+    function discard(idx) {
+      if (!isTurn || !hasDrawn) return;
+      socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx });
+    }
+
+    function knock() {
+      if (!isTurn || hasDrawn) return;
+      socket.emit('knock', currentRoom);
+    }
+
+    function renderCard(card, onClick) {
+      const el = document.createElement('div');
+      const isRed = card.suit === '♥' || card.suit === '♦';
+      el.className = `card ${isRed ? 'red' : 'black'}`;
+      el.innerHTML = `<span>${card.rank}</span><span>${card.suit}</span>`;
+      if (onClick) el.onclick = onClick;
+      return el;
+    }
+
+    socket.on('gameState', (state) => {
+      isTurn = state.isMyTurn;
+      hasDrawn = state.hasDrawn;
+      myHand = state.hand;
+
+      document.getElementById('scoreLabel').innerText = `Score: ${state.score}`;
+      if (state.message) document.getElementById('statusBar').innerText = state.message;
+
+      // Update Knock button
+      document.getElementById('knockBtn').disabled = !state.canKnock;
+
+      // Update Players
+      const pArea = document.getElementById('playersArea');
+      pArea.innerHTML = '';
+      state.players.forEach(p => {
+        const div = document.createElement('div');
+        div.className = `player-tag ${p.isTurn ? 'active' : ''}`;
+        div.innerText = `${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+        pArea.appendChild(div);
+      });
+
+      // Update Discard pile
+      const disc = document.getElementById('discardPile');
+      if (state.topDiscard) {
+        const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
+        disc.className = `card ${isRed ? 'red' : 'black'}`;
+        disc.innerHTML = `<span>${state.topDiscard.rank}</span><span>${state.topDiscard.suit}</span>`;
+      }
+
+      // Update Hand
+      const hArea = document.getElementById('handArea');
+      hArea.innerHTML = '';
+      myHand.forEach((card, idx) => {
+        hArea.appendChild(renderCard(card, () => discard(idx)));
+      });
+
+      if (state.players.length >= 2) {
+        document.getElementById('startBtn').style.display = 'none';
+      }
+    });
+
+    socket.on('errorMsg', (msg) => alert(msg));
+    socket.on('gameOver', ({ winner }) => {
+      alert(`Game Over! Winner: ${winner}`);
+      location.reload();
+    });
+  </script>
+</body>
+</html>
