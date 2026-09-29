@@ -129,22 +129,43 @@ function getRevealedHands(room) {
   }));
 }
 
-function recordDebt(room, debtorName, creditorName, amount) {
+function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   if (debtorName === creditorName || amount <= 0) return;
   if (!room.debts[debtorName]) room.debts[debtorName] = {};
+  if (!room.debtBreakdowns) room.debtBreakdowns = {};
+
+  const key = `${debtorName}:::${creditorName}`;
+  if (!room.debtBreakdowns[key]) {
+    room.debtBreakdowns[key] = { match: 0, sideBets: 0 };
+  }
+
   room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
+  if (reason === 'sideBet') {
+    room.debtBreakdowns[key].sideBets += amount;
+  } else {
+    room.debtBreakdowns[key].match += amount;
+  }
 }
 
 function getNetPairBalance(room, p1Name, p2Name) {
   const p2OwesP1 = (room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
   const p1OwesP2 = (room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
-  return p2OwesP1 - p1OwesP2;
+
+  const key1 = `${p2Name}:::${p1Name}`;
+  const key2 = `${p1Name}:::${p2Name}`;
+  const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
+  const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
+
+  return {
+    net: p2OwesP1 - p1OwesP2,
+    sideBetNet: p2SideBets - p1SideBets
+  };
 }
 
-// Persistent personal ledger: preserves records even when participants leave the room
 function getPersonalLedger(room, playerName) {
   const ledger = [];
   let totalNet = 0;
+  let totalSideBetNet = 0;
 
   const allNames = new Set(room.knownMembers || []);
   room.players.forEach(p => allNames.add(p.name));
@@ -157,11 +178,13 @@ function getPersonalLedger(room, playerName) {
 
   allNames.forEach(otherName => {
     if (otherName === playerName) return;
-    const net = getNetPairBalance(room, playerName, otherName);
-    totalNet += net;
+    const balanceInfo = getNetPairBalance(room, playerName, otherName);
+    totalNet += balanceInfo.net;
+    totalSideBetNet += balanceInfo.sideBetNet;
     ledger.push({
       player: otherName,
-      netBalance: net,
+      netBalance: balanceInfo.net,
+      sideBetBalance: balanceInfo.sideBetNet,
       hasLeft: !activeNames.has(otherName)
     });
   });
@@ -170,7 +193,8 @@ function getPersonalLedger(room, playerName) {
 
   return {
     balances: ledger,
-    totalNet: totalNet
+    totalNet: totalNet,
+    totalSideBetNet: totalSideBetNet
   };
 }
 
@@ -186,7 +210,7 @@ function recordGameWagerSettlement(room, winner) {
     if (loserData.name !== winnerData.name) {
       const amountToCollect = Math.min(winnerData.wager, loserData.wager);
       if (amountToCollect > 0) {
-        recordDebt(room, loserData.name, winnerData.name, amountToCollect);
+        recordDebt(room, loserData.name, winnerData.name, amountToCollect, 'match');
         totalCollected += amountToCollect;
       }
     }
@@ -195,40 +219,29 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-function settleRoundBets(room, winningPlayers) {
-  if (!room.roundBets || room.roundBets.length === 0) return '';
-  if (!winningPlayers || winningPlayers.length === 0) {
-    room.roundBets = [];
-    return '';
-  }
+function settlePeerRoundBets(room, scores) {
+  if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
+  const resultsSummary = [];
 
-  const winningPlayerNames = new Set(winningPlayers.map(p => p.name));
-  const winningBets = room.roundBets.filter(b => winningPlayerNames.has(b.targetPlayerName));
-  const losingBets = room.roundBets.filter(b => !winningPlayerNames.has(b.targetPlayerName));
-  const totalPot = room.roundBets.reduce((sum, b) => sum + b.amount, 0);
+  room.peerSideBets.forEach(bet => {
+    if (!bet.accepted) return;
 
-  if (winningBets.length === 0) {
-    room.roundBets = [];
-    return `Round side bets ($${totalPot} pot) pushed!`;
-  }
+    const bettorScore = scores[bet.bettorTargetId] !== undefined ? scores[bet.bettorTargetId] : -1;
+    const opponentScore = scores[bet.opponentTargetId] !== undefined ? scores[bet.opponentTargetId] : -1;
 
-  const winningStakesTotal = winningBets.reduce((sum, b) => sum + b.amount, 0);
-  const sideBetWinners = [];
-
-  winningBets.forEach(wBet => {
-    const netWin = Math.round((wBet.amount / winningStakesTotal) * (totalPot - winningStakesTotal));
-    sideBetWinners.push(`${wBet.bettorName} (+$${netWin})`);
-
-    losingBets.forEach(lBet => {
-      const shareOwed = Math.round((lBet.amount / totalPot) * (wBet.amount + netWin));
-      if (shareOwed > 0) {
-        recordDebt(room, lBet.bettorName, wBet.bettorName, shareOwed);
-      }
-    });
+    if (bettorScore > opponentScore) {
+      recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
+      resultsSummary.push(`${bet.bettorName} beat ${bet.opponentName} (+$${bet.amount})`);
+    } else if (opponentScore > bettorScore) {
+      recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
+      resultsSummary.push(`${bet.opponentName} beat ${bet.bettorName} (+$${bet.amount})`);
+    } else {
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied (push)`);
+    }
   });
 
-  room.roundBets = [];
-  return `Side Bet Winners: ${sideBetWinners.join(', ')}`;
+  room.peerSideBets = [];
+  return resultsSummary.length > 0 ? `Side Bets: ${resultsSummary.join(' | ')}` : '';
 }
 
 function broadcastRoomList() {
@@ -252,6 +265,26 @@ function broadcastRoomList() {
     };
   });
   io.emit('roomListUpdate', roomList);
+}
+
+// Synchronize peeked hands to authorized spectators
+function broadcastSpectatorPeeks(room) {
+  if (!room.spectatorPeeks) return;
+
+  for (const [spectatorId, targetPlayerId] of Object.entries(room.spectatorPeeks)) {
+    const targetPlayer = room.players.find(p => p.id === targetPlayerId);
+    if (targetPlayer && targetPlayer.hand) {
+      io.to(spectatorId).emit('spectatorHandUpdate', {
+        targetPlayerName: targetPlayer.name,
+        targetPlayerId: targetPlayer.id,
+        hand: targetPlayer.hand,
+        score: calculateScore(targetPlayer.hand)
+      });
+    } else {
+      delete room.spectatorPeeks[spectatorId];
+      io.to(spectatorId).emit('spectatorHandRevoked');
+    }
+  }
 }
 
 function startDealerCut(room) {
@@ -475,7 +508,13 @@ function checkAndHandle31(room, player) {
 
   let penalizedGiver = null;
   const revealedHands = getRevealedHands(room);
-  const sideBetReport = settleRoundBets(room, [player]);
+
+  const scores = {};
+  getActivePlayers(room).forEach(p => {
+    scores[p.id] = calculateScore(p.hand);
+  });
+  scores[player.id] = 31;
+  const sideBetReport = settlePeerRoundBets(room, scores);
 
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
@@ -536,6 +575,14 @@ function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
 
+  // Revoke all spectator hand peeking permissions on new round start
+  if (room.spectatorPeeks) {
+    for (const specId of Object.keys(room.spectatorPeeks)) {
+      io.to(specId).emit('spectatorHandRevoked');
+    }
+    room.spectatorPeeks = {};
+  }
+
   const active = getActivePlayers(room);
   if (active.length <= 1) {
     const winner = active[0] || null;
@@ -563,7 +610,7 @@ function startNewRound(roomId) {
 
     room.gameStarted = false;
     room.currentMatchParticipants = [];
-    room.roundBets = [];
+    room.peerSideBets = [];
 
     let activeAssigned = 0;
     room.players.forEach(p => { 
@@ -593,7 +640,7 @@ function startNewRound(roomId) {
   room.isResolvingRound = false;
   room.turnsTakenInRound = 0;
   room.currentDiscardFeederId = null;
-  room.roundBets = [];
+  room.peerSideBets = [];
   room.tiebreakerActive = false;
 
   if (!room.isFirstRoundOfMatch) {
@@ -642,7 +689,7 @@ function startNewRound(roomId) {
   room.currentTurnIdx = room.dealerIdx;
   advanceTurnIndex(room);
 
-  broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}. Place round side bets!`);
+  broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}. Propose side bets with opponents!`);
   broadcastRoomList();
   triggerBotTurnIfNeeded(roomId);
 }
@@ -663,7 +710,9 @@ function broadcastState(roomId, message = '') {
     totalGamePot = getActivePlayers(room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
   }
 
-  const totalRoundPot = (room.roundBets || []).reduce((sum, b) => sum + b.amount, 0);
+  const activeSideBetsTotal = (room.peerSideBets || [])
+    .filter(b => b.accepted)
+    .reduce((sum, b) => sum + (b.amount * 2), 0);
 
   room.players.forEach(p => {
     if (p.isBot) return;
@@ -696,6 +745,15 @@ function broadcastState(roomId, message = '') {
         disconnected: Boolean(pl.disconnected),
         matchWager: pl.matchWager || 0
       })),
+      allTableMembers: (room.knownMembers || []).map(name => {
+        const pl = room.players.find(x => x.name === name);
+        return {
+          name: name,
+          isOnline: Boolean(pl && !pl.disconnected),
+          isSpectator: Boolean(pl && pl.isSpectator),
+          lives: pl ? pl.lives : 0
+        };
+      }),
       hand: p.isSpectator ? [] : p.hand,
       score: score,
       minKnockScore: minKnockScore,
@@ -713,17 +771,24 @@ function broadcastState(roomId, message = '') {
       botCount: room.players.filter(pl => pl.isBot).length,
       maxActivePlayers: MAX_ACTIVE_PLAYERS,
       totalPot: totalGamePot,
-      roundPot: totalRoundPot,
-      roundBets: (room.roundBets || []).map(b => ({
+      sideBetActionTotal: activeSideBetsTotal,
+      activeSideBets: (room.peerSideBets || []).map(b => ({
+        id: b.id,
         bettor: b.bettorName,
-        target: b.targetPlayerName,
-        amt: b.amount
+        opponent: b.opponentName,
+        bettorTarget: b.bettorTargetName,
+        opponentTarget: b.opponentTargetName,
+        amount: b.amount,
+        accepted: b.accepted
       })),
       personalLedger: personalLedgerData.balances,
       netOverallBalance: personalLedgerData.totalNet,
+      netSideBetBalance: personalLedgerData.totalSideBetNet,
       message: message
     });
   });
+
+  broadcastSpectatorPeeks(room);
 }
 
 function resolveShowdown(roomId) {
@@ -744,10 +809,9 @@ function resolveShowdown(roomId) {
   });
 
   const lowestPlayers = active.filter(p => scores[p.id] === minScore);
-  const highestPlayers = active.filter(p => scores[p.id] === maxScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
   const revealedHands = getRevealedHands(room);
-  const sideBetReport = settleRoundBets(room, highestPlayers);
+  const sideBetReport = settlePeerRoundBets(room, scores);
 
   if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
     knocker.lives -= 1;
@@ -947,7 +1011,6 @@ function finalizePlayerExit(roomId, playerName) {
     }
   }
 
-  // Delete the room ONLY when completely empty
   if (getActivePlayers(room).length === 0 && room.players.length === 0) {
     delete rooms[roomId];
   } else {
@@ -1000,11 +1063,13 @@ io.on('connection', (socket) => {
         turnsTakenInRound: 0,
         currentDiscardFeederId: null,
         currentMatchParticipants: [],
-        roundBets: [],
+        peerSideBets: [],
         debts: {},
-        knownMembers: [], // Remembers all members until the room completely closes
+        debtBreakdowns: {},
+        knownMembers: [],
         lastGameWinnerId: null,
-        isFirstRoundOfMatch: false
+        isFirstRoundOfMatch: false,
+        spectatorPeeks: {} // spectatorSocketId -> targetPlayerSocketId
       };
     }
     const room = rooms[roomId];
@@ -1052,7 +1117,7 @@ io.on('connection', (socket) => {
 
     let joinMsg = `${safeName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁️️ Room active limit (6) reached. ${safeName} is spectating.`;
+      joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
@@ -1088,6 +1153,73 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
+  // SPECTATOR HAND PEEKING (Permission based, revoked on view change)
+  socket.on('requestPeekingPermission', ({ roomId, targetPlayerId }) => {
+    const room = rooms[roomId];
+    if (!room || !room.gameStarted) return;
+
+    const spectator = room.players.find(p => p.id === socket.id && p.isSpectator);
+    const target = room.players.find(p => p.id === targetPlayerId && !p.isSpectator && p.lives > 0);
+    if (!spectator || !target) return;
+
+    // RULE: Revoke existing peek permission if changing view
+    if (room.spectatorPeeks && room.spectatorPeeks[socket.id]) {
+      delete room.spectatorPeeks[socket.id];
+      socket.emit('spectatorHandRevoked');
+    }
+
+    // If target is a bot, automatically allow
+    if (target.isBot) {
+      if (!room.spectatorPeeks) room.spectatorPeeks = {};
+      room.spectatorPeeks[socket.id] = target.id;
+      socket.emit('spectatorHandUpdate', {
+        targetPlayerName: target.name,
+        targetPlayerId: target.id,
+        hand: target.hand,
+        score: calculateScore(target.hand)
+      });
+      socket.emit('bannerAnnouncement', { text: `Now peeking at ${target.name}'s hand.`, duration: 2500 });
+      return;
+    }
+
+    // Forward permission request to human player
+    io.to(target.id).emit('peekingPermissionRequested', {
+      spectatorId: socket.id,
+      spectatorName: spectator.name
+    });
+    socket.emit('bannerAnnouncement', { text: `Requested permission to view ${target.name}'s hand...`, duration: 3000 });
+  });
+
+  socket.on('respondPeekingPermission', ({ roomId, spectatorId, allow }) => {
+    const room = rooms[roomId];
+    if (!room || !room.spectatorPeeks) return;
+
+    const targetPlayer = room.players.find(p => p.id === socket.id);
+    const spectator = room.players.find(p => p.id === spectatorId);
+    if (!targetPlayer || !spectator) return;
+
+    if (allow) {
+      room.spectatorPeeks[spectatorId] = targetPlayer.id;
+      io.to(spectatorId).emit('spectatorHandUpdate', {
+        targetPlayerName: targetPlayer.name,
+        targetPlayerId: targetPlayer.id,
+        hand: targetPlayer.hand,
+        score: calculateScore(targetPlayer.hand)
+      });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+    } else {
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
+    }
+  });
+
+  socket.on('stopPeekingHand', (roomId) => {
+    const room = rooms[roomId];
+    if (room && room.spectatorPeeks && room.spectatorPeeks[socket.id]) {
+      delete room.spectatorPeeks[socket.id];
+      socket.emit('spectatorHandRevoked');
+    }
+  });
+
   socket.on('setWager', ({ roomId, wager }) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
@@ -1100,10 +1232,10 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  socket.on('placeRoundBet', ({ roomId, targetPlayerName, amount }) => {
+  socket.on('proposeMultiSideBets', ({ roomId, opponentNames, bettorTargetName, opponentTargetName, amount }) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted || room.isResolvingRound) {
-      return socket.emit('errorMsg', 'Round betting is only open during an active round.');
+      return socket.emit('errorMsg', 'Side betting is only open during an active round.');
     }
     if (room.knockerId) {
       return socket.emit('errorMsg', 'Bets locked! Someone has already knocked.');
@@ -1112,32 +1244,92 @@ io.on('connection', (socket) => {
     const bettor = room.players.find(p => p.id === socket.id);
     if (!bettor) return;
 
+    if (!Array.isArray(opponentNames) || opponentNames.length === 0) {
+      return socket.emit('errorMsg', 'Select at least one opponent for your side bet.');
+    }
+
+    const bTarget = room.players.find(p => p.name === bettorTargetName && !p.isSpectator && p.lives > 0);
+    const oTarget = room.players.find(p => p.name === opponentTargetName && !p.isSpectator && p.lives > 0);
+    if (!bTarget || !oTarget) {
+      return socket.emit('errorMsg', 'Target players must be active round contenders.');
+    }
+
     const parsedAmt = Math.max(1, parseInt(amount) || 1);
-    const targetPlayer = room.players.find(p => p.name === targetPlayerName && !p.isSpectator && p.lives > 0);
-    if (!targetPlayer) {
-      return socket.emit('errorMsg', 'Invalid target player for side bet.');
-    }
+    if (!room.peerSideBets) room.peerSideBets = [];
 
-    if (!room.roundBets) room.roundBets = [];
+    let proposedCount = 0;
+    let botAcceptedCount = 0;
 
-    const existingBetIdx = room.roundBets.findIndex(b => b.bettorId === socket.id);
-    if (existingBetIdx !== -1) {
-      room.roundBets[existingBetIdx] = {
-        bettorId: socket.id,
+    opponentNames.forEach(oppName => {
+      if (oppName === bettor.name) return;
+      const opponent = room.players.find(p => p.name === oppName);
+      if (!opponent) return;
+
+      const betId = `sb_${Date.now()}_${Math.random()}`;
+      const newBet = {
+        id: betId,
+        bettorId: bettor.id,
         bettorName: bettor.name,
-        targetPlayerName: targetPlayer.name,
-        amount: parsedAmt
+        opponentId: opponent.id,
+        opponentName: opponent.name,
+        bettorTargetId: bTarget.id,
+        bettorTargetName: bTarget.name,
+        opponentTargetId: oTarget.id,
+        opponentTargetName: oTarget.name,
+        amount: parsedAmt,
+        accepted: Boolean(opponent.isBot)
       };
-    } else {
-      room.roundBets.push({
-        bettorId: socket.id,
-        bettorName: bettor.name,
-        targetPlayerName: targetPlayer.name,
-        amount: parsedAmt
-      });
+
+      room.peerSideBets.push(newBet);
+      proposedCount++;
+
+      if (opponent.isBot) {
+        botAcceptedCount++;
+      } else {
+        io.to(opponent.id).emit('sideBetOfferReceived', {
+          betId: betId,
+          fromPlayer: bettor.name,
+          amount: parsedAmt,
+          bettorTarget: bTarget.name,
+          yourTarget: oTarget.name
+        });
+      }
+    });
+
+    let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each on ${bTarget.name}).`;
+    if (botAcceptedCount > 0) {
+      msg += ` (${botAcceptedCount} bot(s) accepted immediately)`;
     }
 
-    broadcastState(roomId, `🎲 ${bettor.name} bet $${parsedAmt} on ${targetPlayer.name} to win this round!`);
+    socket.emit('bannerAnnouncement', { text: msg, duration: 3200 });
+    broadcastState(roomId, `🎲 ${bettor.name} offered $${parsedAmt} side bets on ${bTarget.name} to ${proposedCount} player(s).`);
+  });
+
+  socket.on('respondSideBet', ({ roomId, betId, accept }) => {
+    const room = rooms[roomId];
+    if (!room || !room.peerSideBets) return;
+
+    const betIdx = room.peerSideBets.findIndex(b => b.id === betId);
+    if (betIdx === -1) return;
+    const bet = room.peerSideBets[betIdx];
+
+    if (bet.opponentId !== socket.id) return;
+
+    if (accept) {
+      bet.accepted = true;
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `🤝 ${bet.opponentName} ACCEPTED ${bet.bettorName}'s $${bet.amount} side bet!`,
+        duration: 3500
+      });
+      broadcastState(roomId, `🤝 ${bet.opponentName} accepted side bet vs ${bet.bettorName} ($${bet.amount}).`);
+    } else {
+      room.peerSideBets.splice(betIdx, 1);
+      io.to(bet.bettorId).emit('bannerAnnouncement', {
+        text: `❌ ${bet.opponentName} declined your $${bet.amount} side bet.`,
+        duration: 3000
+      });
+      broadcastState(roomId, `${bet.opponentName} declined side bet with ${bet.bettorName}.`);
+    }
   });
 
   socket.on('pickDealerCutCard', ({ roomId, cardIndex }) => {
