@@ -194,7 +194,7 @@ function settleRoundBets(room, winningPlayers) {
 
   if (winningBets.length === 0) {
     room.roundBets = [];
-    return `Round side bets ($${totalPot} pot) had no winners! Pushed.`;
+    return `Round side bets ($${totalPot} pot) pushed!`;
   }
 
   const winningStakesTotal = winningBets.reduce((sum, b) => sum + b.amount, 0);
@@ -217,7 +217,6 @@ function settleRoundBets(room, winningPlayers) {
   return `Side Bet Winners: ${sideBetWinners.join(', ')}`;
 }
 
-// Global broadcast of active room directory
 function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
@@ -231,6 +230,108 @@ function broadcastRoomList() {
     };
   });
   io.emit('roomListUpdate', roomList);
+}
+
+function startInteractiveTiebreaker(room, tiedPlayers, sideBetReport) {
+  room.tiebreakerActive = true;
+  room.tiebreakerPicks = {};
+  room.tiedPlayerIds = tiedPlayers.map(p => p.id);
+
+  let eligibleDeck = [...room.deck];
+  if (eligibleDeck.length < 15) {
+    const top = room.discardPile.pop();
+    eligibleDeck = eligibleDeck.concat(room.discardPile.sort(() => Math.random() - 0.5));
+    room.discardPile = [top];
+  }
+  room.tiebreakerDeck = eligibleDeck.sort(() => Math.random() - 0.5);
+
+  io.to(room.id).emit('startTiebreakerCut', {
+    deckCount: room.tiebreakerDeck.length,
+    tiedPlayers: tiedPlayers.map(p => ({ id: p.id, name: p.name })),
+    sideBetReport: sideBetReport || ''
+  });
+
+  // Automatically execute bot picks
+  tiedPlayers.forEach(p => {
+    if (p.isBot) {
+      setTimeout(() => {
+        if (!room.tiebreakerActive || room.tiebreakerPicks[p.id]) return;
+        const chosenCardIdx = Math.floor(Math.random() * room.tiebreakerDeck.length);
+        const card = room.tiebreakerDeck.splice(chosenCardIdx, 1)[0];
+        room.tiebreakerPicks[p.id] = { player: p, card: card };
+
+        io.to(room.id).emit('tiebreakerCardPicked', {
+          playerId: p.id,
+          playerName: p.name,
+          remainingCount: room.tiebreakerDeck.length
+        });
+
+        checkTiebreakerComplete(room);
+      }, 1000 + Math.random() * 800);
+    }
+  });
+}
+
+function checkTiebreakerComplete(room) {
+  const requiredCount = room.tiedPlayerIds.length;
+  const pickedCount = Object.keys(room.tiebreakerPicks).length;
+  if (pickedCount < requiredCount) return;
+
+  room.tiebreakerActive = false;
+  const picks = Object.values(room.tiebreakerPicks);
+
+  let minCardVal = 99;
+  let cutLosers = [];
+  const revealData = [];
+
+  picks.forEach(item => {
+    const rankVal = CUT_RANKS[item.card.rank];
+    revealData.push({
+      id: item.player.id,
+      name: item.player.name,
+      card: item.card,
+      rankVal: rankVal
+    });
+
+    if (rankVal < minCardVal) {
+      minCardVal = rankVal;
+      cutLosers = [item];
+    } else if (rankVal === minCardVal) {
+      cutLosers.push(item);
+    }
+  });
+
+  io.to(room.id).emit('tiebreakerResultsReveal', {
+    results: revealData
+  });
+
+  // Re-draw if there is a tie for the lowest cut card
+  if (cutLosers.length > 1) {
+    setTimeout(() => {
+      io.to(room.id).emit('bannerAnnouncement', {
+        text: `Tie for lowest cut! Re-drawing lowest players...`,
+        duration: 2500
+      });
+      startInteractiveTiebreaker(room, cutLosers.map(l => l.player), 'Re-drawing lowest cards');
+    }, 2800);
+    return;
+  }
+
+  const ultimateLoser = cutLosers[0];
+  ultimateLoser.player.lives -= 1;
+
+  setTimeout(() => {
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '⚡ TIEBREAKER FINISHED! ⚡',
+      message: `LOSER: ${ultimateLoser.player.name.toUpperCase()} (${ultimateLoser.card.rank}${ultimateLoser.card.suit})`,
+      subtext: `Picked lowest card from the deck!`,
+      hands: getRevealedHands(room),
+      duration: 6500
+    });
+
+    broadcastState(room.id, `Tiebreaker Cut: ${ultimateLoser.player.name} picked the lowest card (${ultimateLoser.card.rank}${ultimateLoser.card.suit}) and lost a life!`);
+    setTimeout(() => startNewRound(room.id), 6500);
+  }, 3200);
 }
 
 function checkAndHandle31(room, player) {
@@ -353,6 +454,7 @@ function startNewRound(roomId) {
   room.turnsTakenInRound = 0;
   room.currentDiscardFeederId = null;
   room.roundBets = [];
+  room.tiebreakerActive = false;
 
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
@@ -504,7 +606,9 @@ function resolveShowdown(roomId) {
     return;
   }
 
+  // TIEBREAKERS
   if (lowestPlayers.length > 1) {
+    // 1. Heads-Up (2 Active Players) Tie => Immediate Re-deal
     if (active.length === 2) {
       io.to(roomId).emit('bigAnnouncement', {
         title: '🤝 HEADS-UP TIE! 🤝',
@@ -518,41 +622,8 @@ function resolveShowdown(roomId) {
       return;
     }
 
-    let eligibleDeck = [...room.deck];
-    if (eligibleDeck.length < lowestPlayers.length) {
-      const top = room.discardPile.pop();
-      eligibleDeck = eligibleDeck.concat(room.discardPile.sort(() => Math.random() - 0.5));
-      room.discardPile = [top];
-    }
-
-    let tiebreakReport = [];
-    let cutLoser = null;
-    let minCardVal = 99;
-
-    lowestPlayers.forEach(p => {
-      const drawnCard = eligibleDeck.pop() || { rank: '2', suit: '♠' };
-      const cardRankVal = CUT_RANKS[drawnCard.rank];
-      tiebreakReport.push(`${p.name}: ${drawnCard.rank}${drawnCard.suit}`);
-
-      if (cardRankVal < minCardVal) {
-        minCardVal = cardRankVal;
-        cutLoser = { player: p, card: drawnCard };
-      }
-    });
-
-    room.deck = eligibleDeck;
-    cutLoser.player.lives -= 1;
-
-    io.to(roomId).emit('bigAnnouncement', {
-      title: '⚡ TIEBREAKER CUT! ⚡',
-      message: `LOSER: ${cutLoser.player.name} (${cutLoser.card.rank}${cutLoser.card.suit})`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${tiebreakReport.join('  |  ')}`,
-      hands: revealedHands,
-      duration: 7500
-    });
-
-    broadcastState(roomId, `Tiebreaker Cut: ${cutLoser.player.name} drew lowest card (${cutLoser.card.rank}${cutLoser.card.suit}) and lost a life!`);
-    setTimeout(() => startNewRound(roomId), 7500);
+    // 2. 3+ Players Tie => Interactive face-down card cut from deck
+    startInteractiveTiebreaker(room, lowestPlayers, sideBetReport);
     return;
   }
 
@@ -709,7 +780,6 @@ function handlePlayerExit(socketId) {
 }
 
 io.on('connection', (socket) => {
-  // Push live room directory to newly connected socket
   socket.emit('roomListUpdate', Object.entries(rooms).map(([id, r]) => ({
     roomId: id,
     gameStarted: r.gameStarted,
@@ -853,6 +923,28 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId, `🎲 ${bettor.name} bet $${parsedAmt} on ${targetPlayer.name} to win this round!`);
+  });
+
+  // TIEBREAKER: Player taps a card from the face-down spread
+  socket.on('pickTiebreakerCard', ({ roomId, cardIndex }) => {
+    const room = rooms[roomId];
+    if (!room || !room.tiebreakerActive || !room.tiedPlayerIds.includes(socket.id)) return;
+    if (room.tiebreakerPicks[socket.id]) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    const safeIdx = Math.min(Math.max(0, cardIndex), room.tiebreakerDeck.length - 1);
+    const card = room.tiebreakerDeck.splice(safeIdx, 1)[0];
+    room.tiebreakerPicks[socket.id] = { player: player, card: card };
+
+    io.to(roomId).emit('tiebreakerCardPicked', {
+      playerId: socket.id,
+      playerName: player.name,
+      remainingCount: room.tiebreakerDeck.length
+    });
+
+    checkTiebreakerComplete(room);
   });
 
   socket.on('joinVoice', (roomId) => {
