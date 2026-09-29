@@ -1265,7 +1265,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1805,7 +1805,7 @@ io.on('connection', (socket) => {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
       });
-      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      broadcastState(roomId, `⚠️️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
