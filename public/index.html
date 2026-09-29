@@ -30,6 +30,8 @@
       background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 16px; font-size: 13px;
     }
     .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; background: rgba(255,204,0,0.25); }
+    .player-tag.spectator { opacity: 0.6; border: 1px dashed #aaa; }
+    
     .middle-piles { display: flex; gap: 24px; align-items: center; margin: 8px 0; }
     
     .card {
@@ -55,7 +57,10 @@
     button.secondary { background: #e0e0e0; color: #222; }
     button:disabled { background: #555; color: #888; }
 
-    /* BIG CENTER LOSER/WINNER ANNOUNCEMENT MODAL */
+    .spectator-badge {
+      background: #0288d1; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px;
+    }
+
     .big-announcement-overlay {
       position: absolute; inset: 0;
       background: rgba(0, 0, 0, 0.88);
@@ -63,20 +68,10 @@
       z-index: 999; opacity: 0; pointer-events: none;
       transition: opacity 0.3s ease; text-align: center; padding: 20px;
     }
-    .big-announcement-overlay.show {
-      opacity: 1; pointer-events: auto;
-    }
-    .ann-title {
-      font-size: 24px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 12px; font-weight: 800;
-    }
-    .ann-message {
-      font-size: 32px; font-weight: 900; color: #ff3344;
-      text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6);
-      margin-bottom: 8px;
-    }
-    .ann-subtext {
-      font-size: 18px; color: #ffffff; opacity: 0.9;
-    }
+    .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
+    .ann-title { font-size: 24px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 12px; font-weight: 800; }
+    .ann-message { font-size: 32px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 8px; }
+    .ann-subtext { font-size: 18px; color: #ffffff; opacity: 0.9; }
 
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.92);
@@ -87,7 +82,6 @@
 </head>
 <body>
 
-  <!-- BIG SCREEN ANNOUNCEMENT POPUP -->
   <div id="announcementOverlay" class="big-announcement-overlay">
     <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
     <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
@@ -124,7 +118,7 @@
     </div>
   </div>
 
-  <div class="action-bar">
+  <div class="action-bar" id="actionBar">
     <button id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button id="startBtn" onclick="startGame()" disabled>Need 2+ Players</button>
     <button id="knockBtn" onclick="knock()" disabled>Knock</button>
@@ -139,6 +133,7 @@
     let minKnockScore = 21;
     let currentScore = 0;
     let roundHasPassed = false;
+    let isSpectator = false;
 
     function joinGame() {
       const name = document.getElementById('playerName').value.trim() || 'Player';
@@ -159,18 +154,21 @@
     }
 
     function draw(source) {
+      if (isSpectator) return;
       if (!isTurn) return alert("Not your turn!");
       if (hasDrawn) return alert("You already drew. Tap a card in your hand to discard.");
       socket.emit('drawCard', { roomId: currentRoom, source });
     }
 
     function discard(idx) {
+      if (isSpectator) return;
       if (!isTurn) return;
       if (!hasDrawn) return alert("You must draw from the deck or discard pile first!");
       socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx });
     }
 
     function knock() {
+      if (isSpectator) return;
       if (!isTurn) return alert("You can only knock on your turn!");
       if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
       if (!roundHasPassed) {
@@ -198,30 +196,44 @@
       minKnockScore = state.minKnockScore || 21;
       roundHasPassed = state.roundHasPassed;
       currentScore = state.score || 0;
+      isSpectator = Boolean(state.isSpectator);
 
-      const scoreDisplay = (currentScore === 30.5) ? '30.5 (3 of a Kind!)' : currentScore;
-      document.getElementById('scoreLabel').innerText = `Score: ${scoreDisplay}`;
+      // Score header
+      if (isSpectator) {
+        document.getElementById('scoreLabel').innerHTML = `<span class="spectator-badge">👁️ Spectating</span>`;
+      } else {
+        const scoreDisplay = (currentScore === 30.5) ? '30.5 (3 of a Kind!)' : currentScore;
+        document.getElementById('scoreLabel').innerText = `Score: ${scoreDisplay}`;
+      }
+
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
       // Update Knock button display
       const knockBtn = document.getElementById('knockBtn');
-      if (state.knocker) {
-        knockBtn.disabled = true;
-        knockBtn.innerText = `Knocked by ${state.knocker}`;
+      if (isSpectator) {
+        knockBtn.style.display = 'none';
       } else {
-        knockBtn.disabled = !state.canKnock;
-        if (!roundHasPassed) {
-          knockBtn.innerText = `Knock (Round 1 active)`;
-        } else if (state.canKnock) {
-          knockBtn.innerText = `⚡ Knock Now (${minKnockScore}+)!`;
+        knockBtn.style.display = 'inline-block';
+        if (state.knocker) {
+          knockBtn.disabled = true;
+          knockBtn.innerText = `Knocked by ${state.knocker}`;
         } else {
-          knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+          knockBtn.disabled = !state.canKnock;
+          if (!roundHasPassed) {
+            knockBtn.innerText = `Knock (Round 1 active)`;
+          } else if (state.canKnock) {
+            knockBtn.innerText = `⚡ Knock Now (${minKnockScore}+)!`;
+          } else {
+            knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+          }
         }
       }
 
-      // Update Instruction text
+      // Hand instruction
       const handInstr = document.getElementById('handInstruction');
-      if (state.gameStarted) {
+      if (isSpectator) {
+        handInstr.innerText = "You joined mid-game. Spectating current match...";
+      } else if (state.gameStarted) {
         if (isTurn) {
           handInstr.innerText = hasDrawn ? "Tap a card below to DISCARD it" : "Your turn! Tap Draw Deck or Discard Pile";
         } else {
@@ -231,11 +243,11 @@
         handInstr.innerText = "Lobby: Add a Bot or wait for friends, then tap Start Game";
       }
 
-      // Lobby Start / Bot Buttons Control
+      // Action bar buttons
       const startBtn = document.getElementById('startBtn');
       const addBotBtn = document.getElementById('addBotBtn');
 
-      if (state.gameStarted) {
+      if (isSpectator || state.gameStarted) {
         startBtn.style.display = 'none';
         addBotBtn.style.display = 'none';
       } else {
@@ -250,17 +262,22 @@
         }
       }
 
-      // Update Players Area
+      // Players rendering
       const pArea = document.getElementById('playersArea');
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        div.className = `player-tag ${p.isTurn ? 'active' : ''}`;
-        div.innerText = `${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+        if (p.isSpectator) {
+          div.className = 'player-tag spectator';
+          div.innerText = `👁️ ${p.name}`;
+        } else {
+          div.className = `player-tag ${p.isTurn ? 'active' : ''}`;
+          div.innerText = `${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+        }
         pArea.appendChild(div);
       });
 
-      // Update Discard Pile
+      // Discard Pile
       const disc = document.getElementById('discardPile');
       if (state.topDiscard) {
         const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
@@ -271,10 +288,12 @@
         disc.innerText = '--';
       }
 
-      // Update Hand Area
+      // Hand Area
       const hArea = document.getElementById('handArea');
       hArea.innerHTML = '';
-      if (myHand.length > 0) {
+      if (isSpectator) {
+        hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching game as a spectator...</div>';
+      } else if (myHand.length > 0) {
         myHand.forEach((card, idx) => {
           hArea.appendChild(renderCard(card, () => discard(idx), isTurn && hasDrawn));
         });
@@ -283,7 +302,6 @@
       }
     });
 
-    // Handle Big Screen Announcement
     socket.on('bigAnnouncement', (data) => {
       const overlay = document.getElementById('announcementOverlay');
       document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
