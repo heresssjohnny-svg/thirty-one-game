@@ -74,7 +74,6 @@ function getActivePlayers(room) {
   return room.players.filter(p => p.lives > 0);
 }
 
-// Bounded clockwise turn advancement
 function advanceTurnIndex(room) {
   const total = room.players.length;
   if (total === 0) return;
@@ -105,7 +104,12 @@ function startNewRound(roomId) {
 
   const active = getActivePlayers(room);
   if (active.length <= 1) {
-    io.to(roomId).emit('gameOver', { winner: active[0] ? active[0].name : 'Nobody' });
+    const winnerName = active[0] ? active[0].name : 'Nobody';
+    io.to(roomId).emit('bigAnnouncement', {
+      title: '🏆 GAME OVER 🏆',
+      message: `${winnerName} WINS THE GAME!`,
+      duration: 8000
+    });
     room.gameStarted = false;
     return;
   }
@@ -116,6 +120,7 @@ function startNewRound(roomId) {
   room.turnsLeftAfterKnock = null;
   room.drawnCard = null;
   room.isResolvingRound = false;
+  room.turnsTakenInRound = 0; // Tracks turns completed so 1 full round must pass before knocking
 
   active.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
@@ -124,7 +129,7 @@ function startNewRound(roomId) {
 
   room.discardPile.push(room.deck.pop());
 
-  // Dealer moves clockwise among living players
+  // Move dealer clockwise
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
     if (room.players[nextD].lives > 0) {
@@ -133,7 +138,6 @@ function startNewRound(roomId) {
     }
   }
 
-  // Turn starts to the left of the dealer
   room.currentTurnIdx = room.dealerIdx;
   advanceTurnIndex(room);
 
@@ -148,13 +152,14 @@ function broadcastState(roomId, message = '') {
   const active = getActivePlayers(room);
   const currentTurnPlayer = room.players[room.currentTurnIdx];
   const minKnockScore = active.length === 2 ? 25 : 21;
+  const roundHasPassed = room.turnsTakenInRound >= active.length;
 
   room.players.forEach(p => {
     if (p.isBot) return;
 
     const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id && !room.isResolvingRound;
     const score = calculateScore(p.hand);
-    const canKnock = isCurrent && !room.knockerId && score >= minKnockScore && !room.drawnCard;
+    const canKnock = isCurrent && !room.knockerId && roundHasPassed && score >= minKnockScore && !room.drawnCard;
 
     io.to(p.id).emit('gameState', {
       players: room.players.map(pl => ({
@@ -169,6 +174,7 @@ function broadcastState(roomId, message = '') {
       hand: p.hand,
       score: score,
       minKnockScore: minKnockScore,
+      roundHasPassed: roundHasPassed,
       topDiscard: room.discardPile[room.discardPile.length - 1],
       isMyTurn: isCurrent,
       hasDrawn: Boolean(room.drawnCard),
@@ -198,17 +204,25 @@ function resolveShowdown(roomId) {
   const lowestPlayers = active.filter(p => scores[p.id] === minScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
 
-  let msg = `Showdown! Lowest score: ${minScore}. `;
+  let losersText = '';
   if (knocker && lowestPlayers.some(p => p.id === knocker.id)) {
     knocker.lives -= 1;
-    msg += `Knocker ${knocker.name} failed to beat everyone and lost a life!`;
+    losersText = `${knocker.name} (Knocked & Tied/Lost)`;
   } else {
     lowestPlayers.forEach(p => { p.lives -= 1; });
-    msg += `${lowestPlayers.map(p => p.name).join(', ')} lost a life!`;
+    losersText = lowestPlayers.map(p => p.name).join(', ');
   }
 
-  broadcastState(roomId, msg);
-  setTimeout(() => startNewRound(roomId), 4000);
+  // Announce Loser(s) in Big Letters in Center of Screen
+  io.to(roomId).emit('bigAnnouncement', {
+    title: '💀 ROUND OVER 💀',
+    message: `LOSER: ${losersText}`,
+    subtext: `Lowest Score: ${minScore}`,
+    duration: 4000
+  });
+
+  broadcastState(roomId, `Showdown finished! Loser: ${losersText}`);
+  setTimeout(() => startNewRound(roomId), 4200);
 }
 
 function triggerBotTurnIfNeeded(roomId) {
@@ -223,10 +237,11 @@ function triggerBotTurnIfNeeded(roomId) {
 
     const activeCount = getActivePlayers(room).length;
     const minKnockScore = activeCount === 2 ? 25 : 21;
+    const roundHasPassed = room.turnsTakenInRound >= activeCount;
     const score = calculateScore(current.hand);
 
-    // 1. Bot Knock Check: If knocking, do not draw/discard - advance immediately
-    if (!room.knockerId && score >= Math.max(minKnockScore, 26)) {
+    // 1. Bot Knock Check (Only if round 1 has completed)
+    if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
       advanceTurnIndex(room);
@@ -262,7 +277,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     current.hand.push(drawn);
 
-    // 3. Bot Discard Decision (maximize score)
+    // 3. Bot Discard
     let bestIdx = 0;
     let bestScore = -1;
     for (let i = 0; i < current.hand.length; i++) {
@@ -275,6 +290,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     const [discarded] = current.hand.splice(bestIdx, 1);
     room.discardPile.push(discarded);
+    room.turnsTakenInRound += 1;
 
     // Check if Bot reached 31
     if (calculateScore(current.hand) === 31) {
@@ -285,14 +301,28 @@ function triggerBotTurnIfNeeded(roomId) {
 
       if (hasAce && hasTen && prevPlayer) {
         prevPlayer.lives = 0;
-        broadcastState(roomId, `⚡ ${current.name} got 31! ${prevPlayer.name} fed an Ace & 10 and lost BOTH lives!`);
-      } else {
-        getActivePlayers(room).forEach(p => {
-          if (p.id !== current.id) p.lives -= 1;
+        io.to(roomId).emit('bigAnnouncement', {
+          title: '⚡ 31 HIT! ⚡',
+          message: `LOSER: ${prevPlayer.name} LOST BOTH LIVES!`,
+          subtext: `Fed an Ace and 10 to ${current.name}`,
+          duration: 4500
         });
-        broadcastState(roomId, `⚡ ${current.name} got 31! All other players lose a life.`);
+      } else {
+        const losers = [];
+        getActivePlayers(room).forEach(p => {
+          if (p.id !== current.id) {
+            p.lives -= 1;
+            losers.push(p.name);
+          }
+        });
+        io.to(roomId).emit('bigAnnouncement', {
+          title: `⚡ ${current.name} HIT 31! ⚡`,
+          message: `LOSERS: ${losers.join(', ')}`,
+          subtext: 'Everyone else lost 1 life',
+          duration: 4500
+        });
       }
-      setTimeout(() => startNewRound(roomId), 4000);
+      setTimeout(() => startNewRound(roomId), 4500);
       return;
     }
 
@@ -326,7 +356,8 @@ io.on('connection', (socket) => {
         turnsLeftAfterKnock: null,
         gameStarted: false,
         drawnCard: null,
-        isResolvingRound: false
+        isResolvingRound: false,
+        turnsTakenInRound: 0
       };
     }
     const room = rooms[roomId];
@@ -382,7 +413,6 @@ io.on('connection', (socket) => {
     startNewRound(roomId);
   });
 
-  // KNOCK: Player concludes their turn immediately
   socket.on('knock', (roomId) => {
     const room = rooms[roomId];
     const player = room?.players[room.currentTurnIdx];
@@ -390,14 +420,16 @@ io.on('connection', (socket) => {
 
     const activeCount = getActivePlayers(room).length;
     const minKnockScore = activeCount === 2 ? 25 : 21;
+    const roundHasPassed = room.turnsTakenInRound >= activeCount;
     const score = calculateScore(player.hand);
+
+    if (!roundHasPassed) {
+      return socket.emit('errorMsg', 'Must wait 1 full round before knocking!');
+    }
 
     if (score >= minKnockScore && !room.drawnCard) {
       room.knockerId = player.id;
-      // Remaining players each get 1 turn
       room.turnsLeftAfterKnock = activeCount - 1;
-
-      // Pass turn to the next player immediately (Knocker does not draw or discard)
       advanceTurnIndex(room);
       broadcastState(roomId, `🔔 ${player.name} KNOCKED with ${score} pts! Final turn for all other players.`);
       triggerBotTurnIfNeeded(roomId);
@@ -435,6 +467,7 @@ io.on('connection', (socket) => {
     const [discarded] = player.hand.splice(cardIndex, 1);
     room.discardPile.push(discarded);
     room.drawnCard = null;
+    room.turnsTakenInRound += 1;
 
     // Check for 31
     if (calculateScore(player.hand) === 31) {
@@ -445,18 +478,32 @@ io.on('connection', (socket) => {
 
       if (hasAce && hasTen && prevPlayer) {
         prevPlayer.lives = 0;
-        broadcastState(roomId, `⚡ ${player.name} got 31! ${prevPlayer.name} fed an Ace & 10 and lost BOTH lives!`);
-      } else {
-        getActivePlayers(room).forEach(p => {
-          if (p.id !== player.id) p.lives -= 1;
+        io.to(roomId).emit('bigAnnouncement', {
+          title: '⚡ 31 HIT! ⚡',
+          message: `LOSER: ${prevPlayer.name} LOST BOTH LIVES!`,
+          subtext: `Fed an Ace and 10 to ${player.name}`,
+          duration: 4500
         });
-        broadcastState(roomId, `⚡ ${player.name} got 31! Everyone else loses 1 life.`);
+      } else {
+        const losers = [];
+        getActivePlayers(room).forEach(p => {
+          if (p.id !== player.id) {
+            p.lives -= 1;
+            losers.push(p.name);
+          }
+        });
+        io.to(roomId).emit('bigAnnouncement', {
+          title: `⚡ ${player.name} HIT 31! ⚡`,
+          message: `LOSERS: ${losers.join(', ')}`,
+          subtext: 'Everyone else lost 1 life',
+          duration: 4500
+        });
       }
-      setTimeout(() => startNewRound(roomId), 4000);
+      setTimeout(() => startNewRound(roomId), 4500);
       return;
     }
 
-    // Process countdown turns remaining after a knock
+    // Countdown remaining turns after a knock
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
       if (room.turnsLeftAfterKnock <= 0) {
