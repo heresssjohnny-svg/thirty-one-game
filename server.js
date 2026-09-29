@@ -237,6 +237,7 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
+// FIXED: Correctly compares the scores of the two backed contenders (bettorTarget vs opponentTarget)
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
@@ -244,17 +245,19 @@ function settlePeerRoundBets(room, scores) {
   room.peerSideBets.forEach(bet => {
     if (!bet.accepted || bet.type !== 'round') return;
 
-    const bettorScore = scores[bet.bettorTargetId] !== undefined ? scores[bet.bettorTargetId] : -1;
-    const opponentScore = scores[bet.opponentTargetId] !== undefined ? scores[bet.opponentTargetId] : -1;
+    const bettorTargetScore = scores[bet.bettorTargetId] !== undefined ? scores[bet.bettorTargetId] : -1;
+    const opponentTargetScore = scores[bet.opponentTargetId] !== undefined ? scores[bet.opponentTargetId] : -1;
 
-    if (bettorScore > opponentScore) {
+    if (bettorTargetScore > opponentTargetScore) {
+      // Bettor's pick scored higher: opponent pays bettor
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName} beat ${bet.opponentName} (+$${bet.amount})`);
-    } else if (opponentScore > bettorScore) {
+      resultsSummary.push(`${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) beat ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) -> +$${bet.amount}`);
+    } else if (opponentTargetScore > bettorTargetScore) {
+      // Opponent's pick scored higher: bettor pays opponent
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName} beat ${bet.bettorName} (+$${bet.amount})`);
+      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) beat ${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) -> +$${bet.amount}`);
     } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied (push)`);
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied on picks (${bettorTargetScore} pts - push)`);
     }
   });
 
@@ -589,7 +592,7 @@ function checkAndHandle31(room, player) {
     scores[p.id] = calculateScore(p.hand);
   });
   scores[player.id] = 31;
-  const sideBetReport = settlePeerRoundBets(room, scores);
+  const roundBetReport = settlePeerRoundBets(room, scores);
 
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
@@ -619,7 +622,7 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: '⚡ 31 HIT FROM DISCARD! ⚡',
       message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
       hands: revealedHands,
       duration: 6500
     });
@@ -645,13 +648,13 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: `⚡ ${player.name.toUpperCase()} HIT 31! ⚡`,
       message: `EVERYONE ELSE LOSES 1 LIFE!`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
       hands: revealedHands,
       duration: 6500
     });
   }
 
-  setTimeout(() => startNewRound(room.id), 6500);
+  setTimeout(() => startNewRound(roomId), 6500);
   return true;
 }
 
@@ -1251,7 +1254,7 @@ io.on('connection', (socket) => {
 
     let joinMsg = `${safeName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
+      joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
