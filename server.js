@@ -99,6 +99,12 @@ function getPrevActivePlayer(room, currentIdx) {
   return null;
 }
 
+function checkAllPlayersReady(room) {
+  const eligible = room.players.filter(p => !p.isSpectator && (room.gameStarted ? p.lives > 0 : true));
+  if (eligible.length < 2) return false;
+  return eligible.every(p => p.isReady || p.isBot);
+}
+
 function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
@@ -112,9 +118,17 @@ function startNewRound(roomId) {
       duration: 8000
     });
     room.gameStarted = false;
-    room.players.forEach(p => { p.isSpectator = false; p.lives = 2; });
+    room.players.forEach(p => { 
+      p.isSpectator = false; 
+      p.lives = 2; 
+      p.isReady = false; 
+    });
+    broadcastState(roomId, `Game over! Toggle Ready to start the next game.`);
     return;
   }
+
+  // Clear ready states for the newly active round
+  room.players.forEach(p => { p.isReady = false; });
 
   room.deck = createDeck();
   room.discardPile = [];
@@ -172,7 +186,8 @@ function broadcastState(roomId, message = '') {
         isDealer: room.players[room.dealerIdx]?.id === pl.id,
         isTurn: currentTurnPlayer?.id === pl.id,
         isBot: Boolean(pl.isBot),
-        isSpectator: Boolean(pl.isSpectator)
+        isSpectator: Boolean(pl.isSpectator),
+        isReady: Boolean(pl.isReady)
       })),
       hand: p.isSpectator ? [] : p.hand,
       score: score,
@@ -185,6 +200,7 @@ function broadcastState(roomId, message = '') {
       isSpectator: Boolean(p.isSpectator),
       gameStarted: room.gameStarted,
       knocker: room.knockerId ? room.players.find(pl => pl.id === room.knockerId)?.name : null,
+      isReady: Boolean(p.isReady),
       message: message
     });
   });
@@ -339,6 +355,32 @@ function triggerBotTurnIfNeeded(roomId) {
   }, 1200);
 }
 
+function handlePlayerExit(socketId) {
+  for (const [roomId, room] of Object.entries(rooms)) {
+    const idx = room.players.findIndex(p => p.id === socketId);
+    if (idx !== -1) {
+      const leaving = room.players[idx];
+
+      if (!room.gameStarted || leaving.isSpectator) {
+        room.players.splice(idx, 1);
+      } else {
+        leaving.lives = 0;
+        if (room.currentTurnIdx === idx) {
+          advanceTurnIndex(room);
+          triggerBotTurnIfNeeded(roomId);
+        }
+      }
+
+      if (getActivePlayers(room).length === 0 && room.players.length === 0) {
+        delete rooms[roomId];
+      } else {
+        broadcastState(roomId, `${leaving.name} left the room.`);
+      }
+      break;
+    }
+  }
+}
+
 io.on('connection', (socket) => {
   socket.on('joinRoom', ({ roomId, playerName }) => {
     socket.join(roomId);
@@ -376,7 +418,8 @@ io.on('connection', (socket) => {
       hand: [],
       takenFromPrev: [],
       isBot: false,
-      isSpectator: isSpectator
+      isSpectator: isSpectator,
+      isReady: false
     });
 
     const joinMsg = isSpectator 
@@ -386,7 +429,27 @@ io.on('connection', (socket) => {
     broadcastState(roomId, joinMsg);
   });
 
-  // Chat handling
+  socket.on('toggleReady', (roomId) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.isSpectator) return;
+
+    player.isReady = !player.isReady;
+    broadcastState(roomId, `${player.name} is ${player.isReady ? 'READY' : 'NOT READY'}.`);
+
+    // If game has not started and everyone is ready, start game
+    if (!room.gameStarted && checkAllPlayersReady(room)) {
+      room.gameStarted = true;
+      startNewRound(roomId);
+    }
+  });
+
+  socket.on('leaveRoom', (roomId) => {
+    socket.leave(roomId);
+    handlePlayerExit(socket.id);
+  });
+
   socket.on('sendChatMessage', ({ roomId, message }) => {
     const room = rooms[roomId];
     if (!room || !message || !message.trim()) return;
@@ -416,19 +479,15 @@ io.on('connection', (socket) => {
       hand: [],
       takenFromPrev: [],
       isBot: true,
-      isSpectator: false
+      isSpectator: false,
+      isReady: true
     });
 
     broadcastState(roomId, `Bot ${botCount} joined.`);
-  });
-
-  socket.on('startGame', (roomId) => {
-    const room = rooms[roomId];
-    if (!room || room.players.length < 2) {
-      return socket.emit('errorMsg', 'Need at least 2 players or bots.');
+    if (checkAllPlayersReady(room)) {
+      room.gameStarted = true;
+      startNewRound(roomId);
     }
-    room.gameStarted = true;
-    startNewRound(roomId);
   });
 
   socket.on('knock', (roomId) => {
@@ -534,29 +593,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    for (const [roomId, room] of Object.entries(rooms)) {
-      const idx = room.players.findIndex(p => p.id === socket.id);
-      if (idx !== -1) {
-        const leaving = room.players[idx];
-
-        if (!room.gameStarted || leaving.isSpectator) {
-          room.players.splice(idx, 1);
-        } else {
-          leaving.lives = 0;
-          if (room.currentTurnIdx === idx) {
-            advanceTurnIndex(room);
-            triggerBotTurnIfNeeded(roomId);
-          }
-        }
-
-        if (getActivePlayers(room).length === 0) {
-          delete rooms[roomId];
-        } else {
-          broadcastState(roomId, `${leaving.name} disconnected.`);
-        }
-        break;
-      }
-    }
+    handlePlayerExit(socket.id);
   });
 });
 
