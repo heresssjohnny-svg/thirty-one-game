@@ -237,7 +237,6 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-// ROUND SIDE BET SETTLEMENT
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
@@ -249,7 +248,7 @@ function settlePeerRoundBets(room, scores) {
     let oTargetId = bet.opponentTargetId;
 
     if (!bTargetId || scores[bTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.bettorTargetName);
+      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
       if (matchP) bTargetId = matchP.id;
     }
     if (!oTargetId || scores[oTargetId] === undefined) {
@@ -262,10 +261,10 @@ function settlePeerRoundBets(room, scores) {
 
     if (bettorTargetScore > opponentTargetScore) {
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore} pts) beat ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.bettorName}'s pick (${bet.targetPlayerName}: ${bettorTargetScore} pts) beat ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) -> +$${bet.amount}`);
     } else if (opponentTargetScore > bettorTargetScore) {
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) beat ${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore} pts) -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) beat ${bet.bettorName}'s pick (${bet.targetPlayerName}: ${bettorTargetScore} pts) -> +$${bet.amount}`);
     } else {
       resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} picks tied at ${bettorTargetScore} pts (push)`);
     }
@@ -1266,7 +1265,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
