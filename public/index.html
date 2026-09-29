@@ -325,8 +325,9 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>💰 Clearing Debts in Ledger</h4>
-          In the Ledger, if someone owes you money, you can tap <strong>"Clear"</strong> to forgive and wipe out their debt.
+          <h4>🎲 Peer Side Bets (Choosing Your Pick)</h4>
+          • When challenged to a round side bet, you get to **choose your own pick** for who you think will have the highest score in the hand.<br>
+          • Whoever's picked contender has the highest score wins the wager!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -378,16 +379,20 @@
     <div id="tiebreakerPicksContainer" class="card-cut-picks-row"></div>
   </div>
 
-  <!-- INCOMING SIDE BET PROPOSAL PROMPT -->
+  <!-- INCOMING SIDE BET PROPOSAL PROMPT (Allows opponent to choose their own pick) -->
   <div id="sideBetOfferModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800; text-align:center;">
       <div style="font-weight:900; font-size:15px; color:#ff9800;">🎲 Side Bet Challenge!</div>
       <div id="sideBetOfferText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Player challenged you to a $5 side bet.
+        Player challenged you to a side bet.
       </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+      <div style="display:flex; flex-direction:column; gap:4px; text-align:left; margin: 4px 0;">
+        <label style="font-size:11px; font-weight:bold; color:#ffd700;">Choose Your Pick For The Highest Score:</label>
+        <select id="offerMyTargetSelect"></select>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
         <button type="button" class="secondary" onclick="respondSideBet(false)" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px;" onclick="respondSideBet(true)">Accept Bet</button>
+        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" onclick="respondSideBet(true)">Accept & Verify</button>
       </div>
     </div>
   </div>
@@ -448,7 +453,7 @@
     </div>
   </div>
 
-  <!-- ROUND SIDE BET MODAL -->
+  <!-- ROUND SIDE BET MODAL (Proposer selects only their own pick) -->
   <div id="roundBetModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -469,15 +474,9 @@
         <div id="opponentsChecklist" class="opponents-checklist"></div>
       </div>
 
-      <div id="roundContenderSection" style="display:flex; gap:6px; width:100%;">
-        <div style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:left;">
-          <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick</label>
-          <select id="betMyTargetSelect" onchange="filterTheirTargetOptions()"></select>
-        </div>
-        <div style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:left;">
-          <label style="font-size:11px; font-weight:bold; color:#ffd700;">3. Their Pick</label>
-          <select id="betTheirTargetSelect"></select>
-        </div>
+      <div id="roundContenderSection" style="display:flex; flex-direction:column; gap:3px; width:100%; text-align:left;">
+        <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick (Highest Score)</label>
+        <select id="betMyTargetSelect"></select>
       </div>
 
       <div style="display:flex; gap:6px; justify-content:center; align-items:center; margin: 2px 0;">
@@ -852,7 +851,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -1036,31 +1035,10 @@
       updateMultiBetSummary();
     }
 
-    function filterTheirTargetOptions() {
-      if (currentSideBetType !== 'round') return;
-      const myTargetName = document.getElementById('betMyTargetSelect').value;
-      const theirSelect = document.getElementById('betTheirTargetSelect');
-      const currentSelection = theirSelect.value;
-
-      theirSelect.innerHTML = '';
-      latestActivePlayers.forEach(p => {
-        if (p.name !== myTargetName) {
-          const opt = document.createElement('option');
-          opt.value = p.name;
-          opt.innerText = p.name;
-          theirSelect.appendChild(opt);
-        }
-      });
-
-      if (currentSelection && currentSelection !== myTargetName) {
-        theirSelect.value = currentSelection;
-      }
-    }
-
     function openRoundSideBetModal() {
       currentSideBetType = 'round';
       document.getElementById('sideBetModalTitle').innerText = '🎲 Round Side Bet';
-      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender against multiple opponents:';
+      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender for the highest score in the hand:';
       document.getElementById('roundContenderSection').style.display = 'flex';
       toggleRoundBetModal();
     }
@@ -1079,11 +1057,9 @@
       if (!isVisible) {
         const checklist = document.getElementById('opponentsChecklist');
         const myTargetSelect = document.getElementById('betMyTargetSelect');
-        const theirTargetSelect = document.getElementById('betTheirTargetSelect');
 
         checklist.innerHTML = '';
         myTargetSelect.innerHTML = '';
-        theirTargetSelect.innerHTML = '';
 
         let selectableOpponents = 0;
         latestAllTableMembers.forEach(m => {
@@ -1104,20 +1080,12 @@
         }
 
         latestActivePlayers.forEach(p => {
-          const opt1 = document.createElement('option');
-          opt1.value = p.name;
-          opt1.innerText = p.name;
-          myTargetSelect.appendChild(opt1);
-
-          const opt2 = document.createElement('option');
-          opt2.value = p.name;
-          opt2.innerText = p.name;
-          theirTargetSelect.appendChild(opt2);
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.innerText = p.name;
+          myTargetSelect.appendChild(opt);
         });
 
-        if (currentSideBetType === 'round') {
-          filterTheirTargetOptions();
-        }
         updateMultiBetSummary();
       }
       modal.style.display = isVisible ? 'none' : 'flex';
@@ -1141,15 +1109,8 @@
         return alert('Please check off at least one opponent to challenge.');
       }
 
-      let targetName = document.getElementById('betMyTargetSelect').value;
-      let theirTargetName = document.getElementById('betTheirTargetSelect').value;
-
-      if (!targetName) return alert('Select a target contender.');
-
-      if (currentSideBetType === 'round') {
-        if (!theirTargetName) return alert('Select their pick.');
-        if (targetName === theirTargetName) return alert('You must pick different contenders to bet against each other!');
-      }
+      const targetName = document.getElementById('betMyTargetSelect').value;
+      if (!targetName) return alert('Select your pick for highest score.');
 
       socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
@@ -1165,18 +1126,31 @@
     socket.on('sideBetOfferReceived', (data) => {
       pendingOfferBetId = data.betId;
       document.getElementById('sideBetOfferText').innerHTML = `
-        <strong>${data.fromPlayer}</strong> challenges you to a <strong>$${data.amount}</strong> side bet!<br>
+        <strong>${data.fromPlayer}</strong> challenges you to a side bet ($${data.amount})!<br>
         • Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span>
       `;
+
+      const select = document.getElementById('offerMyTargetSelect');
+      select.innerHTML = '';
+      latestActivePlayers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.innerText = p.name;
+        select.appendChild(opt);
+      });
+
       document.getElementById('sideBetOfferModal').style.display = 'flex';
     });
 
     function respondSideBet(accept) {
       if (!pendingOfferBetId) return;
+      const myTargetName = accept ? document.getElementById('offerMyTargetSelect').value : null;
+
       socket.emit('respondSideBet', {
         roomId: currentRoom,
         betId: pendingOfferBetId,
-        accept: accept
+        accept: accept,
+        myTargetName: myTargetName
       });
       document.getElementById('sideBetOfferModal').style.display = 'none';
       pendingOfferBetId = null;
@@ -1247,7 +1221,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1847,7 +1821,7 @@
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
-          div.innerText = `👁️ ${p.name}${voiceBadge}${dcBadge}`;
+          div.innerText = `👁️️ ${p.name}${voiceBadge}${dcBadge}`;
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
@@ -1925,7 +1899,6 @@
         playKnockSound();
       }
 
-      // Extended duration to 5.5 seconds so players can read side bet updates
       announcementTimer = setTimeout(() => {
         dismissAnnouncement();
       }, data.duration || 5500);
