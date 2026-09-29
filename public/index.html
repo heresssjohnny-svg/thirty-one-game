@@ -71,7 +71,7 @@
     }
     .card.red { color: #d32f2f; }
     .card.black { color: #111111; }
-    .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 12px; text-align: center; }
+    .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 11px; text-align: center; }
     .card.discard-highlight { outline: 3px solid #ffcc00; transform: translateY(-4px); }
 
     .card.mini {
@@ -339,8 +339,8 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>🎙️ Voice Channel Bell Hopper & Invites</h4>
-          A bright chime sounds and a banner announces whenever someone joins voice chat. If you are in voice chat, you can invite other players!
+          <h4>🎴 Deck Counter & Reshuffle</h4>
+          The draw pile shows remaining cards and automatically reshuffles the discard pile when empty, announcing it to everyone!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -564,6 +564,15 @@
     <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
     <input id="playerName" placeholder="Your Player Name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    
+    <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
+      <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
+      <div class="wager-chip" onclick="setInitialLives(1)">1</div>
+      <div class="wager-chip selected" id="defaultLivesChip" onclick="setInitialLives(2)">2</div>
+      <div class="wager-chip" onclick="setInitialLives(3)">3</div>
+      <div class="wager-chip" onclick="setInitialLives(5)">5</div>
+    </div>
+
     <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111;">Enter Game Room</button>
 
     <div style="width:100%; max-width:280px; margin-top:10px;">
@@ -601,13 +610,14 @@
     <div class="players-list" id="playersArea"></div>
 
     <div class="middle-piles">
-      <div id="drawPile" class="card back" onclick="draw('deck')">DRAW<br>DECK</div>
+      <!-- NEW: Deck count display -->
+      <div id="drawPile" class="card back" onclick="draw('deck')">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(32)</span></div>
       <div id="discardPile" class="card" onclick="draw('discard')">--</div>
     </div>
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -659,6 +669,7 @@
     let unreadCount = 0;
     let isChatOpen = false;
     let currentWager = 0;
+    let selectedInitialLives = 2;
     let selectedSideBetAmt = 5;
     let currentSideBetType = 'round';
     let latestActivePlayers = [];
@@ -749,7 +760,7 @@
       }
 
       if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId, initialLives: selectedInitialLives });
         socket.emit('requestStateSync', currentRoom);
       }
     }
@@ -763,7 +774,7 @@
     socket.on('connect', () => {
       document.getElementById('connectionBanner').style.display = 'none';
       if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId, initialLives: selectedInitialLives });
         socket.emit('requestStateSync', currentRoom);
       }
     });
@@ -776,6 +787,13 @@
       if (!socket.connected) {
         socket.connect();
       }
+    }
+
+    function setInitialLives(lives) {
+      selectedInitialLives = lives;
+      document.querySelectorAll('#lobby div[style*="Starting Lives"] ~ .wager-chip').forEach(c => {
+        c.classList.toggle('selected', parseInt(c.innerText) === lives);
+      });
     }
 
     function playCardSlideSound() {
@@ -962,7 +980,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -985,7 +1003,8 @@
       socket.emit('joinRoom', {
         roomId: room,
         playerName: myPlayerName,
-        deviceId: deviceId
+        deviceId: deviceId,
+        initialLives: selectedInitialLives
       });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
@@ -1069,7 +1088,7 @@
     function promptClearDebt(playerName, amount) {
       pendingClearDebtName = playerName;
       document.getElementById('clearDebtConfirmText').innerHTML = `
-        Are you sure you want to forgive and clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
+        Are you sure you want to clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
       `;
       document.getElementById('clearDebtConfirmModal').style.display = 'flex';
     }
@@ -1380,8 +1399,6 @@
       const targetMember = latestAllTableMembers.find(m => m.name === targetName);
       if (!targetMember) return alert('Player not found.');
 
-      // Find socket id from table members
-      // We broadcast request via server
       socket.emit('inviteToVoice', {
         roomId: currentRoom,
         targetSocketId: targetMember.id || targetName
@@ -1804,6 +1821,10 @@
 
       latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
       latestAllTableMembers = state.allTableMembers || [];
+
+      // Update Deck Count Label
+      const deckCountLbl = document.getElementById('deckCountLabel');
+      if (deckCountLbl) deckCountLbl.innerText = `(${state.deckCount ?? 0})`;
 
       if (isSpectator) {
         document.getElementById('scoreLabel').innerHTML = `<span class="spectator-badge">👁️ Spectating</span>`;
