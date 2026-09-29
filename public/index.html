@@ -104,6 +104,7 @@
     button.spectate-btn { background: #455a64; color: #fff; }
     button.ledger-btn { background: #ffd700; color: #111; padding: 6px 10px; font-size: 12px; }
     button.side-bet-btn { background: #ff9800; color: #111; }
+    button.first-loser-btn { background: #e91e63; color: #fff; }
     button.peek-btn { background: #7b1fa2; color: #fff; }
     button.tutorial-btn { background: #00acc1; color: #fff; padding: 6px 10px; font-size: 12px; }
     button:disabled { background: #555; color: #888; }
@@ -318,9 +319,9 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>🎲 Multi-Player Side Bets</h4>
-          • Bet on your choice against multiple opponents simultaneously.<br>
-          • Check off who you want to challenge, and each bet is settled independently in the ledger!
+          <h4>💀 First to Lose Side Bets</h4>
+          • Bet with opponents on who will lose the match first (run out of lives first).<br>
+          • Stays active across rounds until someone is eliminated!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:10px;">Got It!</button>
@@ -428,15 +429,15 @@
     </div>
   </div>
 
-  <!-- MULTI-OPPONENT ROUND SIDE BET MODAL -->
+  <!-- ROUND SIDE BET MODAL -->
   <div id="roundBetModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:15px; color:#ff9800;">🎲 Side Bet With Multiple Opponents</span>
+        <span style="font-weight:900; font-size:15px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
         <span onclick="toggleRoundBetModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
       </div>
       
-      <div style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents simultaneously:</div>
+      <div id="sideBetModalDesc" style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents:</div>
 
       <div style="display:flex; flex-direction:column; gap:4px; text-align:left;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -449,7 +450,7 @@
         <div id="opponentsChecklist" class="opponents-checklist"></div>
       </div>
 
-      <div style="display:flex; gap:6px; width:100%;">
+      <div id="roundContenderSection" style="display:flex; gap:6px; width:100%;">
         <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick</label>
           <select id="betMyTargetSelect" onchange="filterTheirTargetOptions()"></select>
@@ -570,7 +571,8 @@
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
     <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
-    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="toggleRoundBetModal()">🎲 Side Bet</button>
+    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()">🎲 Side Bet</button>
+    <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()">💀 First to Lose</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
@@ -599,6 +601,7 @@
     let isChatOpen = false;
     let currentWager = 0;
     let selectedSideBetAmt = 5;
+    let currentSideBetType = 'round'; // 'round' or 'firstLoser'
     let latestActivePlayers = [];
     let latestAllTableMembers = [];
     let latestTopDiscard = null;
@@ -980,7 +983,7 @@
       const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
       const count = checkedBoxes.length;
       const total = count * selectedSideBetAmt;
-      document.getElementById('multiBetSummary').innerText = `${count} opponent(s) selected (Total at risk: $${total})`;
+      document.getElementById('multiBetSummary').innerText = `${count} opponent(s) selected (Total stake: $${total})`;
     }
 
     function selectAllOpponents(check) {
@@ -991,13 +994,13 @@
     }
 
     function filterTheirTargetOptions() {
+      if (currentSideBetType !== 'round') return;
       const myTargetName = document.getElementById('betMyTargetSelect').value;
       const theirSelect = document.getElementById('betTheirTargetSelect');
       const currentSelection = theirSelect.value;
 
       theirSelect.innerHTML = '';
       latestActivePlayers.forEach(p => {
-        // Exclude your own pick from their options so they cannot bet on themselves
         if (p.name !== myTargetName) {
           const opt = document.createElement('option');
           opt.value = p.name;
@@ -1009,6 +1012,22 @@
       if (currentSelection && currentSelection !== myTargetName) {
         theirSelect.value = currentSelection;
       }
+    }
+
+    function openRoundSideBetModal() {
+      currentSideBetType = 'round';
+      document.getElementById('sideBetModalTitle').innerText = '🎲 Round Side Bet';
+      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender against multiple opponents:';
+      document.getElementById('roundContenderSection').style.display = 'flex';
+      toggleRoundBetModal();
+    }
+
+    function openFirstLoserSideBetModal() {
+      currentSideBetType = 'firstLoser';
+      document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Side Bet';
+      document.getElementById('sideBetModalDesc').innerText = 'Bet on who will lose the match first (run out of lives first):';
+      document.getElementById('roundContenderSection').style.display = 'none'; // Only need one target selection
+      toggleRoundBetModal();
     }
 
     function toggleRoundBetModal() {
@@ -1046,9 +1065,16 @@
           opt1.value = p.name;
           opt1.innerText = p.name;
           myTargetSelect.appendChild(opt1);
+
+          const opt2 = document.createElement('option');
+          opt2.value = p.name;
+          opt2.innerText = p.name;
+          theirTargetSelect.appendChild(opt2);
         });
 
-        filterTheirTargetOptions();
+        if (currentSideBetType === 'round') {
+          filterTheirTargetOptions();
+        }
         updateMultiBetSummary();
       }
       modal.style.display = isVisible ? 'none' : 'flex';
@@ -1072,23 +1098,29 @@
         return alert('Please check off at least one opponent to challenge.');
       }
 
-      const myTargetName = document.getElementById('betMyTargetSelect').value;
-      const theirTargetName = document.getElementById('betTheirTargetSelect').value;
+      let targetName = '';
+      let theirTargetName = '';
 
-      if (!myTargetName || !theirTargetName) return alert('Select contenders for the side bet.');
-      if (myTargetName === theirTargetName) return alert('You must pick different contenders to bet against each other!');
+      if (currentSideBetType === 'round') {
+        targetName = document.getElementById('betMyTargetSelect').value;
+        theirTargetName = document.getElementById('betTheirTargetSelect').value;
+        if (!targetName || !theirTargetName) return alert('Select contenders for the side bet.');
+        if (targetName === theirTargetName) return alert('You must pick different contenders to bet against each other!');
 
-      // RULE: Exclude the target from being bet against themselves
-      const validOpponents = opponentNames.filter(opp => opp !== theirTargetName);
-      if (validOpponents.length === 0) {
-        return alert('You cannot challenge opponents to bet on their own hand!');
+        const validOpponents = opponentNames.filter(opp => opp !== theirTargetName);
+        if (validOpponents.length === 0) {
+          return alert('You cannot challenge opponents to bet on their own hand!');
+        }
+      } else {
+        targetName = document.getElementById('betMyTargetSelect').value;
+        if (!targetName) return alert('Select a player who you think will lose first.');
       }
 
       socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
-        opponentNames: validOpponents,
-        bettorTargetName: myTargetName,
-        opponentTargetName: theirTargetName,
+        betType: currentSideBetType,
+        opponentNames: currentSideBetType === 'round' ? opponentNames.filter(opp => opp !== theirTargetName) : opponentNames,
+        targetPlayerName: targetName,
         amount: selectedSideBetAmt
       });
 
@@ -1099,8 +1131,7 @@
       pendingOfferBetId = data.betId;
       document.getElementById('sideBetOfferText').innerHTML = `
         <strong>${data.fromPlayer}</strong> challenges you to a <strong>$${data.amount}</strong> side bet!<br>
-        • Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span><br>
-        • Your pick: <span style="color:#81d4fa; font-weight:bold;">${data.yourTarget}</span>
+        • Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span>
       `;
       document.getElementById('sideBetOfferModal').style.display = 'flex';
     });
@@ -1690,6 +1721,7 @@
       const removeBotBtn = document.getElementById('removeBotBtn');
       const spectateBtn = document.getElementById('spectateBtn');
       const roundBetBtn = document.getElementById('roundBetBtn');
+      const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
       const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
 
       if (state.gameStarted) {
@@ -1698,9 +1730,11 @@
         removeBotBtn.style.display = 'none';
         spectateBtn.style.display = 'none';
         roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
         spectatorPeekBtn.style.display = isSpectator ? 'inline-block' : 'none';
       } else {
         roundBetBtn.style.display = 'none';
+        firstLoserBetBtn.style.display = 'none';
         spectatorPeekBtn.style.display = 'none';
         spectateBtn.style.display = 'inline-block';
         spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
@@ -1767,7 +1801,7 @@
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
+        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
