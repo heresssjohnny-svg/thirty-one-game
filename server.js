@@ -1072,7 +1072,6 @@ function finalizePlayerExit(roomId, playerName) {
 }
 
 io.on('connection', (socket) => {
-  // CRITICAL FIX: Broadcast room list instantly upon initial socket connection so newly opened tabs see active lobbies
   broadcastRoomList();
 
   socket.on('requestStateSync', (roomId) => {
@@ -1209,7 +1208,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1292,7 +1291,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -1316,6 +1315,41 @@ io.on('connection', (socket) => {
     player.matchWager = parsed;
     broadcastState(roomId, `💰 ${player.name} set their match wager to $${parsed}.`);
     broadcastRoomList();
+  });
+
+  // CLEAR DEBT HANDLER (Forgive debt)
+  socket.on('clearDebt', ({ roomId, debtorName }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const creditor = room.players.find(p => p.id === socket.id);
+    if (!creditor) return;
+    const creditorName = creditor.name;
+
+    let clearedAmount = 0;
+
+    // Zero out what debtorName owes creditorName
+    if (room.debts && room.debts[debtorName] && room.debts[debtorName][creditorName]) {
+      clearedAmount += room.debts[debtorName][creditorName];
+      room.debts[debtorName][creditorName] = 0;
+    }
+
+    if (room.debtBreakdowns) {
+      const key = `${debtorName}:::${creditorName}`;
+      if (room.debtBreakdowns[key]) {
+        room.debtBreakdowns[key] = { match: 0, sideBets: 0 };
+      }
+    }
+
+    if (clearedAmount > 0) {
+      broadcastState(roomId, `🤝 ${creditorName} forgave and cleared ${debtorName}'s debt of $${clearedAmount}!`);
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `🤝 ${creditorName} cleared ${debtorName}'s debt of $${clearedAmount}!`,
+        duration: 4000
+      });
+    } else {
+      socket.emit('errorMsg', `No active debt found from ${debtorName}.`);
+    }
   });
 
   socket.on('proposeMultiSideBets', ({ roomId, betType, opponentNames, targetPlayerName, amount }) => {
@@ -1346,7 +1380,7 @@ io.on('connection', (socket) => {
       if (!opponent) return;
 
       if (betType === 'round' && opponent.name === targetPlayer.name) {
-        return; // Cannot bet an opponent on their own round hand
+        return;
       }
 
       const betId = `sb_${Date.now()}_${Math.random()}`;
