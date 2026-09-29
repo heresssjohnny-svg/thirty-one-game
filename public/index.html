@@ -410,7 +410,7 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️️ Request Hand View</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
         <span onclick="togglePeekSelectorModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
@@ -852,7 +852,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -1604,6 +1604,17 @@
       }, 4200);
     });
 
+    let bannerTimer = null;
+    socket.on('bannerAnnouncement', (data) => {
+      const banner = document.getElementById('bannerAnnouncement');
+      banner.innerText = data.text;
+      banner.classList.add('show');
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => {
+        banner.classList.remove('show');
+      }, data.duration || 3200);
+    });
+
     socket.on('gameState', (state) => {
       const turnJustBegan = state.isMyTurn && !wasMyTurn;
       isTurn = state.isMyTurn;
@@ -1832,7 +1843,7 @@
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
+        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
