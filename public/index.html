@@ -811,7 +811,6 @@
       } catch (err) {}
     }
 
-    // NEW: Sound effect for accepted side bet (pleasant ascending chime)
     function playAcceptSound() {
       try {
         const ctx = getAudioContext();
@@ -820,8 +819,8 @@
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, now); // D5
-        osc.frequency.setValueAtTime(880, now + 0.12); // A5
+        osc.frequency.setValueAtTime(587.33, now);
+        osc.frequency.setValueAtTime(880, now + 0.12);
         gain.gain.setValueAtTime(0.4, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
         osc.connect(gain);
@@ -831,7 +830,6 @@
       } catch (err) {}
     }
 
-    // NEW: Sound effect for declined side bet (descending low buzz)
     function playDeclineSound() {
       try {
         const ctx = getAudioContext();
@@ -1986,6 +1984,17 @@
           }
         });
       }
+
+      // FIXED: Dedicated iPad PWA Touch-Focus fix
+      ['playerName', 'roomId', 'chatInput'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            el.focus();
+          }, { passive: true });
+        }
+      });
 
       const enterBtn = document.getElementById('enterGameBtn');
       if (enterBtn) {
