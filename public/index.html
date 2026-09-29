@@ -1241,7 +1241,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1387,7 +1387,6 @@
       socket.emit('drawCard', { roomId: currentRoom, source });
     }
 
-    // FIXED: Immediately clear local hasDrawn state on successful discard dispatch
     function discard(idx) {
       if (isSpectator) return;
       if (!isTurn) return;
