@@ -613,7 +613,6 @@
     let currentlyViewingHand = null;
     let pendingPeekRequesterId = null;
 
-    // Load or generate persistent device identifier
     try {
       deviceId = localStorage.getItem('thirtyOne_deviceId');
       if (!deviceId) {
@@ -1010,7 +1009,7 @@
             label.className = 'opp-checkbox-item';
             label.innerHTML = `
               <input type="checkbox" value="${m.name}" onchange="updateMultiBetSummary()" checked />
-              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️️]' : ''}</span>
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
             `;
             checklist.appendChild(label);
           }
@@ -1162,7 +1161,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙 Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1383,6 +1382,7 @@
       });
     }
 
+    // INITIAL DEALER CUT HANDLERS
     socket.on('startDealerSelectionCut', (data) => {
       const overlay = document.getElementById('dealerCutOverlay');
       const spread = document.getElementById('dealerCutSpread');
@@ -1448,6 +1448,7 @@
       }, 3500);
     });
 
+    // TIEBREAKER HANDLERS
     socket.on('startTiebreakerCut', (data) => {
       const overlay = document.getElementById('tiebreakerOverlay');
       const spread = document.getElementById('tiebreakerSpread');
@@ -1840,7 +1841,6 @@
       setTimeout(() => location.reload(), 4500);
     });
 
-    // Populate saved username on startup and bind UI listeners
     document.addEventListener('DOMContentLoaded', () => {
       try {
         const saved = localStorage.getItem('thirtyOne_playerName');
