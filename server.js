@@ -402,6 +402,17 @@ function startDealerCut(room) {
 }
 
 function checkDealerCutComplete(room) {
+  if (!room.dealerCutActive) return;
+  const eligible = getActivePlayers(room);
+  room.dealerCutPlayerIds = eligible.map(p => p.id);
+
+  // Clean up any picks for players who disconnected
+  for (const pickId of Object.keys(room.dealerCutPicks)) {
+    if (!eligible.some(p => p.id === pickId)) {
+      delete room.dealerCutPicks[pickId];
+    }
+  }
+
   const requiredCount = room.dealerCutPlayerIds.length;
   const pickedCount = Object.keys(room.dealerCutPicks).length;
   if (pickedCount < requiredCount) return;
@@ -436,6 +447,7 @@ function checkDealerCutComplete(room) {
 
   if (lowestPickers.length > 1) {
     setTimeout(() => {
+      if (!room) return;
       io.to(room.id).emit('bannerAnnouncement', {
         text: `Tie for lowest dealer cut card! Re-cutting...`,
         duration: 2500
@@ -524,8 +536,18 @@ function startInteractiveTiebreaker(room, tiedPlayers) {
 }
 
 function checkTiebreakerComplete(room) {
+  if (!room.tiebreakerActive) return;
+  const activeEligible = getActivePlayers(room);
+
+  // Clean up picks for disconnected players
+  for (const pickId of Object.keys(room.tiebreakerPicks || {})) {
+    if (!activeEligible.some(p => p.id === pickId)) {
+      delete room.tiebreakerPicks[pickId];
+    }
+  }
+
   const requiredCount = room.tiebreakerPicks ? Object.keys(room.tiebreakerPicks).length : 0;
-  if (requiredCount < room.tiedPlayerIds.length) return;
+  if (requiredCount < room.tiedPlayerIds.filter(id => activeEligible.some(p => p.id === id)).length) return;
 
   room.tiebreakerActive = false;
   const picks = Object.values(room.tiebreakerPicks);
@@ -557,6 +579,7 @@ function checkTiebreakerComplete(room) {
 
   if (cutLosers.length > 1) {
     setTimeout(() => {
+      if (!room) return;
       io.to(room.id).emit('bannerAnnouncement', {
         text: `Tie for lowest cut! Re-drawing lowest players...`,
         duration: 2500
@@ -1117,6 +1140,14 @@ function finalizePlayerExit(roomId, playerName) {
     }
   }
 
+  // FIXED: If we are currently in a dealer cut or tiebreaker, check if we can complete it now
+  if (room.dealerCutActive) {
+    checkDealerCutComplete(room);
+  }
+  if (room.tiebreakerActive) {
+    checkTiebreakerComplete(room);
+  }
+
   if (getActivePlayers(room).length === 0 && room.players.length === 0) {
     delete rooms[roomId];
   } else {
@@ -1265,7 +1296,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1805,7 +1836,7 @@ io.on('connection', (socket) => {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
       });
-      broadcastState(roomId, `⚠️️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
