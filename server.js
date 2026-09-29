@@ -237,7 +237,7 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-// ROUND SIDE BET SETTLEMENT: Compares bettor's target score vs opponent's target score
+// ROUND SIDE BET SETTLEMENT: Compares bettor's pick score vs opponent's pick score
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
@@ -1408,7 +1408,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // FIXED: PROPOSE SIDE BETS WHERE OPPONENT CHOOSES THEIR OWN PICK
   socket.on('proposeMultiSideBets', ({ roomId, betType, opponentNames, targetPlayerName, amount }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -1437,16 +1436,6 @@ io.on('connection', (socket) => {
       if (!opponent) return;
 
       const betId = `sb_${Date.now()}_${Math.random()}`;
-      
-      // If opponent is a bot, assign them a random opposing pick automatically
-      let botOpponentTarget = targetPlayer;
-      if (opponent.isBot) {
-        const activeActives = getActivePlayers(room).filter(p => p.name !== targetPlayer.name);
-        if (activeActives.length > 0) {
-          botOpponentTarget = activeActives[Math.floor(Math.random() * activeActives.length)];
-        }
-      }
-
       const newBet = {
         id: betId,
         type: betType || 'round',
@@ -1454,30 +1443,31 @@ io.on('connection', (socket) => {
         bettorName: bettor.name,
         opponentId: opponent.id,
         opponentName: opponent.name,
-        bettorTargetName: targetPlayer.name,
+        targetPlayerName: targetPlayer.name,
         bettorTargetId: targetPlayer.id,
-        // Opponent's pick is initially null for humans until they choose, or auto-assigned for bots
-        targetPlayerName: botOpponentTarget.name, 
-        opponentTargetName: botOpponentTarget.name,
-        opponentTargetId: botOpponentTarget.id,
+        opponentTargetId: targetPlayer.id, // Will be updated if opponent chooses their own pick
         amount: parsedAmt,
         accepted: Boolean(opponent.isBot)
       };
 
+      if (opponent.isBot) {
+        // Bot picks a random active player other than bettor's pick
+        const possibleBotTargets = getActivePlayers(room).filter(p => p.name !== targetPlayer.name);
+        const botPick = possibleBotTargets[Math.floor(Math.random() * possibleBotTargets.length)] || targetPlayer;
+        newBet.opponentTargetName = botPick.name;
+        newBet.opponentTargetId = botPick.id;
+        botAcceptedCount++;
+      }
+
       room.peerSideBets.push(newBet);
       proposedCount++;
 
-      if (opponent.isBot) {
-        botAcceptedCount++;
-      } else {
-        // Send challenge prompt to human opponent allowing them to pick their own side
+      if (!opponent.isBot) {
         io.to(opponent.id).emit('sideBetOfferReceived', {
           betId: betId,
-          type: betType || 'round',
           fromPlayer: bettor.name,
           amount: parsedAmt,
-          bettorTarget: targetPlayer.name,
-          availableContenders: getActivePlayers(room).map(p => p.name)
+          bettorTarget: targetPlayer.name
         });
       }
     });
@@ -1486,17 +1476,16 @@ io.on('connection', (socket) => {
       return socket.emit('errorMsg', 'Invalid side bet selection.');
     }
 
-    let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each).`;
+    let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each on ${targetPlayer.name}).`;
     if (botAcceptedCount > 0) {
       msg += ` (${botAcceptedCount} bot(s) accepted immediately)`;
     }
 
     socket.emit('bannerAnnouncement', { text: msg, duration: 3200 });
-    broadcastState(roomId, `🎲 ${bettor.name} offered $${parsedAmt} side bets to ${proposedCount} player(s).`);
+    broadcastState(roomId, `🎲 ${bettor.name} offered $${parsedAmt} side bets on ${targetPlayer.name} to ${proposedCount} player(s).`);
   });
 
-  // RESPOND & COUNTER-PICK: Opponent selects their own pick and sends it back for proposer verification
-  socket.on('respondSideBet', ({ roomId, betId, accept, opponentTargetName }) => {
+  socket.on('respondSideBet', ({ roomId, betId, accept, myTargetName }) => {
     const room = rooms[roomId];
     if (!room || !room.peerSideBets) return;
 
@@ -1507,27 +1496,21 @@ io.on('connection', (socket) => {
     if (bet.opponentId !== socket.id) return;
 
     if (accept) {
-      const oppTarget = room.players.find(p => p.name === opponentTargetName && !p.isSpectator);
-      if (!oppTarget) {
-        return socket.emit('errorMsg', 'Please select a valid contender for your pick.');
+      const oppTarget = room.players.find(p => p.name === myTargetName && !p.isSpectator);
+      if (!oppTarget && bet.type === 'round') {
+        return socket.emit('errorMsg', 'Please select a valid pick for your side of the bet.');
       }
 
-      if (bet.type === 'round' && oppTarget.name === bet.bettorTargetName) {
-        return socket.emit('errorMsg', 'You must pick a different contender to bet against their pick!');
+      if (bet.type === 'round') {
+        bet.opponentTargetName = oppTarget.name;
+        bet.opponentTargetId = oppTarget.id;
       }
-
-      bet.opponentTargetName = oppTarget.name;
-      bet.opponentTargetId = oppTarget.id;
-      bet.targetPlayerName = oppTarget.name;
-      
-      // Mark as accepted and notify the original proposer for final verification
       bet.accepted = true;
 
-      io.to(bet.bettorId).emit('bannerAnnouncement', {
-        text: `✅ ${bet.opponentName} accepted your side bet backing ${oppTarget.name}!`,
-        duration: 4000
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `🤝 ${bet.opponentName} ACCEPTED ${bet.bettorName}'s $${bet.amount} side bet!`,
+        duration: 3500
       });
-
       broadcastState(roomId, `🤝 ${bet.opponentName} accepted side bet vs ${bet.bettorName} ($${bet.amount}).`);
     } else {
       room.peerSideBets.splice(betIdx, 1);
@@ -1551,7 +1534,7 @@ io.on('connection', (socket) => {
     const card = room.dealerCutDeck.splice(safeIdx, 1)[0];
     room.dealerCutPicks[socket.id] = { player: player, card: card };
 
-    io.to(room.id).emit('dealerCutCardPicked', {
+    io.to(roomId).emit('dealerCutCardPicked', {
       playerId: socket.id,
       playerName: player.name,
       remainingCount: room.dealerCutDeck.length
@@ -1572,7 +1555,7 @@ io.on('connection', (socket) => {
     const card = room.tiebreakerDeck.splice(safeIdx, 1)[0];
     room.tiebreakerPicks[socket.id] = { player: player, card: card };
 
-    io.to(room.id).emit('tiebreakerCardPicked', {
+    io.to(roomId).emit('tiebreakerCardPicked', {
       playerId: socket.id,
       playerName: player.name,
       remainingCount: room.tiebreakerDeck.length
