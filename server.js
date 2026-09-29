@@ -45,6 +45,7 @@ const CUT_RANKS = {
   '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
 };
 
+const VALID_FRAMES = ['frame-none', 'frame-gold', 'frame-neon', 'frame-diamond', 'frame-crown'];
 const MAX_ACTIVE_PLAYERS = 6;
 const rooms = {};
 const disconnectTimeouts = {};
@@ -788,186 +789,6 @@ function startNewRound(roomId) {
   triggerBotTurnIfNeeded(roomId);
 }
 
-function broadcastState(roomId, message = '') {
-  const room = rooms[roomId];
-  if (!room) return;
-
-  const active = getActivePlayers(room);
-  const currentTurnPlayer = room.players[room.currentTurnIdx];
-  const minKnockScore = active.length === 2 ? 25 : 21;
-  const roundHasPassed = room.turnsTakenInRound >= active.length;
-  
-  let totalGamePot = 0;
-  if (room.gameStarted && room.currentMatchParticipants) {
-    totalGamePot = room.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
-  } else {
-    totalGamePot = getActivePlayers(room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
-  }
-
-  const activeSideBetsTotal = (room.peerSideBets || [])
-    .filter(b => b.accepted)
-    .reduce((sum, b) => sum + (b.amount * 2), 0);
-
-  room.players.forEach(p => {
-    if (p.isBot) return;
-
-    if (room.gameStarted && !p.isSpectator && p.lives > 0 && p.hand && p.hand.length < 3 && room.deck && room.deck.length > 0) {
-      while (p.hand.length < 3 && room.deck.length > 0) {
-        p.hand.push(room.deck.pop());
-      }
-    }
-
-    const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id && !room.isResolvingRound && !p.isSpectator;
-    const score = p.isSpectator ? 0 : calculateScore(p.hand);
-    const canKnock = isCurrent && !room.knockerId && roundHasPassed && score >= minKnockScore && !room.drawnCard;
-
-    const personalLedgerData = getPersonalLedger(room, p.name);
-
-    io.to(p.id).emit('gameState', {
-      myWager: p.matchWager || 0,
-      players: room.players.map(pl => ({
-        id: pl.id,
-        name: pl.name,
-        avatar: pl.avatar || '👑',
-        lives: pl.lives,
-        cardCount: pl.hand ? pl.hand.length : 0,
-        isDealer: room.players[room.dealerIdx]?.id === pl.id,
-        isTurn: currentTurnPlayer?.id === pl.id,
-        isBot: Boolean(pl.isBot),
-        isSpectator: Boolean(pl.isSpectator),
-        isReady: Boolean(pl.isReady),
-        isInVoice: Boolean(pl.isInVoice),
-        disconnected: Boolean(pl.disconnected),
-        matchWager: pl.matchWager || 0
-      })),
-      allTableMembers: (room.knownMembers || []).map(name => {
-        const pl = room.players.find(x => x.name === name);
-        return {
-          name: name,
-          isOnline: Boolean(pl && !pl.disconnected),
-          isSpectator: Boolean(pl && pl.isSpectator),
-          lives: pl ? pl.lives : 0
-        };
-      }),
-      hand: p.isSpectator ? [] : p.hand,
-      score: score,
-      minKnockScore: minKnockScore,
-      roundHasPassed: roundHasPassed,
-      topDiscard: room.discardPile[room.discardPile.length - 1] || null,
-      deckCount: room.deck ? room.deck.length : 0,
-      isMyTurn: isCurrent,
-      hasDrawn: Boolean(room.drawnCard),
-      canKnock: canKnock,
-      isSpectator: Boolean(p.isSpectator),
-      manualSpectator: Boolean(p.manualSpectator),
-      gameStarted: room.gameStarted,
-      knocker: room.knockerId ? room.players.find(pl => pl.id === room.knockerId)?.name : null,
-      isReady: Boolean(p.isReady),
-      activePlayersCount: getNonSpectatorCount(room),
-      botCount: room.players.filter(pl => pl.isBot).length,
-      maxActivePlayers: MAX_ACTIVE_PLAYERS,
-      totalPot: totalGamePot,
-      sideBetActionTotal: activeSideBetsTotal,
-      activeSideBets: (room.peerSideBets || []).map(b => ({
-        id: b.id,
-        type: b.type,
-        bettor: b.bettorName,
-        opponent: b.opponentName,
-        targetPlayer: b.targetPlayerName,
-        amount: b.amount,
-        accepted: b.accepted
-      })),
-      personalLedger: personalLedgerData.balances,
-      netOverallBalance: personalLedgerData.totalNet,
-      netSideBetBalance: personalLedgerData.totalSideBetNet,
-      message: message
-    });
-  });
-
-  broadcastSpectatorPeeks(room);
-}
-
-function resolveShowdown(roomId) {
-  const room = rooms[roomId];
-  if (!room || room.isResolvingRound) return;
-  room.isResolvingRound = true;
-
-  const active = getActivePlayers(room);
-  let minScore = 32;
-  let maxScore = -1;
-  const scores = {};
-
-  active.forEach(p => {
-    const sc = calculateScore(p.hand);
-    scores[p.id] = sc;
-    if (sc < minScore) minScore = sc;
-    if (sc > maxScore) maxScore = sc;
-  });
-
-  const lowestPlayers = active.filter(p => scores[p.id] === minScore);
-  const knocker = room.players.find(p => p.id === room.knockerId);
-  const revealedHands = getRevealedHands(room);
-  const roundBetReport = settlePeerRoundBets(room, scores);
-
-  let newlyEliminated = [];
-
-  if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
-    knocker.lives -= 1;
-    if (knocker.lives <= 0) {
-      newlyEliminated.push(knocker.name);
-    }
-    const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
-    const losersText = `${knocker.name} (Knocker lost alone)`;
-
-    io.to(roomId).emit('bigAnnouncement', {
-      title: '💀 ROUND OVER 💀',
-      message: `LOSER: ${losersText}`,
-      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Lowest Score: ${minScore}`,
-      hands: revealedHands,
-      duration: 7500
-    });
-    broadcastState(roomId, `Showdown finished! Loser: ${losersText}`);
-    setTimeout(() => startNewRound(roomId), 7500);
-    return;
-  }
-
-  if (lowestPlayers.length > 1) {
-    if (active.length === 2) {
-      io.to(roomId).emit('bigAnnouncement', {
-        title: '🤝 HEADS-UP TIE! 🤝',
-        message: 'PUSH — RE-DEALING ROUND!',
-        subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}Both players tied at ${minScore} points`,
-        hands: revealedHands,
-        duration: 7500
-      });
-      broadcastState(roomId, `Heads-up tie at ${minScore}! Re-dealing with no lives lost.`);
-      setTimeout(() => startNewRound(roomId), 4500);
-      return;
-    }
-
-    startInteractiveTiebreaker(room, lowestPlayers);
-    return;
-  }
-
-  const singleLoser = lowestPlayers[0];
-  singleLoser.lives -= 1;
-  if (singleLoser.lives <= 0) {
-    newlyEliminated.push(singleLoser.name);
-  }
-  const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
-
-  io.to(roomId).emit('bigAnnouncement', {
-    title: '💀 ROUND OVER 💀',
-    message: `LOSER: ${singleLoser.name}`,
-    subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Lowest Score: ${minScore}`,
-    hands: revealedHands,
-    duration: 7500
-  });
-
-  broadcastState(roomId, `Showdown finished! Loser: ${singleLoser.name}`);
-  setTimeout(() => startNewRound(roomId), 7500);
-}
-
 function triggerBotTurnIfNeeded(roomId) {
   const room = rooms[roomId];
   if (!room || !room.gameStarted || room.isResolvingRound) return;
@@ -1152,7 +973,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives, avatar }) => {
+  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives, avatar, frame }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
       rooms[roomId] = {
@@ -1190,6 +1011,7 @@ io.on('connection', (socket) => {
 
     let safeName = playerName ? playerName.trim() : '';
     let safeAvatar = avatar || '👑';
+    let safeFrame = VALID_FRAMES.includes(frame) ? frame : 'frame-gold';
 
     if (deviceId && room.playerRegistry[deviceId]) {
       if (safeName && safeName !== room.playerRegistry[deviceId]) {
@@ -1253,6 +1075,7 @@ io.on('connection', (socket) => {
       }
       existingPlayer.name = safeName;
       existingPlayer.avatar = safeAvatar;
+      existingPlayer.frame = safeFrame;
       existingPlayer.id = socket.id;
       if (deviceId) existingPlayer.deviceId = deviceId;
       existingPlayer.disconnected = false;
@@ -1272,6 +1095,7 @@ io.on('connection', (socket) => {
       deviceId: deviceId || null,
       name: safeName,
       avatar: safeAvatar,
+      frame: safeFrame,
       lives: isSpectator ? 0 : (room.configuredLives || 2),
       hand: [],
       fedCardsTracker: {},
@@ -1752,6 +1576,7 @@ io.on('connection', (socket) => {
       id: `bot_${Date.now()}_${Math.random()}`,
       name: botName,
       avatar: '🤖',
+      frame: 'frame-gold',
       lives: room.configuredLives || 2,
       hand: [],
       fedCardsTracker: {},
