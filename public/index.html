@@ -544,7 +544,7 @@
       <button type="button" class="tutorial-btn" onclick="toggleTutorialModal()">📖 Rules</button>
       <button type="button" class="ledger-btn" onclick="toggleLedgerModal()">💰 Ledger</button>
       <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️️</button>
       <button type="button" class="danger" onclick="leaveLobby()">Leave</button>
     </div>
   </div>
@@ -566,7 +566,7 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -958,7 +958,7 @@
     function promptClearDebt(playerName, amount) {
       pendingClearDebtName = playerName;
       document.getElementById('clearDebtConfirmText').innerHTML = `
-        Are you sure you want to clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
+        Are you sure you want to forgive and clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
       `;
       document.getElementById('clearDebtConfirmModal').style.display = 'flex';
     }
@@ -1038,7 +1038,7 @@
     function openRoundSideBetModal() {
       currentSideBetType = 'round';
       document.getElementById('sideBetModalTitle').innerText = '🎲 Round Side Bet';
-      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender for highest score:';
+      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender against multiple opponents:';
       document.getElementById('roundContenderSection').style.display = 'flex';
       toggleRoundBetModal();
     }
