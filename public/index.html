@@ -193,10 +193,9 @@
       justify-content: center; font-size: 11px; font-weight: bold; color: #fff;
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
-    .tiebreaker-card-slot:hover { transform: translateY(-4px scale(1.05); border-color: #ffd700; }
+    .tiebreaker-card-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .tiebreaker-picks-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
 
-    /* LEDGER MODAL STYLES */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -256,7 +255,6 @@
     <div id="tiebreakerPicksContainer" class="tiebreaker-picks-row"></div>
   </div>
 
-  <!-- LEDGER MODAL -->
   <div id="ledgerModal" class="custom-modal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -278,7 +276,6 @@
     </div>
   </div>
 
-  <!-- ROUND SIDE BET MODAL -->
   <div id="roundBetModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -386,6 +383,7 @@
     <button id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="toggleRoundBetModal()">🎲 Bet on Round</button>
     <button id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
+    <button id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
     <button id="knockBtn" onclick="knock()" disabled>Knock</button>
   </div>
 
@@ -894,6 +892,10 @@
       socket.emit('addBot', currentRoom);
     }
 
+    function removeBot() {
+      socket.emit('removeBot', currentRoom);
+    }
+
     function draw(source) {
       if (isSpectator) return;
       if (!isTurn) return alert("Not your turn!");
@@ -1178,12 +1180,14 @@
       // Action Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
+      const removeBotBtn = document.getElementById('removeBotBtn');
       const spectateBtn = document.getElementById('spectateBtn');
       const roundBetBtn = document.getElementById('roundBetBtn');
 
       if (state.gameStarted) {
         readyBtn.style.display = 'none';
         addBotBtn.style.display = 'none';
+        removeBotBtn.style.display = 'none';
         spectateBtn.style.display = 'none';
         roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
       } else {
@@ -1194,9 +1198,12 @@
         if (isSpectator) {
           readyBtn.style.display = 'none';
           addBotBtn.style.display = 'none';
+          removeBotBtn.style.display = 'none';
         } else {
           readyBtn.style.display = 'inline-block';
           addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
+          // Show Remove Bot button if there is at least 1 bot in the lobby
+          removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
 
           if (isReady) {
             readyBtn.className = 'ready-on';
