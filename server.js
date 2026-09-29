@@ -1299,7 +1299,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1382,7 +1382,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
