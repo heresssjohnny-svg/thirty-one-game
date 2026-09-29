@@ -350,7 +350,7 @@
   <!-- KNOCK WARNING CONFIRMATION MODAL -->
   <div id="knockConfirmModal" class="custom-modal">
     <div class="modal-card" style="border-color:#f44336; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️ High Card in Discard!</div>
+      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️️ High Card in Discard!</div>
       <div style="font-size:12px; line-height:1.4; opacity:0.9;">
         There is an <strong id="knockConfirmCard" style="color:#ffd700;">Ace/Face card</strong> on top of the discard pile.<br><br>
         Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
@@ -2031,7 +2031,8 @@
         });
       }
 
-      ['playerName', 'roomId', 'chatInput'].forEach(id => {
+      // Robust touch-focus handling for iPad PWA inputs
+      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
           el.addEventListener('touchstart', (e) => {
