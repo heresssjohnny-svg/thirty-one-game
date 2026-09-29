@@ -687,7 +687,11 @@ function triggerBotTurnIfNeeded(roomId) {
     const roundHasPassed = room.turnsTakenInRound >= activeCount;
     const score = calculateScore(current.hand);
 
-    if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26)) {
+    const topDiscard = room.discardPile[room.discardPile.length - 1];
+    const topIsDangerous = topDiscard && (topDiscard.rank === 'A' || topDiscard.value === 10);
+
+    // Bot Knock Check (Bot avoids knocking if high-value card is left unless its score is very strong)
+    if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26) && (!topIsDangerous || score >= 29)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
       room.currentDiscardFeederId = current.id;
@@ -706,7 +710,6 @@ function triggerBotTurnIfNeeded(roomId) {
       return;
     }
 
-    const topDiscard = room.discardPile[room.discardPile.length - 1];
     let takeDiscard = false;
     if (topDiscard) {
       for (let i = 0; i < current.hand.length; i++) {
@@ -776,7 +779,6 @@ function triggerBotTurnIfNeeded(roomId) {
   }, 1200);
 }
 
-// Grace-period disconnection handler to prevent freeze when switching apps
 function handlePlayerDisconnect(socketId) {
   for (const [roomId, room] of Object.entries(rooms)) {
     const player = room.players.find(p => p.id === socketId);
@@ -790,7 +792,6 @@ function handlePlayerDisconnect(socketId) {
         clearTimeout(disconnectTimeouts[key]);
       }
 
-      // 45-second grace window to allow switching back into the browser
       disconnectTimeouts[key] = setTimeout(() => {
         delete disconnectTimeouts[key];
         finalizePlayerExit(roomId, player.name);
@@ -806,7 +807,7 @@ function finalizePlayerExit(roomId, playerName) {
   const idx = room.players.findIndex(p => p.name === playerName);
   if (idx === -1) return;
   const leaving = room.players[idx];
-  if (!leaving.disconnected) return; // Player reconnected in time
+  if (!leaving.disconnected) return;
 
   if (!room.gameStarted || leaving.isSpectator) {
     room.players.splice(idx, 1);
