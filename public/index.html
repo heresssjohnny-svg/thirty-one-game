@@ -183,10 +183,23 @@
     }
 
     .lobby-modal {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.92);
-      display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; z-index: 100;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+      display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
+      gap: 12px; z-index: 100; padding: 24px 16px; overflow-y: auto;
     }
-    input, select { padding: 10px; border-radius: 8px; border: none; font-size: 15px; width: 100%; max-width: 260px; }
+    .room-directory {
+      width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
+    }
+    .room-dir-item {
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px;
+      padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; font-size: 13px;
+    }
+    .room-dir-item:hover { background: rgba(255,255,255,0.2); }
+    .badge-in-play { background: #e53935; color: #fff; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+    .badge-lobby { background: #4caf50; color: #fff; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+
+    input, select { padding: 10px; border-radius: 8px; border: none; font-size: 15px; width: 100%; max-width: 280px; }
   </style>
 </head>
 <body>
@@ -252,10 +265,20 @@
   </div>
 
   <div id="lobby" class="lobby-modal">
-    <h2 style="margin:0;">31 Card Game</h2>
-    <input id="playerName" placeholder="Your Name" />
-    <input id="roomId" placeholder="Room Code (e.g. 777)" />
-    <button onclick="joinGame()">Enter Game Room</button>
+    <h2 style="margin:10px 0 4px 0;">31 Card Game</h2>
+    <input id="playerName" placeholder="Your Player Name" />
+    <input id="roomId" placeholder="Enter or Select Room Code" />
+    <button onclick="joinGame()" style="width:100%; max-width:280px; padding:12px;">Enter Game Room</button>
+
+    <div style="width:100%; max-width:280px; margin-top:14px;">
+      <div style="font-size:13px; font-weight:bold; color:#ffd700; margin-bottom:6px; display:flex; justify-content:space-between;">
+        <span>🎮 Lobbies In Play</span>
+        <span id="lobbyCountLabel" style="opacity:0.75; font-size:11px;">0 active</span>
+      </div>
+      <div id="roomsContainer" class="room-directory">
+        <div style="opacity:0.5; font-size:12px; text-align:center;">No active lobbies yet. Create one above!</div>
+      </div>
+    </div>
   </div>
 
   <div class="header">
@@ -344,15 +367,12 @@
       return audioCtx;
     }
 
-    // Bell sound synthesis on turn transition
     function playTurnBellSound() {
       try {
         const ctx = getAudioContext();
         if (!ctx) return;
 
         const now = ctx.currentTime;
-
-        // Primary fundamental bell strike (A6 - 1760 Hz)
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
         osc1.type = 'sine';
@@ -363,11 +383,9 @@
 
         osc1.connect(gain1);
         gain1.connect(ctx.destination);
-
         osc1.start(now);
         osc1.stop(now + 0.9);
 
-        // Harmonic overtone for realistic brass chime ring (2640 Hz)
         const osc2 = ctx.createOscillator();
         const gain2 = ctx.createGain();
         osc2.type = 'sine';
@@ -378,7 +396,6 @@
 
         osc2.connect(gain2);
         gain2.connect(ctx.destination);
-
         osc2.start(now);
         osc2.stop(now + 0.6);
       } catch (err) {
@@ -386,11 +403,9 @@
       }
     }
 
-    // Vibration trigger for mobile phones
     function triggerTurnVibration() {
       try {
         if ('vibrate' in navigator) {
-          // Double-pulse vibration alert
           navigator.vibrate([120, 80, 140]);
         }
       } catch (e) {
@@ -440,8 +455,47 @@
       ]
     };
 
+    // Live Room List Handler
+    socket.on('roomListUpdate', (rooms) => {
+      const container = document.getElementById('roomsContainer');
+      const countLabel = document.getElementById('lobbyCountLabel');
+      if (!container) return;
+
+      countLabel.innerText = `${rooms.length} active`;
+
+      if (rooms.length === 0) {
+        container.innerHTML = '<div style="opacity:0.5; font-size:12px; text-align:center;">No active lobbies yet. Create one above!</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      rooms.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'room-dir-item';
+        item.onclick = () => {
+          document.getElementById('roomId').value = r.roomId;
+          joinGame();
+        };
+
+        const statusBadge = r.gameStarted 
+          ? `<span class="badge-in-play">🎮 In Game</span>` 
+          : `<span class="badge-lobby">⏳ In Lobby</span>`;
+
+        const wagerBadge = r.wager > 0 ? `<span style="color:#ffd700; font-weight:bold;">$${r.wager}</span>` : `Free`;
+
+        item.innerHTML = `
+          <div>
+            <strong>Room ${r.roomId}</strong>
+            <div style="font-size:11px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+          </div>
+          <div>${statusBadge}</div>
+        `;
+        container.appendChild(item);
+      });
+    });
+
     function joinGame() {
-      getAudioContext(); // Pre-warm audio context on user gesture
+      getAudioContext();
       const name = document.getElementById('playerName').value.trim() || 'Player';
       const room = document.getElementById('roomId').value.trim();
       if (!room) return alert('Enter a room code');
@@ -754,7 +808,6 @@
       isTurn = state.isMyTurn;
       wasMyTurn = state.isMyTurn;
 
-      // Trigger bell chime and vibration when it becomes your turn
       if (turnJustBegan && state.gameStarted && !state.isSpectator) {
         playTurnBellSound();
         triggerTurnVibration();
