@@ -128,6 +128,99 @@ function getRevealedHands(room) {
   }));
 }
 
+function recordDebt(room, debtorName, creditorName, amount) {
+  if (debtorName === creditorName || amount <= 0) return;
+  if (!room.debts[debtorName]) room.debts[debtorName] = {};
+  room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
+}
+
+function updateLedgerStatements(room) {
+  const debtStatements = [];
+  const names = Object.keys(room.debts);
+  const processedPairs = new Set();
+
+  for (let i = 0; i < names.length; i++) {
+    for (let j = 0; j < names.length; j++) {
+      if (i === j) continue;
+      const p1 = names[i];
+      const p2 = names[j];
+      const pairKey = [p1, p2].sort().join(':::');
+      if (processedPairs.has(pairKey)) continue;
+      processedPairs.add(pairKey);
+
+      const p1OwesP2 = (room.debts[p1] && room.debts[p1][p2]) || 0;
+      const p2OwesP1 = (room.debts[p2] && room.debts[p2][p1]) || 0;
+      const net = p1OwesP2 - p2OwesP1;
+
+      if (net > 0) {
+        debtStatements.push(`${p1} owes ${p2} $${net}`);
+      } else if (net < 0) {
+        debtStatements.push(`${p2} owes ${p1} $${Math.abs(net)}`);
+      }
+    }
+  }
+
+  room.ledgerStatements = debtStatements;
+}
+
+function recordGameWagerSettlement(room, winner) {
+  if (!room.wager || room.wager <= 0 || !winner) return;
+
+  const wager = room.wager;
+  const participants = room.currentMatchParticipants || [];
+  participants.forEach(loserId => {
+    if (loserId !== winner.id) {
+      const loser = room.players.find(p => p.id === loserId);
+      if (loser) {
+        recordDebt(room, loser.name, winner.name, wager);
+      }
+    }
+  });
+
+  updateLedgerStatements(room);
+}
+
+// Settle round-by-round side bets
+function settleRoundBets(room, winningPlayers) {
+  if (!room.roundBets || room.roundBets.length === 0) return '';
+  if (!winningPlayers || winningPlayers.length === 0) {
+    room.roundBets = [];
+    return '';
+  }
+
+  const winningPlayerNames = new Set(winningPlayers.map(p => p.name));
+  const winningBets = room.roundBets.filter(b => winningPlayerNames.has(b.targetPlayerName));
+  const losingBets = room.roundBets.filter(b => !winningPlayerNames.has(b.targetPlayerName));
+
+  const totalPot = room.roundBets.reduce((sum, b) => sum + b.amount, 0);
+
+  if (winningBets.length === 0) {
+    // House / push if nobody picked the winner
+    room.roundBets = [];
+    return `Round side bets ($${totalPot} pot) had no winners! Pushed.`;
+  }
+
+  const winningStakesTotal = winningBets.reduce((sum, b) => sum + b.amount, 0);
+  const sideBetWinners = [];
+
+  winningBets.forEach(wBet => {
+    const netWin = Math.round((wBet.amount / winningStakesTotal) * (totalPot - winningStakesTotal));
+    sideBetWinners.push(`${wBet.bettorName} (+$${netWin})`);
+
+    // Charge the losers proportionately to credit the winners
+    losingBets.forEach(lBet => {
+      const shareOwed = Math.round((lBet.amount / totalPot) * (wBet.amount + netWin));
+      if (shareOwed > 0) {
+        recordDebt(room, lBet.bettorName, wBet.bettorName, shareOwed);
+      }
+    });
+  });
+
+  updateLedgerStatements(room);
+  room.roundBets = [];
+  return `Side Bet Winners: ${sideBetWinners.join(', ')}`;
+}
+
 function checkAndHandle31(room, player) {
   if (calculateScore(player.hand) !== 31) return false;
   if (room.isResolvingRound) return true;
@@ -136,12 +229,11 @@ function checkAndHandle31(room, player) {
   let penalizedGiver = null;
   const revealedHands = getRevealedHands(room);
 
-  // 21 of 31 RULE:
-  // 1. Must have grabbed the card making 31 from the DISCARD pile.
-  // 2. Both the Ace AND the Face/10-value card MUST have come from the SAME person.
+  // Settle round side bets: player with 31 is the unambiguous round winner
+  const sideBetReport = settleRoundBets(room, [player]);
+
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
-      // Find cards still in the final 3-card hand that came from this specific giver
       const cardsInHandFromGiver = cards.filter(c => 
         player.hand.some(hCard => hCard.rank === c.rank && hCard.suit === c.suit)
       );
@@ -149,7 +241,6 @@ function checkAndHandle31(room, player) {
       const hasAce = cardsInHandFromGiver.some(c => c.rank === 'A');
       const hasTen = cardsInHandFromGiver.some(c => c.value === 10);
 
-      // Both must come from this single giver
       if (hasAce && hasTen) {
         penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
         if (penalizedGiver) break;
@@ -164,13 +255,11 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: '⚡ 31 HIT FROM DISCARD! ⚡',
       message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
-      subtext: `Fed both the Ace & Face card to ${player.name}!`,
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
       hands: revealedHands,
       duration: 6500
     });
   } else {
-    // If drawn from the deck, or if Ace and Face card did not come from the same person:
-    // ALL OTHER PLAYERS LOSE 1 LIFE!
     const losers = [];
     room.players.forEach(p => {
       if (!p.isSpectator && p.lives > 0 && p.id !== player.id) {
@@ -182,13 +271,13 @@ function checkAndHandle31(room, player) {
     broadcastState(room.id);
 
     const drawDesc = player.lastDrawnSource === 'deck' 
-      ? 'Drawn directly from Deck!' 
+      ? 'Drawn from Deck!' 
       : (player.lastDrawnSource === 'deal' ? 'Dealt 31!' : 'Natural 31!');
 
     io.to(room.id).emit('bigAnnouncement', {
       title: `⚡ ${player.name.toUpperCase()} HIT 31! ⚡`,
       message: `EVERYONE ELSE LOSES 1 LIFE!`,
-      subtext: `${drawDesc} Losers: ${losers.join(', ')}`,
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
       hands: revealedHands,
       duration: 6500
     });
@@ -204,17 +293,30 @@ function startNewRound(roomId) {
 
   const active = getActivePlayers(room);
   if (active.length <= 1) {
-    const winnerName = active[0] ? active[0].name : 'Nobody';
+    const winner = active[0] || null;
+    const winnerName = winner ? winner.name : 'Nobody';
+
+    let potWonText = '';
+    if (winner && room.wager > 0) {
+      recordGameWagerSettlement(room, winner);
+      const totalPot = (room.currentMatchParticipants.length) * room.wager;
+      potWonText = ` Takes the $${totalPot} POT!`;
+    }
+
     io.to(roomId).emit('bigAnnouncement', {
       title: '🏆 GAME OVER 🏆',
-      message: `${winnerName} WINS THE GAME!`,
+      message: `${winnerName.toUpperCase()} WINS!${potWonText}`,
+      subtext: room.ledgerStatements.length > 0 ? room.ledgerStatements.join(' | ') : 'No pending debts.',
       duration: 8000
     });
+
     room.gameStarted = false;
-    
+    room.currentMatchParticipants = [];
+    room.roundBets = [];
+
     let activeAssigned = 0;
     room.players.forEach(p => { 
-      if (activeAssigned < MAX_ACTIVE_PLAYERS) {
+      if (!p.manualSpectator && activeAssigned < MAX_ACTIVE_PLAYERS) {
         p.isSpectator = false;
         p.lives = 2;
         activeAssigned++;
@@ -224,7 +326,8 @@ function startNewRound(roomId) {
       }
       p.isReady = false; 
     });
-    broadcastState(roomId, `Game over! Toggle Ready to start the next game.`);
+
+    broadcastState(roomId, `Game over! ${winnerName} won! Check Ledger for debts.`);
     return;
   }
 
@@ -238,6 +341,7 @@ function startNewRound(roomId) {
   room.isResolvingRound = false;
   room.turnsTakenInRound = 0;
   room.currentDiscardFeederId = null;
+  room.roundBets = []; // Reset round side bets for new round
 
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
@@ -250,13 +354,11 @@ function startNewRound(roomId) {
 
   const dealer = room.players[room.dealerIdx];
 
-  // Deal 3 cards to each player
   active.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
     p.fedCardsTracker = {};
     p.lastDrawnSource = 'deal';
 
-    // Attribute initial dealt cards to the dealer
     if (dealer && dealer.id !== p.id) {
       p.fedCardsTracker[dealer.id] = [];
       p.hand.forEach(c => {
@@ -282,7 +384,7 @@ function startNewRound(roomId) {
   room.currentTurnIdx = room.dealerIdx;
   advanceTurnIndex(room);
 
-  broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}.`);
+  broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}. Place round side bets!`);
   triggerBotTurnIfNeeded(roomId);
 }
 
@@ -294,6 +396,8 @@ function broadcastState(roomId, message = '') {
   const currentTurnPlayer = room.players[room.currentTurnIdx];
   const minKnockScore = active.length === 2 ? 25 : 21;
   const roundHasPassed = room.turnsTakenInRound >= active.length;
+  const totalGamePot = (room.currentMatchParticipants.length || getNonSpectatorCount(room)) * (room.wager || 0);
+  const totalRoundPot = (room.roundBets || []).reduce((sum, b) => sum + b.amount, 0);
 
   room.players.forEach(p => {
     if (p.isBot) return;
@@ -330,11 +434,21 @@ function broadcastState(roomId, message = '') {
       hasDrawn: Boolean(room.drawnCard),
       canKnock: canKnock,
       isSpectator: Boolean(p.isSpectator),
+      manualSpectator: Boolean(p.manualSpectator),
       gameStarted: room.gameStarted,
       knocker: room.knockerId ? room.players.find(pl => pl.id === room.knockerId)?.name : null,
       isReady: Boolean(p.isReady),
       activePlayersCount: getNonSpectatorCount(room),
       maxActivePlayers: MAX_ACTIVE_PLAYERS,
+      wager: room.wager || 0,
+      totalPot: totalGamePot,
+      roundPot: totalRoundPot,
+      roundBets: (room.roundBets || []).map(b => ({
+        bettor: b.bettorName,
+        target: b.targetPlayerName,
+        amt: b.amount
+      })),
+      ledger: room.ledgerStatements || [],
       message: message
     });
   });
@@ -347,17 +461,23 @@ function resolveShowdown(roomId) {
 
   const active = getActivePlayers(room);
   let minScore = 32;
+  let maxScore = -1;
   const scores = {};
 
   active.forEach(p => {
     const sc = calculateScore(p.hand);
     scores[p.id] = sc;
     if (sc < minScore) minScore = sc;
+    if (sc > maxScore) maxScore = sc;
   });
 
   const lowestPlayers = active.filter(p => scores[p.id] === minScore);
+  const highestPlayers = active.filter(p => scores[p.id] === maxScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
   const revealedHands = getRevealedHands(room);
+
+  // Settle round bets with highest scoring player(s)
+  const sideBetReport = settleRoundBets(room, highestPlayers);
 
   if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
     knocker.lives -= 1;
@@ -365,7 +485,7 @@ function resolveShowdown(roomId) {
     io.to(roomId).emit('bigAnnouncement', {
       title: '💀 ROUND OVER 💀',
       message: `LOSER: ${losersText}`,
-      subtext: `Lowest Score: ${minScore}`,
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Lowest Score: ${minScore}`,
       hands: revealedHands,
       duration: 6500
     });
@@ -379,7 +499,7 @@ function resolveShowdown(roomId) {
       io.to(roomId).emit('bigAnnouncement', {
         title: '🤝 HEADS-UP TIE! 🤝',
         message: 'PUSH — RE-DEALING ROUND!',
-        subtext: `Both players tied at ${minScore} points`,
+        subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Both players tied at ${minScore} points`,
         hands: revealedHands,
         duration: 6500
       });
@@ -416,7 +536,7 @@ function resolveShowdown(roomId) {
     io.to(roomId).emit('bigAnnouncement', {
       title: '⚡ TIEBREAKER CUT! ⚡',
       message: `LOSER: ${cutLoser.player.name} (${cutLoser.card.rank}${cutLoser.card.suit})`,
-      subtext: tiebreakReport.join('  |  '),
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${tiebreakReport.join('  |  ')}`,
       hands: revealedHands,
       duration: 7500
     });
@@ -432,7 +552,7 @@ function resolveShowdown(roomId) {
   io.to(roomId).emit('bigAnnouncement', {
     title: '💀 ROUND OVER 💀',
     message: `LOSER: ${singleLoser.name}`,
-    subtext: `Lowest Score: ${minScore}`,
+    subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Lowest Score: ${minScore}`,
     hands: revealedHands,
     duration: 6500
   });
@@ -594,7 +714,12 @@ io.on('connection', (socket) => {
         drawnCard: null,
         isResolvingRound: false,
         turnsTakenInRound: 0,
-        currentDiscardFeederId: null
+        currentDiscardFeederId: null,
+        wager: 0,
+        currentMatchParticipants: [],
+        roundBets: [],
+        debts: {},
+        ledgerStatements: []
       };
     }
     const room = rooms[roomId];
@@ -619,18 +744,94 @@ io.on('connection', (socket) => {
       lastDrawnSource: null,
       isBot: false,
       isSpectator: isSpectator,
+      manualSpectator: false,
       isReady: false,
       isInVoice: false
     });
 
     let joinMsg = `${playerName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁️ Room active player limit (6) reached. ${playerName} joined as a spectator.`;
+      joinMsg = `👁️ Room active limit (6) reached. ${playerName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${playerName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
+  });
+
+  socket.on('toggleSpectate', (roomId) => {
+    const room = rooms[roomId];
+    if (!room || room.gameStarted) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    if (!player.manualSpectator) {
+      player.manualSpectator = true;
+      player.isSpectator = true;
+      player.lives = 0;
+      player.isReady = false;
+      broadcastState(roomId, `👁️ ${player.name} switched to Spectator Mode.`);
+    } else {
+      if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
+        return socket.emit('errorMsg', 'Table is full (6 active players max).');
+      }
+      player.manualSpectator = false;
+      player.isSpectator = false;
+      player.lives = 2;
+      player.isReady = false;
+      broadcastState(roomId, `🃏 ${player.name} rejoined as an active player.`);
+    }
+  });
+
+  // Set Overall Game Wager
+  socket.on('setWager', ({ roomId, wager }) => {
+    const room = rooms[roomId];
+    if (!room || room.gameStarted) return;
+    const parsed = Math.max(0, parseInt(wager) || 0);
+    room.wager = parsed;
+    broadcastState(roomId, `💰 Match wager set to $${parsed}/player.`);
+  });
+
+  // Place Round-by-Round Side Bet (Open to BOTH players and spectators)
+  socket.on('placeRoundBet', ({ roomId, targetPlayerName, amount }) => {
+    const room = rooms[roomId];
+    if (!room || !room.gameStarted || room.isResolvingRound) {
+      return socket.emit('errorMsg', 'Round betting is only open during an active round.');
+    }
+    if (room.knockerId) {
+      return socket.emit('errorMsg', 'Bets locked! Someone has already knocked.');
+    }
+
+    const bettor = room.players.find(p => p.id === socket.id);
+    if (!bettor) return;
+
+    const parsedAmt = Math.max(1, parseInt(amount) || 1);
+    const targetPlayer = room.players.find(p => p.name === targetPlayerName && !p.isSpectator && p.lives > 0);
+    if (!targetPlayer) {
+      return socket.emit('errorMsg', 'Invalid target player for side bet.');
+    }
+
+    if (!room.roundBets) room.roundBets = [];
+
+    // Replace previous round bet from this bettor or add new
+    const existingBetIdx = room.roundBets.findIndex(b => b.bettorId === socket.id);
+    if (existingBetIdx !== -1) {
+      room.roundBets[existingBetIdx] = {
+        bettorId: socket.id,
+        bettorName: bettor.name,
+        targetPlayerName: targetPlayer.name,
+        amount: parsedAmt
+      };
+    } else {
+      room.roundBets.push({
+        bettorId: socket.id,
+        bettorName: bettor.name,
+        targetPlayerName: targetPlayer.name,
+        amount: parsedAmt
+      });
+    }
+
+    broadcastState(roomId, `🎲 ${bettor.name} bet $${parsedAmt} on ${targetPlayer.name} to win this round!`);
   });
 
   socket.on('joinVoice', (roomId) => {
@@ -676,6 +877,7 @@ io.on('connection', (socket) => {
 
     if (!room.gameStarted && checkAllPlayersReady(room)) {
       room.gameStarted = true;
+      room.currentMatchParticipants = getActivePlayers(room).map(p => p.id);
       startNewRound(roomId);
     }
   });
@@ -718,6 +920,7 @@ io.on('connection', (socket) => {
       lastDrawnSource: null,
       isBot: true,
       isSpectator: false,
+      manualSpectator: false,
       isReady: true,
       isInVoice: false
     });
@@ -725,6 +928,7 @@ io.on('connection', (socket) => {
     broadcastState(roomId, `Bot ${botCount} joined.`);
     if (checkAllPlayersReady(room)) {
       room.gameStarted = true;
+      room.currentMatchParticipants = getActivePlayers(room).map(p => p.id);
       startNewRound(roomId);
     }
   });
