@@ -88,6 +88,10 @@ function advanceTurnIndex(room) {
     const candidate = room.players[nextIdx];
     if (candidate && !candidate.isSpectator && candidate.lives > 0) {
       room.currentTurnIdx = nextIdx;
+      // Auto-repair hand check: Ensure candidate has exactly 3 cards
+      while (candidate.hand && candidate.hand.length < 3 && room.deck && room.deck.length > 0) {
+        candidate.hand.push(room.deck.pop());
+      }
       return;
     }
   }
@@ -186,6 +190,13 @@ function broadcastState(roomId, message = '') {
   room.players.forEach(p => {
     if (p.isBot) return;
 
+    // Hand sanity check before emitting state
+    if (room.gameStarted && !p.isSpectator && p.lives > 0 && p.hand && p.hand.length < 3 && room.deck && room.deck.length > 0) {
+      while (p.hand.length < 3 && room.deck.length > 0) {
+        p.hand.push(room.deck.pop());
+      }
+    }
+
     const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id && !room.isResolvingRound && !p.isSpectator;
     const score = p.isSpectator ? 0 : calculateScore(p.hand);
     const canKnock = isCurrent && !room.knockerId && roundHasPassed && score >= minKnockScore && !room.drawnCard;
@@ -267,6 +278,11 @@ function triggerBotTurnIfNeeded(roomId) {
   const current = room.players[room.currentTurnIdx];
   if (!current || !current.isBot || current.lives <= 0 || current.isSpectator) return;
 
+  // Bot hand auto-heal
+  while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
+    current.hand.push(room.deck.pop());
+  }
+
   setTimeout(() => {
     if (!rooms[roomId] || room.isResolvingRound) return;
 
@@ -300,7 +316,6 @@ function triggerBotTurnIfNeeded(roomId) {
     if (takeDiscard) {
       drawn = room.discardPile.pop();
       current.takenFromPrev.push(drawn);
-      // Announce bot picked from discard
       io.to(roomId).emit('bannerAnnouncement', {
         text: `👀 ${current.name} took ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
@@ -581,12 +596,21 @@ io.on('connection', (socket) => {
     const player = room?.players[room.currentTurnIdx];
     if (!room || !player || player.id !== socket.id || room.drawnCard || room.isResolvingRound || player.isSpectator) return;
 
+    // Strict Hand-Size Check: Player MUST have exactly 3 cards to draw a 4th
+    if (player.hand.length !== 3) {
+      while (player.hand.length < 3 && room.deck.length > 0) {
+        player.hand.push(room.deck.pop());
+      }
+      broadcastState(roomId, `Re-synchronized hand.`);
+      return;
+    }
+
     let drawn;
     if (source === 'discard') {
+      if (room.discardPile.length === 0) return;
       drawn = room.discardPile.pop();
       player.takenFromPrev.push(drawn);
       
-      // Announce to everyone in the room that this player took from the discard pile
       io.to(roomId).emit('bannerAnnouncement', {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
@@ -604,12 +628,25 @@ io.on('connection', (socket) => {
 
     room.drawnCard = drawn;
     player.hand.push(drawn);
+    broadcastState(roomId);
   });
 
   socket.on('discardCard', ({ roomId, cardIndex }) => {
     const room = rooms[roomId];
     const player = room?.players[room.currentTurnIdx];
     if (!room || !player || player.id !== socket.id || !room.drawnCard || room.isResolvingRound || player.isSpectator) return;
+
+    // Strict Hand-Size Check: Can ONLY discard if holding exactly 4 cards
+    if (player.hand.length !== 4) {
+      room.drawnCard = null;
+      while (player.hand.length < 3 && room.deck.length > 0) {
+        player.hand.push(room.deck.pop());
+      }
+      broadcastState(roomId, `Hand corrected.`);
+      return;
+    }
+
+    if (cardIndex < 0 || cardIndex >= player.hand.length) return;
 
     const [discarded] = player.hand.splice(cardIndex, 1);
     room.discardPile.push(discarded);
