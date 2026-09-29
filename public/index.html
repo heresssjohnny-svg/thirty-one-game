@@ -121,9 +121,9 @@
       transition: opacity 0.3s ease; text-align: center; padding: 20px;
     }
     .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
-    .ann-title { font-size: 24px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 12px; font-weight: 800; }
-    .ann-message { font-size: 30px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 8px; }
-    .ann-subtext { font-size: 16px; color: #ffffff; opacity: 0.9; }
+    .ann-title { font-size: 26px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 12px; font-weight: 800; }
+    .ann-message { font-size: 32px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 8px; }
+    .ann-subtext { font-size: 18px; color: #ffffff; opacity: 0.9; }
 
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.92);
@@ -207,7 +207,7 @@
     let myHand = [];
     let isTurn = false;
     let hasDrawn = false;
-    let isDiscarding = false; // Prevents double-tap discard bug
+    let isDiscarding = false;
     let minKnockScore = 21;
     let currentScore = 0;
     let roundHasPassed = false;
@@ -215,6 +215,42 @@
     let isReady = false;
     let unreadCount = 0;
     let isChatOpen = false;
+
+    // Web Audio Synthesized Knock Sound
+    let audioCtx = null;
+    function playKnockSound() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        // Triple wood-thud knock pattern
+        const knockTimes = [0, 0.14, 0.28];
+        knockTimes.forEach((delay) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+
+          osc.type = 'triangle';
+          const startTime = audioCtx.currentTime + delay;
+
+          // Quick pitch drop creates realistic wooden percussion
+          osc.frequency.setValueAtTime(140, startTime);
+          osc.frequency.exponentialRampToValueAtTime(35, startTime + 0.08);
+
+          gain.gain.setValueAtTime(0.8, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08);
+
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          osc.start(startTime);
+          osc.stop(startTime + 0.08);
+        });
+      } catch (err) {
+        console.warn('Audio synthesis unavailable:', err);
+      }
+    }
 
     let localStream = null;
     let peerConnections = {};
@@ -447,7 +483,7 @@
       if (isSpectator) return;
       if (!isTurn) return;
       if (!hasDrawn) return alert("You must draw from the deck or discard pile first!");
-      if (isDiscarding) return; // Prevent double-tap
+      if (isDiscarding) return;
       if (myHand.length !== 4) return alert("Waiting for 4th card to register...");
 
       isDiscarding = true;
@@ -490,7 +526,7 @@
     socket.on('gameState', (state) => {
       isTurn = state.isMyTurn;
       hasDrawn = state.hasDrawn;
-      isDiscarding = false; // Reset lock on state arrival
+      isDiscarding = false;
       myHand = state.hand || [];
       minKnockScore = state.minKnockScore || 21;
       roundHasPassed = state.roundHasPassed;
@@ -572,7 +608,7 @@
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
-          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -606,6 +642,11 @@
       document.getElementById('annMessage').innerText = data.message || '';
       document.getElementById('annSubtext').innerText = data.subtext || '';
       overlay.classList.add('show');
+
+      // Trigger knocking sound synthesis if requested
+      if (data.sound === 'knock') {
+        playKnockSound();
+      }
 
       setTimeout(() => {
         overlay.classList.remove('show');
