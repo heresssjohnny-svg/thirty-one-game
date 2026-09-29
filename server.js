@@ -269,12 +269,12 @@ function settlePeerRoundBets(room, scores) {
 
     if (bettorPickIsHighest && !opponentPickIsHighest) {
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName}'s pick (${bet.targetPlayerName}: ${bettorTargetScore}) won highest score vs ${bet.opponentName}'s pick -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.bettorName}'s pick won highest score vs ${bet.opponentName}'s pick -> +$${bet.amount}`);
     } else if (opponentPickIsHighest && !bettorPickIsHighest) {
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
       resultsSummary.push(`${bet.opponentName}'s pick won highest score vs ${bet.bettorName}'s pick -> +$${bet.amount}`);
     } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied on picks (${bettorTargetScore} pts - push)`);
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} both picks tied on score (push)`);
     }
   });
 
@@ -779,9 +779,7 @@ function startNewRound(roomId) {
 
   const firstDiscard = room.deck.pop();
   room.discardPile.push(firstDiscard);
-  // FIXED: Initial first-card-of-round discard is dealt by the table/dealer automatically,
-  // so it does not count as a "fed" card from the dealer for the 21-out-of-31 rule.
-  room.currentDiscardFeederId = null; 
+  room.currentDiscardFeederId = null;
 
   for (const p of active) {
     if (calculateScore(p.hand) === 31) {
