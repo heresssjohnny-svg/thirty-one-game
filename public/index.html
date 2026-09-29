@@ -193,9 +193,10 @@
       justify-content: center; font-size: 11px; font-weight: bold; color: #fff;
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
-    .tiebreaker-card-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
+    .tiebreaker-card-slot:hover { transform: translateY(-4px scale(1.05); border-color: #ffd700; }
     .tiebreaker-picks-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
 
+    /* LEDGER MODAL STYLES */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -205,6 +206,14 @@
       background: #164033; border: 2px solid #ffd700; border-radius: 12px;
       padding: 16px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 10px;
     }
+    .ledger-summary-banner {
+      background: rgba(0,0,0,0.4); border-radius: 8px; padding: 8px; text-align: center;
+      font-size: 14px; font-weight: bold; display: flex; justify-content: space-around;
+    }
+    .balance-positive { color: #4caf50; font-weight: 900; }
+    .balance-negative { color: #f44336; font-weight: 900; }
+    .balance-neutral { color: #e0e0e0; }
+
     .wager-bar {
       display: flex; gap: 6px; align-items: center; justify-content: center; margin: 4px 0;
     }
@@ -240,7 +249,6 @@
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
 
-  <!-- INTERACTIVE TIEBREAKER OVERLAY -->
   <div id="tiebreakerOverlay" class="tiebreaker-overlay">
     <h2 style="color:#ffd700; margin:0 0 6px 0;">⚡ SUDDEN DEATH TIEBREAKER ⚡</h2>
     <div id="tiebreakerInstruction" style="font-size:15px; font-weight:bold; margin-bottom:8px;">Choose your face-down card!</div>
@@ -252,12 +260,19 @@
   <div id="ledgerModal" class="custom-modal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:16px; color:#ffd700;">💰 Table Debts & Settlements</span>
+        <span style="font-weight:900; font-size:16px; color:#ffd700;">💰 Net Balance Ledger</span>
         <span onclick="toggleLedgerModal()" style="cursor:pointer; font-size:20px;">✕</span>
       </div>
-      <div id="ledgerWagerInfo" style="font-size:13px; opacity:0.85;">Current Match Wager: $0 / player</div>
+
+      <div class="ledger-summary-banner">
+        <span>Overall Standing:</span>
+        <span id="ledgerOverallTotal" class="balance-neutral">$0</span>
+      </div>
+
+      <div style="font-size:11px; opacity:0.75; text-align:center;">(+ = they owe you, - = you owe them)</div>
+
       <div id="ledgerList" style="display:flex; flex-direction:column; gap:6px; font-size:14px; max-height:220px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.3); border-radius:8px;">
-        <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
+        <div style="opacity:0.6; text-align:center;">No settled bets yet.</div>
       </div>
       <button onclick="toggleLedgerModal()" class="secondary" style="padding:8px;">Close</button>
     </div>
@@ -270,7 +285,7 @@
         <span style="font-weight:900; font-size:16px; color:#ff9800;">🎲 Round Side Bet</span>
         <span onclick="toggleRoundBetModal()" style="cursor:pointer; font-size:20px;">✕</span>
       </div>
-      <div style="font-size:12px; opacity:0.85;">Pick who will score the highest hand this round! Open to players & spectators.</div>
+      <div style="font-size:12px; opacity:0.85;">Pick who will score the highest hand this round!</div>
       <select id="betTargetSelect"></select>
       <div style="display:flex; gap:6px; justify-content:center; align-items:center;">
         <span style="font-size:13px; font-weight:bold;">Bet:</span>
@@ -351,7 +366,7 @@
 
     <div class="hand-area">
       <div id="wagerSection" class="wager-bar" style="display:none;">
-        <span style="font-size:12px; font-weight:bold;">Game Wager:</span>
+        <span style="font-size:12px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip" onclick="setWager(0)">$0</div>
         <div class="wager-chip" onclick="setWager(1)">$1</div>
         <div class="wager-chip" onclick="setWager(5)">$5</div>
@@ -434,7 +449,6 @@
       }
     }
 
-    // Auto unfreeze and state recovery when switching back into tab/window
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         cancelDealAnimation();
@@ -538,9 +552,7 @@
         if ('vibrate' in navigator) {
           navigator.vibrate([120, 80, 140]);
         }
-      } catch (e) {
-        console.warn('Vibration API error:', e);
-      }
+      } catch (e) {}
     }
 
     function playKnockSound() {
@@ -610,7 +622,7 @@
           ? `<span class="badge-in-play">🎮 In Game</span>` 
           : `<span class="badge-lobby">⏳ In Lobby</span>`;
 
-        const wagerBadge = r.wager > 0 ? `<span style="color:#ffd700; font-weight:bold;">$${r.wager}</span>` : `Free`;
+        const wagerBadge = r.totalPot > 0 ? `<span style="color:#ffd700; font-weight:bold;">Pot: $${r.totalPot}</span>` : `Free`;
 
         item.innerHTML = `
           <div>
@@ -1078,7 +1090,7 @@
       isSpectator = Boolean(state.isSpectator);
       manualSpectator = Boolean(state.manualSpectator);
       isReady = Boolean(state.isReady);
-      currentWager = state.wager || 0;
+      currentWager = state.myWager || 0;
 
       latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
 
@@ -1091,6 +1103,7 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
+      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -1107,6 +1120,7 @@
         roundPotBanner.style.display = 'none';
       }
 
+      // My Match Bet chips selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -1118,21 +1132,50 @@
         wagerSec.style.display = 'none';
       }
 
-      document.getElementById('ledgerWagerInfo').innerText = `Match Stakes: $${currentWager}/player | Round Side Pot: $${state.roundPot || 0}`;
-      const ledgerList = document.getElementById('ledgerList');
-      if (state.ledger && state.ledger.length > 0) {
-        ledgerList.innerHTML = '';
-        state.ledger.forEach(item => {
-          const div = document.createElement('div');
-          div.style.padding = '4px';
-          div.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-          div.innerText = item;
-          ledgerList.appendChild(div);
-        });
+      // Ledger Personal Net Balances Render
+      const overallEl = document.getElementById('ledgerOverallTotal');
+      const netTotal = state.netOverallBalance || 0;
+      if (netTotal > 0) {
+        overallEl.className = 'balance-positive';
+        overallEl.innerText = `+$${netTotal}`;
+      } else if (netTotal < 0) {
+        overallEl.className = 'balance-negative';
+        overallEl.innerText = `-$${Math.abs(netTotal)}`;
       } else {
-        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
+        overallEl.className = 'balance-neutral';
+        overallEl.innerText = `$0`;
       }
 
+      const ledgerList = document.getElementById('ledgerList');
+      if (state.personalLedger && state.personalLedger.length > 0) {
+        ledgerList.innerHTML = '';
+        state.personalLedger.forEach(item => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.padding = '6px 8px';
+          row.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+
+          let balClass = 'balance-neutral';
+          let balText = '$0';
+          if (item.netBalance > 0) {
+            balClass = 'balance-positive';
+            balText = `+$${item.netBalance} (Owes You)`;
+          } else if (item.netBalance < 0) {
+            balClass = 'balance-negative';
+            balText = `-$${Math.abs(item.netBalance)} (You Owe)`;
+          } else {
+            balText = `$0 (Even)`;
+          }
+
+          row.innerHTML = `<span><strong>${item.player}</strong></span><span class="${balClass}">${balText}</span>`;
+          ledgerList.appendChild(row);
+        });
+      } else {
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled bets yet.</div>';
+      }
+
+      // Action Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const spectateBtn = document.getElementById('spectateBtn');
@@ -1211,7 +1254,8 @@
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
-          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}`;
+          const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
+          div.innerText = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}`;
         }
         pArea.appendChild(div);
       });
