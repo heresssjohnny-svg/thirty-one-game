@@ -50,6 +50,7 @@
     .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; background: rgba(255,204,0,0.25); }
     .player-tag.spectator { opacity: 0.6; border: 1px dashed #aaa; }
     .player-tag.is-ready { border-left: 4px solid #4caf50; }
+    .player-tag.disconnected { opacity: 0.5; border-color: #f44336; }
     
     .middle-piles { display: flex; gap: 24px; align-items: center; margin: 8px 0; position: relative; }
     
@@ -311,7 +312,8 @@
     </div>
   </div>
 
-  <div id="announcementOverlay" class="big-announcement-overlay">
+  <!-- Click to dismiss prevents permanent lockups -->
+  <div id="announcementOverlay" class="big-announcement-overlay" onclick="dismissAnnouncement()">
     <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
     <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
     <div id="annSubtext" class="ann-subtext">Lowest score: 14</div>
@@ -392,6 +394,7 @@
   <script>
     const socket = io();
     let currentRoom = '';
+    let myPlayerName = '';
     let myHand = [];
     let isTurn = false;
     let wasMyTurn = false;
@@ -412,6 +415,7 @@
     let dealAnimationTimers = [];
     let amTiedForTiebreaker = false;
     let hasPickedTiebreakerCard = false;
+    let announcementTimer = null;
 
     let audioCtx = null;
     function getAudioContext() {
@@ -420,7 +424,7 @@
         if (AudioContext) audioCtx = new AudioContext();
       }
       if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        audioCtx.resume().catch(() => {});
       }
       return audioCtx;
     }
@@ -430,6 +434,17 @@
       dealAnimationTimers = [];
       document.querySelectorAll('.flying-card').forEach(el => el.remove());
       isAnimatingDeal = false;
+    }
+
+    function dismissAnnouncement() {
+      if (announcementTimer) {
+        clearTimeout(announcementTimer);
+        announcementTimer = null;
+      }
+      const overlay = document.getElementById('announcementOverlay');
+      if (overlay) overlay.classList.remove('show');
+      const hands = document.getElementById('showdownHandsContainer');
+      if (hands) hands.innerHTML = '';
     }
 
     function forceRenderHand() {
@@ -447,30 +462,40 @@
       }
     }
 
+    // App Switch & Background Recovery
+    function recoverFromBackground() {
+      cancelDealAnimation();
+      isDiscarding = false;
+      forceRenderHand();
+      getAudioContext();
+
+      if (!socket.connected) {
+        socket.connect();
+      }
+
+      if (currentRoom && myPlayerName) {
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName });
+        socket.emit('requestStateSync', currentRoom);
+      }
+    }
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        cancelDealAnimation();
-        forceRenderHand();
-        getAudioContext();
-        if (currentRoom) {
-          socket.emit('requestStateSync', currentRoom);
-        }
+        recoverFromBackground();
       }
     });
 
     window.addEventListener('focus', () => {
-      cancelDealAnimation();
-      forceRenderHand();
-      getAudioContext();
-      if (currentRoom) {
-        socket.emit('requestStateSync', currentRoom);
-      }
+      recoverFromBackground();
+    });
+
+    window.addEventListener('pageshow', () => {
+      recoverFromBackground();
     });
 
     socket.on('connect', () => {
-      if (currentRoom) {
-        const name = document.getElementById('playerName').value.trim() || 'Player';
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: name });
+      if (currentRoom && myPlayerName) {
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName });
         socket.emit('requestStateSync', currentRoom);
       }
     });
@@ -504,9 +529,7 @@
         gain.connect(ctx.destination);
 
         noise.start();
-      } catch (err) {
-        console.warn('Card sound error:', err);
-      }
+      } catch (err) {}
     }
 
     function playTurnBellSound() {
@@ -540,9 +563,7 @@
         gain2.connect(ctx.destination);
         osc2.start(now);
         osc2.stop(now + 0.6);
-      } catch (err) {
-        console.warn('Turn bell synthesis unavailable:', err);
-      }
+      } catch (err) {}
     }
 
     function triggerTurnVibration() {
@@ -578,9 +599,7 @@
           osc.start(startTime);
           osc.stop(startTime + 0.08);
         });
-      } catch (err) {
-        console.warn('Knock synthesis unavailable:', err);
-      }
+      } catch (err) {}
     }
 
     let localStream = null;
@@ -635,11 +654,11 @@
 
     function joinGame() {
       getAudioContext();
-      const name = document.getElementById('playerName').value.trim() || 'Player';
+      myPlayerName = document.getElementById('playerName').value.trim() || 'Player';
       const room = document.getElementById('roomId').value.trim();
       if (!room) return alert('Enter a room code');
       currentRoom = room;
-      socket.emit('joinRoom', { roomId: room, playerName: name });
+      socket.emit('joinRoom', { roomId: room, playerName: myPlayerName });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
     }
@@ -649,6 +668,7 @@
       if (confirm('Leave this game room?')) {
         if (isInVoice) leaveVoice();
         cancelDealAnimation();
+        dismissAnnouncement();
         socket.emit('leaveRoom', currentRoom);
         currentRoom = '';
         myHand = [];
@@ -794,9 +814,7 @@
               target: targetSocketId,
               signal: { description: pc.localDescription }
             });
-          } catch (err) {
-            console.error('Offer error:', err);
-          }
+          } catch (err) {}
         };
       }
 
@@ -838,9 +856,7 @@
         } else if (signal.candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
         }
-      } catch (err) {
-        console.error('Signal handling error:', err);
-      }
+      } catch (err) {}
     });
 
     function toggleReady() {
@@ -1174,7 +1190,7 @@
           ledgerList.appendChild(row);
         });
       } else {
-        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled bets yet.</div>';
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
       }
 
       // Action Buttons
@@ -1202,7 +1218,6 @@
         } else {
           readyBtn.style.display = 'inline-block';
           addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
-          // Show Remove Bot button if there is at least 1 bot in the lobby
           removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
 
           if (isReady) {
@@ -1255,14 +1270,15 @@
       state.players.forEach(p => {
         const div = document.createElement('div');
         const voiceBadge = p.isInVoice ? ' 🎙️' : '';
+        const dcBadge = p.disconnected ? ' ⚠️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
-          div.innerText = `👁️ ${p.name}${voiceBadge}`;
+          div.innerText = `👁️ ${p.name}${voiceBadge}${dcBadge}`;
         } else {
-          div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
+          div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-          div.innerText = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}`;
+          div.innerText = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -1292,6 +1308,7 @@
     });
 
     socket.on('bigAnnouncement', (data) => {
+      dismissAnnouncement();
       const overlay = document.getElementById('announcementOverlay');
       document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
       document.getElementById('annMessage').innerText = data.message || '';
@@ -1327,9 +1344,8 @@
         playKnockSound();
       }
 
-      setTimeout(() => {
-        overlay.classList.remove('show');
-        handsContainer.innerHTML = '';
+      announcementTimer = setTimeout(() => {
+        dismissAnnouncement();
       }, data.duration || 3500);
     });
 
