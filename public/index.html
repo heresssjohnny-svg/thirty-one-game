@@ -1241,7 +1241,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1387,6 +1387,7 @@
       socket.emit('drawCard', { roomId: currentRoom, source });
     }
 
+    // FIXED: Immediately clear local hasDrawn state on successful discard dispatch
     function discard(idx) {
       if (isSpectator) return;
       if (!isTurn) return;
@@ -1395,6 +1396,7 @@
       if (myHand.length !== 4) return alert("Waiting for 4th card to register...");
 
       isDiscarding = true;
+      hasDrawn = false;
       socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx });
     }
 
@@ -1836,7 +1838,7 @@
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
+        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
