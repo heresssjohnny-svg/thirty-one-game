@@ -161,13 +161,12 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   }
 }
 
-// FIXED: Perfectly references precise directional breakdowns for match vs side bets without duplication
 function getNetPairBalance(room, p1Name, p2Name) {
   const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
   const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
-  const key1 = `${p2Name}:::${p1Name}`; // p2 owes p1
-  const key2 = `${p1Name}:::${p2Name}`; // p1 owes p2
+  const key1 = `${p2Name}:::${p1Name}`;
+  const key2 = `${p1Name}:::${p2Name}`;
 
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
@@ -1383,7 +1382,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
