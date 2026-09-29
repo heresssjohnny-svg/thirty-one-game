@@ -251,7 +251,6 @@ function startInteractiveTiebreaker(room, tiedPlayers, sideBetReport) {
     sideBetReport: sideBetReport || ''
   });
 
-  // Automatically execute bot picks
   tiedPlayers.forEach(p => {
     if (p.isBot) {
       setTimeout(() => {
@@ -305,7 +304,6 @@ function checkTiebreakerComplete(room) {
     results: revealData
   });
 
-  // Re-draw if there is a tie for the lowest cut card
   if (cutLosers.length > 1) {
     setTimeout(() => {
       io.to(room.id).emit('bannerAnnouncement', {
@@ -606,9 +604,7 @@ function resolveShowdown(roomId) {
     return;
   }
 
-  // TIEBREAKERS
   if (lowestPlayers.length > 1) {
-    // 1. Heads-Up (2 Active Players) Tie => Immediate Re-deal
     if (active.length === 2) {
       io.to(roomId).emit('bigAnnouncement', {
         title: '🤝 HEADS-UP TIE! 🤝',
@@ -622,7 +618,6 @@ function resolveShowdown(roomId) {
       return;
     }
 
-    // 2. 3+ Players Tie => Interactive face-down card cut from deck
     startInteractiveTiebreaker(room, lowestPlayers, sideBetReport);
     return;
   }
@@ -788,6 +783,12 @@ io.on('connection', (socket) => {
     wager: r.wager || 0
   })));
 
+  socket.on('requestStateSync', (roomId) => {
+    if (roomId && rooms[roomId]) {
+      broadcastState(roomId);
+    }
+  });
+
   socket.on('joinRoom', ({ roomId, playerName }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
@@ -925,7 +926,6 @@ io.on('connection', (socket) => {
     broadcastState(roomId, `🎲 ${bettor.name} bet $${parsedAmt} on ${targetPlayer.name} to win this round!`);
   });
 
-  // TIEBREAKER: Player taps a card from the face-down spread
   socket.on('pickTiebreakerCard', ({ roomId, cardIndex }) => {
     const room = rooms[roomId];
     if (!room || !room.tiebreakerActive || !room.tiedPlayerIds.includes(socket.id)) return;
