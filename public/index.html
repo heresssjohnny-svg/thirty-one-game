@@ -104,6 +104,7 @@
     button.spectate-btn { background: #455a64; color: #fff; }
     button.ledger-btn { background: #ffd700; color: #111; padding: 6px 10px; font-size: 12px; }
     button.side-bet-btn { background: #ff9800; color: #111; }
+    button.tutorial-btn { background: #00acc1; color: #fff; padding: 6px 10px; font-size: 12px; }
     button:disabled { background: #555; color: #888; }
 
     .spectator-badge {
@@ -242,12 +243,75 @@
     .badge-in-play { background: #e53935; color: #fff; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
     .badge-lobby { background: #4caf50; color: #fff; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
 
+    .tutorial-section {
+      text-align: left; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;
+      font-size: 12px; line-height: 1.4; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto;
+    }
+    .tutorial-section h4 { margin: 4px 0 2px 0; color: #ffd700; font-size: 13px; }
+
     input, select { padding: 10px; border-radius: 8px; border: none; font-size: 15px; width: 100%; max-width: 280px; }
   </style>
 </head>
 <body>
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
+
+  <!-- TUTORIAL MODAL -->
+  <div id="tutorialModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#00acc1; max-width:420px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:900; font-size:16px; color:#00acc1;">📖 How to Play 31</span>
+        <span onclick="toggleTutorialModal()" style="cursor:pointer; font-size:20px;">✕</span>
+      </div>
+      <div class="tutorial-section">
+        <div>
+          <h4>🎯 Objective</h4>
+          Collect a 3-card hand of the <strong>same suit</strong> totaling as close to <strong>31 points</strong> as possible, or get 3-of-a-kind.
+        </div>
+        <div>
+          <h4>🔢 Card Values</h4>
+          • <strong>Aces:</strong> 11 points<br>
+          • <strong>Face Cards (K, Q, J) & 10:</strong> 10 points<br>
+          • <strong>Cards 2-9:</strong> Face value<br>
+          • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
+        </div>
+        <div>
+          <h4>🔄 Turn Play</h4>
+          On your turn, draw 1 card from the deck or discard pile, then choose 1 card from your 4 cards to discard.
+        </div>
+        <div>
+          <h4>🔔 Knocking</h4>
+          If you believe your hand is strong (at least 21 pts in 3+ player games, or 25 pts in heads-up), you can <strong>Knock</strong> before drawing. Everyone else gets <strong>one final turn</strong> before the showdown. Lowest hand loses 1 life!
+        </div>
+        <div>
+          <h4>⚡ The 21-out-of-31 Rule</h4>
+          If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
+        </div>
+        <div>
+          <h4>🎲 Tiebreakers & Side Bets</h4>
+          • Ties in heads-up result in a re-deal.<br>
+          • Ties with 3+ players trigger a face-down sudden-death card cut—lowest card takes the loss!<br>
+          • Players and spectators can bet on who has the highest hand each round.
+        </div>
+      </div>
+      <button onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
+    </div>
+  </div>
+
+  <!-- KNOCK WARNING CONFIRMATION MODAL -->
+  <div id="knockConfirmModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#f44336; text-align:center;">
+      <div style="font-weight:900; font-size:16px; color:#f44336;">⚠️ High Card in Discard!</div>
+      <div style="font-size:13px; line-height:1.4; opacity:0.9;">
+        There is an <strong id="knockConfirmCard" style="color:#ffd700;">Ace/Face card</strong> on top of the discard pile.<br><br>
+        Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+        <button class="secondary" onclick="cancelKnockConfirm()" style="padding:10px 14px;">Cancel</button>
+        <button class="danger" onclick="confirmKnock()" style="padding:10px 14px;">Yes, Knock Anyway</button>
+      </div>
+    </div>
+  </div>
 
   <div id="tiebreakerOverlay" class="tiebreaker-overlay">
     <h2 style="color:#ffd700; margin:0 0 6px 0;">⚡ SUDDEN DEATH TIEBREAKER ⚡</h2>
@@ -312,7 +376,6 @@
     </div>
   </div>
 
-  <!-- Click to dismiss prevents permanent lockups -->
   <div id="announcementOverlay" class="big-announcement-overlay" onclick="dismissAnnouncement()">
     <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
     <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
@@ -321,7 +384,8 @@
   </div>
 
   <div id="lobby" class="lobby-modal">
-    <h2 style="margin:10px 0 4px 0;">31 Card Game</h2>
+    <h2 style="margin:10px 0 2px 0;">31 Card Game</h2>
+    <button class="tutorial-btn" onclick="toggleTutorialModal()" style="margin-bottom:8px;">📖 How to Play & Rules</button>
     <input id="playerName" placeholder="Your Player Name" />
     <input id="roomId" placeholder="Enter or Select Room Code" />
     <button onclick="joinGame()" style="width:100%; max-width:280px; padding:12px;">Enter Game Room</button>
@@ -341,6 +405,7 @@
     <div id="roomLabel">Room: -</div>
     <div id="scoreLabel">Score: 0</div>
     <div class="header-controls">
+      <button class="tutorial-btn" onclick="toggleTutorialModal()">📖 Rules</button>
       <button class="ledger-btn" onclick="toggleLedgerModal()">💰 Ledger</button>
       <button id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
       <button id="muteBtn" class="secondary" style="display:none; padding:6px 10px; font-size:12px;" onclick="toggleMute()">🎙️</button>
@@ -386,7 +451,7 @@
     <button id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
-    <button id="knockBtn" onclick="knock()" disabled>Knock</button>
+    <button id="knockBtn" onclick="attemptKnock()" disabled>Knock</button>
   </div>
 
   <div id="audioContainer"></div>
@@ -411,6 +476,7 @@
     let currentWager = 0;
     let selectedSideBetAmt = 5;
     let latestActivePlayers = [];
+    let latestTopDiscard = null;
     let isAnimatingDeal = false;
     let dealAnimationTimers = [];
     let amTiedForTiebreaker = false;
@@ -462,7 +528,6 @@
       }
     }
 
-    // App Switch & Background Recovery
     function recoverFromBackground() {
       cancelDealAnimation();
       isDiscarding = false;
@@ -480,18 +545,10 @@
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        recoverFromBackground();
-      }
+      if (document.visibilityState === 'visible') recoverFromBackground();
     });
-
-    window.addEventListener('focus', () => {
-      recoverFromBackground();
-    });
-
-    window.addEventListener('pageshow', () => {
-      recoverFromBackground();
-    });
+    window.addEventListener('focus', () => recoverFromBackground());
+    window.addEventListener('pageshow', () => recoverFromBackground());
 
     socket.on('connect', () => {
       if (currentRoom && myPlayerName) {
@@ -504,30 +561,22 @@
       try {
         const ctx = getAudioContext();
         if (!ctx) return;
-
         const bufferSize = ctx.sampleRate * 0.08;
         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-          data[i] = Math.random() * 2 - 1;
-        }
-
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
         const noise = ctx.createBufferSource();
         noise.buffer = buffer;
-
         const filter = ctx.createBiquadFilter();
         filter.type = 'bandpass';
         filter.frequency.setValueAtTime(800, ctx.currentTime);
         filter.frequency.linearRampToValueAtTime(1400, ctx.currentTime + 0.07);
-
         const gain = ctx.createGain();
         gain.gain.setValueAtTime(0.2, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.07);
-
         noise.connect(filter);
         filter.connect(gain);
         gain.connect(ctx.destination);
-
         noise.start();
       } catch (err) {}
     }
@@ -536,16 +585,13 @@
       try {
         const ctx = getAudioContext();
         if (!ctx) return;
-
         const now = ctx.currentTime;
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
         osc1.type = 'sine';
         osc1.frequency.setValueAtTime(1760, now);
-
         gain1.gain.setValueAtTime(0.7, now);
         gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
-
         osc1.connect(gain1);
         gain1.connect(ctx.destination);
         osc1.start(now);
@@ -555,10 +601,8 @@
         const gain2 = ctx.createGain();
         osc2.type = 'sine';
         osc2.frequency.setValueAtTime(2640, now);
-
         gain2.gain.setValueAtTime(0.35, now);
         gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-
         osc2.connect(gain2);
         gain2.connect(ctx.destination);
         osc2.start(now);
@@ -568,9 +612,7 @@
 
     function triggerTurnVibration() {
       try {
-        if ('vibrate' in navigator) {
-          navigator.vibrate([120, 80, 140]);
-        }
+        if ('vibrate' in navigator) navigator.vibrate([120, 80, 140]);
       } catch (e) {}
     }
 
@@ -578,24 +620,18 @@
       try {
         const ctx = getAudioContext();
         if (!ctx) return;
-
         const knockTimes = [0, 0.14, 0.28];
         knockTimes.forEach((delay) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
-
           osc.type = 'triangle';
           const startTime = ctx.currentTime + delay;
-
           osc.frequency.setValueAtTime(140, startTime);
           osc.frequency.exponentialRampToValueAtTime(35, startTime + 0.08);
-
           gain.gain.setValueAtTime(0.8, startTime);
           gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08);
-
           osc.connect(gain);
           gain.connect(ctx.destination);
-
           osc.start(startTime);
           osc.stop(startTime + 0.08);
         });
@@ -697,6 +733,12 @@
       modal.style.display = isVisible ? 'none' : 'flex';
     }
 
+    function toggleTutorialModal() {
+      const modal = document.getElementById('tutorialModal');
+      const isVisible = modal.style.display === 'flex';
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
     function toggleRoundBetModal() {
       const modal = document.getElementById('roundBetModal');
       const isVisible = modal.style.display === 'flex';
@@ -731,6 +773,33 @@
         amount: selectedSideBetAmt
       });
       toggleRoundBetModal();
+    }
+
+    // KNOCK SAFETY CHECK
+    function attemptKnock() {
+      if (isSpectator) return;
+      if (!isTurn) return alert("You can only knock on your turn!");
+      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
+      if (!roundHasPassed) return alert("1 full round must go by before anyone can knock!");
+      if (currentScore < minKnockScore) return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
+
+      // Check if top discard has an Ace or Face/10-value card
+      if (latestTopDiscard && (latestTopDiscard.rank === 'A' || latestTopDiscard.value === 10)) {
+        document.getElementById('knockConfirmCard').innerText = `${latestTopDiscard.rank}${latestTopDiscard.suit}`;
+        document.getElementById('knockConfirmModal').style.display = 'flex';
+        return;
+      }
+
+      confirmKnock();
+    }
+
+    function confirmKnock() {
+      cancelKnockConfirm();
+      socket.emit('knock', currentRoom);
+    }
+
+    function cancelKnockConfirm() {
+      document.getElementById('knockConfirmModal').style.display = 'none';
     }
 
     async function toggleVoice() {
@@ -930,19 +999,6 @@
       socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx });
     }
 
-    function knock() {
-      if (isSpectator) return;
-      if (!isTurn) return alert("You can only knock on your turn!");
-      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
-      if (!roundHasPassed) {
-        return alert("1 full round must go by before anyone can knock!");
-      }
-      if (currentScore < minKnockScore) {
-        return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
-      }
-      socket.emit('knock', currentRoom);
-    }
-
     function renderCard(card, onClick, highlight = false, isMini = false, isFlip = false) {
       const el = document.createElement('div');
       const isRed = card.suit === '♥' || card.suit === '♦';
@@ -1109,6 +1165,7 @@
       manualSpectator = Boolean(state.manualSpectator);
       isReady = Boolean(state.isReady);
       currentWager = state.myWager || 0;
+      latestTopDiscard = state.topDiscard || null;
 
       latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
 
@@ -1121,7 +1178,6 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
-      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -1138,7 +1194,6 @@
         roundPotBanner.style.display = 'none';
       }
 
-      // My Match Bet chips selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -1150,7 +1205,6 @@
         wagerSec.style.display = 'none';
       }
 
-      // Ledger Personal Net Balances Render
       const overallEl = document.getElementById('ledgerOverallTotal');
       const netTotal = state.netOverallBalance || 0;
       if (netTotal > 0) {
@@ -1193,7 +1247,6 @@
         ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
       }
 
-      // Action Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const removeBotBtn = document.getElementById('removeBotBtn');
