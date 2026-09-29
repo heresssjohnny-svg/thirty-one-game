@@ -104,6 +104,7 @@
     button.spectate-btn { background: #455a64; color: #fff; }
     button.ledger-btn { background: #ffd700; color: #111; padding: 6px 10px; font-size: 12px; }
     button.side-bet-btn { background: #ff9800; color: #111; }
+    button.peek-btn { background: #7b1fa2; color: #fff; }
     button.tutorial-btn { background: #00acc1; color: #fff; padding: 6px 10px; font-size: 12px; }
     button:disabled { background: #555; color: #888; }
 
@@ -180,7 +181,6 @@
     }
     .showdown-cards-row { display: flex; gap: 4px; }
 
-    /* OVERLAYS: TIEBREAKER & DEALER CUT */
     .card-cut-overlay {
       position: absolute; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -202,7 +202,6 @@
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .card-cut-picks-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
 
-    /* MODAL WINDOWS */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -210,11 +209,11 @@
     }
     .modal-card {
       background: #164033; border: 2px solid #ffd700; border-radius: 12px;
-      padding: 16px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 10px;
+      padding: 16px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 10px;
     }
     .ledger-summary-banner {
       background: rgba(0,0,0,0.4); border-radius: 8px; padding: 8px; text-align: center;
-      font-size: 14px; font-weight: bold; display: flex; justify-content: space-around;
+      font-size: 13px; font-weight: bold; display: flex; flex-direction: column; gap: 4px;
     }
     .balance-positive { color: #4caf50; font-weight: 900; }
     .balance-negative { color: #f44336; font-weight: 900; }
@@ -255,9 +254,25 @@
     }
     .tutorial-section h4 { margin: 4px 0 2px 0; color: #ffd700; font-size: 13px; }
 
+    .opponents-checklist {
+      display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto;
+      background: rgba(0,0,0,0.25); padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+    }
+    .opp-checkbox-item {
+      display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px; cursor: pointer;
+    }
+    .opp-checkbox-item input {
+      width: 16px; height: 16px; margin: 0; cursor: pointer;
+    }
+
+    .peek-status-bar {
+      background: #7b1fa2; color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 12px;
+      font-weight: bold; display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 320px;
+    }
+
     input, select {
-      padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
-      font-size: 15px; width: 100%; max-width: 280px; background: #fff; color: #111;
+      padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
+      font-size: 13px; width: 100%; max-width: 280px; background: #fff; color: #111;
     }
   </style>
 </head>
@@ -303,10 +318,8 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>🎲 Tiebreakers & Side Bets</h4>
-          • Ties in heads-up result in a re-deal.<br>
-          • Ties with 3+ players trigger a face-down sudden-death card cut—lowest card takes the loss!<br>
-          • Players and spectators can bet on who has the highest hand each round.
+          <h4>👁️ Spectator Hand Peeking</h4>
+          Spectators can request permission to view an active player's hand. If granted, they can watch that hand. <strong>If the spectator changes views or leaves, permission is immediately revoked</strong> and they must ask again!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:10px;">Got It!</button>
@@ -344,43 +357,121 @@
     <div id="tiebreakerPicksContainer" class="card-cut-picks-row"></div>
   </div>
 
+  <!-- INCOMING SIDE BET PROPOSAL PROMPT -->
+  <div id="sideBetOfferModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#ff9800; text-align:center;">
+      <div style="font-weight:900; font-size:16px; color:#ff9800;">🎲 Side Bet Challenge!</div>
+      <div id="sideBetOfferText" style="font-size:13px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Player challenged you to a $5 side bet.
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+        <button type="button" class="secondary" onclick="respondSideBet(false)" style="padding:10px 14px;">Decline</button>
+        <button type="button" style="background:#ff9800; color:#111; padding:10px 14px;" onclick="respondSideBet(true)">Accept Bet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INCOMING SPECTATOR PEEK REQUEST PROMPT FOR ACTIVE PLAYERS -->
+  <div id="peekRequestModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
+      <div style="font-weight:900; font-size:16px; color:#ba68c8;">👁️ Spectator Peek Request</div>
+      <div id="peekRequestText" style="font-size:13px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Spectator wants to view your hand. Allow them?
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+        <button type="button" class="secondary" onclick="respondPeekPermission(false)" style="padding:10px 14px;">Deny</button>
+        <button type="button" style="background:#7b1fa2; color:#fff; padding:10px 14px;" onclick="respondPeekPermission(true)">Allow Peek</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPECTATOR SELECT WHO TO PEEK MODAL -->
+  <div id="spectatorPeekSelectorModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Request Hand View</span>
+        <span onclick="togglePeekSelectorModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
+      </div>
+      <div style="font-size:12px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
+      <select id="peekPlayerSelect"></select>
+      <div style="font-size:11px; opacity:0.75;">(Note: If you switch views or the round ends, permission expires!)</div>
+      <button type="button" onclick="submitPeekRequest()" style="background:#7b1fa2; color:#fff; padding:10px; font-weight:bold;">Send Request</button>
+    </div>
+  </div>
+
+  <!-- LEDGER MODAL -->
   <div id="ledgerModal" class="custom-modal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:16px; color:#ffd700;">💰 Net Balance Ledger</span>
+        <span style="font-weight:900; font-size:16px; color:#ffd700;">💰 Table Ledger & Side Bets</span>
         <span onclick="toggleLedgerModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
       </div>
 
       <div class="ledger-summary-banner">
-        <span>Overall Standing:</span>
-        <span id="ledgerOverallTotal" class="balance-neutral">$0</span>
+        <div>
+          <span>Overall Standing: </span>
+          <span id="ledgerOverallTotal" class="balance-neutral">$0</span>
+        </div>
+        <div style="font-size:11px; opacity:0.85;">
+          <span>Side Bet Net: </span>
+          <span id="ledgerSideBetTotal" class="balance-neutral">$0</span>
+        </div>
       </div>
 
       <div style="font-size:11px; opacity:0.75; text-align:center;">(+ = they owe you, - = you owe them)</div>
 
-      <div id="ledgerList" style="display:flex; flex-direction:column; gap:6px; font-size:14px; max-height:220px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.3); border-radius:8px;">
-        <div style="opacity:0.6; text-align:center;">No settled bets yet.</div>
+      <div id="ledgerList" style="display:flex; flex-direction:column; gap:6px; font-size:13px; max-height:220px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.3); border-radius:8px;">
+        <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
       </div>
       <button type="button" onclick="toggleLedgerModal()" class="secondary" style="padding:8px;">Close</button>
     </div>
   </div>
 
+  <!-- MULTI-OPPONENT ROUND SIDE BET MODAL -->
   <div id="roundBetModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#ff9800;">
+    <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:16px; color:#ff9800;">🎲 Round Side Bet</span>
+        <span style="font-weight:900; font-size:15px; color:#ff9800;">🎲 Side Bet With Multiple Opponents</span>
         <span onclick="toggleRoundBetModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
       </div>
-      <div style="font-size:12px; opacity:0.85;">Pick who will score the highest hand this round!</div>
-      <select id="betTargetSelect"></select>
-      <div style="display:flex; gap:6px; justify-content:center; align-items:center;">
-        <span style="font-size:13px; font-weight:bold;">Bet:</span>
+      
+      <div style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents simultaneously:</div>
+
+      <div style="display:flex; flex-direction:column; gap:4px; text-align:left;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label style="font-size:11px; font-weight:bold; color:#ffd700;">1. Choose Opponents To Challenge:</label>
+          <div style="font-size:11px; display:flex; gap:6px;">
+            <a href="javascript:void(0)" onclick="selectAllOpponents(true)" style="color:#00acc1; text-decoration:none;">All</a> | 
+            <a href="javascript:void(0)" onclick="selectAllOpponents(false)" style="color:#aaa; text-decoration:none;">Clear</a>
+          </div>
+        </div>
+        <div id="opponentsChecklist" class="opponents-checklist"></div>
+      </div>
+
+      <div style="display:flex; gap:6px; width:100%;">
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
+          <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick</label>
+          <select id="betMyTargetSelect"></select>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
+          <label style="font-size:11px; font-weight:bold; color:#ffd700;">3. Their Pick</label>
+          <select id="betTheirTargetSelect"></select>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:6px; justify-content:center; align-items:center; margin: 2px 0;">
+        <span style="font-size:12px; font-weight:bold;">Per-Opponent Bet:</span>
         <div class="wager-chip" onclick="selectRoundBetAmt(1)">$1</div>
         <div class="wager-chip selected" id="defaultBetChip" onclick="selectRoundBetAmt(5)">$5</div>
         <div class="wager-chip" onclick="selectRoundBetAmt(10)">$10</div>
         <div class="wager-chip" onclick="selectRoundBetAmt(20)">$20</div>
       </div>
-      <button type="button" onclick="submitRoundBet()" style="background:#ff9800; color:#111; padding:10px;">Place Side Bet</button>
+
+      <div id="multiBetSummary" style="font-size:11px; font-weight:bold; color:#ffd700; text-align:center;">
+        0 opponents selected (Total stake: $0)
+      </div>
+
+      <button type="button" onclick="submitMultiPeerSideBet()" style="background:#ff9800; color:#111; padding:10px; font-weight:bold;">Send Challenges</button>
     </div>
   </div>
 
@@ -443,7 +534,7 @@
   <div class="table">
     <div class="pots-header">
       <div id="potBanner" class="pot-banner">🏆 MATCH POT: $0</div>
-      <div id="roundPotBanner" class="round-pot-banner">🎲 ROUND POT: $0</div>
+      <div id="roundPotBanner" class="round-pot-banner">🎲 SIDE BETS: $0</div>
     </div>
 
     <div class="players-list" id="playersArea"></div>
@@ -454,6 +545,12 @@
     </div>
 
     <div class="hand-area">
+      <!-- Spectator Peek Bar (Displayed when peeking at someone's hand) -->
+      <div id="peekBar" class="peek-status-bar" style="display:none;">
+        <span id="peekBarText">👁️ Viewing Player's Hand</span>
+        <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
+      </div>
+
       <div id="wagerSection" class="wager-bar" style="display:none;">
         <span style="font-size:12px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip" onclick="setWager(0)">$0</div>
@@ -472,7 +569,8 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="toggleRoundBetModal()">🎲 Bet on Round</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
+    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="toggleRoundBetModal()">🎲 Side Bet</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
@@ -501,6 +599,7 @@
     let currentWager = 0;
     let selectedSideBetAmt = 5;
     let latestActivePlayers = [];
+    let latestAllTableMembers = [];
     let latestTopDiscard = null;
     let isAnimatingDeal = false;
     let dealAnimationTimers = [];
@@ -508,6 +607,12 @@
     let hasPickedTiebreakerCard = false;
     let hasPickedDealerCard = false;
     let announcementTimer = null;
+    let pendingOfferBetId = null;
+
+    // Spectator Peeking State
+    let currentlyViewingPlayerName = null;
+    let currentlyViewingHand = null;
+    let pendingPeekRequesterId = null;
 
     let audioCtx = null;
     function getAudioContext() {
@@ -542,8 +647,16 @@
     function forceRenderHand() {
       const hArea = document.getElementById('handArea');
       if (!hArea) return;
+
       if (isSpectator) {
-        hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching game as a spectator...</div>';
+        if (currentlyViewingHand && currentlyViewingHand.length > 0) {
+          hArea.innerHTML = '';
+          currentlyViewingHand.forEach(card => {
+            hArea.appendChild(renderCard(card, null, false, false));
+          });
+        } else {
+          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
+        }
       } else if (myHand.length > 0) {
         hArea.innerHTML = '';
         myHand.forEach((card, idx) => {
@@ -731,6 +844,7 @@
         if (isInVoice) leaveVoice();
         cancelDealAnimation();
         dismissAnnouncement();
+        stopPeekingHand();
         socket.emit('leaveRoom', currentRoom);
         currentRoom = '';
         myHand = [];
@@ -765,18 +879,145 @@
       modal.style.display = isVisible ? 'none' : 'flex';
     }
 
+    // PEEKING HAND FUNCTIONS
+    function togglePeekSelectorModal() {
+      const modal = document.getElementById('spectatorPeekSelectorModal');
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const select = document.getElementById('peekPlayerSelect');
+        select.innerHTML = '';
+        latestActivePlayers.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.innerText = `${p.name} (${p.lives} ❤️)`;
+          select.appendChild(opt);
+        });
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function submitPeekRequest() {
+      const targetId = document.getElementById('peekPlayerSelect').value;
+      if (!targetId) return alert('Select an active player to view.');
+      socket.emit('requestPeekingPermission', {
+        roomId: currentRoom,
+        targetPlayerId: targetId
+      });
+      togglePeekSelectorModal();
+    }
+
+    function stopPeekingHand() {
+      currentlyViewingPlayerName = null;
+      currentlyViewingHand = null;
+      document.getElementById('peekBar').style.display = 'none';
+      socket.emit('stopPeekingHand', currentRoom);
+      forceRenderHand();
+    }
+
+    socket.on('spectatorHandUpdate', (data) => {
+      currentlyViewingPlayerName = data.targetPlayerName;
+      currentlyViewingHand = data.hand;
+
+      const peekBar = document.getElementById('peekBar');
+      peekBar.style.display = 'flex';
+      document.getElementById('peekBarText').innerText = `👁️ Viewing ${data.targetPlayerName}'s Hand (${data.score} pts)`;
+
+      const handInstr = document.getElementById('handInstruction');
+      handInstr.innerText = `Peeking at ${data.targetPlayerName}'s Hand`;
+
+      forceRenderHand();
+    });
+
+    socket.on('spectatorHandRevoked', () => {
+      currentlyViewingPlayerName = null;
+      currentlyViewingHand = null;
+      document.getElementById('peekBar').style.display = 'none';
+      const handInstr = document.getElementById('handInstruction');
+      handInstr.innerText = "You are in Spectator Mode (watching match)";
+      forceRenderHand();
+    });
+
+    socket.on('peekingPermissionRequested', (data) => {
+      pendingPeekRequesterId = data.spectatorId;
+      document.getElementById('peekRequestText').innerHTML = `
+        Spectator <strong>${data.spectatorName}</strong> is asking for permission to view your hand.<br>
+        (They lose access immediately if they change views or the round ends).
+      `;
+      document.getElementById('peekRequestModal').style.display = 'flex';
+    });
+
+    function respondPeekPermission(allow) {
+      if (!pendingPeekRequesterId) return;
+      socket.emit('respondPeekingPermission', {
+        roomId: currentRoom,
+        spectatorId: pendingPeekRequesterId,
+        allow: allow
+      });
+      document.getElementById('peekRequestModal').style.display = 'none';
+      pendingPeekRequesterId = null;
+    }
+
+    function updateMultiBetSummary() {
+      const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
+      const count = checkedBoxes.length;
+      const total = count * selectedSideBetAmt;
+      document.getElementById('multiBetSummary').innerText = `${count} opponent(s) selected (Total stake: $${total})`;
+    }
+
+    function selectAllOpponents(check) {
+      document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => {
+        cb.checked = check;
+      });
+      updateMultiBetSummary();
+    }
+
     function toggleRoundBetModal() {
       const modal = document.getElementById('roundBetModal');
       const isVisible = modal.style.display === 'flex';
       if (!isVisible) {
-        const select = document.getElementById('betTargetSelect');
-        select.innerHTML = '';
-        latestActivePlayers.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.name;
-          opt.innerText = `${p.name} (${p.lives} ❤️)`;
-          select.appendChild(opt);
+        const checklist = document.getElementById('opponentsChecklist');
+        const myTargetSelect = document.getElementById('betMyTargetSelect');
+        const theirTargetSelect = document.getElementById('betTheirTargetSelect');
+
+        checklist.innerHTML = '';
+        myTargetSelect.innerHTML = '';
+        theirTargetSelect.innerHTML = '';
+
+        let selectableOpponents = 0;
+        latestAllTableMembers.forEach(m => {
+          if (m.name !== myPlayerName && m.isOnline) {
+            selectableOpponents++;
+            const label = document.createElement('label');
+            label.className = 'opp-checkbox-item';
+            label.innerHTML = `
+              <input type="checkbox" value="${m.name}" onchange="updateMultiBetSummary()" checked />
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
+            `;
+            checklist.appendChild(label);
+          }
         });
+
+        if (selectableOpponents === 0) {
+          checklist.innerHTML = '<div style="font-size:12px; opacity:0.6; padding:4px;">No other players online.</div>';
+        }
+
+        latestActivePlayers.forEach((p, idx) => {
+          const opt1 = document.createElement('option');
+          opt1.value = p.name;
+          opt1.innerText = p.name;
+          myTargetSelect.appendChild(opt1);
+
+          const opt2 = document.createElement('option');
+          opt2.value = p.name;
+          opt2.innerText = p.name;
+          theirTargetSelect.appendChild(opt2);
+        });
+
+        if (latestActivePlayers.length > 1) {
+          theirTargetSelect.selectedIndex = 1;
+        }
+
+        updateMultiBetSummary();
       }
       modal.style.display = isVisible ? 'none' : 'flex';
     }
@@ -788,17 +1029,53 @@
         const val = parseInt(c.innerText.replace('$', '')) || 0;
         c.classList.toggle('selected', val === amt);
       });
+      updateMultiBetSummary();
     }
 
-    function submitRoundBet() {
-      const target = document.getElementById('betTargetSelect').value;
-      if (!target) return alert('Select an active player to bet on.');
-      socket.emit('placeRoundBet', {
+    function submitMultiPeerSideBet() {
+      const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
+      const opponentNames = Array.from(checkedBoxes).map(cb => cb.value);
+
+      if (opponentNames.length === 0) {
+        return alert('Please check off at least one opponent to challenge.');
+      }
+
+      const myTargetName = document.getElementById('betMyTargetSelect').value;
+      const theirTargetName = document.getElementById('betTheirTargetSelect').value;
+
+      if (!myTargetName || !theirTargetName) return alert('Select contenders for the side bet.');
+      if (myTargetName === theirTargetName) return alert('You must pick different contenders to bet against each other!');
+
+      socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
-        targetPlayerName: target,
+        opponentNames: opponentNames,
+        bettorTargetName: myTargetName,
+        opponentTargetName: theirTargetName,
         amount: selectedSideBetAmt
       });
+
       toggleRoundBetModal();
+    }
+
+    socket.on('sideBetOfferReceived', (data) => {
+      pendingOfferBetId = data.betId;
+      document.getElementById('sideBetOfferText').innerHTML = `
+        <strong>${data.fromPlayer}</strong> challenges you to a <strong>$${data.amount}</strong> side bet!<br>
+        • Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span><br>
+        • Your pick: <span style="color:#81d4fa; font-weight:bold;">${data.yourTarget}</span>
+      `;
+      document.getElementById('sideBetOfferModal').style.display = 'flex';
+    });
+
+    function respondSideBet(accept) {
+      if (!pendingOfferBetId) return;
+      socket.emit('respondSideBet', {
+        roomId: currentRoom,
+        betId: pendingOfferBetId,
+        accept: accept
+      });
+      document.getElementById('sideBetOfferModal').style.display = 'none';
+      pendingOfferBetId = null;
     }
 
     function attemptKnock() {
@@ -866,7 +1143,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1259,6 +1536,7 @@
       latestTopDiscard = state.topDiscard || null;
 
       latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
+      latestAllTableMembers = state.allTableMembers || [];
 
       if (isSpectator) {
         document.getElementById('scoreLabel').innerHTML = `<span class="spectator-badge">👁️ Spectating</span>`;
@@ -1269,6 +1547,7 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
+      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -1278,13 +1557,14 @@
       }
 
       const roundPotBanner = document.getElementById('roundPotBanner');
-      if (state.roundPot > 0) {
+      if (state.sideBetActionTotal > 0) {
         roundPotBanner.style.display = 'flex';
-        roundPotBanner.innerText = `🎲 ROUND POT: $${state.roundPot}`;
+        roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal}`;
       } else {
         roundPotBanner.style.display = 'none';
       }
 
+      // My Match Bet chips selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -1296,7 +1576,10 @@
         wagerSec.style.display = 'none';
       }
 
+      // Ledger Personal Net Balances Render
       const overallEl = document.getElementById('ledgerOverallTotal');
+      const sideBetEl = document.getElementById('ledgerSideBetTotal');
+
       const netTotal = state.netOverallBalance || 0;
       if (netTotal > 0) {
         overallEl.className = 'balance-positive';
@@ -1309,7 +1592,18 @@
         overallEl.innerText = `$0`;
       }
 
-      // Display personal ledger with indicators for departed members
+      const netSideBet = state.netSideBetBalance || 0;
+      if (netSideBet > 0) {
+        sideBetEl.className = 'balance-positive';
+        sideBetEl.innerText = `+$${netSideBet}`;
+      } else if (netSideBet < 0) {
+        sideBetEl.className = 'balance-negative';
+        sideBetEl.innerText = `-$${Math.abs(netSideBet)}`;
+      } else {
+        sideBetEl.className = 'balance-neutral';
+        sideBetEl.innerText = `$0`;
+      }
+
       const ledgerList = document.getElementById('ledgerList');
       if (state.personalLedger && state.personalLedger.length > 0) {
         ledgerList.innerHTML = '';
@@ -1317,6 +1611,7 @@
           const row = document.createElement('div');
           row.style.display = 'flex';
           row.style.justifyContent = 'space-between';
+          row.style.alignItems = 'center';
           row.style.padding = '6px 8px';
           row.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
 
@@ -1332,20 +1627,34 @@
             balText = `$0 (Even)`;
           }
 
+          let sideBetTag = '';
+          if (item.sideBetBalance !== 0) {
+            const sbSign = item.sideBetBalance > 0 ? `+$${item.sideBetBalance}` : `-$${Math.abs(item.sideBetBalance)}`;
+            sideBetTag = `<span style="font-size:10px; opacity:0.8; display:block;">Side Bets: ${sbSign}</span>`;
+          }
+
           const leftBadge = item.hasLeft ? `<span class="player-left-tag">(Left Room)</span>` : '';
 
-          row.innerHTML = `<span><strong>${item.player}</strong>${leftBadge}</span><span class="${balClass}">${balText}</span>`;
+          row.innerHTML = `
+            <div>
+              <span><strong>${item.player}</strong>${leftBadge}</span>
+              ${sideBetTag}
+            </div>
+            <span class="${balClass}">${balText}</span>
+          `;
           ledgerList.appendChild(row);
         });
       } else {
-        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled bets yet.</div>';
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
       }
 
+      // Action Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const removeBotBtn = document.getElementById('removeBotBtn');
       const spectateBtn = document.getElementById('spectateBtn');
       const roundBetBtn = document.getElementById('roundBetBtn');
+      const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
 
       if (state.gameStarted) {
         readyBtn.style.display = 'none';
@@ -1353,8 +1662,10 @@
         removeBotBtn.style.display = 'none';
         spectateBtn.style.display = 'none';
         roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        spectatorPeekBtn.style.display = isSpectator ? 'inline-block' : 'none';
       } else {
         roundBetBtn.style.display = 'none';
+        spectatorPeekBtn.style.display = 'none';
         spectateBtn.style.display = 'inline-block';
         spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
 
@@ -1399,12 +1710,16 @@
 
       const handInstr = document.getElementById('handInstruction');
       if (isSpectator) {
-        handInstr.innerText = "Spectating Match (Tap '🎲 Bet on Round' to place side bets)";
+        if (currentlyViewingPlayerName) {
+          handInstr.innerText = `Peeking at ${currentlyViewingPlayerName}'s Hand`;
+        } else {
+          handInstr.innerText = "Spectating Match (Tap '👁️ Peek at Hand' to request view)";
+        }
       } else if (state.gameStarted) {
         if (isTurn) {
           handInstr.innerText = hasDrawn ? "Tap a card below to DISCARD it" : "Your turn! Tap Draw Deck or Discard Pile";
         } else {
-          handInstr.innerText = "Waiting for other players... (Tap '🎲 Bet on Round' to wager)";
+          handInstr.innerText = "Waiting for other players... (Tap '🎲 Side Bet' to wager)";
         }
       } else {
         const eligible = state.players.filter(p => !p.isSpectator);
@@ -1442,7 +1757,14 @@
 
       const hArea = document.getElementById('handArea');
       if (isSpectator) {
-        hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching game as a spectator...</div>';
+        if (currentlyViewingHand && currentlyViewingHand.length > 0) {
+          hArea.innerHTML = '';
+          currentlyViewingHand.forEach(card => {
+            hArea.appendChild(renderCard(card, null, false, false));
+          });
+        } else {
+          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
+        }
       } else if (myHand.length > 0) {
         if (document.visibilityState === 'visible' && previousHandLength === 0 && myHand.length === 3) {
           animateCardDeal(myHand);
