@@ -72,7 +72,6 @@
     }
     .card.mini span:last-child { font-size: 14px !important; }
 
-    /* CARD FLIGHT ANIMATION */
     .flying-card {
       position: fixed; width: 72px; height: 104px;
       background: #0d47a1; border: 2px solid #ffffff; border-radius: 8px;
@@ -179,7 +178,6 @@
     }
     .showdown-cards-row { display: flex; gap: 4px; }
 
-    /* INTERACTIVE TIEBREAKER SPREAD */
     .tiebreaker-overlay {
       position: absolute; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -398,6 +396,7 @@
     let selectedSideBetAmt = 5;
     let latestActivePlayers = [];
     let isAnimatingDeal = false;
+    let dealAnimationTimers = [];
     let amTiedForTiebreaker = false;
     let hasPickedTiebreakerCard = false;
 
@@ -412,6 +411,57 @@
       }
       return audioCtx;
     }
+
+    function cancelDealAnimation() {
+      dealAnimationTimers.forEach(t => clearTimeout(t));
+      dealAnimationTimers = [];
+      document.querySelectorAll('.flying-card').forEach(el => el.remove());
+      isAnimatingDeal = false;
+    }
+
+    function forceRenderHand() {
+      const hArea = document.getElementById('handArea');
+      if (!hArea) return;
+      if (isSpectator) {
+        hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching game as a spectator...</div>';
+      } else if (myHand.length > 0) {
+        hArea.innerHTML = '';
+        myHand.forEach((card, idx) => {
+          hArea.appendChild(renderCard(card, () => discard(idx), isTurn && hasDrawn));
+        });
+      } else {
+        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
+      }
+    }
+
+    // Auto unfreeze and state recovery when switching back into tab/window
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        cancelDealAnimation();
+        forceRenderHand();
+        getAudioContext();
+        if (currentRoom) {
+          socket.emit('requestStateSync', currentRoom);
+        }
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      cancelDealAnimation();
+      forceRenderHand();
+      getAudioContext();
+      if (currentRoom) {
+        socket.emit('requestStateSync', currentRoom);
+      }
+    });
+
+    socket.on('connect', () => {
+      if (currentRoom) {
+        const name = document.getElementById('playerName').value.trim() || 'Player';
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: name });
+        socket.emit('requestStateSync', currentRoom);
+      }
+    });
 
     function playCardSlideSound() {
       try {
@@ -588,6 +638,7 @@
       if (!currentRoom) return;
       if (confirm('Leave this game room?')) {
         if (isInVoice) leaveVoice();
+        cancelDealAnimation();
         socket.emit('leaveRoom', currentRoom);
         currentRoom = '';
         myHand = [];
@@ -872,6 +923,7 @@
     }
 
     function animateCardDeal(cards) {
+      cancelDealAnimation();
       const drawPile = document.getElementById('drawPile');
       const hArea = document.getElementById('handArea');
       if (!drawPile || !hArea) return;
@@ -892,7 +944,7 @@
       const deckRect = drawPile.getBoundingClientRect();
 
       cards.forEach((card, idx) => {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           playCardSlideSound();
 
           const fly = document.createElement('div');
@@ -908,7 +960,7 @@
             fly.style.transform = `translate3d(${targetRect.left - deckRect.left}px, ${targetRect.top - deckRect.top}px, 0) rotate(${rot}deg)`;
           });
 
-          setTimeout(() => {
+          const removeTimer = setTimeout(() => {
             fly.remove();
             const realCard = renderCard(card, () => discard(idx), isTurn && hasDrawn, false, true);
             if (placeholders[idx] && placeholders[idx].parentNode) {
@@ -918,11 +970,13 @@
               isAnimatingDeal = false;
             }
           }, 430);
+          dealAnimationTimers.push(removeTimer);
         }, idx * 160);
+
+        dealAnimationTimers.push(timer);
       });
     }
 
-    // Interactive Tiebreaker Event Handlers
     socket.on('startTiebreakerCut', (data) => {
       const overlay = document.getElementById('tiebreakerOverlay');
       const spread = document.getElementById('tiebreakerSpread');
@@ -942,7 +996,6 @@
         instr.style.color = "#ffffff";
       }
 
-      // Render face-down deck cards
       const count = Math.min(data.deckCount, 24);
       for (let i = 0; i < count; i++) {
         const slot = document.createElement('div');
@@ -1038,7 +1091,6 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
-      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -1055,7 +1107,6 @@
         roundPotBanner.style.display = 'none';
       }
 
-      // Game Wager Selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -1067,7 +1118,6 @@
         wagerSec.style.display = 'none';
       }
 
-      // Ledger Modal Content
       document.getElementById('ledgerWagerInfo').innerText = `Match Stakes: $${currentWager}/player | Round Side Pot: $${state.roundPot || 0}`;
       const ledgerList = document.getElementById('ledgerList');
       if (state.ledger && state.ledger.length > 0) {
@@ -1083,7 +1133,6 @@
         ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
       }
 
-      // Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const spectateBtn = document.getElementById('spectateBtn');
@@ -1181,13 +1230,10 @@
       if (isSpectator) {
         hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching game as a spectator...</div>';
       } else if (myHand.length > 0) {
-        if (previousHandLength === 0 && myHand.length === 3) {
+        if (document.visibilityState === 'visible' && previousHandLength === 0 && myHand.length === 3) {
           animateCardDeal(myHand);
         } else if (!isAnimatingDeal) {
-          hArea.innerHTML = '';
-          myHand.forEach((card, idx) => {
-            hArea.appendChild(renderCard(card, () => discard(idx), isTurn && hasDrawn));
-          });
+          forceRenderHand();
         }
       } else {
         hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
