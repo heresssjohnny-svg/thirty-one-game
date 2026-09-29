@@ -339,8 +339,8 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>🎙️ Voice Channel Bell Hopper</h4>
-          A bright chime sounds and a banner announces whenever someone hops on or off voice chat!
+          <h4>🎙️ Voice Channel Bell Hopper & Invites</h4>
+          A bright chime sounds and a banner announces whenever someone joins voice chat. If you are in voice chat, you can invite other players!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -350,7 +350,7 @@
   <!-- KNOCK WARNING CONFIRMATION MODAL -->
   <div id="knockConfirmModal" class="custom-modal">
     <div class="modal-card" style="border-color:#f44336; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️️ High Card in Discard!</div>
+      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️ High Card in Discard!</div>
       <div style="font-size:12px; line-height:1.4; opacity:0.9;">
         There is an <strong id="knockConfirmCard" style="color:#ffd700;">Ace/Face card</strong> on top of the discard pile.<br><br>
         Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
@@ -376,6 +376,33 @@
     </div>
   </div>
 
+  <!-- VOICE INVITATION MODAL -->
+  <div id="voiceInviteModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#00897b; max-width:340px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:900; font-size:14px; color:#00897b;">👥 Invite to Voice Chat</span>
+        <span onclick="toggleVoiceInviteModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+      </div>
+      <div style="font-size:11px; opacity:0.9;">Select an online player to invite to the voice channel:</div>
+      <select id="voiceInviteSelect"></select>
+      <button type="button" onclick="sendVoiceInvite()" style="background:#00897b; color:#fff; padding:8px; font-weight:bold;">Send Invitation</button>
+    </div>
+  </div>
+
+  <!-- INCOMING VOICE INVITE ALERT MODAL -->
+  <div id="incomingVoiceInviteModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#00897b; text-align:center;">
+      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️ Voice Invitation</div>
+      <div id="incomingVoiceText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Player invited you to join voice chat.
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" onclick="respondVoiceInvite(false)" style="padding:8px 12px;">Decline</button>
+        <button type="button" style="background:#00897b; color:#fff; padding:8px 12px; font-weight:bold;" onclick="respondVoiceInvite(true)">Accept & Join</button>
+      </div>
+    </div>
+  </div>
+
   <!-- INITIAL DEALER CUT OVERLAY -->
   <div id="dealerCutOverlay" class="card-cut-overlay">
     <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">👑 INITIAL DEALER CUT 👑</h2>
@@ -395,11 +422,11 @@
   <!-- INCOMING SIDE BET PROPOSAL PROMPT -->
   <div id="sideBetOfferModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ff9800;">🎲 Side Bet Challenge!</div>
+      <div style="font-weight:900; font-size:15px; color:#ff9800;" id="sideBetModalHeader">🎲 Side Bet Challenge!</div>
       <div id="sideBetOfferText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Player challenged you to a side bet.
       </div>
-      <div style="display:flex; flex-direction:column; gap:4px; text-align:left; margin: 4px 0;">
+      <div id="offerTargetSection" style="display:flex; flex-direction:column; gap:4px; text-align:left; margin: 4px 0;">
         <label style="font-size:11px; font-weight:bold; color:#ffd700;">Choose Your Pick For The Highest Score:</label>
         <select id="offerMyTargetSelect"></select>
       </div>
@@ -557,6 +584,7 @@
       <button type="button" class="tutorial-btn" onclick="toggleTutorialModal()">📖 Rules</button>
       <button type="button" class="ledger-btn" onclick="toggleLedgerModal()">💰 Ledger</button>
       <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
+      <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;" onclick="toggleVoiceInviteModal()">👥 Invite</button>
       <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️</button>
       <button type="button" class="danger" onclick="leaveLobby()">Leave</button>
     </div>
@@ -579,7 +607,7 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -638,9 +666,6 @@
     let latestTopDiscard = null;
     let isAnimatingDeal = false;
     let dealAnimationTimers = [];
-    let amTiedForTiebreaker = false;
-    let hasPickedTiebreakerCard = false;
-    let hasPickedDealerCard = false;
     let announcementTimer = null;
     let pendingOfferBetId = null;
     let pendingOfferChallengerTarget = '';
@@ -1044,7 +1069,7 @@
     function promptClearDebt(playerName, amount) {
       pendingClearDebtName = playerName;
       document.getElementById('clearDebtConfirmText').innerHTML = `
-        Are you sure you want to clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
+        Are you sure you want to forgive and clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
       `;
       document.getElementById('clearDebtConfirmModal').style.display = 'flex';
     }
@@ -1132,7 +1157,7 @@
     function openFirstLoserSideBetModal() {
       currentSideBetType = 'firstLoser';
       document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Both Lives';
-      document.getElementById('sideBetModalDesc').innerText = 'Bet on who will lose both lives first in the match:';
+      document.getElementById('sideBetModalDesc').innerText = 'This bet is for the first person to lose both lives (out of the game).';
       document.getElementById('roundContenderSection').style.display = 'none';
       toggleRoundBetModal();
     }
@@ -1195,14 +1220,14 @@
         return alert('Please check off at least one opponent to challenge.');
       }
 
-      const targetName = document.getElementById('betMyTargetSelect').value;
-      if (!targetName) return alert('Select your pick.');
+      const targetName = currentSideBetType === 'firstLoser' ? '' : document.getElementById('betMyTargetSelect').value;
+      if (currentSideBetType === 'round' && !targetName) return alert('Select your pick.');
 
       socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
         betType: currentSideBetType,
         opponentNames: opponentNames,
-        targetPlayerName: targetName,
+        targetPlayerName: currentSideBetType === 'firstLoser' ? latestActivePlayers[0]?.name : targetName,
         amount: selectedSideBetAmt
       });
 
@@ -1213,21 +1238,31 @@
       pendingOfferBetId = data.betId;
       pendingOfferChallengerTarget = data.bettorTarget;
 
-      document.getElementById('sideBetOfferText').innerHTML = `
-        <strong>${data.fromPlayer}</strong> challenges you to a side bet ($${data.amount})!<br>
-        • Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span>
-      `;
+      const headerText = data.betType === 'firstLoser' ? '💀 First to Lose Bet!' : '🎲 Side Bet Challenge!';
+      document.getElementById('sideBetModalHeader').innerText = headerText;
 
-      const select = document.getElementById('offerMyTargetSelect');
-      select.innerHTML = '';
-      latestActivePlayers.forEach(p => {
-        if (p.name !== pendingOfferChallengerTarget) {
-          const opt = document.createElement('option');
-          opt.value = p.name;
-          opt.innerText = p.name;
-          select.appendChild(opt);
-        }
-      });
+      const descHtml = data.betType === 'firstLoser'
+        ? `<strong>${data.fromPlayer}</strong> challenges you to a First-to-Lose bet ($${data.amount})!<br><span style="color:#ffd700;">This bet is for the first person to lose both lives (out of the game).</span>`
+        : `<strong>${data.fromPlayer}</strong> challenges you to a side bet ($${data.amount})!<br>• Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span>`;
+
+      document.getElementById('sideBetOfferText').innerHTML = descHtml;
+
+      const targetSection = document.getElementById('offerTargetSection');
+      if (data.betType === 'firstLoser') {
+        targetSection.style.display = 'none';
+      } else {
+        targetSection.style.display = 'flex';
+        const select = document.getElementById('offerMyTargetSelect');
+        select.innerHTML = '';
+        latestActivePlayers.forEach(p => {
+          if (p.name !== pendingOfferChallengerTarget) {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.innerText = p.name;
+            select.appendChild(opt);
+          }
+        });
+      }
 
       document.getElementById('sideBetOfferModal').style.display = 'flex';
     });
@@ -1235,10 +1270,6 @@
     function respondSideBet(accept) {
       if (!pendingOfferBetId) return;
       const myTargetName = accept ? document.getElementById('offerMyTargetSelect').value : null;
-
-      if (accept && myTargetName === pendingOfferChallengerTarget) {
-        return alert("You cannot bet on the same player as the challenger!");
-      }
 
       if (accept) {
         playAcceptSound();
@@ -1290,6 +1321,7 @@
           isMuted = false;
           document.getElementById('voiceBtn').className = 'voice-on';
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
+          document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').innerText = '🎙️ Mute';
           socket.emit('joinVoice', currentRoom);
@@ -1314,8 +1346,65 @@
       isInVoice = false;
       document.getElementById('voiceBtn').className = 'voice-btn';
       document.getElementById('voiceBtn').innerText = '🎤 Voice';
+      document.getElementById('voiceInviteBtn').style.display = 'none';
       document.getElementById('muteBtn').style.display = 'none';
       socket.emit('leaveVoice', currentRoom);
+    }
+
+    function toggleVoiceInviteModal() {
+      const modal = document.getElementById('voiceInviteModal');
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const select = document.getElementById('voiceInviteSelect');
+        select.innerHTML = '';
+        let count = 0;
+        latestAllTableMembers.forEach(m => {
+          if (m.name !== myPlayerName && m.isOnline) {
+            count++;
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            select.appendChild(opt);
+          }
+        });
+        if (count === 0) {
+          select.innerHTML = '<option value="">No other players online</option>';
+        }
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function sendVoiceInvite() {
+      const targetName = document.getElementById('voiceInviteSelect').value;
+      if (!targetName) return alert('No player selected.');
+      const targetMember = latestAllTableMembers.find(m => m.name === targetName);
+      if (!targetMember) return alert('Player not found.');
+
+      // Find socket id from table members
+      // We broadcast request via server
+      socket.emit('inviteToVoice', {
+        roomId: currentRoom,
+        targetSocketId: targetMember.id || targetName
+      });
+      toggleVoiceInviteModal();
+      alert(`Invitation sent to ${targetName}!`);
+    }
+
+    let pendingVoiceInviter = '';
+    socket.on('voiceInviteReceived', (data) => {
+      pendingVoiceInviter = data.inviterName;
+      document.getElementById('incomingVoiceText').innerHTML = `
+        <strong>${data.inviterName}</strong> invited you to join voice chat!
+      `;
+      document.getElementById('incomingVoiceInviteModal').style.display = 'flex';
+    });
+
+    function respondVoiceInvite(accept) {
+      document.getElementById('incomingVoiceInviteModal').style.display = 'none';
+      if (accept) {
+        if (!isInVoice) toggleVoice();
+      }
+      pendingVoiceInviter = '';
     }
 
     function toggleMute() {
@@ -2031,8 +2120,7 @@
         });
       }
 
-      // Robust touch-focus handling for iPad PWA inputs
-      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect'].forEach(id => {
+      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
           el.addEventListener('touchstart', (e) => {
