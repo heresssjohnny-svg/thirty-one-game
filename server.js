@@ -1450,7 +1450,7 @@ io.on('connection', (socket) => {
       };
 
       if (opponent.isBot) {
-        const possibleBotTargets = getActivePlayers(room);
+        const possibleBotTargets = getActivePlayers(room).filter(p => p.name !== targetPlayer.name);
         const botPick = possibleBotTargets[Math.floor(Math.random() * possibleBotTargets.length)] || targetPlayer;
         newBet.opponentTargetName = botPick.name;
         newBet.opponentTargetId = botPick.id;
@@ -1499,7 +1499,6 @@ io.on('connection', (socket) => {
         return socket.emit('errorMsg', 'Please select a valid pick for your side of the bet.');
       }
 
-      // Restrict 2 people from betting on the same player
       if (bet.type === 'round' && oppTarget.name === bet.targetPlayerName) {
         room.peerSideBets.splice(betIdx, 1);
         socket.emit('errorMsg', 'You cannot bet on the same player as the challenger!');
