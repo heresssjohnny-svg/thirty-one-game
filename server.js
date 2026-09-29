@@ -6,9 +6,12 @@ const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, {
+  cors: { origin: '*' },
+  pingTimeout: 30000,
+  pingInterval: 10000
+});
 
-// Serve static files from root and public
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -20,7 +23,7 @@ app.get('/', (req, res) => {
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) return res.sendFile(p);
   }
-  res.status(404).send('Could not locate index.html. Ensure it exists in your repository.');
+  res.status(404).send('Could not locate index.html');
 });
 
 const SUITS = ['♠', '♥', '♦', '♣'];
@@ -47,22 +50,17 @@ function createDeck() {
 function calculateScore(hand) {
   if (!hand || hand.length === 0) return 0;
 
-  // Rule: 3 of a kind = 30.5 points
-  // If player is holding 3 cards and all ranks match, score is 30.5
-  // If player is temporarily holding 4 cards (after drawing), check any 3-card combination
+  // 3 of a kind = 30.5 pts
   if (hand.length === 3) {
-    if (hand[0].rank === hand[1].rank && hand[1].rank === hand[2].rank) {
-      return 30.5;
-    }
+    if (hand[0].rank === hand[1].rank && hand[1].rank === hand[2].rank) return 30.5;
   } else if (hand.length === 4) {
-    const rankCounts = {};
+    const counts = {};
     for (const c of hand) {
-      rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1;
-      if (rankCounts[c.rank] >= 3) return 30.5;
+      counts[c.rank] = (counts[c.rank] || 0) + 1;
+      if (counts[c.rank] >= 3) return 30.5;
     }
   }
 
-  // Standard suit sum calculation
   const totals = { '♠': 0, '♥': 0, '♦': 0, '♣': 0 };
   for (const c of hand) {
     totals[c.suit] += c.value;
@@ -76,21 +74,39 @@ function getActivePlayers(room) {
   return room.players.filter(p => p.lives > 0);
 }
 
-function getPrevActivePlayer(room, currentIdx) {
-  let idx = (currentIdx - 1 + room.players.length) % room.players.length;
-  while (room.players[idx].lives <= 0) {
-    idx = (idx - 1 + room.players.length) % room.players.length;
+// Crash-proof clockwise turn finder
+function advanceTurnIndex(room) {
+  const total = room.players.length;
+  if (total === 0) return;
+
+  for (let step = 1; step <= total; step++) {
+    const nextIdx = (room.currentTurnIdx + step) % total;
+    if (room.players[nextIdx].lives > 0) {
+      room.currentTurnIdx = nextIdx;
+      return;
+    }
   }
-  return room.players[idx];
+}
+
+function getPrevActivePlayer(room, currentIdx) {
+  const total = room.players.length;
+  for (let step = 1; step <= total; step++) {
+    const prevIdx = (currentIdx - step + total) % total;
+    if (room.players[prevIdx].lives > 0) {
+      return room.players[prevIdx];
+    }
+  }
+  return null;
 }
 
 function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
-  const active = getActivePlayers(room);
 
+  const active = getActivePlayers(room);
   if (active.length <= 1) {
     io.to(roomId).emit('gameOver', { winner: active[0] ? active[0].name : 'Nobody' });
+    room.gameStarted = false;
     return;
   }
 
@@ -99,6 +115,7 @@ function startNewRound(roomId) {
   room.knockerId = null;
   room.turnsLeftAfterKnock = null;
   room.drawnCard = null;
+  room.isResolvingRound = false;
 
   active.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
@@ -107,19 +124,20 @@ function startNewRound(roomId) {
 
   room.discardPile.push(room.deck.pop());
 
-  // Dealer moves clockwise among living players
-  do {
-    room.dealerIdx = (room.dealerIdx + 1) % room.players.length;
-  } while (room.players[room.dealerIdx].lives <= 0);
-
-  // Turn starts to the left of the dealer
-  let startIdx = (room.dealerIdx + 1) % room.players.length;
-  while (room.players[startIdx].lives <= 0) {
-    startIdx = (startIdx + 1) % room.players.length;
+  // Advance dealer safely
+  for (let i = 1; i <= room.players.length; i++) {
+    const nextD = (room.dealerIdx + i) % room.players.length;
+    if (room.players[nextD].lives > 0) {
+      room.dealerIdx = nextD;
+      break;
+    }
   }
-  room.currentTurnIdx = startIdx;
 
-  broadcastState(roomId, `New round began! Dealer is ${room.players[room.dealerIdx].name}.`);
+  // Turn starts to the left of dealer
+  room.currentTurnIdx = room.dealerIdx;
+  advanceTurnIndex(room);
+
+  broadcastState(roomId, `New round! Dealer: ${room.players[room.dealerIdx].name}.`);
   triggerBotTurnIfNeeded(roomId);
 }
 
@@ -127,14 +145,14 @@ function broadcastState(roomId, message = '') {
   const room = rooms[roomId];
   if (!room) return;
 
+  const active = getActivePlayers(room);
   const currentTurnPlayer = room.players[room.currentTurnIdx];
-  const activeCount = getActivePlayers(room).length;
-  const minKnockScore = activeCount === 2 ? 25 : 21;
+  const minKnockScore = active.length === 2 ? 25 : 21;
 
   room.players.forEach(p => {
     if (p.isBot) return;
 
-    const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id;
+    const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id && !room.isResolvingRound;
     const score = calculateScore(p.hand);
     const canKnock = isCurrent && !room.knockerId && score >= minKnockScore && !room.drawnCard;
 
@@ -164,6 +182,9 @@ function broadcastState(roomId, message = '') {
 
 function resolveShowdown(roomId) {
   const room = rooms[roomId];
+  if (!room || room.isResolvingRound) return;
+  room.isResolvingRound = true;
+
   const active = getActivePlayers(room);
   let minScore = 32;
   const scores = {};
@@ -192,31 +213,35 @@ function resolveShowdown(roomId) {
 
 function triggerBotTurnIfNeeded(roomId) {
   const room = rooms[roomId];
-  if (!room || !room.gameStarted) return;
+  if (!room || !room.gameStarted || room.isResolvingRound) return;
 
   const current = room.players[room.currentTurnIdx];
   if (!current || !current.isBot || current.lives <= 0) return;
 
   setTimeout(() => {
+    if (!rooms[roomId] || room.isResolvingRound) return;
+
     const activeCount = getActivePlayers(room).length;
     const minKnockScore = activeCount === 2 ? 25 : 21;
     const score = calculateScore(current.hand);
 
-    // 1. Bot Knock Check
+    // Bot Knock Check
     if (!room.knockerId && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
       broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED!`);
     }
 
-    // 2. Bot Draw Decision
+    // Bot Draw Check
     const topDiscard = room.discardPile[room.discardPile.length - 1];
     let takeDiscard = false;
-    for (let i = 0; i < current.hand.length; i++) {
-      const simHand = current.hand.slice(0, i).concat(current.hand.slice(i + 1), [topDiscard]);
-      if (calculateScore(simHand) > score) {
-        takeDiscard = true;
-        break;
+    if (topDiscard) {
+      for (let i = 0; i < current.hand.length; i++) {
+        const simHand = current.hand.slice(0, i).concat(current.hand.slice(i + 1), [topDiscard]);
+        if (calculateScore(simHand) > score) {
+          takeDiscard = true;
+          break;
+        }
       }
     }
 
@@ -234,7 +259,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     current.hand.push(drawn);
 
-    // 3. Bot Discard Decision (maximize score)
+    // Discard logic
     let bestIdx = 0;
     let bestScore = -1;
     for (let i = 0; i < current.hand.length; i++) {
@@ -248,13 +273,14 @@ function triggerBotTurnIfNeeded(roomId) {
     const [discarded] = current.hand.splice(bestIdx, 1);
     room.discardPile.push(discarded);
 
-    // Check if Bot reached 31
+    // Check for 31
     if (calculateScore(current.hand) === 31) {
+      room.isResolvingRound = true;
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
       const hasAce = current.takenFromPrev.some(c => c.rank === 'A');
       const hasTen = current.takenFromPrev.some(c => c.value === 10);
 
-      if (hasAce && hasTen) {
+      if (hasAce && hasTen && prevPlayer) {
         prevPlayer.lives = 0;
         broadcastState(roomId, `⚡ ${current.name} got 31! ${prevPlayer.name} fed an Ace & 10 and lost BOTH lives!`);
       } else {
@@ -267,7 +293,7 @@ function triggerBotTurnIfNeeded(roomId) {
       return;
     }
 
-    // Knocker turn progress
+    // Advance turns
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
       if (room.turnsLeftAfterKnock <= 0) {
@@ -276,11 +302,7 @@ function triggerBotTurnIfNeeded(roomId) {
       }
     }
 
-    // Advance turn
-    do {
-      room.currentTurnIdx = (room.currentTurnIdx + 1) % room.players.length;
-    } while (room.players[room.currentTurnIdx].lives <= 0);
-
+    advanceTurnIndex(room);
     broadcastState(roomId, `${current.name} discarded a card.`);
     triggerBotTurnIfNeeded(roomId);
   }, 1200);
@@ -300,10 +322,20 @@ io.on('connection', (socket) => {
         knockerId: null,
         turnsLeftAfterKnock: null,
         gameStarted: false,
-        drawnCard: null
+        drawnCard: null,
+        isResolvingRound: false
       };
     }
     const room = rooms[roomId];
+
+    // Mobile Reconnect handler: If player with same name already exists, update socket ID instead of duplicating
+    const existingPlayer = room.players.find(p => p.name === playerName);
+    if (existingPlayer) {
+      existingPlayer.id = socket.id;
+      broadcastState(roomId, `${playerName} reconnected.`);
+      return;
+    }
+
     if (room.gameStarted) {
       socket.emit('errorMsg', 'Game is already in progress.');
       return;
@@ -318,16 +350,13 @@ io.on('connection', (socket) => {
       isBot: false
     });
 
-    broadcastState(roomId, `${playerName} entered the room.`);
+    broadcastState(roomId, `${playerName} joined the room.`);
   });
 
   socket.on('addBot', (roomId) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
-    if (room.players.length >= 6) {
-      socket.emit('errorMsg', 'Max 6 players allowed.');
-      return;
-    }
+    if (room.players.length >= 6) return socket.emit('errorMsg', 'Max 6 players.');
 
     const botCount = room.players.filter(p => p.isBot).length + 1;
     room.players.push({
@@ -339,14 +368,13 @@ io.on('connection', (socket) => {
       isBot: true
     });
 
-    broadcastState(roomId, `Bot ${botCount} joined the room.`);
+    broadcastState(roomId, `Bot ${botCount} joined.`);
   });
 
   socket.on('startGame', (roomId) => {
     const room = rooms[roomId];
     if (!room || room.players.length < 2) {
-      socket.emit('errorMsg', 'Need at least 2 players (or add a Bot) to start.');
-      return;
+      return socket.emit('errorMsg', 'Need at least 2 players or bots.');
     }
     room.gameStarted = true;
     startNewRound(roomId);
@@ -355,25 +383,22 @@ io.on('connection', (socket) => {
   socket.on('knock', (roomId) => {
     const room = rooms[roomId];
     const player = room?.players[room.currentTurnIdx];
-    if (!room || !player || player.id !== socket.id || room.knockerId) return;
+    if (!room || !player || player.id !== socket.id || room.knockerId || room.isResolvingRound) return;
 
-    const activeCount = getActivePlayers(room).length;
-    const minKnockScore = activeCount === 2 ? 25 : 21;
+    const minKnockScore = getActivePlayers(room).length === 2 ? 25 : 21;
     const score = calculateScore(player.hand);
 
     if (score >= minKnockScore && !room.drawnCard) {
       room.knockerId = player.id;
-      room.turnsLeftAfterKnock = activeCount - 1;
-      broadcastState(roomId, `🔔 ${player.name} KNOCKED with ${score} pts! Final turn for remaining players.`);
-    } else {
-      socket.emit('errorMsg', `Cannot knock: need ${minKnockScore}+ points before drawing!`);
+      room.turnsLeftAfterKnock = getActivePlayers(room).length - 1;
+      broadcastState(roomId, `🔔 ${player.name} KNOCKED! Everyone gets 1 final turn.`);
     }
   });
 
   socket.on('drawCard', ({ roomId, source }) => {
     const room = rooms[roomId];
     const player = room?.players[room.currentTurnIdx];
-    if (!room || !player || player.id !== socket.id || room.drawnCard) return;
+    if (!room || !player || player.id !== socket.id || room.drawnCard || room.isResolvingRound) return;
 
     let drawn;
     if (source === 'discard') {
@@ -396,7 +421,7 @@ io.on('connection', (socket) => {
   socket.on('discardCard', ({ roomId, cardIndex }) => {
     const room = rooms[roomId];
     const player = room?.players[room.currentTurnIdx];
-    if (!room || !player || player.id !== socket.id || !room.drawnCard) return;
+    if (!room || !player || player.id !== socket.id || !room.drawnCard || room.isResolvingRound) return;
 
     const [discarded] = player.hand.splice(cardIndex, 1);
     room.discardPile.push(discarded);
@@ -404,18 +429,19 @@ io.on('connection', (socket) => {
 
     // Check for 31
     if (calculateScore(player.hand) === 31) {
+      room.isResolvingRound = true;
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
       const hasAce = player.takenFromPrev.some(c => c.rank === 'A');
       const hasTen = player.takenFromPrev.some(c => c.value === 10);
 
-      if (hasAce && hasTen) {
+      if (hasAce && hasTen && prevPlayer) {
         prevPlayer.lives = 0;
         broadcastState(roomId, `⚡ ${player.name} got 31! ${prevPlayer.name} fed an Ace & 10 and lost BOTH lives!`);
       } else {
         getActivePlayers(room).forEach(p => {
           if (p.id !== player.id) p.lives -= 1;
         });
-        broadcastState(roomId, `⚡ ${player.name} got 31! All other players lose a life.`);
+        broadcastState(roomId, `⚡ ${player.name} got 31! Everyone else loses 1 life.`);
       }
       setTimeout(() => startNewRound(roomId), 4000);
       return;
@@ -430,12 +456,8 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Advance turn
-    do {
-      room.currentTurnIdx = (room.currentTurnIdx + 1) % room.players.length;
-    } while (room.players[room.currentTurnIdx].lives <= 0);
-
-    broadcastState(roomId, `${player.name} discarded a card.`);
+    advanceTurnIndex(room);
+    broadcastState(roomId, `${player.name} discarded ${discarded.rank}${discarded.suit}.`);
     triggerBotTurnIfNeeded(roomId);
   });
 
@@ -443,8 +465,21 @@ io.on('connection', (socket) => {
     for (const [roomId, room] of Object.entries(rooms)) {
       const idx = room.players.findIndex(p => p.id === socket.id);
       if (idx !== -1) {
-        const [leaving] = room.players.splice(idx, 1);
-        if (room.players.length === 0) {
+        const leaving = room.players[idx];
+        
+        // If the game hasn't started, remove them cleanly
+        if (!room.gameStarted) {
+          room.players.splice(idx, 1);
+        } else {
+          // If in an active game, mark them as eliminated so it doesn't freeze turns
+          leaving.lives = 0;
+          if (room.currentTurnIdx === idx) {
+            advanceTurnIndex(room);
+            triggerBotTurnIfNeeded(roomId);
+          }
+        }
+
+        if (getActivePlayers(room).length === 0) {
           delete rooms[roomId];
         } else {
           broadcastState(roomId, `${leaving.name} disconnected.`);
@@ -457,5 +492,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server online on port ${PORT}`);
 });
