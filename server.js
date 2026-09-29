@@ -134,50 +134,62 @@ function recordDebt(room, debtorName, creditorName, amount) {
   room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
 }
 
-function updateLedgerStatements(room) {
-  const debtStatements = [];
-  const names = Object.keys(room.debts);
-  const processedPairs = new Set();
+// Compute pairwise balance between two players: positive means p1 is owed by p2, negative means p1 owes p2
+function getNetPairBalance(room, p1Name, p2Name) {
+  const p2OwesP1 = (room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2 = (room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  return p2OwesP1 - p1OwesP2;
+}
 
-  for (let i = 0; i < names.length; i++) {
-    for (let j = 0; j < names.length; j++) {
-      if (i === j) continue;
-      const p1 = names[i];
-      const p2 = names[j];
-      const pairKey = [p1, p2].sort().join(':::');
-      if (processedPairs.has(pairKey)) continue;
-      processedPairs.add(pairKey);
+function getPersonalLedger(room, playerName) {
+  const ledger = [];
+  let totalNet = 0;
 
-      const p1OwesP2 = (room.debts[p1] && room.debts[p1][p2]) || 0;
-      const p2OwesP1 = (room.debts[p2] && room.debts[p2][p1]) || 0;
-      const net = p1OwesP2 - p2OwesP1;
+  const allNames = new Set();
+  room.players.forEach(p => allNames.add(p.name));
+  Object.keys(room.debts).forEach(name => {
+    allNames.add(name);
+    Object.keys(room.debts[name] || {}).forEach(target => allNames.add(target));
+  });
 
-      if (net > 0) {
-        debtStatements.push(`${p1} owes ${p2} $${net}`);
-      } else if (net < 0) {
-        debtStatements.push(`${p2} owes ${p1} $${Math.abs(net)}`);
-      }
-    }
-  }
+  allNames.forEach(otherName => {
+    if (otherName === playerName) return;
+    const net = getNetPairBalance(room, playerName, otherName);
+    totalNet += net;
+    ledger.push({
+      player: otherName,
+      netBalance: net // +net means otherName owes you, -net means you owe otherName
+    });
+  });
 
-  room.ledgerStatements = debtStatements;
+  // Sort: biggest debtors first, then even, then biggest creditors
+  ledger.sort((a, b) => b.netBalance - a.netBalance);
+
+  return {
+    balances: ledger,
+    totalNet: totalNet
+  };
 }
 
 function recordGameWagerSettlement(room, winner) {
-  if (!room.wager || room.wager <= 0 || !winner) return;
+  if (!winner || !room.currentMatchParticipants) return 0;
+  
+  const winnerData = room.currentMatchParticipants.find(p => p.id === winner.id);
+  if (!winnerData || winnerData.wager <= 0) return 0;
 
-  const wager = room.wager;
-  const participants = room.currentMatchParticipants || [];
-  participants.forEach(loserId => {
-    if (loserId !== winner.id) {
-      const loser = room.players.find(p => p.id === loserId);
-      if (loser) {
-        recordDebt(room, loser.name, winner.name, wager);
+  let totalCollected = 0;
+
+  room.currentMatchParticipants.forEach(loserData => {
+    if (loserData.id !== winner.id) {
+      const amountToCollect = Math.min(winnerData.wager, loserData.wager);
+      if (amountToCollect > 0) {
+        recordDebt(room, loserData.name, winnerData.name, amountToCollect);
+        totalCollected += amountToCollect;
       }
     }
   });
 
-  updateLedgerStatements(room);
+  return totalCollected;
 }
 
 function settleRoundBets(room, winningPlayers) {
@@ -212,7 +224,6 @@ function settleRoundBets(room, winningPlayers) {
     });
   });
 
-  updateLedgerStatements(room);
   room.roundBets = [];
   return `Side Bet Winners: ${sideBetWinners.join(', ')}`;
 }
@@ -221,12 +232,20 @@ function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
     const specCount = r.players.filter(p => p.isSpectator).length;
+    
+    let totalPot = 0;
+    if (r.gameStarted && r.currentMatchParticipants) {
+      totalPot = r.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
+    } else {
+      totalPot = getActivePlayers(r).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+    }
+
     return {
       roomId: id,
       gameStarted: r.gameStarted,
       activeCount: activeCount,
       spectatorCount: specCount,
-      wager: r.wager || 0
+      totalPot: totalPot
     };
   });
   io.emit('roomListUpdate', roomList);
@@ -406,16 +425,17 @@ function startNewRound(roomId) {
     const winnerName = winner ? winner.name : 'Nobody';
 
     let potWonText = '';
-    if (winner && room.wager > 0) {
-      recordGameWagerSettlement(room, winner);
-      const totalPot = (room.currentMatchParticipants.length) * room.wager;
-      potWonText = ` Takes the $${totalPot} POT!`;
+    if (winner) {
+      const totalCollected = recordGameWagerSettlement(room, winner);
+      if (totalCollected > 0) {
+        potWonText = ` Takes $${totalCollected} from the pot!`;
+      }
     }
 
     io.to(roomId).emit('bigAnnouncement', {
       title: '🏆 GAME OVER 🏆',
       message: `${winnerName.toUpperCase()} WINS!${potWonText}`,
-      subtext: room.ledgerStatements.length > 0 ? room.ledgerStatements.join(' | ') : 'No pending debts.',
+      subtext: 'Check Ledger for updated balances with each player.',
       duration: 8000
     });
 
@@ -436,7 +456,7 @@ function startNewRound(roomId) {
       p.isReady = false; 
     });
 
-    broadcastState(roomId, `Game over! ${winnerName} won! Check Ledger for debts.`);
+    broadcastState(roomId, `Game over! ${winnerName} won! Check Ledger for balances.`);
     broadcastRoomList();
     return;
   }
@@ -508,7 +528,14 @@ function broadcastState(roomId, message = '') {
   const currentTurnPlayer = room.players[room.currentTurnIdx];
   const minKnockScore = active.length === 2 ? 25 : 21;
   const roundHasPassed = room.turnsTakenInRound >= active.length;
-  const totalGamePot = (room.currentMatchParticipants.length || getNonSpectatorCount(room)) * (room.wager || 0);
+  
+  let totalGamePot = 0;
+  if (room.gameStarted && room.currentMatchParticipants) {
+    totalGamePot = room.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
+  } else {
+    totalGamePot = getActivePlayers(room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+  }
+
   const totalRoundPot = (room.roundBets || []).reduce((sum, b) => sum + b.amount, 0);
 
   room.players.forEach(p => {
@@ -524,7 +551,10 @@ function broadcastState(roomId, message = '') {
     const score = p.isSpectator ? 0 : calculateScore(p.hand);
     const canKnock = isCurrent && !room.knockerId && roundHasPassed && score >= minKnockScore && !room.drawnCard;
 
+    const personalLedgerData = getPersonalLedger(room, p.name);
+
     io.to(p.id).emit('gameState', {
+      myWager: p.matchWager || 0,
       players: room.players.map(pl => ({
         id: pl.id,
         name: pl.name,
@@ -535,7 +565,8 @@ function broadcastState(roomId, message = '') {
         isBot: Boolean(pl.isBot),
         isSpectator: Boolean(pl.isSpectator),
         isReady: Boolean(pl.isReady),
-        isInVoice: Boolean(pl.isInVoice)
+        isInVoice: Boolean(pl.isInVoice),
+        matchWager: pl.matchWager || 0
       })),
       hand: p.isSpectator ? [] : p.hand,
       score: score,
@@ -552,7 +583,6 @@ function broadcastState(roomId, message = '') {
       isReady: Boolean(p.isReady),
       activePlayersCount: getNonSpectatorCount(room),
       maxActivePlayers: MAX_ACTIVE_PLAYERS,
-      wager: room.wager || 0,
       totalPot: totalGamePot,
       roundPot: totalRoundPot,
       roundBets: (room.roundBets || []).map(b => ({
@@ -560,7 +590,8 @@ function broadcastState(roomId, message = '') {
         target: b.targetPlayerName,
         amt: b.amount
       })),
-      ledger: room.ledgerStatements || [],
+      personalLedger: personalLedgerData.balances,
+      netOverallBalance: personalLedgerData.totalNet,
       message: message
     });
   });
@@ -775,13 +806,21 @@ function handlePlayerExit(socketId) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('roomListUpdate', Object.entries(rooms).map(([id, r]) => ({
-    roomId: id,
-    gameStarted: r.gameStarted,
-    activeCount: r.players.filter(p => !p.isSpectator).length,
-    spectatorCount: r.players.filter(p => p.isSpectator).length,
-    wager: r.wager || 0
-  })));
+  socket.emit('roomListUpdate', Object.entries(rooms).map(([id, r]) => {
+    let totalPot = 0;
+    if (r.gameStarted && r.currentMatchParticipants) {
+      totalPot = r.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
+    } else {
+      totalPot = getActivePlayers(r).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+    }
+    return {
+      roomId: id,
+      gameStarted: r.gameStarted,
+      activeCount: r.players.filter(p => !p.isSpectator).length,
+      spectatorCount: r.players.filter(p => p.isSpectator).length,
+      totalPot: totalPot
+    };
+  }));
 
   socket.on('requestStateSync', (roomId) => {
     if (roomId && rooms[roomId]) {
@@ -806,11 +845,9 @@ io.on('connection', (socket) => {
         isResolvingRound: false,
         turnsTakenInRound: 0,
         currentDiscardFeederId: null,
-        wager: 0,
         currentMatchParticipants: [],
         roundBets: [],
-        debts: {},
-        ledgerStatements: []
+        debts: {}
       };
     }
     const room = rooms[roomId];
@@ -838,7 +875,8 @@ io.on('connection', (socket) => {
       isSpectator: isSpectator,
       manualSpectator: false,
       isReady: false,
-      isInVoice: false
+      isInVoice: false,
+      matchWager: 0
     });
 
     let joinMsg = `${playerName} joined the room.`;
@@ -880,9 +918,12 @@ io.on('connection', (socket) => {
   socket.on('setWager', ({ roomId, wager }) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.isSpectator) return;
+
     const parsed = Math.max(0, parseInt(wager) || 0);
-    room.wager = parsed;
-    broadcastState(roomId, `💰 Match wager set to $${parsed}/player.`);
+    player.matchWager = parsed;
+    broadcastState(roomId, `💰 ${player.name} set their match wager to $${parsed}.`);
     broadcastRoomList();
   });
 
@@ -990,7 +1031,11 @@ io.on('connection', (socket) => {
 
     if (!room.gameStarted && checkAllPlayersReady(room)) {
       room.gameStarted = true;
-      room.currentMatchParticipants = getActivePlayers(room).map(p => p.id);
+      room.currentMatchParticipants = getActivePlayers(room).map(p => ({
+        id: p.id,
+        name: p.name,
+        wager: p.matchWager || 0
+      }));
       startNewRound(roomId);
     }
     broadcastRoomList();
@@ -1036,13 +1081,18 @@ io.on('connection', (socket) => {
       isSpectator: false,
       manualSpectator: false,
       isReady: true,
-      isInVoice: false
+      isInVoice: false,
+      matchWager: 5
     });
 
     broadcastState(roomId, `Bot ${botCount} joined.`);
     if (checkAllPlayersReady(room)) {
       room.gameStarted = true;
-      room.currentMatchParticipants = getActivePlayers(room).map(p => p.id);
+      room.currentMatchParticipants = getActivePlayers(room).map(p => ({
+        id: p.id,
+        name: p.name,
+        wager: p.matchWager || 0
+      }));
       startNewRound(roomId);
     }
     broadcastRoomList();
