@@ -319,8 +319,8 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>👁️ Spectator Hand Peeking</h4>
-          Spectators can request permission to view an active player's hand. If granted, they can watch that hand. <strong>If the spectator changes views or leaves, permission is immediately revoked</strong> and they must ask again!
+          <h4>💰 Clearing Debts in Ledger</h4>
+          In the Ledger, if someone owes you money, you can tap <strong>"Clear"</strong> to forgive and wipe out their debt.
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -338,6 +338,20 @@
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
         <button type="button" class="secondary" onclick="cancelKnockConfirm()" style="padding:8px 12px;">Cancel</button>
         <button type="button" class="danger" onclick="confirmKnock()" style="padding:8px 12px;">Yes, Knock Anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLEAR DEBT CONFIRMATION MODAL -->
+  <div id="clearDebtConfirmModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#4caf50; text-align:center;">
+      <div style="font-weight:900; font-size:15px; color:#4caf50;">🤝 Forgive & Clear Debt?</div>
+      <div id="clearDebtConfirmText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Are you sure you want to clear this player's debt to you?
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" onclick="cancelClearDebt()" style="padding:8px 12px;">Cancel</button>
+        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" onclick="executeClearDebt()">Yes, Clear Debt</button>
       </div>
     </div>
   </div>
@@ -547,7 +561,7 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -615,6 +629,7 @@
     let currentlyViewingPlayerName = null;
     let currentlyViewingHand = null;
     let pendingPeekRequesterId = null;
+    let pendingClearDebtName = null;
 
     try {
       deviceId = localStorage.getItem('thirtyOne_deviceId');
@@ -933,6 +948,30 @@
       document.getElementById('peekBar').style.display = 'none';
       socket.emit('stopPeekingHand', currentRoom);
       forceRenderHand();
+    }
+
+    // CLEAR DEBT UI HANDLERS
+    function promptClearDebt(playerName, amount) {
+      pendingClearDebtName = playerName;
+      document.getElementById('clearDebtConfirmText').innerHTML = `
+        Are you sure you want to forgive and clear <strong>${playerName}</strong>'s debt of <strong>$${amount}</strong> to you?
+      `;
+      document.getElementById('clearDebtConfirmModal').style.display = 'flex';
+    }
+
+    function cancelClearDebt() {
+      document.getElementById('clearDebtConfirmModal').style.display = 'none';
+      pendingClearDebtName = null;
+    }
+
+    function executeClearDebt() {
+      if (!pendingClearDebtName) return;
+      socket.emit('clearDebt', {
+        roomId: currentRoom,
+        debtorName: pendingClearDebtName
+      });
+      document.getElementById('clearDebtConfirmModal').style.display = 'none';
+      pendingClearDebtName = null;
     }
 
     socket.on('spectatorHandUpdate', (data) => {
@@ -1634,7 +1673,7 @@
         wagerSec.style.display = 'none';
       }
 
-      // Ledger Personal Net Balances Render
+      // Ledger Personal Net Balances Render with "Clear" button for debts owed to me
       const overallEl = document.getElementById('ledgerOverallTotal');
       const sideBetEl = document.getElementById('ledgerSideBetTotal');
 
@@ -1675,9 +1714,13 @@
 
           let balClass = 'balance-neutral';
           let balText = '$0';
+          let clearBtnHtml = '';
+
           if (item.netBalance > 0) {
             balClass = 'balance-positive';
             balText = `+$${item.netBalance} (Owes You)`;
+            // If they owe you money, show a Clear Debt button
+            clearBtnHtml = `<button type="button" onclick="promptClearDebt('${item.player}', ${item.netBalance})" style="background:#4caf50; color:#fff; padding:2px 6px; font-size:10px; margin-left:6px; border-radius:4px;">Clear</button>`;
           } else if (item.netBalance < 0) {
             balClass = 'balance-negative';
             balText = `-$${Math.abs(item.netBalance)} (You Owe)`;
@@ -1698,7 +1741,10 @@
               <span><strong>${item.player}</strong>${leftBadge}</span>
               ${sideBetTag}
             </div>
-            <span class="${balClass}">${balText}</span>
+            <div style="display:flex; align-items:center;">
+              <span class="${balClass}">${balText}</span>
+              ${clearBtnHtml}
+            </div>
           `;
           ledgerList.appendChild(row);
         });
