@@ -33,6 +33,12 @@ const VALUES = {
   '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
 };
 
+// Hierarchy for sudden-death card cut: Ace is 14 (highest), 2 is 2 (lowest)
+const CUT_RANKS = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+};
+
 const MAX_ACTIVE_PLAYERS = 6;
 
 function createDeck() {
@@ -154,13 +160,6 @@ function startNewRound(roomId) {
   room.isResolvingRound = false;
   room.turnsTakenInRound = 0;
 
-  active.forEach(p => {
-    p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
-    p.takenFromPrev = [];
-  });
-
-  room.discardPile.push(room.deck.pop());
-
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
     const candidate = room.players[nextD];
@@ -170,10 +169,28 @@ function startNewRound(roomId) {
     }
   }
 
+  const dealer = room.players[room.dealerIdx];
+
+  active.forEach(p => {
+    p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+    p.fedCardsTracker = {};
+
+    if (dealer && dealer.id !== p.id) {
+      p.fedCardsTracker[dealer.id] = [];
+      p.hand.forEach(c => {
+        if (c.rank === 'A' || c.value === 10) {
+          p.fedCardsTracker[dealer.id].push(c);
+        }
+      });
+    }
+  });
+
+  room.discardPile.push(room.deck.pop());
+
   room.currentTurnIdx = room.dealerIdx;
   advanceTurnIndex(room);
 
-  broadcastState(roomId, `New round! Dealer: ${room.players[room.dealerIdx]?.name || 'Dealer'}.`);
+  broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}.`);
   triggerBotTurnIfNeeded(roomId);
 }
 
@@ -249,24 +266,131 @@ function resolveShowdown(roomId) {
   const lowestPlayers = active.filter(p => scores[p.id] === minScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
 
-  let losersText = '';
-  if (knocker && lowestPlayers.some(p => p.id === knocker.id)) {
+  // RULE: Knocker tie/failure rule takes precedence if knocker was strictly alone or tied
+  if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
     knocker.lives -= 1;
-    losersText = `${knocker.name} (Knocked & Tied/Lost)`;
-  } else {
-    lowestPlayers.forEach(p => { p.lives -= 1; });
-    losersText = lowestPlayers.map(p => p.name).join(', ');
+    const losersText = `${knocker.name} (Knocker lost alone)`;
+    io.to(roomId).emit('bigAnnouncement', {
+      title: '💀 ROUND OVER 💀',
+      message: `LOSER: ${losersText}`,
+      subtext: `Lowest Score: ${minScore}`,
+      duration: 4000
+    });
+    broadcastState(roomId, `Showdown finished! Loser: ${losersText}`);
+    setTimeout(() => startNewRound(roomId), 4200);
+    return;
   }
+
+  // TIE CASE: More than 1 player tied for lowest score
+  if (lowestPlayers.length > 1) {
+    // RULE 1: Heads-up (2 active players) tie => Re-deal round (Push)
+    if (active.length === 2) {
+      io.to(roomId).emit('bigAnnouncement', {
+        title: '🤝 HEADS-UP TIE! 🤝',
+        message: 'PUSH — RE-DEALING ROUND!',
+        subtext: `Both players tied at ${minScore} points`,
+        duration: 4500
+      });
+      broadcastState(roomId, `Heads-up tie at ${minScore}! Re-dealing with no lives lost.`);
+      setTimeout(() => startNewRound(roomId), 4500);
+      return;
+    }
+
+    // RULE 2: 3 or more people in the game => Draw cards from remainder of deck. Lowest takes the loss!
+    let tiebreakReport = [];
+    let lowestCutVal = 999;
+    let cutLoser = null;
+
+    // Reshuffle discard into deck if running low
+    if (room.deck.length < lowestPlayers.length) {
+      const top = room.discardPile.pop();
+      room.deck = room.deck.concat(room.discardPile.sort(() => Math.random() - 0.5));
+      room.discardPile = [top];
+    }
+
+    lowestPlayers.forEach(p => {
+      const cutCard = room.deck.pop();
+      const cutVal = CUT_RANKS[cutCard.rank];
+      tiebreakReport.push(`${p.name} drew ${cutCard.rank}${cutCard.suit}`);
+
+      if (cutVal < lowestCutVal) {
+        lowestCutVal = cutVal;
+        cutLoser = { player: p, card: cutCard };
+      }
+    });
+
+    cutLoser.player.lives -= 1;
+
+    io.to(roomId).emit('bigAnnouncement', {
+      title: '⚡ TIEBREAKER CUT! ⚡',
+      message: `LOSER: ${cutLoser.player.name} (${cutLoser.card.rank}${cutLoser.card.suit})`,
+      subtext: tiebreakReport.join(' | '),
+      duration: 5500
+    });
+
+    broadcastState(roomId, `Tiebreaker Cut: ${cutLoser.player.name} drew lowest (${cutLoser.card.rank}${cutLoser.card.suit}) and loses a life!`);
+    setTimeout(() => startNewRound(roomId), 5500);
+    return;
+  }
+
+  // SINGLE LOSER CASE
+  const singleLoser = lowestPlayers[0];
+  singleLoser.lives -= 1;
 
   io.to(roomId).emit('bigAnnouncement', {
     title: '💀 ROUND OVER 💀',
-    message: `LOSER: ${losersText}`,
+    message: `LOSER: ${singleLoser.name}`,
     subtext: `Lowest Score: ${minScore}`,
     duration: 4000
   });
 
-  broadcastState(roomId, `Showdown finished! Loser: ${losersText}`);
+  broadcastState(roomId, `Showdown finished! Loser: ${singleLoser.name}`);
   setTimeout(() => startNewRound(roomId), 4200);
+}
+
+function checkAndHandle31(room, player) {
+  if (calculateScore(player.hand) !== 31) return false;
+
+  room.isResolvingRound = true;
+  let penalizedGiver = null;
+
+  if (player.fedCardsTracker) {
+    for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
+      const hasAce = cards.some(c => c.rank === 'A');
+      const hasTen = cards.some(c => c.value === 10);
+      if (hasAce && hasTen) {
+        penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
+        if (penalizedGiver) break;
+      }
+    }
+  }
+
+  if (penalizedGiver) {
+    penalizedGiver.lives = 0;
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '⚡ 31 HIT! ⚡',
+      message: `LOSER: ${penalizedGiver.name} LOST BOTH LIVES!`,
+      subtext: `Fed an Ace and 10 to ${player.name} (21 of 31 rule)`,
+      duration: 4500
+    });
+  } else {
+    const losers = [];
+    getActivePlayers(room).forEach(p => {
+      if (p.id !== player.id) {
+        p.lives -= 1;
+        losers.push(p.name);
+      }
+    });
+    io.to(room.id).emit('bigAnnouncement', {
+      title: `⚡ ${player.name} HIT 31! ⚡`,
+      message: `LOSERS: ${losers.join(', ')}`,
+      subtext: 'Everyone else lost 1 life',
+      duration: 4500
+    });
+  }
+
+  setTimeout(() => startNewRound(room.id), 4500);
+  return true;
 }
 
 function triggerBotTurnIfNeeded(roomId) {
@@ -288,12 +412,10 @@ function triggerBotTurnIfNeeded(roomId) {
     const roundHasPassed = room.turnsTakenInRound >= activeCount;
     const score = calculateScore(current.hand);
 
-    // Bot Knock Check
     if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
 
-      // Broadcast big knock announcement with sound trigger
       io.to(roomId).emit('bigAnnouncement', {
         title: '🔔 KNOCK! 🔔',
         message: `${current.name.toUpperCase()} KNOCKED!`,
@@ -323,7 +445,13 @@ function triggerBotTurnIfNeeded(roomId) {
     let drawn;
     if (takeDiscard) {
       drawn = room.discardPile.pop();
-      current.takenFromPrev.push(drawn);
+      const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
+      if (prevPlayer) {
+        if (!current.fedCardsTracker) current.fedCardsTracker = {};
+        if (!current.fedCardsTracker[prevPlayer.id]) current.fedCardsTracker[prevPlayer.id] = [];
+        current.fedCardsTracker[prevPlayer.id].push(drawn);
+      }
+
       io.to(roomId).emit('bannerAnnouncement', {
         text: `👀 ${current.name} took ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
@@ -331,7 +459,7 @@ function triggerBotTurnIfNeeded(roomId) {
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
-        room.deck = room.discardPile.sort(() => Math.random() - 0.5);
+        room.deck = room.deck.concat(room.discardPile.sort(() => Math.random() - 0.5));
         room.discardPile = [top];
       }
       drawn = room.deck.pop();
@@ -352,38 +480,7 @@ function triggerBotTurnIfNeeded(roomId) {
     room.discardPile.push(discarded);
     room.turnsTakenInRound += 1;
 
-    if (calculateScore(current.hand) === 31) {
-      room.isResolvingRound = true;
-      const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
-      const hasAce = current.takenFromPrev.some(c => c.rank === 'A');
-      const hasTen = current.takenFromPrev.some(c => c.value === 10);
-
-      if (hasAce && hasTen && prevPlayer) {
-        prevPlayer.lives = 0;
-        io.to(roomId).emit('bigAnnouncement', {
-          title: '⚡ 31 HIT! ⚡',
-          message: `LOSER: ${prevPlayer.name} LOST BOTH LIVES!`,
-          subtext: `Fed an Ace and 10 to ${current.name}`,
-          duration: 4500
-        });
-      } else {
-        const losers = [];
-        getActivePlayers(room).forEach(p => {
-          if (p.id !== current.id) {
-            p.lives -= 1;
-            losers.push(p.name);
-          }
-        });
-        io.to(roomId).emit('bigAnnouncement', {
-          title: `⚡ ${current.name} HIT 31! ⚡`,
-          message: `LOSERS: ${losers.join(', ')}`,
-          subtext: 'Everyone else lost 1 life',
-          duration: 4500
-        });
-      }
-      setTimeout(() => startNewRound(roomId), 4500);
-      return;
-    }
+    if (checkAndHandle31(room, current)) return;
 
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
@@ -464,7 +561,7 @@ io.on('connection', (socket) => {
       name: playerName || `Player ${room.players.length + 1}`,
       lives: isSpectator ? 0 : 2,
       hand: [],
-      takenFromPrev: [],
+      fedCardsTracker: {},
       isBot: false,
       isSpectator: isSpectator,
       isReady: false,
@@ -562,7 +659,7 @@ io.on('connection', (socket) => {
       name: `Bot ${botCount}`,
       lives: 2,
       hand: [],
-      takenFromPrev: [],
+      fedCardsTracker: {},
       isBot: true,
       isSpectator: false,
       isReady: true,
@@ -594,7 +691,6 @@ io.on('connection', (socket) => {
       room.knockerId = player.id;
       room.turnsLeftAfterKnock = activeCount - 1;
 
-      // Broadcast big knock announcement with sound trigger
       io.to(roomId).emit('bigAnnouncement', {
         title: '🔔 KNOCK! 🔔',
         message: `${player.name.toUpperCase()} KNOCKED!`,
@@ -626,7 +722,13 @@ io.on('connection', (socket) => {
     if (source === 'discard') {
       if (room.discardPile.length === 0) return;
       drawn = room.discardPile.pop();
-      player.takenFromPrev.push(drawn);
+
+      const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
+      if (prevPlayer) {
+        if (!player.fedCardsTracker) player.fedCardsTracker = {};
+        if (!player.fedCardsTracker[prevPlayer.id]) player.fedCardsTracker[prevPlayer.id] = [];
+        player.fedCardsTracker[prevPlayer.id].push(drawn);
+      }
       
       io.to(roomId).emit('bannerAnnouncement', {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
@@ -636,7 +738,7 @@ io.on('connection', (socket) => {
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
-        room.deck = room.discardPile.sort(() => Math.random() - 0.5);
+        room.deck = room.deck.concat(room.discardPile.sort(() => Math.random() - 0.5));
         room.discardPile = [top];
       }
       drawn = room.deck.pop();
@@ -669,38 +771,7 @@ io.on('connection', (socket) => {
     room.drawnCard = null;
     room.turnsTakenInRound += 1;
 
-    if (calculateScore(player.hand) === 31) {
-      room.isResolvingRound = true;
-      const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
-      const hasAce = player.takenFromPrev.some(c => c.rank === 'A');
-      const hasTen = player.takenFromPrev.some(c => c.value === 10);
-
-      if (hasAce && hasTen && prevPlayer) {
-        prevPlayer.lives = 0;
-        io.to(roomId).emit('bigAnnouncement', {
-          title: '⚡ 31 HIT! ⚡',
-          message: `LOSER: ${prevPlayer.name} LOST BOTH LIVES!`,
-          subtext: `Fed an Ace and 10 to ${player.name}`,
-          duration: 4500
-        });
-      } else {
-        const losers = [];
-        getActivePlayers(room).forEach(p => {
-          if (p.id !== player.id) {
-            p.lives -= 1;
-            losers.push(p.name);
-          }
-        });
-        io.to(roomId).emit('bigAnnouncement', {
-          title: `⚡ ${player.name} HIT 31! ⚡`,
-          message: `LOSERS: ${losers.join(', ')}`,
-          subtext: 'Everyone else lost 1 life',
-          duration: 4500
-        });
-      }
-      setTimeout(() => startNewRound(roomId), 4500);
-      return;
-    }
+    if (checkAndHandle31(room, player)) return;
 
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
