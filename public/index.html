@@ -13,68 +13,68 @@
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
-      margin: 0; padding: 10px;
+      margin: 0; padding: 6px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background: #1b4d3e; color: #fff;
       display: flex; flex-direction: column; height: 100vh; overflow: hidden;
       position: relative;
     }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
-    .header-controls { display: flex; align-items: center; gap: 6px; }
-    .status-box { background: rgba(0,0,0,0.35); padding: 8px; border-radius: 8px; font-size: 14px; text-align: center; min-height: 38px; display: flex; align-items: center; justify-content: center; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; }
+    .header-controls { display: flex; align-items: center; gap: 4px; }
+    .status-box { background: rgba(0,0,0,0.35); padding: 6px; border-radius: 8px; font-size: 13px; text-align: center; min-height: 32px; display: flex; align-items: center; justify-content: center; }
     
     .table {
       flex: 1; display: flex; flex-direction: column; justify-content: space-between;
-      align-items: center; background: #164033; border-radius: 12px; margin: 8px 0; padding: 10px;
-      position: relative;
+      align-items: center; background: #164033; border-radius: 12px; margin: 4px 0; padding: 6px;
+      position: relative; min-height: 0;
     }
     
     .pots-header {
-      display: flex; gap: 8px; align-items: center; justify-content: center; width: 100%;
+      display: flex; gap: 6px; align-items: center; justify-content: center; width: 100%; flex-shrink: 0;
     }
     .pot-banner {
-      background: #ffd700; color: #111; font-weight: 900; font-size: 12px;
-      padding: 3px 10px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      background: #ffd700; color: #111; font-weight: 900; font-size: 11px;
+      padding: 2px 8px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       display: none; align-items: center; gap: 4px;
     }
     .round-pot-banner {
-      background: #ff9800; color: #111; font-weight: 900; font-size: 12px;
-      padding: 3px 10px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      background: #ff9800; color: #111; font-weight: 900; font-size: 11px;
+      padding: 2px 8px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       display: none; align-items: center; gap: 4px;
     }
 
-    .players-list { display: flex; gap: 8px; width: 100%; justify-content: center; flex-wrap: wrap; }
+    .players-list { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; }
     .player-tag {
-      background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 16px; font-size: 13px; display: flex; align-items: center; gap: 4px;
+      background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 16px; font-size: 12px; display: flex; align-items: center; gap: 4px;
     }
     .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; background: rgba(255,204,0,0.25); }
     .player-tag.spectator { opacity: 0.6; border: 1px dashed #aaa; }
     .player-tag.is-ready { border-left: 4px solid #4caf50; }
     .player-tag.disconnected { opacity: 0.5; border-color: #f44336; }
     
-    .middle-piles { display: flex; gap: 24px; align-items: center; margin: 8px 0; position: relative; }
+    .middle-piles { display: flex; gap: 20px; align-items: center; margin: 4px 0; flex-shrink: 0; }
     
     .card {
-      width: 72px; height: 104px; min-width: 72px; min-height: 104px;
+      width: 66px; height: 96px; min-width: 66px; min-height: 96px;
       background: #ffffff; border-radius: 8px;
       display: flex; flex-direction: column; justify-content: center; align-items: center;
-      font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.35);
+      font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.35);
       user-select: none; border: 1px solid #ccc;
       transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     .card.red { color: #d32f2f; }
     .card.black { color: #111111; }
-    .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 13px; text-align: center; }
+    .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 12px; text-align: center; }
     .card.discard-highlight { outline: 3px solid #ffcc00; transform: translateY(-4px); }
 
     .card.mini {
-      width: 44px; height: 64px; min-width: 44px; min-height: 64px;
-      font-size: 14px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      width: 40px; height: 58px; min-width: 40px; min-height: 58px;
+      font-size: 13px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
-    .card.mini span:last-child { font-size: 14px !important; }
+    .card.mini span:last-child { font-size: 13px !important; }
 
     .flying-card {
-      position: fixed; width: 72px; height: 104px;
+      position: fixed; width: 66px; height: 96px;
       background: #0d47a1; border: 2px solid #ffffff; border-radius: 8px;
       box-shadow: 0 8px 20px rgba(0,0,0,0.5); pointer-events: none; z-index: 800;
       transition: all 0.42s cubic-bezier(0.25, 1, 0.5, 1);
@@ -88,49 +88,49 @@
       100% { transform: rotateY(0deg) scale(1); opacity: 1; }
     }
 
-    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
-    .hand-cards { display: flex; gap: 10px; justify-content: center; min-height: 110px; }
+    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; }
+    .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
     
-    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; }
+    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; }
     button {
-      padding: 10px 12px; border: none; border-radius: 8px; font-size: 13px; font-weight: bold;
+      padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
       background: #ffcc00; color: #111; cursor: pointer; touch-action: manipulation;
     }
     button.secondary { background: #e0e0e0; color: #222; }
-    button.danger { background: #d32f2f; color: #fff; padding: 6px 10px; font-size: 12px; }
-    button.voice-btn { background: #00897b; color: #fff; padding: 6px 10px; font-size: 12px; }
-    button.voice-on { background: #e53935; color: #fff; padding: 6px 10px; font-size: 12px; }
+    button.danger { background: #d32f2f; color: #fff; padding: 5px 8px; font-size: 11px; }
+    button.voice-btn { background: #00897b; color: #fff; padding: 5px 8px; font-size: 11px; }
+    button.voice-on { background: #e53935; color: #fff; padding: 5px 8px; font-size: 11px; }
     button.ready-on { background: #4caf50; color: #fff; }
     button.spectate-btn { background: #455a64; color: #fff; }
-    button.ledger-btn { background: #ffd700; color: #111; padding: 6px 10px; font-size: 12px; }
+    button.ledger-btn { background: #ffd700; color: #111; padding: 5px 8px; font-size: 11px; }
     button.side-bet-btn { background: #ff9800; color: #111; }
     button.first-loser-btn { background: #e91e63; color: #fff; }
     button.peek-btn { background: #7b1fa2; color: #fff; }
-    button.tutorial-btn { background: #00acc1; color: #fff; padding: 6px 10px; font-size: 12px; }
+    button.tutorial-btn { background: #00acc1; color: #fff; padding: 5px 8px; font-size: 11px; }
     button:disabled { background: #555; color: #888; }
 
     .spectator-badge {
-      background: #0288d1; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px;
+      background: #0288d1; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; margin-left: 4px;
     }
 
     .banner-announcement {
-      position: fixed; top: 12px; left: 50%; transform: translateX(-50%) translateY(-100px);
-      background: #ff9800; color: #111; font-weight: 800; font-size: 14px;
-      padding: 10px 18px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%) translateY(-100px);
+      background: #ff9800; color: #111; font-weight: 800; font-size: 13px;
+      padding: 8px 14px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
       z-index: 500; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       pointer-events: none; text-align: center; border: 2px solid #fff;
     }
     .banner-announcement.show { transform: translateX(-50%) translateY(0); }
 
     .chat-btn {
-      position: fixed; right: 12px; bottom: 70px;
+      position: fixed; right: 10px; bottom: 65px;
       background: #0288d1; color: white; border-radius: 24px;
-      padding: 8px 14px; font-size: 14px; display: flex; align-items: center;
-      gap: 6px; z-index: 50; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+      padding: 6px 12px; font-size: 13px; display: flex; align-items: center;
+      gap: 4px; z-index: 50; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
     }
     .chat-badge {
       background: #d32f2f; color: white; border-radius: 50%;
-      padding: 2px 6px; font-size: 11px; font-weight: bold; display: none;
+      padding: 2px 5px; font-size: 10px; font-weight: bold; display: none;
     }
     .chat-panel {
       position: fixed; top: 0; right: -100%; width: 85%; max-width: 320px; height: 100%;
@@ -139,23 +139,23 @@
     }
     .chat-panel.open { right: 0; }
     .chat-header {
-      padding: 12px; background: rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center;
-      font-weight: bold; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding: 10px; background: rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center;
+      font-weight: bold; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1);
     }
     .chat-body {
-      flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+      flex: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
     }
     .chat-msg {
-      background: rgba(255,255,255,0.08); padding: 6px 10px; border-radius: 8px; font-size: 13px; line-height: 1.3;
+      background: rgba(255,255,255,0.08); padding: 5px 8px; border-radius: 8px; font-size: 12px; line-height: 1.3;
     }
-    .chat-msg .sender { font-weight: bold; color: #ffcc00; font-size: 12px; margin-bottom: 2px; }
-    .chat-msg .time { font-size: 10px; opacity: 0.6; float: right; margin-left: 8px; }
+    .chat-msg .sender { font-weight: bold; color: #ffcc00; font-size: 11px; margin-bottom: 2px; }
+    .chat-msg .time { font-size: 9px; opacity: 0.6; float: right; margin-left: 6px; }
     .chat-msg.spec .sender { color: #81d4fa; }
     .chat-footer {
-      padding: 10px; display: flex; gap: 6px; background: rgba(0,0,0,0.3);
+      padding: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.3);
     }
     .chat-input {
-      flex: 1; padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #fff; color: #111;
+      flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; background: #fff; color: #111;
     }
 
     .big-announcement-overlay {
@@ -165,22 +165,22 @@
       transition: opacity 0.3s ease; text-align: center; padding: 16px; overflow-y: auto;
     }
     .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
-    .ann-title { font-size: 24px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 8px; font-weight: 800; }
-    .ann-message { font-size: 28px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 6px; }
-    .ann-subtext { font-size: 15px; color: #ffffff; opacity: 0.9; max-width: 90%; margin-bottom: 12px; }
+    .ann-title { font-size: 22px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 6px; font-weight: 800; }
+    .ann-message { font-size: 24px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 4px; }
+    .ann-subtext { font-size: 14px; color: #ffffff; opacity: 0.9; max-width: 90%; margin-bottom: 10px; }
 
     .showdown-hands-grid {
-      display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 480px; width: 100%; margin-top: 6px;
+      display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 480px; width: 100%; margin-top: 4px;
     }
     .showdown-player-box {
-      background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 10px;
-      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 6px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
     .showdown-player-info {
-      font-size: 13px; font-weight: bold; color: #ffcc00; display: flex; gap: 6px;
+      font-size: 12px; font-weight: bold; color: #ffcc00; display: flex; gap: 4px;
     }
-    .showdown-cards-row { display: flex; gap: 4px; }
+    .showdown-cards-row { display: flex; gap: 3px; }
 
     .card-cut-overlay {
       position: absolute; inset: 0; background: rgba(10, 25, 20, 0.96);
@@ -191,41 +191,41 @@
       display: flex; pointer-events: auto;
     }
     .card-cut-spread {
-      display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; max-height: 250px;
-      overflow-y: auto; padding: 10px; margin: 12px 0; background: rgba(0,0,0,0.25); border-radius: 12px;
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; max-height: 220px;
+      overflow-y: auto; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.25); border-radius: 12px;
     }
     .card-cut-slot {
-      width: 46px; height: 68px; background: #0d47a1; border: 2px solid #fff; border-radius: 6px;
+      width: 44px; height: 64px; background: #0d47a1; border: 2px solid #fff; border-radius: 6px;
       cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center;
       justify-content: center; font-size: 11px; font-weight: bold; color: #fff;
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
-    .card-cut-picks-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+    .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
 
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 1100; padding: 20px; pointer-events: auto;
+      z-index: 1100; padding: 16px; pointer-events: auto;
     }
     .modal-card {
       background: #164033; border: 2px solid #ffd700; border-radius: 12px;
-      padding: 16px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 10px;
+      padding: 14px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 8px;
     }
     .ledger-summary-banner {
-      background: rgba(0,0,0,0.4); border-radius: 8px; padding: 8px; text-align: center;
-      font-size: 13px; font-weight: bold; display: flex; flex-direction: column; gap: 4px;
+      background: rgba(0,0,0,0.4); border-radius: 8px; padding: 6px; text-align: center;
+      font-size: 12px; font-weight: bold; display: flex; flex-direction: column; gap: 3px;
     }
     .balance-positive { color: #4caf50; font-weight: 900; }
     .balance-negative { color: #f44336; font-weight: 900; }
     .balance-neutral { color: #e0e0e0; }
-    .player-left-tag { font-size: 11px; opacity: 0.65; margin-left: 4px; }
+    .player-left-tag { font-size: 10px; opacity: 0.65; margin-left: 4px; }
 
     .wager-bar {
-      display: flex; gap: 6px; align-items: center; justify-content: center; margin: 4px 0;
+      display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0;
     }
     .wager-chip {
-      padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;
+      padding: 3px 7px; border-radius: 12px; font-size: 11px; font-weight: bold;
       background: rgba(255,255,255,0.15); cursor: pointer; border: 1px solid #ccc;
     }
     .wager-chip.selected {
@@ -235,40 +235,40 @@
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
       display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
-      gap: 12px; z-index: 1000; padding: 30px 16px; overflow-y: auto; pointer-events: auto;
+      gap: 10px; z-index: 1000; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
     }
     .room-directory {
-      width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
+      width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
     }
     .room-dir-item {
       background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px;
-      padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
-      cursor: pointer; font-size: 13px;
+      padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; font-size: 12px;
     }
     .room-dir-item:hover { background: rgba(255,255,255,0.2); }
-    .badge-in-play { background: #e53935; color: #fff; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
-    .badge-lobby { background: #4caf50; color: #fff; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+    .badge-in-play { background: #e53935; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
+    .badge-lobby { background: #4caf50; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
 
     .tutorial-section {
-      text-align: left; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;
-      font-size: 12px; line-height: 1.4; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto;
+      text-align: left; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;
+      font-size: 11px; line-height: 1.35; display: flex; flex-direction: column; gap: 5px; max-height: 280px; overflow-y: auto;
     }
-    .tutorial-section h4 { margin: 4px 0 2px 0; color: #ffd700; font-size: 13px; }
+    .tutorial-section h4 { margin: 3px 0 2px 0; color: #ffd700; font-size: 12px; }
 
     .opponents-checklist {
-      display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto;
-      background: rgba(0,0,0,0.25); padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+      display: flex; flex-direction: column; gap: 3px; max-height: 100px; overflow-y: auto;
+      background: rgba(0,0,0,0.25); padding: 5px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
     }
     .opp-checkbox-item {
-      display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px; cursor: pointer;
     }
     .opp-checkbox-item input {
-      width: 16px; height: 16px; margin: 0; cursor: pointer;
+      width: 15px; height: 15px; margin: 0; cursor: pointer;
     }
 
     .peek-status-bar {
-      background: #7b1fa2; color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 12px;
-      font-weight: bold; display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 320px;
+      background: #7b1fa2; color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 11px;
+      font-weight: bold; display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 300px;
     }
 
     input, select {
@@ -285,8 +285,8 @@
   <div id="tutorialModal" class="custom-modal">
     <div class="modal-card" style="border-color:#00acc1; max-width:420px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:16px; color:#00acc1;">📖 How to Play 31</span>
-        <span onclick="toggleTutorialModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
+        <span style="font-weight:900; font-size:15px; color:#00acc1;">📖 How to Play 31</span>
+        <span onclick="toggleTutorialModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div class="tutorial-section">
         <div>
@@ -319,42 +319,41 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>💀 First to Lose Side Bets</h4>
-          • Bet with opponents on who will lose the match first (run out of lives first).<br>
-          • Stays active across rounds until someone is eliminated!
+          <h4>👁️ Spectator Hand Peeking</h4>
+          Spectators can request permission to view an active player's hand. If granted, they can watch that hand. <strong>If the spectator changes views or leaves, permission is immediately revoked</strong> and they must ask again!
         </div>
       </div>
-      <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:10px;">Got It!</button>
+      <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
     </div>
   </div>
 
   <!-- KNOCK WARNING CONFIRMATION MODAL -->
   <div id="knockConfirmModal" class="custom-modal">
     <div class="modal-card" style="border-color:#f44336; text-align:center;">
-      <div style="font-weight:900; font-size:16px; color:#f44336;">⚠️ High Card in Discard!</div>
-      <div style="font-size:13px; line-height:1.4; opacity:0.9;">
+      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️ High Card in Discard!</div>
+      <div style="font-size:12px; line-height:1.4; opacity:0.9;">
         There is an <strong id="knockConfirmCard" style="color:#ffd700;">Ace/Face card</strong> on top of the discard pile.<br><br>
         Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
       </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
-        <button type="button" class="secondary" onclick="cancelKnockConfirm()" style="padding:10px 14px;">Cancel</button>
-        <button type="button" class="danger" onclick="confirmKnock()" style="padding:10px 14px;">Yes, Knock Anyway</button>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" onclick="cancelKnockConfirm()" style="padding:8px 12px;">Cancel</button>
+        <button type="button" class="danger" onclick="confirmKnock()" style="padding:8px 12px;">Yes, Knock Anyway</button>
       </div>
     </div>
   </div>
 
   <!-- INITIAL DEALER CUT OVERLAY -->
   <div id="dealerCutOverlay" class="card-cut-overlay">
-    <h2 style="color:#ffd700; margin:0 0 6px 0;">👑 INITIAL DEALER CUT 👑</h2>
-    <div id="dealerCutInstruction" style="font-size:14px; font-weight:bold; margin-bottom:8px;">Tap any face-down card! Lowest card becomes Dealer.</div>
+    <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">👑 INITIAL DEALER CUT 👑</h2>
+    <div id="dealerCutInstruction" style="font-size:13px; font-weight:bold; margin-bottom:6px;">Tap any face-down card! Lowest card becomes Dealer.</div>
     <div id="dealerCutSpread" class="card-cut-spread"></div>
     <div id="dealerCutPicksContainer" class="card-cut-picks-row"></div>
   </div>
 
   <!-- INTERACTIVE TIEBREAKER OVERLAY -->
   <div id="tiebreakerOverlay" class="card-cut-overlay">
-    <h2 style="color:#ffd700; margin:0 0 6px 0;">⚡ SUDDEN DEATH TIEBREAKER ⚡</h2>
-    <div id="tiebreakerInstruction" style="font-size:14px; font-weight:bold; margin-bottom:8px;">Choose your face-down card!</div>
+    <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">⚡ SUDDEN DEATH TIEBREAKER ⚡</h2>
+    <div id="tiebreakerInstruction" style="font-size:13px; font-weight:bold; margin-bottom:6px;">Choose your face-down card!</div>
     <div id="tiebreakerSpread" class="card-cut-spread"></div>
     <div id="tiebreakerPicksContainer" class="card-cut-picks-row"></div>
   </div>
@@ -362,13 +361,13 @@
   <!-- INCOMING SIDE BET PROPOSAL PROMPT -->
   <div id="sideBetOfferModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800; text-align:center;">
-      <div style="font-weight:900; font-size:16px; color:#ff9800;">🎲 Side Bet Challenge!</div>
-      <div id="sideBetOfferText" style="font-size:13px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+      <div style="font-weight:900; font-size:15px; color:#ff9800;">🎲 Side Bet Challenge!</div>
+      <div id="sideBetOfferText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Player challenged you to a $5 side bet.
       </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
-        <button type="button" class="secondary" onclick="respondSideBet(false)" style="padding:10px 14px;">Decline</button>
-        <button type="button" style="background:#ff9800; color:#111; padding:10px 14px;" onclick="respondSideBet(true)">Accept Bet</button>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" onclick="respondSideBet(false)" style="padding:8px 12px;">Decline</button>
+        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px;" onclick="respondSideBet(true)">Accept Bet</button>
       </div>
     </div>
   </div>
@@ -376,13 +375,13 @@
   <!-- INCOMING SPECTATOR PEEK REQUEST PROMPT FOR ACTIVE PLAYERS -->
   <div id="peekRequestModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
-      <div style="font-weight:900; font-size:16px; color:#ba68c8;">👁️ Spectator Peek Request</div>
-      <div id="peekRequestText" style="font-size:13px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Spectator Peek Request</div>
+      <div id="peekRequestText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Spectator wants to view your hand. Allow them?
       </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
-        <button type="button" class="secondary" onclick="respondPeekPermission(false)" style="padding:10px 14px;">Deny</button>
-        <button type="button" style="background:#7b1fa2; color:#fff; padding:10px 14px;" onclick="respondPeekPermission(true)">Allow Peek</button>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" onclick="respondPeekPermission(false)" style="padding:8px 12px;">Deny</button>
+        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" onclick="respondPeekPermission(true)">Allow Peek</button>
       </div>
     </div>
   </div>
@@ -391,13 +390,13 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Request Hand View</span>
-        <span onclick="togglePeekSelectorModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
+        <span onclick="togglePeekSelectorModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
-      <div style="font-size:12px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
+      <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
       <select id="peekPlayerSelect"></select>
-      <div style="font-size:11px; opacity:0.75;">(Note: If you switch views or the round ends, permission expires!)</div>
-      <button type="button" onclick="submitPeekRequest()" style="background:#7b1fa2; color:#fff; padding:10px; font-weight:bold;">Send Request</button>
+      <div style="font-size:10px; opacity:0.75;">(Note: If you switch views or the round ends, permission expires!)</div>
+      <button type="button" onclick="submitPeekRequest()" style="background:#7b1fa2; color:#fff; padding:8px; font-weight:bold;">Send Request</button>
     </div>
   </div>
 
@@ -405,8 +404,8 @@
   <div id="ledgerModal" class="custom-modal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:16px; color:#ffd700;">💰 Table Ledger & Side Bets</span>
-        <span onclick="toggleLedgerModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
+        <span style="font-weight:900; font-size:15px; color:#ffd700;">💰 Table Ledger & Side Bets</span>
+        <span onclick="toggleLedgerModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
 
       <div class="ledger-summary-banner">
@@ -420,12 +419,12 @@
         </div>
       </div>
 
-      <div style="font-size:11px; opacity:0.75; text-align:center;">(+ = they owe you, - = you owe them)</div>
+      <div style="font-size:10px; opacity:0.75; text-align:center;">(+ = they owe you, - = you owe them)</div>
 
-      <div id="ledgerList" style="display:flex; flex-direction:column; gap:6px; font-size:13px; max-height:220px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.3); border-radius:8px;">
+      <div id="ledgerList" style="display:flex; flex-direction:column; gap:5px; font-size:12px; max-height:200px; overflow-y:auto; padding:5px; background:rgba(0,0,0,0.3); border-radius:8px;">
         <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
       </div>
-      <button type="button" onclick="toggleLedgerModal()" class="secondary" style="padding:8px;">Close</button>
+      <button type="button" onclick="toggleLedgerModal()" class="secondary" style="padding:6px;">Close</button>
     </div>
   </div>
 
@@ -433,16 +432,16 @@
   <div id="roundBetModal" class="custom-modal">
     <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:15px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
-        <span onclick="toggleRoundBetModal()" style="cursor:pointer; font-size:22px; padding:4px;">✕</span>
+        <span style="font-weight:900; font-size:14px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
+        <span onclick="toggleRoundBetModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       
       <div id="sideBetModalDesc" style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents:</div>
 
-      <div style="display:flex; flex-direction:column; gap:4px; text-align:left;">
+      <div style="display:flex; flex-direction:column; gap:3px; text-align:left;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">1. Choose Opponents To Challenge:</label>
-          <div style="font-size:11px; display:flex; gap:6px;">
+          <div style="font-size:10px; display:flex; gap:6px;">
             <a href="javascript:void(0)" onclick="selectAllOpponents(true)" style="color:#00acc1; text-decoration:none;">All</a> | 
             <a href="javascript:void(0)" onclick="selectAllOpponents(false)" style="color:#aaa; text-decoration:none;">Clear</a>
           </div>
@@ -451,18 +450,18 @@
       </div>
 
       <div id="roundContenderSection" style="display:flex; gap:6px; width:100%;">
-        <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
+        <div style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:left;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick</label>
           <select id="betMyTargetSelect" onchange="filterTheirTargetOptions()"></select>
         </div>
-        <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
+        <div style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:left;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">3. Their Pick</label>
           <select id="betTheirTargetSelect"></select>
         </div>
       </div>
 
       <div style="display:flex; gap:6px; justify-content:center; align-items:center; margin: 2px 0;">
-        <span style="font-size:12px; font-weight:bold;">Per-Opponent Bet:</span>
+        <span style="font-size:11px; font-weight:bold;">Per-Opponent Bet:</span>
         <div class="wager-chip" onclick="selectRoundBetAmt(1)">$1</div>
         <div class="wager-chip selected" id="defaultBetChip" onclick="selectRoundBetAmt(5)">$5</div>
         <div class="wager-chip" onclick="selectRoundBetAmt(10)">$10</div>
@@ -473,7 +472,7 @@
         0 opponents selected (Total stake: $0)
       </div>
 
-      <button type="button" onclick="submitMultiPeerSideBet()" style="background:#ff9800; color:#111; padding:10px; font-weight:bold;">Send Challenges</button>
+      <button type="button" onclick="submitMultiPeerSideBet()" style="background:#ff9800; color:#111; padding:8px; font-weight:bold;">Send Challenges</button>
     </div>
   </div>
 
@@ -489,7 +488,7 @@
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-footer">
       <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" onkeypress="if(event.key==='Enter') sendChat()" />
-      <button type="button" onclick="sendChat()" style="padding: 8px 12px; font-size: 13px;">Send</button>
+      <button type="button" onclick="sendChat()" style="padding: 6px 10px; font-size: 12px;">Send</button>
     </div>
   </div>
 
@@ -502,19 +501,19 @@
 
   <!-- LOBBY SCREEN -->
   <div id="lobby" class="lobby-modal">
-    <h2 style="margin:10px 0 4px 0; font-size: 26px; color:#ffd700;">31 Card Game</h2>
-    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:8px; padding: 10px 16px; font-size: 14px;">📖 How to Play & Rules</button>
+    <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
+    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
     <input id="playerName" placeholder="Your Player Name" autocomplete="off" />
     <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" />
-    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:14px; font-size: 16px; background:#ffd700; color:#111;">Enter Game Room</button>
+    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111;">Enter Game Room</button>
 
-    <div style="width:100%; max-width:280px; margin-top:14px;">
-      <div style="font-size:13px; font-weight:bold; color:#ffd700; margin-bottom:6px; display:flex; justify-content:space-between;">
+    <div style="width:100%; max-width:280px; margin-top:10px;">
+      <div style="font-size:12px; font-weight:bold; color:#ffd700; margin-bottom:4px; display:flex; justify-content:space-between;">
         <span>🎮 Lobbies In Play</span>
         <span id="lobbyCountLabel" style="opacity:0.75; font-size:11px;">0 active</span>
       </div>
       <div id="roomsContainer" class="room-directory">
-        <div style="opacity:0.5; font-size:12px; text-align:center;">No active lobbies yet. Create one above!</div>
+        <div style="opacity:0.5; font-size:11px; text-align:center;">No active lobbies yet. Create one above!</div>
       </div>
     </div>
   </div>
@@ -526,7 +525,7 @@
       <button type="button" class="tutorial-btn" onclick="toggleTutorialModal()">📖 Rules</button>
       <button type="button" class="ledger-btn" onclick="toggleLedgerModal()">💰 Ledger</button>
       <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:6px 10px; font-size:12px;" onclick="toggleMute()">🎙️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️</button>
       <button type="button" class="danger" onclick="leaveLobby()">Leave</button>
     </div>
   </div>
@@ -553,7 +552,7 @@
       </div>
 
       <div id="wagerSection" class="wager-bar" style="display:none;">
-        <span style="font-size:12px; font-weight:bold;">My Match Bet:</span>
+        <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip" onclick="setWager(0)">$0</div>
         <div class="wager-chip" onclick="setWager(1)">$1</div>
         <div class="wager-chip" onclick="setWager(5)">$5</div>
@@ -561,9 +560,9 @@
         <div class="wager-chip" onclick="setWager(20)">$20</div>
       </div>
 
-      <div id="handInstruction" style="font-size: 13px; opacity: 0.85;">Your Hand</div>
+      <div id="handInstruction" style="font-size: 12px; opacity: 0.85;">Your Hand</div>
       <div class="hand-cards" id="handArea">
-        <div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>
+        <div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>
       </div>
     </div>
   </div>
@@ -601,7 +600,7 @@
     let isChatOpen = false;
     let currentWager = 0;
     let selectedSideBetAmt = 5;
-    let currentSideBetType = 'round'; // 'round' or 'firstLoser'
+    let currentSideBetType = 'round';
     let latestActivePlayers = [];
     let latestAllTableMembers = [];
     let latestTopDiscard = null;
@@ -668,7 +667,7 @@
             hArea.appendChild(renderCard(card, null, false, false));
           });
         } else {
-          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
+          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 30px; font-size: 14px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
         }
       } else if (myHand.length > 0) {
         hArea.innerHTML = '';
@@ -676,7 +675,7 @@
           hArea.appendChild(renderCard(card, () => discard(idx), isTurn && hasDrawn));
         });
       } else {
-        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
+        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
       }
     }
 
@@ -810,7 +809,7 @@
       countLabel.innerText = `${rooms.length} active`;
 
       if (rooms.length === 0) {
-        container.innerHTML = '<div style="opacity:0.5; font-size:12px; text-align:center;">No active lobbies yet. Create one above!</div>';
+        container.innerHTML = '<div style="opacity:0.5; font-size:11px; text-align:center;">No active lobbies yet. Create one above!</div>';
         return;
       }
 
@@ -832,7 +831,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:11px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -875,7 +874,7 @@
         document.getElementById('lobby').style.display = 'flex';
         document.getElementById('roomLabel').innerText = 'Room: -';
         document.getElementById('scoreLabel').innerText = 'Score: 0';
-        document.getElementById('handArea').innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
+        document.getElementById('handArea').innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
         document.getElementById('playersArea').innerHTML = '';
       }
     }
@@ -1026,7 +1025,7 @@
       currentSideBetType = 'firstLoser';
       document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Side Bet';
       document.getElementById('sideBetModalDesc').innerText = 'Bet on who will lose the match first (run out of lives first):';
-      document.getElementById('roundContenderSection').style.display = 'none'; // Only need one target selection
+      document.getElementById('roundContenderSection').style.display = 'none';
       toggleRoundBetModal();
     }
 
@@ -1057,7 +1056,7 @@
         });
 
         if (selectableOpponents === 0) {
-          checklist.innerHTML = '<div style="font-size:12px; opacity:0.6; padding:4px;">No other players online.</div>';
+          checklist.innerHTML = '<div style="font-size:11px; opacity:0.6; padding:4px;">No other players online.</div>';
         }
 
         latestActivePlayers.forEach(p => {
@@ -1098,28 +1097,20 @@
         return alert('Please check off at least one opponent to challenge.');
       }
 
-      let targetName = '';
-      let theirTargetName = '';
+      let targetName = document.getElementById('betMyTargetSelect').value;
+      let theirTargetName = document.getElementById('betTheirTargetSelect').value;
+
+      if (!targetName) return alert('Select a target contender.');
 
       if (currentSideBetType === 'round') {
-        targetName = document.getElementById('betMyTargetSelect').value;
-        theirTargetName = document.getElementById('betTheirTargetSelect').value;
-        if (!targetName || !theirTargetName) return alert('Select contenders for the side bet.');
+        if (!theirTargetName) return alert('Select their pick.');
         if (targetName === theirTargetName) return alert('You must pick different contenders to bet against each other!');
-
-        const validOpponents = opponentNames.filter(opp => opp !== theirTargetName);
-        if (validOpponents.length === 0) {
-          return alert('You cannot challenge opponents to bet on their own hand!');
-        }
-      } else {
-        targetName = document.getElementById('betMyTargetSelect').value;
-        if (!targetName) return alert('Select a player who you think will lose first.');
       }
 
       socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
         betType: currentSideBetType,
-        opponentNames: currentSideBetType === 'round' ? opponentNames.filter(opp => opp !== theirTargetName) : opponentNames,
+        opponentNames: opponentNames,
         targetPlayerName: targetName,
         amount: selectedSideBetAmt
       });
@@ -1373,7 +1364,7 @@
       const el = document.createElement('div');
       const isRed = card.suit === '♥' || card.suit === '♦';
       el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''} ${isMini ? 'mini' : ''} ${isFlip ? 'card-flip-reveal' : ''}`;
-      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '14px' : '20px'};">${card.suit}</span>`;
+      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '13px' : '20px'};">${card.suit}</span>`;
       if (onClick) el.onclick = onClick;
       return el;
     }
@@ -1390,8 +1381,8 @@
       const placeholders = [];
       cards.forEach(() => {
         const ph = document.createElement('div');
-        ph.style.width = '72px';
-        ph.style.height = '104px';
+        ph.style.width = '66px';
+        ph.style.height = '96px';
         ph.style.visibility = 'hidden';
         hArea.appendChild(ph);
         placeholders.push(ph);
@@ -1471,7 +1462,7 @@
       const div = document.createElement('div');
       div.id = `dc_pick_${data.playerId}`;
       div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:12px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:4px;">DRAWN</div>`;
+      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
       container.appendChild(div);
       playCardSlideSound();
     });
@@ -1485,8 +1476,8 @@
         box.className = 'showdown-player-box';
         const isRed = res.card.suit === '♥' || res.card.suit === '♦';
         box.innerHTML = `
-          <span style="font-size:12px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:4px;">
+          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
+          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:3px;">
             <span>${res.card.rank}</span><span>${res.card.suit}</span>
           </div>
         `;
@@ -1541,7 +1532,7 @@
       const div = document.createElement('div');
       div.id = `tb_pick_${data.playerId}`;
       div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:12px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:4px;">DRAWN</div>`;
+      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
       container.appendChild(div);
       playCardSlideSound();
     });
@@ -1555,8 +1546,8 @@
         box.className = 'showdown-player-box';
         const isRed = res.card.suit === '♥' || res.card.suit === '♦';
         box.innerHTML = `
-          <span style="font-size:12px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:4px;">
+          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
+          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:3px;">
             <span>${res.card.rank}</span><span>${res.card.suit}</span>
           </div>
         `;
@@ -1679,7 +1670,7 @@
           row.style.display = 'flex';
           row.style.justifyContent = 'space-between';
           row.style.alignItems = 'center';
-          row.style.padding = '6px 8px';
+          row.style.padding = '5px 8px';
           row.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
 
           let balClass = 'balance-neutral';
@@ -1801,7 +1792,7 @@
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
+        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
@@ -1833,7 +1824,7 @@
             hArea.appendChild(renderCard(card, null, false, false));
           });
         } else {
-          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 35px; font-size: 15px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
+          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 30px; font-size: 14px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
         }
       } else if (myHand.length > 0) {
         if (document.visibilityState === 'visible' && previousHandLength === 0 && myHand.length === 3) {
@@ -1842,7 +1833,7 @@
           forceRenderHand();
         }
       } else {
-        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
+        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
       }
     });
 
