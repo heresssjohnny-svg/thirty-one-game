@@ -67,7 +67,6 @@
       background: #0288d1; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px;
     }
 
-    /* TOP BANNER ANNOUNCEMENT (DISCARD PICKUPS) */
     .banner-announcement {
       position: fixed; top: 12px; left: 50%; transform: translateX(-50%) translateY(-100px);
       background: #ff9800; color: #111; font-weight: 800; font-size: 14px;
@@ -135,7 +134,6 @@
 </head>
 <body>
 
-  <!-- BANNER ALERT FOR DISCARD PICKUP -->
   <div id="bannerAnnouncement" class="banner-announcement"></div>
 
   <button class="chat-btn" onclick="toggleChat()">
@@ -209,6 +207,7 @@
     let myHand = [];
     let isTurn = false;
     let hasDrawn = false;
+    let isDiscarding = false; // Prevents double-tap discard bug
     let minKnockScore = 21;
     let currentScore = 0;
     let roundHasPassed = false;
@@ -448,6 +447,10 @@
       if (isSpectator) return;
       if (!isTurn) return;
       if (!hasDrawn) return alert("You must draw from the deck or discard pile first!");
+      if (isDiscarding) return; // Prevent double-tap
+      if (myHand.length !== 4) return alert("Waiting for 4th card to register...");
+
+      isDiscarding = true;
       socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx });
     }
 
@@ -473,7 +476,6 @@
       return el;
     }
 
-    // Top banner discard announcement
     let bannerTimer = null;
     socket.on('bannerAnnouncement', (data) => {
       const banner = document.getElementById('bannerAnnouncement');
@@ -488,6 +490,7 @@
     socket.on('gameState', (state) => {
       isTurn = state.isMyTurn;
       hasDrawn = state.hasDrawn;
+      isDiscarding = false; // Reset lock on state arrival
       myHand = state.hand || [];
       minKnockScore = state.minKnockScore || 21;
       roundHasPassed = state.roundHasPassed;
@@ -569,7 +572,7 @@
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
-          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}`;
+          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
         }
         pArea.appendChild(div);
       });
