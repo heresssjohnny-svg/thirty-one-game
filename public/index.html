@@ -20,6 +20,7 @@
       position: relative;
     }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
+    .header-controls { display: flex; align-items: center; gap: 8px; }
     .status-box { background: rgba(0,0,0,0.35); padding: 8px; border-radius: 8px; font-size: 14px; text-align: center; min-height: 38px; display: flex; align-items: center; justify-content: center; }
     .table {
       flex: 1; display: flex; flex-direction: column; justify-content: space-between;
@@ -27,10 +28,11 @@
     }
     .players-list { display: flex; gap: 8px; width: 100%; justify-content: center; flex-wrap: wrap; }
     .player-tag {
-      background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 16px; font-size: 13px;
+      background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 16px; font-size: 13px; display: flex; align-items: center; gap: 4px;
     }
     .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; background: rgba(255,204,0,0.25); }
     .player-tag.spectator { opacity: 0.6; border: 1px dashed #aaa; }
+    .player-tag.is-ready { border-left: 4px solid #4caf50; }
     
     .middle-piles { display: flex; gap: 24px; align-items: center; margin: 8px 0; }
     
@@ -51,17 +53,18 @@
     
     .action-bar { display: flex; gap: 8px; width: 100%; justify-content: center; flex-wrap: wrap; }
     button {
-      padding: 12px 16px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
+      padding: 10px 14px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold;
       background: #ffcc00; color: #111; cursor: pointer;
     }
     button.secondary { background: #e0e0e0; color: #222; }
+    button.danger { background: #d32f2f; color: #fff; padding: 6px 12px; font-size: 13px; }
+    button.ready-on { background: #4caf50; color: #fff; }
     button:disabled { background: #555; color: #888; }
 
     .spectator-badge {
       background: #0288d1; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px;
     }
 
-    /* CHAT DRAWER & BUTTON */
     .chat-btn {
       position: fixed; right: 12px; bottom: 70px;
       background: #0288d1; color: white; border-radius: 24px;
@@ -98,7 +101,6 @@
       flex: 1; padding: 10px; border-radius: 6px; border: none; font-size: 14px; background: #fff; color: #111;
     }
 
-    /* BIG SCREEN ANNOUNCEMENT */
     .big-announcement-overlay {
       position: absolute; inset: 0; background: rgba(0, 0, 0, 0.88);
       display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -119,12 +121,10 @@
 </head>
 <body>
 
-  <!-- CHAT TOGGLE BUTTON -->
   <button class="chat-btn" onclick="toggleChat()">
     💬 Chat <span id="chatBadge" class="chat-badge">0</span>
   </button>
 
-  <!-- CHAT DRAWER -->
   <div id="chatPanel" class="chat-panel">
     <div class="chat-header">
       <span>Table Chat</span>
@@ -137,7 +137,6 @@
     </div>
   </div>
 
-  <!-- BIG SCREEN ANNOUNCEMENT -->
   <div id="announcementOverlay" class="big-announcement-overlay">
     <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
     <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
@@ -154,6 +153,9 @@
   <div class="header">
     <div id="roomLabel">Room: -</div>
     <div id="scoreLabel">Score: 0</div>
+    <div class="header-controls">
+      <button class="danger" onclick="leaveLobby()">Leave</button>
+    </div>
   </div>
 
   <div class="status-box" id="statusBar">Waiting for players or bots...</div>
@@ -175,8 +177,8 @@
   </div>
 
   <div class="action-bar" id="actionBar">
+    <button id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
-    <button id="startBtn" onclick="startGame()" disabled>Need 2+ Players</button>
     <button id="knockBtn" onclick="knock()" disabled>Knock</button>
   </div>
 
@@ -190,6 +192,7 @@
     let currentScore = 0;
     let roundHasPassed = false;
     let isSpectator = false;
+    let isReady = false;
     let unreadCount = 0;
     let isChatOpen = false;
 
@@ -201,6 +204,24 @@
       socket.emit('joinRoom', { roomId: room, playerName: name });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
+    }
+
+    function leaveLobby() {
+      if (!currentRoom) return;
+      if (confirm('Leave this game room?')) {
+        socket.emit('leaveRoom', currentRoom);
+        currentRoom = '';
+        myHand = [];
+        document.getElementById('lobby').style.display = 'flex';
+        document.getElementById('roomLabel').innerText = 'Room: -';
+        document.getElementById('scoreLabel').innerText = 'Score: 0';
+        document.getElementById('handArea').innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
+        document.getElementById('playersArea').innerHTML = '';
+      }
+    }
+
+    function toggleReady() {
+      socket.emit('toggleReady', currentRoom);
     }
 
     function toggleChat() {
@@ -248,10 +269,6 @@
       socket.emit('addBot', currentRoom);
     }
 
-    function startGame() {
-      socket.emit('startGame', currentRoom);
-    }
-
     function draw(source) {
       if (isSpectator) return;
       if (!isTurn) return alert("Not your turn!");
@@ -296,6 +313,7 @@
       roundHasPassed = state.roundHasPassed;
       currentScore = state.score || 0;
       isSpectator = Boolean(state.isSpectator);
+      isReady = Boolean(state.isReady);
 
       if (isSpectator) {
         document.getElementById('scoreLabel').innerHTML = `<span class="spectator-badge">👁️ Spectating</span>`;
@@ -306,8 +324,28 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
+      // Update Ready Button
+      const readyBtn = document.getElementById('readyBtn');
+      const addBotBtn = document.getElementById('addBotBtn');
+
+      if (isSpectator || state.gameStarted) {
+        readyBtn.style.display = 'none';
+        addBotBtn.style.display = 'none';
+      } else {
+        readyBtn.style.display = 'inline-block';
+        addBotBtn.style.display = 'inline-block';
+        if (isReady) {
+          readyBtn.className = 'ready-on';
+          readyBtn.innerText = '✅ You are Ready';
+        } else {
+          readyBtn.className = '';
+          readyBtn.innerText = '⏳ Tap to Ready';
+        }
+      }
+
+      // Update Knock Button
       const knockBtn = document.getElementById('knockBtn');
-      if (isSpectator) {
+      if (isSpectator || !state.gameStarted) {
         knockBtn.style.display = 'none';
       } else {
         knockBtn.style.display = 'inline-block';
@@ -326,6 +364,7 @@
         }
       }
 
+      // Hand Instructions
       const handInstr = document.getElementById('handInstruction');
       if (isSpectator) {
         handInstr.innerText = "You joined mid-game. Spectating current match...";
@@ -336,27 +375,11 @@
           handInstr.innerText = "Waiting for other players...";
         }
       } else {
-        handInstr.innerText = "Lobby: Add a Bot or wait for friends, then tap Start Game";
+        const readyCount = state.players.filter(p => p.isReady || p.isBot).length;
+        handInstr.innerText = `Lobby: Waiting for all players to Ready (${readyCount}/${state.players.length})`;
       }
 
-      const startBtn = document.getElementById('startBtn');
-      const addBotBtn = document.getElementById('addBotBtn');
-
-      if (isSpectator || state.gameStarted) {
-        startBtn.style.display = 'none';
-        addBotBtn.style.display = 'none';
-      } else {
-        startBtn.style.display = 'inline-block';
-        addBotBtn.style.display = 'inline-block';
-        if (state.players.length >= 2) {
-          startBtn.disabled = false;
-          startBtn.innerText = `Start Game (${state.players.length} Players)`;
-        } else {
-          startBtn.disabled = true;
-          startBtn.innerText = 'Need 2+ Players';
-        }
-      }
-
+      // Players List
       const pArea = document.getElementById('playersArea');
       pArea.innerHTML = '';
       state.players.forEach(p => {
@@ -365,12 +388,14 @@
           div.className = 'player-tag spectator';
           div.innerText = `👁️ ${p.name}`;
         } else {
-          div.className = `player-tag ${p.isTurn ? 'active' : ''}`;
-          div.innerText = `${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+          div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
+          const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
+          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
         }
         pArea.appendChild(div);
       });
 
+      // Discard Pile
       const disc = document.getElementById('discardPile');
       if (state.topDiscard) {
         const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
@@ -381,6 +406,7 @@
         disc.innerText = '--';
       }
 
+      // Hand Area
       const hArea = document.getElementById('handArea');
       hArea.innerHTML = '';
       if (isSpectator) {
