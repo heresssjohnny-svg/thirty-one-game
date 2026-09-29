@@ -219,6 +219,7 @@
     .balance-positive { color: #4caf50; font-weight: 900; }
     .balance-negative { color: #f44336; font-weight: 900; }
     .balance-neutral { color: #e0e0e0; }
+    .player-left-tag { font-size: 11px; opacity: 0.65; margin-left: 4px; }
 
     .wager-bar {
       display: flex; gap: 6px; align-items: center; justify-content: center; margin: 4px 0;
@@ -231,7 +232,6 @@
       background: #ffd700; color: #111; border-color: #ffd700;
     }
 
-    /* LOBBY MODAL: High z-index ensures taps are never blocked */
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
       display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
@@ -359,7 +359,7 @@
       <div style="font-size:11px; opacity:0.75; text-align:center;">(+ = they owe you, - = you owe them)</div>
 
       <div id="ledgerList" style="display:flex; flex-direction:column; gap:6px; font-size:14px; max-height:220px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.3); border-radius:8px;">
-        <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
+        <div style="opacity:0.6; text-align:center;">No settled bets yet.</div>
       </div>
       <button type="button" onclick="toggleLedgerModal()" class="secondary" style="padding:8px;">Close</button>
     </div>
@@ -866,7 +866,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1269,7 +1269,6 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
-      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -1286,7 +1285,6 @@
         roundPotBanner.style.display = 'none';
       }
 
-      // My Match Bet chips selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -1298,7 +1296,6 @@
         wagerSec.style.display = 'none';
       }
 
-      // Ledger Personal Net Balances Render
       const overallEl = document.getElementById('ledgerOverallTotal');
       const netTotal = state.netOverallBalance || 0;
       if (netTotal > 0) {
@@ -1312,6 +1309,7 @@
         overallEl.innerText = `$0`;
       }
 
+      // Display personal ledger with indicators for departed members
       const ledgerList = document.getElementById('ledgerList');
       if (state.personalLedger && state.personalLedger.length > 0) {
         ledgerList.innerHTML = '';
@@ -1334,14 +1332,15 @@
             balText = `$0 (Even)`;
           }
 
-          row.innerHTML = `<span><strong>${item.player}</strong></span><span class="${balClass}">${balText}</span>`;
+          const leftBadge = item.hasLeft ? `<span class="player-left-tag">(Left Room)</span>` : '';
+
+          row.innerHTML = `<span><strong>${item.player}</strong>${leftBadge}</span><span class="${balClass}">${balText}</span>`;
           ledgerList.appendChild(row);
         });
       } else {
-        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled bets yet.</div>';
       }
 
-      // Action Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const removeBotBtn = document.getElementById('removeBotBtn');
@@ -1502,7 +1501,6 @@
       setTimeout(() => location.reload(), 4500);
     });
 
-    // Explicit event listeners ensure clicks on mobile browsers are never dropped
     document.addEventListener('DOMContentLoaded', () => {
       const enterBtn = document.getElementById('enterGameBtn');
       if (enterBtn) {
