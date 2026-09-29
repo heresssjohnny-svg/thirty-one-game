@@ -95,7 +95,7 @@
   <div class="action-bar">
     <button id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button id="startBtn" onclick="startGame()" disabled>Need 2+ Players</button>
-    <button id="knockBtn" onclick="knock()" disabled>Knock (21+)</button>
+    <button id="knockBtn" onclick="knock()" disabled>Knock</button>
   </div>
 
   <script>
@@ -104,6 +104,8 @@
     let myHand = [];
     let isTurn = false;
     let hasDrawn = false;
+    let minKnockScore = 21;
+    let currentScore = 0;
 
     function joinGame() {
       const name = document.getElementById('playerName').value.trim() || 'Player';
@@ -136,7 +138,11 @@
     }
 
     function knock() {
-      if (!isTurn || hasDrawn) return;
+      if (!isTurn) return alert("You can only knock on your turn!");
+      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
+      if (currentScore < minKnockScore) {
+        return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
+      }
       socket.emit('knock', currentRoom);
     }
 
@@ -153,12 +159,27 @@
       isTurn = state.isMyTurn;
       hasDrawn = state.hasDrawn;
       myHand = state.hand || [];
+      minKnockScore = state.minKnockScore || 21;
+      currentScore = state.score || 0;
 
-      document.getElementById('scoreLabel').innerText = `Score: ${state.score}`;
+      // Format score nicely (supports 30.5 for 3 of a kind)
+      const scoreDisplay = (currentScore === 30.5) ? '30.5 (3 of a Kind!)' : currentScore;
+      document.getElementById('scoreLabel').innerText = `Score: ${scoreDisplay}`;
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
-      // Update Knock button
-      document.getElementById('knockBtn').disabled = !state.canKnock;
+      // Update Knock button display
+      const knockBtn = document.getElementById('knockBtn');
+      if (state.knocker) {
+        knockBtn.disabled = true;
+        knockBtn.innerText = `Knocked by ${state.knocker}`;
+      } else {
+        knockBtn.disabled = !state.canKnock;
+        if (state.canKnock) {
+          knockBtn.innerText = `⚡ Knock Now (${minKnockScore}+)!`;
+        } else {
+          knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+        }
+      }
 
       // Update Instruction text
       const handInstr = document.getElementById('handInstruction');
