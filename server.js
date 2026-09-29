@@ -1189,7 +1189,7 @@ io.on('connection', (socket) => {
     }
 
     let safeName = playerName ? playerName.trim() : '';
-    let safeAvatar = avatar || '👤';
+    let safeAvatar = avatar || '👑';
 
     if (deviceId && room.playerRegistry[deviceId]) {
       if (safeName && safeName !== room.playerRegistry[deviceId]) {
