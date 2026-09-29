@@ -134,7 +134,6 @@ function recordDebt(room, debtorName, creditorName, amount) {
   room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
 }
 
-// Compute pairwise balance between two players: positive means p1 is owed by p2, negative means p1 owes p2
 function getNetPairBalance(room, p1Name, p2Name) {
   const p2OwesP1 = (room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
   const p1OwesP2 = (room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
@@ -158,11 +157,10 @@ function getPersonalLedger(room, playerName) {
     totalNet += net;
     ledger.push({
       player: otherName,
-      netBalance: net // +net means otherName owes you, -net means you owe otherName
+      netBalance: net
     });
   });
 
-  // Sort: biggest debtors first, then even, then biggest creditors
   ledger.sort((a, b) => b.netBalance - a.netBalance);
 
   return {
@@ -582,6 +580,7 @@ function broadcastState(roomId, message = '') {
       knocker: room.knockerId ? room.players.find(pl => pl.id === room.knockerId)?.name : null,
       isReady: Boolean(p.isReady),
       activePlayersCount: getNonSpectatorCount(room),
+      botCount: room.players.filter(pl => pl.isBot).length,
       maxActivePlayers: MAX_ACTIVE_PLAYERS,
       totalPot: totalGamePot,
       roundPot: totalRoundPot,
@@ -1086,6 +1085,31 @@ io.on('connection', (socket) => {
     });
 
     broadcastState(roomId, `Bot ${botCount} joined.`);
+    if (checkAllPlayersReady(room)) {
+      room.gameStarted = true;
+      room.currentMatchParticipants = getActivePlayers(room).map(p => ({
+        id: p.id,
+        name: p.name,
+        wager: p.matchWager || 0
+      }));
+      startNewRound(roomId);
+    }
+    broadcastRoomList();
+  });
+
+  socket.on('removeBot', (roomId) => {
+    const room = rooms[roomId];
+    if (!room || room.gameStarted) return;
+
+    // Find the most recently added bot
+    const lastBotIdx = room.players.map(p => p.isBot).lastIndexOf(true);
+    if (lastBotIdx === -1) {
+      return socket.emit('errorMsg', 'No bots in room to remove.');
+    }
+
+    const [removedBot] = room.players.splice(lastBotIdx, 1);
+    broadcastState(roomId, `${removedBot.name} was removed from the lobby.`);
+
     if (checkAllPlayersReady(room)) {
       room.gameStarted = true;
       room.currentMatchParticipants = getActivePlayers(room).map(p => ({
