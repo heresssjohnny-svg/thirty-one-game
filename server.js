@@ -7,7 +7,23 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// Serve all files in public statically
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Fallback: Explicitly serve index.html for root route "/"
+app.get('/', (req, res) => {
+  const publicPath = path.join(__dirname, 'public', 'index.html');
+  const rootPath = path.join(__dirname, 'index.html');
+
+  const fs = require('fs');
+  if (fs.existsSync(publicPath)) {
+    res.sendFile(publicPath);
+  } else if (fs.existsSync(rootPath)) {
+    res.sendFile(rootPath);
+  } else {
+    res.status(404).send('Could not locate index.html. Check your file structure on GitHub.');
+  }
+});
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
