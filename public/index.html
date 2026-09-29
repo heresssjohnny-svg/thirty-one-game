@@ -545,7 +545,6 @@
     </div>
 
     <div class="hand-area">
-      <!-- Spectator Peek Bar (Displayed when peeking at someone's hand) -->
       <div id="peekBar" class="peek-status-bar" style="display:none;">
         <span id="peekBarText">👁️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
@@ -583,6 +582,7 @@
     const socket = io();
     let currentRoom = '';
     let myPlayerName = '';
+    let deviceId = '';
     let myHand = [];
     let isTurn = false;
     let wasMyTurn = false;
@@ -609,10 +609,20 @@
     let announcementTimer = null;
     let pendingOfferBetId = null;
 
-    // Spectator Peeking State
     let currentlyViewingPlayerName = null;
     let currentlyViewingHand = null;
     let pendingPeekRequesterId = null;
+
+    // Load or generate persistent device identifier
+    try {
+      deviceId = localStorage.getItem('thirtyOne_deviceId');
+      if (!deviceId) {
+        deviceId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+        localStorage.setItem('thirtyOne_deviceId', deviceId);
+      }
+    } catch (e) {
+      deviceId = 'dev_' + Date.now();
+    }
 
     let audioCtx = null;
     function getAudioContext() {
@@ -678,7 +688,7 @@
       }
 
       if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName });
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
         socket.emit('requestStateSync', currentRoom);
       }
     }
@@ -691,7 +701,7 @@
 
     socket.on('connect', () => {
       if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName });
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
         socket.emit('requestStateSync', currentRoom);
       }
     });
@@ -829,11 +839,21 @@
 
     function joinGame() {
       getAudioContext();
-      myPlayerName = document.getElementById('playerName').value.trim() || 'Player';
+      const nameInput = document.getElementById('playerName');
+      myPlayerName = nameInput.value.trim() || 'Player';
+      try {
+        localStorage.setItem('thirtyOne_playerName', myPlayerName);
+      } catch (e) {}
+
       const room = document.getElementById('roomId').value.trim();
       if (!room) return alert('Enter a room code');
       currentRoom = room;
-      socket.emit('joinRoom', { roomId: room, playerName: myPlayerName });
+
+      socket.emit('joinRoom', {
+        roomId: room,
+        playerName: myPlayerName,
+        deviceId: deviceId
+      });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
     }
@@ -879,7 +899,6 @@
       modal.style.display = isVisible ? 'none' : 'flex';
     }
 
-    // PEEKING HAND FUNCTIONS
     function togglePeekSelectorModal() {
       const modal = document.getElementById('spectatorPeekSelectorModal');
       const isVisible = modal.style.display === 'flex';
@@ -961,7 +980,7 @@
       const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
       const count = checkedBoxes.length;
       const total = count * selectedSideBetAmt;
-      document.getElementById('multiBetSummary').innerText = `${count} opponent(s) selected (Total stake: $${total})`;
+      document.getElementById('multiBetSummary').innerText = `${count} opponent(s) selected (Total at risk: $${total})`;
     }
 
     function selectAllOpponents(check) {
@@ -991,7 +1010,7 @@
             label.className = 'opp-checkbox-item';
             label.innerHTML = `
               <input type="checkbox" value="${m.name}" onchange="updateMultiBetSummary()" checked />
-              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️️]' : ''}</span>
             `;
             checklist.appendChild(label);
           }
@@ -1143,7 +1162,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙 Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1364,7 +1383,6 @@
       });
     }
 
-    // INITIAL DEALER CUT HANDLERS
     socket.on('startDealerSelectionCut', (data) => {
       const overlay = document.getElementById('dealerCutOverlay');
       const spread = document.getElementById('dealerCutSpread');
@@ -1430,7 +1448,6 @@
       }, 3500);
     });
 
-    // TIEBREAKER HANDLERS
     socket.on('startTiebreakerCut', (data) => {
       const overlay = document.getElementById('tiebreakerOverlay');
       const spread = document.getElementById('tiebreakerSpread');
@@ -1823,7 +1840,28 @@
       setTimeout(() => location.reload(), 4500);
     });
 
+    // Populate saved username on startup and bind UI listeners
     document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const saved = localStorage.getItem('thirtyOne_playerName');
+        if (saved) {
+          const pInput = document.getElementById('playerName');
+          if (pInput) pInput.value = saved;
+        }
+      } catch (e) {}
+
+      const nameInput = document.getElementById('playerName');
+      if (nameInput) {
+        nameInput.addEventListener('input', (e) => {
+          const val = e.target.value.trim();
+          if (val) {
+            try {
+              localStorage.setItem('thirtyOne_playerName', val);
+            } catch (err) {}
+          }
+        });
+      }
+
       const enterBtn = document.getElementById('enterGameBtn');
       if (enterBtn) {
         enterBtn.addEventListener('click', joinGame);
