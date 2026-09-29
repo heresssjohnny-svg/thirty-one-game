@@ -237,6 +237,7 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
+// FIXED: Perfectly resolves round side bets by comparing bettor's target pick score vs opponent's target pick score
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
@@ -247,34 +248,27 @@ function settlePeerRoundBets(room, scores) {
     let bTargetId = bet.bettorTargetId;
     let oTargetId = bet.opponentTargetId;
 
+    // Fallback lookups by name if IDs are missing
     if (!bTargetId || scores[bTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      const matchP = room.players.find(p => p.name === bet.bettorTargetName);
       if (matchP) bTargetId = matchP.id;
     }
     if (!oTargetId || scores[oTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      const matchP = room.players.find(p => p.name === bet.opponentTargetName);
       if (matchP) oTargetId = matchP.id;
     }
 
     const bettorTargetScore = (bTargetId && scores[bTargetId] !== undefined) ? scores[bTargetId] : -1;
     const opponentTargetScore = (oTargetId && scores[oTargetId] !== undefined) ? scores[oTargetId] : -1;
 
-    let maxScore = -1;
-    Object.values(scores).forEach(sc => {
-      if (sc > maxScore) maxScore = sc;
-    });
-
-    const bettorPickIsHighest = (bettorTargetScore >= maxScore);
-    const opponentPickIsHighest = (opponentTargetScore >= maxScore);
-
-    if (bettorPickIsHighest && !opponentPickIsHighest) {
+    if (bettorTargetScore > opponentTargetScore) {
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName}'s pick won highest score vs ${bet.opponentName}'s pick -> +$${bet.amount}`);
-    } else if (opponentPickIsHighest && !bettorPickIsHighest) {
+      resultsSummary.push(`${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore} pts) beat ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) -> +$${bet.amount}`);
+    } else if (opponentTargetScore > bettorTargetScore) {
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName}'s pick won highest score vs ${bet.bettorName}'s pick -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) beat ${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore} pts) -> +$${bet.amount}`);
     } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} both picks tied on score (push)`);
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} picks tied at ${bettorTargetScore} pts (push)`);
     }
   });
 
