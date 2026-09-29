@@ -20,7 +20,7 @@
       position: relative;
     }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
-    .header-controls { display: flex; align-items: center; gap: 8px; }
+    .header-controls { display: flex; align-items: center; gap: 6px; }
     .status-box { background: rgba(0,0,0,0.35); padding: 8px; border-radius: 8px; font-size: 14px; text-align: center; min-height: 38px; display: flex; align-items: center; justify-content: center; }
     .table {
       flex: 1; display: flex; flex-direction: column; justify-content: space-between;
@@ -58,11 +58,25 @@
     }
     button.secondary { background: #e0e0e0; color: #222; }
     button.danger { background: #d32f2f; color: #fff; padding: 6px 12px; font-size: 13px; }
+    button.voice-btn { background: #00897b; color: #fff; padding: 6px 10px; font-size: 13px; }
+    button.voice-on { background: #e53935; color: #fff; padding: 6px 10px; font-size: 13px; }
     button.ready-on { background: #4caf50; color: #fff; }
     button:disabled { background: #555; color: #888; }
 
     .spectator-badge {
       background: #0288d1; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px;
+    }
+
+    /* TOP BANNER ANNOUNCEMENT (DISCARD PICKUPS) */
+    .banner-announcement {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%) translateY(-100px);
+      background: #ff9800; color: #111; font-weight: 800; font-size: 14px;
+      padding: 10px 18px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      z-index: 500; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: none; text-align: center; border: 2px solid #fff;
+    }
+    .banner-announcement.show {
+      transform: translateX(-50%) translateY(0);
     }
 
     .chat-btn {
@@ -121,6 +135,9 @@
 </head>
 <body>
 
+  <!-- BANNER ALERT FOR DISCARD PICKUP -->
+  <div id="bannerAnnouncement" class="banner-announcement"></div>
+
   <button class="chat-btn" onclick="toggleChat()">
     💬 Chat <span id="chatBadge" class="chat-badge">0</span>
   </button>
@@ -154,6 +171,8 @@
     <div id="roomLabel">Room: -</div>
     <div id="scoreLabel">Score: 0</div>
     <div class="header-controls">
+      <button id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Join Voice</button>
+      <button id="muteBtn" class="secondary" style="display:none; padding:6px 10px; font-size:13px;" onclick="toggleMute()">🎙️ Mute</button>
       <button class="danger" onclick="leaveLobby()">Leave</button>
     </div>
   </div>
@@ -182,6 +201,8 @@
     <button id="knockBtn" onclick="knock()" disabled>Knock</button>
   </div>
 
+  <div id="audioContainer"></div>
+
   <script>
     const socket = io();
     let currentRoom = '';
@@ -196,6 +217,18 @@
     let unreadCount = 0;
     let isChatOpen = false;
 
+    let localStream = null;
+    let peerConnections = {};
+    let isInVoice = false;
+    let isMuted = false;
+
+    const rtcConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
     function joinGame() {
       const name = document.getElementById('playerName').value.trim() || 'Player';
       const room = document.getElementById('roomId').value.trim();
@@ -209,6 +242,7 @@
     function leaveLobby() {
       if (!currentRoom) return;
       if (confirm('Leave this game room?')) {
+        if (isInVoice) leaveVoice();
         socket.emit('leaveRoom', currentRoom);
         currentRoom = '';
         myHand = [];
@@ -219,6 +253,140 @@
         document.getElementById('playersArea').innerHTML = '';
       }
     }
+
+    async function toggleVoice() {
+      if (!isInVoice) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          isInVoice = true;
+          isMuted = false;
+          document.getElementById('voiceBtn').className = 'voice-on';
+          document.getElementById('voiceBtn').innerText = '🔴 Leave Voice';
+          document.getElementById('muteBtn').style.display = 'inline-block';
+          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          socket.emit('joinVoice', currentRoom);
+        } catch (err) {
+          alert('Microphone access denied or unavailable: ' + err.message);
+        }
+      } else {
+        leaveVoice();
+      }
+    }
+
+    function leaveVoice() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      Object.keys(peerConnections).forEach(id => {
+        if (peerConnections[id]) peerConnections[id].close();
+      });
+      peerConnections = {};
+      document.getElementById('audioContainer').innerHTML = '';
+      isInVoice = false;
+      document.getElementById('voiceBtn').className = 'voice-btn';
+      document.getElementById('voiceBtn').innerText = '🎤 Join Voice';
+      document.getElementById('muteBtn').style.display = 'none';
+      socket.emit('leaveVoice', currentRoom);
+    }
+
+    function toggleMute() {
+      if (!localStream) return;
+      isMuted = !isMuted;
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+      });
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+    }
+
+    function createPeerConnection(targetSocketId, isInitiator) {
+      const pc = new RTCPeerConnection(rtcConfig);
+      peerConnections[targetSocketId] = pc;
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('voiceSignal', {
+            target: targetSocketId,
+            signal: { candidate: event.candidate }
+          });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        let audioEl = document.getElementById(`audio_${targetSocketId}`);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = `audio_${targetSocketId}`;
+          audioEl.autoplay = true;
+          audioEl.playsInline = true;
+          document.getElementById('audioContainer').appendChild(audioEl);
+        }
+        audioEl.srcObject = event.streams[0];
+      };
+
+      if (isInitiator) {
+        pc.onnegotiationneeded = async () => {
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('voiceSignal', {
+              target: targetSocketId,
+              signal: { description: pc.localDescription }
+            });
+          } catch (err) {
+            console.error('Offer error:', err);
+          }
+        };
+      }
+
+      return pc;
+    }
+
+    socket.on('currentVoiceUsers', (users) => {
+      users.forEach(userId => {
+        createPeerConnection(userId, true);
+      });
+    });
+
+    socket.on('voiceUserJoined', ({ socketId }) => {
+      createPeerConnection(socketId, false);
+    });
+
+    socket.on('voiceUserLeft', ({ socketId }) => {
+      if (peerConnections[socketId]) {
+        peerConnections[socketId].close();
+        delete peerConnections[socketId];
+      }
+      const audioEl = document.getElementById(`audio_${socketId}`);
+      if (audioEl) audioEl.remove();
+    });
+
+    socket.on('voiceSignal', async ({ sender, signal }) => {
+      let pc = peerConnections[sender];
+      if (!pc) pc = createPeerConnection(sender, false);
+
+      try {
+        if (signal.description) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.description));
+          if (signal.description.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('voiceSignal', {
+              target: sender,
+              signal: { description: pc.localDescription }
+            });
+          }
+        } else if (signal.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+      } catch (err) {
+        console.error('Signal handling error:', err);
+      }
+    });
 
     function toggleReady() {
       socket.emit('toggleReady', currentRoom);
@@ -305,6 +473,18 @@
       return el;
     }
 
+    // Top banner discard announcement
+    let bannerTimer = null;
+    socket.on('bannerAnnouncement', (data) => {
+      const banner = document.getElementById('bannerAnnouncement');
+      banner.innerText = data.text;
+      banner.classList.add('show');
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => {
+        banner.classList.remove('show');
+      }, data.duration || 3200);
+    });
+
     socket.on('gameState', (state) => {
       isTurn = state.isMyTurn;
       hasDrawn = state.hasDrawn;
@@ -324,7 +504,6 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
-      // Update Ready Button
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
 
@@ -333,7 +512,8 @@
         addBotBtn.style.display = 'none';
       } else {
         readyBtn.style.display = 'inline-block';
-        addBotBtn.style.display = 'inline-block';
+        addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
+
         if (isReady) {
           readyBtn.className = 'ready-on';
           readyBtn.innerText = '✅ You are Ready';
@@ -343,7 +523,6 @@
         }
       }
 
-      // Update Knock Button
       const knockBtn = document.getElementById('knockBtn');
       if (isSpectator || !state.gameStarted) {
         knockBtn.style.display = 'none';
@@ -364,10 +543,9 @@
         }
       }
 
-      // Hand Instructions
       const handInstr = document.getElementById('handInstruction');
       if (isSpectator) {
-        handInstr.innerText = "You joined mid-game. Spectating current match...";
+        handInstr.innerText = "You are spectating (6 active players limit or joined mid-game)";
       } else if (state.gameStarted) {
         if (isTurn) {
           handInstr.innerText = hasDrawn ? "Tap a card below to DISCARD it" : "Your turn! Tap Draw Deck or Discard Pile";
@@ -375,27 +553,27 @@
           handInstr.innerText = "Waiting for other players...";
         }
       } else {
-        const readyCount = state.players.filter(p => p.isReady || p.isBot).length;
-        handInstr.innerText = `Lobby: Waiting for all players to Ready (${readyCount}/${state.players.length})`;
+        const eligible = state.players.filter(p => !p.isSpectator);
+        const readyCount = eligible.filter(p => p.isReady || p.isBot).length;
+        handInstr.innerText = `Lobby (${eligible.length}/6 Players) — Ready: ${readyCount}/${eligible.length}`;
       }
 
-      // Players List
       const pArea = document.getElementById('playersArea');
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
+        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
-          div.innerText = `👁️ ${p.name}`;
+          div.innerText = `👁️ ${p.name}${voiceBadge}`;
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
-          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+          div.innerText = `${readyMarker}${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}`;
         }
         pArea.appendChild(div);
       });
 
-      // Discard Pile
       const disc = document.getElementById('discardPile');
       if (state.topDiscard) {
         const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
@@ -406,7 +584,6 @@
         disc.innerText = '--';
       }
 
-      // Hand Area
       const hArea = document.getElementById('handArea');
       hArea.innerHTML = '';
       if (isSpectator) {
