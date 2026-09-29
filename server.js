@@ -180,7 +180,6 @@ function recordGameWagerSettlement(room, winner) {
   updateLedgerStatements(room);
 }
 
-// Settle round-by-round side bets
 function settleRoundBets(room, winningPlayers) {
   if (!room.roundBets || room.roundBets.length === 0) return '';
   if (!winningPlayers || winningPlayers.length === 0) {
@@ -191,11 +190,9 @@ function settleRoundBets(room, winningPlayers) {
   const winningPlayerNames = new Set(winningPlayers.map(p => p.name));
   const winningBets = room.roundBets.filter(b => winningPlayerNames.has(b.targetPlayerName));
   const losingBets = room.roundBets.filter(b => !winningPlayerNames.has(b.targetPlayerName));
-
   const totalPot = room.roundBets.reduce((sum, b) => sum + b.amount, 0);
 
   if (winningBets.length === 0) {
-    // House / push if nobody picked the winner
     room.roundBets = [];
     return `Round side bets ($${totalPot} pot) had no winners! Pushed.`;
   }
@@ -207,7 +204,6 @@ function settleRoundBets(room, winningPlayers) {
     const netWin = Math.round((wBet.amount / winningStakesTotal) * (totalPot - winningStakesTotal));
     sideBetWinners.push(`${wBet.bettorName} (+$${netWin})`);
 
-    // Charge the losers proportionately to credit the winners
     losingBets.forEach(lBet => {
       const shareOwed = Math.round((lBet.amount / totalPot) * (wBet.amount + netWin));
       if (shareOwed > 0) {
@@ -221,6 +217,22 @@ function settleRoundBets(room, winningPlayers) {
   return `Side Bet Winners: ${sideBetWinners.join(', ')}`;
 }
 
+// Global broadcast of active room directory
+function broadcastRoomList() {
+  const roomList = Object.entries(rooms).map(([id, r]) => {
+    const activeCount = r.players.filter(p => !p.isSpectator).length;
+    const specCount = r.players.filter(p => p.isSpectator).length;
+    return {
+      roomId: id,
+      gameStarted: r.gameStarted,
+      activeCount: activeCount,
+      spectatorCount: specCount,
+      wager: r.wager || 0
+    };
+  });
+  io.emit('roomListUpdate', roomList);
+}
+
 function checkAndHandle31(room, player) {
   if (calculateScore(player.hand) !== 31) return false;
   if (room.isResolvingRound) return true;
@@ -228,8 +240,6 @@ function checkAndHandle31(room, player) {
 
   let penalizedGiver = null;
   const revealedHands = getRevealedHands(room);
-
-  // Settle round side bets: player with 31 is the unambiguous round winner
   const sideBetReport = settleRoundBets(room, [player]);
 
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
@@ -328,6 +338,7 @@ function startNewRound(roomId) {
     });
 
     broadcastState(roomId, `Game over! ${winnerName} won! Check Ledger for debts.`);
+    broadcastRoomList();
     return;
   }
 
@@ -341,7 +352,7 @@ function startNewRound(roomId) {
   room.isResolvingRound = false;
   room.turnsTakenInRound = 0;
   room.currentDiscardFeederId = null;
-  room.roundBets = []; // Reset round side bets for new round
+  room.roundBets = [];
 
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
@@ -385,6 +396,7 @@ function startNewRound(roomId) {
   advanceTurnIndex(room);
 
   broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}. Place round side bets!`);
+  broadcastRoomList();
   triggerBotTurnIfNeeded(roomId);
 }
 
@@ -475,8 +487,6 @@ function resolveShowdown(roomId) {
   const highestPlayers = active.filter(p => scores[p.id] === maxScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
   const revealedHands = getRevealedHands(room);
-
-  // Settle round bets with highest scoring player(s)
   const sideBetReport = settleRoundBets(room, highestPlayers);
 
   if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
@@ -692,12 +702,22 @@ function handlePlayerExit(socketId) {
       } else {
         broadcastState(roomId, `${leaving.name} left the room.`);
       }
+      broadcastRoomList();
       break;
     }
   }
 }
 
 io.on('connection', (socket) => {
+  // Push live room directory to newly connected socket
+  socket.emit('roomListUpdate', Object.entries(rooms).map(([id, r]) => ({
+    roomId: id,
+    gameStarted: r.gameStarted,
+    activeCount: r.players.filter(p => !p.isSpectator).length,
+    spectatorCount: r.players.filter(p => p.isSpectator).length,
+    wager: r.wager || 0
+  })));
+
   socket.on('joinRoom', ({ roomId, playerName }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
@@ -728,6 +748,7 @@ io.on('connection', (socket) => {
     if (existingPlayer) {
       existingPlayer.id = socket.id;
       broadcastState(roomId, `${playerName} reconnected.`);
+      broadcastRoomList();
       return;
     }
 
@@ -757,6 +778,7 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId, joinMsg);
+    broadcastRoomList();
   });
 
   socket.on('toggleSpectate', (roomId) => {
@@ -781,18 +803,18 @@ io.on('connection', (socket) => {
       player.isReady = false;
       broadcastState(roomId, `🃏 ${player.name} rejoined as an active player.`);
     }
+    broadcastRoomList();
   });
 
-  // Set Overall Game Wager
   socket.on('setWager', ({ roomId, wager }) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
     const parsed = Math.max(0, parseInt(wager) || 0);
     room.wager = parsed;
     broadcastState(roomId, `💰 Match wager set to $${parsed}/player.`);
+    broadcastRoomList();
   });
 
-  // Place Round-by-Round Side Bet (Open to BOTH players and spectators)
   socket.on('placeRoundBet', ({ roomId, targetPlayerName, amount }) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted || room.isResolvingRound) {
@@ -813,7 +835,6 @@ io.on('connection', (socket) => {
 
     if (!room.roundBets) room.roundBets = [];
 
-    // Replace previous round bet from this bettor or add new
     const existingBetIdx = room.roundBets.findIndex(b => b.bettorId === socket.id);
     if (existingBetIdx !== -1) {
       room.roundBets[existingBetIdx] = {
@@ -880,6 +901,7 @@ io.on('connection', (socket) => {
       room.currentMatchParticipants = getActivePlayers(room).map(p => p.id);
       startNewRound(roomId);
     }
+    broadcastRoomList();
   });
 
   socket.on('leaveRoom', (roomId) => {
@@ -931,6 +953,7 @@ io.on('connection', (socket) => {
       room.currentMatchParticipants = getActivePlayers(room).map(p => p.id);
       startNewRound(roomId);
     }
+    broadcastRoomList();
   });
 
   socket.on('knock', (roomId) => {
