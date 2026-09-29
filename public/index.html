@@ -582,8 +582,8 @@
   </div>
 
   <div class="action-bar" id="actionBar">
-    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️️ Peek at Hand</button>
+    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️️ Spectate</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()">💀 First to Lose</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
@@ -950,7 +950,6 @@
       forceRenderHand();
     }
 
-    // CLEAR DEBT UI HANDLERS
     function promptClearDebt(playerName, amount) {
       pendingClearDebtName = playerName;
       document.getElementById('clearDebtConfirmText').innerHTML = `
@@ -1062,8 +1061,8 @@
 
     function openFirstLoserSideBetModal() {
       currentSideBetType = 'firstLoser';
-      document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Side Bet';
-      document.getElementById('sideBetModalDesc').innerText = 'Bet on who will lose the match first (run out of lives first):';
+      document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Both Lives';
+      document.getElementById('sideBetModalDesc').innerText = 'Bet on who will lose both lives first in the match:';
       document.getElementById('roundContenderSection').style.display = 'none';
       toggleRoundBetModal();
     }
