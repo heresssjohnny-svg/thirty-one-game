@@ -122,8 +122,8 @@
     }
     .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
     .ann-title { font-size: 26px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 12px; font-weight: 800; }
-    .ann-message { font-size: 32px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 8px; }
-    .ann-subtext { font-size: 18px; color: #ffffff; opacity: 0.9; }
+    .ann-message { font-size: 30px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 8px; }
+    .ann-subtext { font-size: 16px; color: #ffffff; opacity: 0.9; max-width: 90%; }
 
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.92);
@@ -216,7 +216,6 @@
     let unreadCount = 0;
     let isChatOpen = false;
 
-    // Web Audio Synthesized Knock Sound
     let audioCtx = null;
     function playKnockSound() {
       try {
@@ -225,7 +224,6 @@
         if (!audioCtx) audioCtx = new AudioContext();
         if (audioCtx.state === 'suspended') audioCtx.resume();
 
-        // Triple wood-thud knock pattern
         const knockTimes = [0, 0.14, 0.28];
         knockTimes.forEach((delay) => {
           const osc = audioCtx.createOscillator();
@@ -234,7 +232,6 @@
           osc.type = 'triangle';
           const startTime = audioCtx.currentTime + delay;
 
-          // Quick pitch drop creates realistic wooden percussion
           osc.frequency.setValueAtTime(140, startTime);
           osc.frequency.exponentialRampToValueAtTime(35, startTime + 0.08);
 
@@ -643,7 +640,6 @@
       document.getElementById('annSubtext').innerText = data.subtext || '';
       overlay.classList.add('show');
 
-      // Trigger knocking sound synthesis if requested
       if (data.sound === 'knock') {
         playKnockSound();
       }
