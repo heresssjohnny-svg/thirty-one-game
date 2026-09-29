@@ -1,16 +1,15 @@
 {
   "name": "31 Card Game",
-  "short_name": "31 Cards",
+  "short_name": "31!",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1b4d3e",
   "theme_color": "#1b4d3e",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3592/3592651.png",
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='black'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='900' font-size='220'>31!</text></svg>",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/svg+xml"
     }
   ]
 }
