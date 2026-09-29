@@ -41,6 +41,7 @@ const CUT_RANKS = {
 const MAX_ACTIVE_PLAYERS = 6;
 const rooms = {};
 const disconnectTimeouts = {};
+let playerJoinCounter = 0;
 
 function createDeck() {
   const deck = [];
@@ -249,6 +250,123 @@ function broadcastRoomList() {
   io.emit('roomListUpdate', roomList);
 }
 
+// Initial Dealer Cut Sequence: Lowest card becomes dealer
+function startDealerCut(room) {
+  room.dealerCutActive = true;
+  room.dealerCutPicks = {};
+  
+  const eligible = getActivePlayers(room);
+  room.dealerCutPlayerIds = eligible.map(p => p.id);
+
+  let cutDeck = createDeck();
+  room.dealerCutDeck = cutDeck;
+
+  io.to(room.id).emit('startDealerSelectionCut', {
+    deckCount: Math.min(cutDeck.length, 30),
+    players: eligible.map(p => ({ id: p.id, name: p.name }))
+  });
+
+  // Automated bot dealer picks
+  eligible.forEach(p => {
+    if (p.isBot) {
+      setTimeout(() => {
+        if (!room.dealerCutActive || room.dealerCutPicks[p.id]) return;
+        const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
+        const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
+        room.dealerCutPicks[p.id] = { player: p, card: card };
+
+        io.to(room.id).emit('dealerCutCardPicked', {
+          playerId: p.id,
+          playerName: p.name,
+          remainingCount: room.dealerCutDeck.length
+        });
+
+        checkDealerCutComplete(room);
+      }, 1000 + Math.random() * 800);
+    }
+  });
+}
+
+function checkDealerCutComplete(room) {
+  const requiredCount = room.dealerCutPlayerIds.length;
+  const pickedCount = Object.keys(room.dealerCutPicks).length;
+  if (pickedCount < requiredCount) return;
+
+  room.dealerCutActive = false;
+  const picks = Object.values(room.dealerCutPicks);
+
+  let minCardVal = 99;
+  let lowestPickers = [];
+  const revealData = [];
+
+  picks.forEach(item => {
+    const rankVal = CUT_RANKS[item.card.rank];
+    revealData.push({
+      id: item.player.id,
+      name: item.player.name,
+      card: item.card,
+      rankVal: rankVal
+    });
+
+    if (rankVal < minCardVal) {
+      minCardVal = rankVal;
+      lowestPickers = [item];
+    } else if (rankVal === minCardVal) {
+      lowestPickers.push(item);
+    }
+  });
+
+  io.to(room.id).emit('dealerCutResultsReveal', {
+    results: revealData
+  });
+
+  // Tie for lowest card: re-cut lowest tied players
+  if (lowestPickers.length > 1) {
+    setTimeout(() => {
+      io.to(room.id).emit('bannerAnnouncement', {
+        text: `Tie for lowest dealer cut card! Re-cutting...`,
+        duration: 2500
+      });
+      room.dealerCutActive = true;
+      room.dealerCutPicks = {};
+      room.dealerCutPlayerIds = lowestPickers.map(l => l.player.id);
+      room.dealerCutDeck = createDeck();
+
+      io.to(room.id).emit('startDealerSelectionCut', {
+        deckCount: Math.min(room.dealerCutDeck.length, 30),
+        players: lowestPickers.map(l => ({ id: l.player.id, name: l.player.name }))
+      });
+
+      lowestPickers.forEach(l => {
+        if (l.player.isBot) {
+          setTimeout(() => {
+            if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
+            const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
+            const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
+            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
+            checkDealerCutComplete(room);
+          }, 1000 + Math.random() * 800);
+        }
+      });
+    }, 3200);
+    return;
+  }
+
+  const chosenDealer = lowestPickers[0].player;
+  const dealerIdx = room.players.findIndex(p => p.id === chosenDealer.id);
+  room.dealerIdx = dealerIdx >= 0 ? dealerIdx : 0;
+
+  setTimeout(() => {
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '👑 DEALER SELECTED! 👑',
+      message: `${chosenDealer.name.toUpperCase()} IS DEALER!`,
+      subtext: `Drew lowest card (${lowestPickers[0].card.rank}${lowestPickers[0].card.suit})`,
+      duration: 3500
+    });
+    setTimeout(() => startNewRound(room.id), 3800);
+  }, 3200);
+}
+
 function startInteractiveTiebreaker(room, tiedPlayers, sideBetReport) {
   room.tiebreakerActive = true;
   room.tiebreakerPicks = {};
@@ -428,12 +546,18 @@ function startNewRound(roomId) {
       if (totalCollected > 0) {
         potWonText = ` Takes $${totalCollected} from the pot!`;
       }
+      // RULE: Winner of the game deals the new game
+      const winIdx = room.players.findIndex(p => p.id === winner.id);
+      if (winIdx >= 0) {
+        room.dealerIdx = winIdx;
+        room.lastGameWinnerId = winner.id;
+      }
     }
 
     io.to(roomId).emit('bigAnnouncement', {
       title: '🏆 GAME OVER 🏆',
       message: `${winnerName.toUpperCase()} WINS!${potWonText}`,
-      subtext: 'Check Ledger for updated balances with each player.',
+      subtext: `${winnerName} will deal the next match!`,
       duration: 8000
     });
 
@@ -454,7 +578,7 @@ function startNewRound(roomId) {
       p.isReady = false; 
     });
 
-    broadcastState(roomId, `Game over! ${winnerName} won! Check Ledger for balances.`);
+    broadcastState(roomId, `Game over! ${winnerName} won and deals the next match!`);
     broadcastRoomList();
     return;
   }
@@ -472,18 +596,27 @@ function startNewRound(roomId) {
   room.roundBets = [];
   room.tiebreakerActive = false;
 
-  for (let i = 1; i <= room.players.length; i++) {
-    const nextD = (room.dealerIdx + i) % room.players.length;
-    const candidate = room.players[nextD];
-    if (candidate && !candidate.isSpectator && candidate.lives > 0) {
-      room.dealerIdx = nextD;
-      break;
+  // Move dealer clockwise if not right after initial match selection
+  if (!room.isFirstRoundOfMatch) {
+    for (let i = 1; i <= room.players.length; i++) {
+      const nextD = (room.dealerIdx + i) % room.players.length;
+      const candidate = room.players[nextD];
+      if (candidate && !candidate.isSpectator && candidate.lives > 0) {
+        room.dealerIdx = nextD;
+        break;
+      }
     }
+  } else {
+    room.isFirstRoundOfMatch = false;
   }
 
   const dealer = room.players[room.dealerIdx];
 
-  active.forEach(p => {
+  // RULE: New players get dealt LAST.
+  // Order deal sequence: established players by joinOrder first, then newer players.
+  const dealOrder = [...active].sort((a, b) => (a.joinOrder || 0) - (b.joinOrder || 0));
+
+  dealOrder.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
     p.fedCardsTracker = {};
     p.lastDrawnSource = 'deal';
@@ -690,7 +823,6 @@ function triggerBotTurnIfNeeded(roomId) {
     const topDiscard = room.discardPile[room.discardPile.length - 1];
     const topIsDangerous = topDiscard && (topDiscard.rank === 'A' || topDiscard.value === 10);
 
-    // Bot Knock Check (Bot avoids knocking if high-value card is left unless its score is very strong)
     if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26) && (!topIsDangerous || score >= 29)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
@@ -872,7 +1004,9 @@ io.on('connection', (socket) => {
         currentDiscardFeederId: null,
         currentMatchParticipants: [],
         roundBets: [],
-        debts: {}
+        debts: {},
+        lastGameWinnerId: null,
+        isFirstRoundOfMatch: false
       };
     }
     const room = rooms[roomId];
@@ -895,6 +1029,7 @@ io.on('connection', (socket) => {
     const roomIsFull = currentActiveCount >= MAX_ACTIVE_PLAYERS;
     const isSpectator = Boolean(room.gameStarted || roomIsFull);
 
+    playerJoinCounter++;
     room.players.push({
       id: socket.id,
       name: playerName || `Player ${room.players.length + 1}`,
@@ -908,7 +1043,8 @@ io.on('connection', (socket) => {
       isReady: false,
       isInVoice: false,
       disconnected: false,
-      matchWager: 0
+      matchWager: 0,
+      joinOrder: playerJoinCounter // New players have higher counter to be dealt last
     });
 
     let joinMsg = `${playerName} joined the room.`;
@@ -938,6 +1074,8 @@ io.on('connection', (socket) => {
       if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
         return socket.emit('errorMsg', 'Table is full (6 active players max).');
       }
+      playerJoinCounter++;
+      player.joinOrder = playerJoinCounter; // Put returning player at the end of deal order
       player.manualSpectator = false;
       player.isSpectator = false;
       player.lives = 2;
@@ -997,6 +1135,28 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId, `🎲 ${bettor.name} bet $${parsedAmt} on ${targetPlayer.name} to win this round!`);
+  });
+
+  // INITIAL DEALER CUT: Player picks a face-down card
+  socket.on('pickDealerCutCard', ({ roomId, cardIndex }) => {
+    const room = rooms[roomId];
+    if (!room || !room.dealerCutActive || !room.dealerCutPlayerIds.includes(socket.id)) return;
+    if (room.dealerCutPicks[socket.id]) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    const safeIdx = Math.min(Math.max(0, cardIndex), room.dealerCutDeck.length - 1);
+    const card = room.dealerCutDeck.splice(safeIdx, 1)[0];
+    room.dealerCutPicks[socket.id] = { player: player, card: card };
+
+    io.to(roomId).emit('dealerCutCardPicked', {
+      playerId: socket.id,
+      playerName: player.name,
+      remainingCount: room.dealerCutDeck.length
+    });
+
+    checkDealerCutComplete(room);
   });
 
   socket.on('pickTiebreakerCard', ({ roomId, cardIndex }) => {
@@ -1063,12 +1223,28 @@ io.on('connection', (socket) => {
 
     if (!room.gameStarted && checkAllPlayersReady(room)) {
       room.gameStarted = true;
+      room.isFirstRoundOfMatch = true;
       room.currentMatchParticipants = getActivePlayers(room).map(p => ({
         id: p.id,
         name: p.name,
         wager: p.matchWager || 0
       }));
-      startNewRound(roomId);
+
+      // If a previous match winner exists and is still in the room, they deal the new match!
+      const previousWinner = room.lastGameWinnerId ? room.players.find(p => p.id === room.lastGameWinnerId && !p.isSpectator) : null;
+      if (previousWinner) {
+        room.dealerIdx = room.players.findIndex(p => p.id === previousWinner.id);
+        io.to(roomId).emit('bigAnnouncement', {
+          title: '👑 RETURNING CHAMPION 👑',
+          message: `${previousWinner.name.toUpperCase()} DEALS!`,
+          subtext: 'Winner of the last game deals the new game',
+          duration: 3500
+        });
+        setTimeout(() => startNewRound(roomId), 3800);
+      } else {
+        // Brand new match without returning winner: Cut cards to determine dealer (lowest deals)
+        startDealerCut(room);
+      }
     }
     broadcastRoomList();
   });
@@ -1101,6 +1277,7 @@ io.on('connection', (socket) => {
       return socket.emit('errorMsg', 'Max 6 active players allowed in the game.');
     }
 
+    playerJoinCounter++;
     const botCount = room.players.filter(p => p.isBot).length + 1;
     room.players.push({
       id: `bot_${Date.now()}_${Math.random()}`,
@@ -1115,18 +1292,27 @@ io.on('connection', (socket) => {
       isReady: true,
       isInVoice: false,
       disconnected: false,
-      matchWager: 5
+      matchWager: 5,
+      joinOrder: playerJoinCounter
     });
 
     broadcastState(roomId, `Bot ${botCount} joined.`);
     if (checkAllPlayersReady(room)) {
       room.gameStarted = true;
+      room.isFirstRoundOfMatch = true;
       room.currentMatchParticipants = getActivePlayers(room).map(p => ({
         id: p.id,
         name: p.name,
         wager: p.matchWager || 0
       }));
-      startNewRound(roomId);
+
+      const previousWinner = room.lastGameWinnerId ? room.players.find(p => p.id === room.lastGameWinnerId && !p.isSpectator) : null;
+      if (previousWinner) {
+        room.dealerIdx = room.players.findIndex(p => p.id === previousWinner.id);
+        startNewRound(roomId);
+      } else {
+        startDealerCut(room);
+      }
     }
     broadcastRoomList();
   });
@@ -1145,12 +1331,13 @@ io.on('connection', (socket) => {
 
     if (checkAllPlayersReady(room)) {
       room.gameStarted = true;
+      room.isFirstRoundOfMatch = true;
       room.currentMatchParticipants = getActivePlayers(room).map(p => ({
         id: p.id,
         name: p.name,
         wager: p.matchWager || 0
       }));
-      startNewRound(roomId);
+      startDealerCut(room);
     }
     broadcastRoomList();
   });
