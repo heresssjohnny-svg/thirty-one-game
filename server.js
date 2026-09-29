@@ -155,9 +155,10 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   }
 }
 
+// FIXED: Prevents double-counting side bet sums across directional keys
 function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  const p2OwesP1 = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2 = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
   const key1 = `${p2Name}:::${p1Name}`;
   const key2 = `${p1Name}:::${p2Name}`;
@@ -165,10 +166,7 @@ function getNetPairBalance(room, p1Name, p2Name) {
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
 
-  const totalP2OwesP1 = p2OwesP1Match + p2SideBets;
-  const totalP1OwesP2 = p1OwesP2Match + p1SideBets;
-
-  const netTotal = totalP2OwesP1 - totalP1OwesP2;
+  const netTotal = p2OwesP1 - p1OwesP2;
   const netSideBet = p2SideBets - p1SideBets;
 
   return {
@@ -248,7 +246,7 @@ function settlePeerRoundBets(room, scores) {
     let oTargetId = bet.opponentTargetId;
 
     if (!bTargetId || scores[bTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      const matchP = room.players.find(p => p.name === bet.bettorTargetName);
       if (matchP) bTargetId = matchP.id;
     }
     if (!oTargetId || scores[oTargetId] === undefined) {
