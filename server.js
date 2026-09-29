@@ -156,7 +156,6 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
 }
 
 function getNetPairBalance(room, p1Name, p2Name) {
-  // How much does p2 owe p1 across match & side bets?
   const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
   const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
@@ -260,33 +259,31 @@ function settlePeerRoundBets(room, scores) {
   });
 
   room.peerSideBets = room.peerSideBets.filter(b => b.type !== 'round');
-  return resultsSummary.length > 0 ? `Side Bets: ${resultsSummary.join(' | ')}` : '';
+  return resultsSummary.length > 0 ? `Round Side Bets: ${resultsSummary.join(' | ')}` : '';
 }
 
-function checkFirstToLoseBets(room, eliminatedPlayerName) {
-  if (!room.peerSideBets || room.peerSideBets.length === 0) return;
-
+// Instant Hand Settlement for First-to-Lose Bets
+function settleFirstLoserBetsThisHand(room, newlyEliminatedNames) {
+  if (!room.peerSideBets || room.peerSideBets.length === 0 || !newlyEliminatedNames || newlyEliminatedNames.length === 0) return '';
   const resultsSummary = [];
+
   room.peerSideBets.forEach(bet => {
     if (!bet.accepted || bet.type !== 'firstLoser') return;
 
-    if (bet.targetPlayerName === eliminatedPlayerName) {
+    // If the person bet on reached 0 lives during this hand
+    if (newlyEliminatedNames.includes(bet.targetPlayerName)) {
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName} won first-loser bet vs ${bet.opponentName} (+$${bet.amount})`);
-    } else {
-      recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName} won first-loser bet vs ${bet.bettorName} (+$${bet.amount})`);
+      resultsSummary.push(`${bet.bettorName} won first-loser bet vs ${bet.opponentName} on ${bet.targetPlayerName} (+$${bet.amount})`);
     }
   });
 
-  room.peerSideBets = room.peerSideBets.filter(b => b.type !== 'firstLoser');
+  // Remove settled first-loser bets for eliminated targets
+  room.peerSideBets = room.peerSideBets.filter(b => {
+    if (b.type !== 'firstLoser' || !b.accepted) return true;
+    return !newlyEliminatedNames.includes(b.targetPlayerName);
+  });
 
-  if (resultsSummary.length > 0) {
-    io.to(room.id).emit('bannerAnnouncement', {
-      text: `💀 First Loser Side Bets Settled: ${resultsSummary[0]}`,
-      duration: 5000
-    });
-  }
+  return resultsSummary.length > 0 ? `First-Loser Bets Settled: ${resultsSummary.join(' | ')}` : '';
 }
 
 function broadcastRoomList() {
@@ -445,7 +442,7 @@ function checkDealerCutComplete(room) {
   }, 3200);
 }
 
-function startInteractiveTiebreaker(room, tiedPlayers, sideBetReport) {
+function startInteractiveTiebreaker(room, tiedPlayers) {
   room.tiebreakerActive = true;
   room.tiebreakerPicks = {};
   room.tiedPlayerIds = tiedPlayers.map(p => p.id);
@@ -460,8 +457,7 @@ function startInteractiveTiebreaker(room, tiedPlayers, sideBetReport) {
 
   io.to(room.id).emit('startTiebreakerCut', {
     deckCount: room.tiebreakerDeck.length,
-    tiedPlayers: tiedPlayers.map(p => ({ id: p.id, name: p.name })),
-    sideBetReport: sideBetReport || ''
+    tiedPlayers: tiedPlayers.map(p => ({ id: p.id, name: p.name }))
   });
 
   tiedPlayers.forEach(p => {
@@ -522,22 +518,25 @@ function checkTiebreakerComplete(room) {
         text: `Tie for lowest cut! Re-drawing lowest players...`,
         duration: 2500
       });
-      startInteractiveTiebreaker(room, cutLosers.map(l => l.player), 'Re-drawing lowest cards');
+      startInteractiveTiebreaker(room, cutLosers.map(l => l.player));
     }, 2800);
     return;
   }
 
   const ultimateLoser = cutLosers[0];
   ultimateLoser.player.lives -= 1;
+
+  let newlyEliminated = [];
   if (ultimateLoser.player.lives <= 0) {
-    checkFirstToLoseBets(room, ultimateLoser.player.name);
+    newlyEliminated.push(ultimateLoser.player.name);
   }
+  const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
 
   setTimeout(() => {
     io.to(room.id).emit('bigAnnouncement', {
       title: '⚡ TIEBREAKER FINISHED! ⚡',
       message: `LOSER: ${ultimateLoser.player.name.toUpperCase()} (${ultimateLoser.card.rank}${ultimateLoser.card.suit})`,
-      subtext: `Picked lowest card from the deck!`,
+      subtext: `${firstLoserReport ? firstLoserReport + ' | ' : ''}Picked lowest card from the deck!`,
       hands: getRevealedHands(room),
       duration: 6500
     });
@@ -560,7 +559,7 @@ function checkAndHandle31(room, player) {
     scores[p.id] = calculateScore(p.hand);
   });
   scores[player.id] = 31;
-  const sideBetReport = settlePeerRoundBets(room, scores);
+  const roundBetReport = settlePeerRoundBets(room, scores);
 
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
@@ -578,17 +577,19 @@ function checkAndHandle31(room, player) {
     }
   }
 
+  let newlyEliminated = [];
   if (penalizedGiver) {
     penalizedGiver.lives = Math.max(0, penalizedGiver.lives - 2);
     if (penalizedGiver.lives <= 0) {
-      checkFirstToLoseBets(room, penalizedGiver.name);
+      newlyEliminated.push(penalizedGiver.name);
     }
+    const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
     broadcastState(room.id);
 
     io.to(room.id).emit('bigAnnouncement', {
       title: '⚡ 31 HIT FROM DISCARD! ⚡',
       message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
       hands: revealedHands,
       duration: 6500
     });
@@ -598,12 +599,13 @@ function checkAndHandle31(room, player) {
       if (!p.isSpectator && p.lives > 0 && p.id !== player.id) {
         p.lives -= 1;
         if (p.lives <= 0) {
-          checkFirstToLoseBets(room, p.name);
+          newlyEliminated.push(p.name);
         }
         losers.push(p.name);
       }
     });
 
+    const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
     broadcastState(room.id);
 
     const drawDesc = player.lastDrawnSource === 'deck' 
@@ -613,13 +615,13 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: `⚡ ${player.name.toUpperCase()} HIT 31! ⚡`,
       message: `EVERYONE ELSE LOSES 1 LIFE!`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
       hands: revealedHands,
       duration: 6500
     });
   }
 
-  setTimeout(() => startNewRound(room.id), 6500);
+  setTimeout(() => startNewRound(roomId), 6500);
   return true;
 }
 
@@ -862,18 +864,22 @@ function resolveShowdown(roomId) {
   const lowestPlayers = active.filter(p => scores[p.id] === minScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
   const revealedHands = getRevealedHands(room);
-  const sideBetReport = settlePeerRoundBets(room, scores);
+  const roundBetReport = settlePeerRoundBets(room, scores);
+
+  let newlyEliminated = [];
 
   if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
     knocker.lives -= 1;
     if (knocker.lives <= 0) {
-      checkFirstToLoseBets(room, knocker.name);
+      newlyEliminated.push(knocker.name);
     }
+    const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
     const losersText = `${knocker.name} (Knocker lost alone)`;
+
     io.to(roomId).emit('bigAnnouncement', {
       title: '💀 ROUND OVER 💀',
       message: `LOSER: ${losersText}`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Lowest Score: ${minScore}`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Lowest Score: ${minScore}`,
       hands: revealedHands,
       duration: 6500
     });
@@ -887,7 +893,7 @@ function resolveShowdown(roomId) {
       io.to(roomId).emit('bigAnnouncement', {
         title: '🤝 HEADS-UP TIE! 🤝',
         message: 'PUSH — RE-DEALING ROUND!',
-        subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Both players tied at ${minScore} points`,
+        subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}Both players tied at ${minScore} points`,
         hands: revealedHands,
         duration: 6500
       });
@@ -896,20 +902,21 @@ function resolveShowdown(roomId) {
       return;
     }
 
-    startInteractiveTiebreaker(room, lowestPlayers, sideBetReport);
+    startInteractiveTiebreaker(room, lowestPlayers);
     return;
   }
 
   const singleLoser = lowestPlayers[0];
   singleLoser.lives -= 1;
   if (singleLoser.lives <= 0) {
-    checkFirstToLoseBets(room, singleLoser.name);
+    newlyEliminated.push(singleLoser.name);
   }
+  const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
 
   io.to(roomId).emit('bigAnnouncement', {
     title: '💀 ROUND OVER 💀',
     message: `LOSER: ${singleLoser.name}`,
-    subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}Lowest Score: ${minScore}`,
+    subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Lowest Score: ${minScore}`,
     hands: revealedHands,
     duration: 6500
   });
@@ -1472,7 +1479,7 @@ io.on('connection', (socket) => {
     const card = room.dealerCutDeck.splice(safeIdx, 1)[0];
     room.dealerCutPicks[socket.id] = { player: player, card: card };
 
-    io.to(roomId).emit('dealerCutCardPicked', {
+    io.to(room.id).emit('dealerCutCardPicked', {
       playerId: socket.id,
       playerName: player.name,
       remainingCount: room.dealerCutDeck.length
@@ -1493,7 +1500,7 @@ io.on('connection', (socket) => {
     const card = room.tiebreakerDeck.splice(safeIdx, 1)[0];
     room.tiebreakerPicks[socket.id] = { player: player, card: card };
 
-    io.to(roomId).emit('tiebreakerCardPicked', {
+    io.to(room.id).emit('tiebreakerCardPicked', {
       playerId: socket.id,
       playerName: player.name,
       remainingCount: room.tiebreakerDeck.length
