@@ -157,6 +157,23 @@
         pArea.appendChild(div);
       });
 
+            // Manage Start Game button visibility
+      const startBtn = document.getElementById('startBtn');
+      if (myHand && myHand.length > 0) {
+        // Game has already started and cards are dealt
+        startBtn.style.display = 'none';
+      } else if (state.players && state.players.length >= 2) {
+        // 2 or more players are waiting in lobby: show active start button
+        startBtn.style.display = 'inline-block';
+        startBtn.disabled = false;
+        startBtn.innerText = `Start Game (${state.players.length} Players)`;
+      } else {
+        // Only 1 player joined so far
+        startBtn.style.display = 'inline-block';
+        startBtn.disabled = true;
+        startBtn.innerText = 'Waiting for 2nd Player...';
+      }
+
       // Update Discard pile
       const disc = document.getElementById('discardPile');
       if (state.topDiscard) {
