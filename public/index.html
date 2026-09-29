@@ -48,6 +48,12 @@
     .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 13px; text-align: center; }
     .card.discard-highlight { outline: 3px solid #ffcc00; transform: translateY(-4px); }
 
+    .card.mini {
+      width: 44px; height: 64px; min-width: 44px; min-height: 64px;
+      font-size: 14px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .card.mini span:last-child { font-size: 14px !important; }
+
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
     .hand-cards { display: flex; gap: 10px; justify-content: center; min-height: 110px; }
     
@@ -74,9 +80,7 @@
       z-index: 500; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       pointer-events: none; text-align: center; border: 2px solid #fff;
     }
-    .banner-announcement.show {
-      transform: translateX(-50%) translateY(0);
-    }
+    .banner-announcement.show { transform: translateX(-50%) translateY(0); }
 
     .chat-btn {
       position: fixed; right: 12px; bottom: 70px;
@@ -115,15 +119,31 @@
     }
 
     .big-announcement-overlay {
-      position: absolute; inset: 0; background: rgba(0, 0, 0, 0.88);
+      position: absolute; inset: 0; background: rgba(0, 0, 0, 0.92);
       display: flex; flex-direction: column; justify-content: center; align-items: center;
       z-index: 999; opacity: 0; pointer-events: none;
-      transition: opacity 0.3s ease; text-align: center; padding: 20px;
+      transition: opacity 0.3s ease; text-align: center; padding: 16px; overflow-y: auto;
     }
     .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
-    .ann-title { font-size: 26px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 12px; font-weight: 800; }
-    .ann-message { font-size: 30px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 8px; }
-    .ann-subtext { font-size: 16px; color: #ffffff; opacity: 0.9; max-width: 90%; }
+    .ann-title { font-size: 24px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 8px; font-weight: 800; }
+    .ann-message { font-size: 28px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 6px; }
+    .ann-subtext { font-size: 15px; color: #ffffff; opacity: 0.9; max-width: 90%; margin-bottom: 12px; }
+
+    /* SHOWDOWN HANDS DISPLAY */
+    .showdown-hands-grid {
+      display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 480px; width: 100%; margin-top: 6px;
+    }
+    .showdown-player-box {
+      background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 10px;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .showdown-player-info {
+      font-size: 13px; font-weight: bold; color: #ffcc00; display: flex; gap: 6px;
+    }
+    .showdown-cards-row {
+      display: flex; gap: 4px;
+    }
 
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.92);
@@ -156,6 +176,7 @@
     <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
     <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
     <div id="annSubtext" class="ann-subtext">Lowest score: 14</div>
+    <div id="showdownHandsContainer" class="showdown-hands-grid"></div>
   </div>
 
   <div id="lobby" class="lobby-modal">
@@ -500,11 +521,11 @@
       socket.emit('knock', currentRoom);
     }
 
-    function renderCard(card, onClick, highlight = false) {
+    function renderCard(card, onClick, highlight = false, isMini = false) {
       const el = document.createElement('div');
       const isRed = card.suit === '♥' || card.suit === '♦';
-      el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''}`;
-      el.innerHTML = `<span>${card.rank}</span><span style="font-size: 20px;">${card.suit}</span>`;
+      el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''} ${isMini ? 'mini' : ''}`;
+      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '14px' : '20px'};">${card.suit}</span>`;
       if (onClick) el.onclick = onClick;
       return el;
     }
@@ -572,7 +593,7 @@
           if (!roundHasPassed) {
             knockBtn.innerText = `Knock (Round 1 active)`;
           } else if (state.canKnock) {
-            knockBtn.innerText = `⚡ Knock Now (${minKnockScore}+)!`;
+            knockBtn.innerText = `⚡ Knock Now!`;
           } else {
             knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
           }
@@ -638,6 +659,32 @@
       document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
       document.getElementById('annMessage').innerText = data.message || '';
       document.getElementById('annSubtext').innerText = data.subtext || '';
+
+      const handsContainer = document.getElementById('showdownHandsContainer');
+      handsContainer.innerHTML = '';
+
+      // If showdown cards were sent, render everyone's cards
+      if (data.hands && data.hands.length > 0) {
+        data.hands.forEach(ph => {
+          const box = document.createElement('div');
+          box.className = 'showdown-player-box';
+
+          const info = document.createElement('div');
+          info.className = 'showdown-player-info';
+          info.innerText = `${ph.name}: ${ph.score} pts ${ph.isKnocker ? '🔔' : ''}`;
+          box.appendChild(info);
+
+          const cardRow = document.createElement('div');
+          cardRow.className = 'showdown-cards-row';
+          ph.hand.forEach(c => {
+            cardRow.appendChild(renderCard(c, null, false, true));
+          });
+          box.appendChild(cardRow);
+
+          handsContainer.appendChild(box);
+        });
+      }
+
       overlay.classList.add('show');
 
       if (data.sound === 'knock') {
@@ -646,6 +693,7 @@
 
       setTimeout(() => {
         overlay.classList.remove('show');
+        handsContainer.innerHTML = '';
       }, data.duration || 3500);
     });
 
