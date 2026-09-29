@@ -828,7 +828,7 @@ function broadcastState(roomId, message = '') {
       players: room.players.map(pl => ({
         id: pl.id,
         name: pl.name,
-        avatar: pl.avatar || '👤',
+        avatar: pl.avatar || '👑',
         lives: pl.lives,
         cardCount: pl.hand ? pl.hand.length : 0,
         isDealer: room.players[room.dealerIdx]?.id === pl.id,
