@@ -74,7 +74,7 @@ function getActivePlayers(room) {
   return room.players.filter(p => p.lives > 0);
 }
 
-// Crash-proof clockwise turn finder
+// Bounded clockwise turn advancement
 function advanceTurnIndex(room) {
   const total = room.players.length;
   if (total === 0) return;
@@ -124,7 +124,7 @@ function startNewRound(roomId) {
 
   room.discardPile.push(room.deck.pop());
 
-  // Advance dealer safely
+  // Dealer moves clockwise among living players
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
     if (room.players[nextD].lives > 0) {
@@ -133,7 +133,7 @@ function startNewRound(roomId) {
     }
   }
 
-  // Turn starts to the left of dealer
+  // Turn starts to the left of the dealer
   room.currentTurnIdx = room.dealerIdx;
   advanceTurnIndex(room);
 
@@ -225,14 +225,17 @@ function triggerBotTurnIfNeeded(roomId) {
     const minKnockScore = activeCount === 2 ? 25 : 21;
     const score = calculateScore(current.hand);
 
-    // Bot Knock Check
+    // 1. Bot Knock Check: If knocking, do not draw/discard - advance immediately
     if (!room.knockerId && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
-      broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED!`);
+      advanceTurnIndex(room);
+      broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED with ${score} pts! Turn passes.`);
+      triggerBotTurnIfNeeded(roomId);
+      return;
     }
 
-    // Bot Draw Check
+    // 2. Bot Draw Decision
     const topDiscard = room.discardPile[room.discardPile.length - 1];
     let takeDiscard = false;
     if (topDiscard) {
@@ -259,7 +262,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     current.hand.push(drawn);
 
-    // Discard logic
+    // 3. Bot Discard Decision (maximize score)
     let bestIdx = 0;
     let bestScore = -1;
     for (let i = 0; i < current.hand.length; i++) {
@@ -273,7 +276,7 @@ function triggerBotTurnIfNeeded(roomId) {
     const [discarded] = current.hand.splice(bestIdx, 1);
     room.discardPile.push(discarded);
 
-    // Check for 31
+    // Check if Bot reached 31
     if (calculateScore(current.hand) === 31) {
       room.isResolvingRound = true;
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
@@ -293,7 +296,7 @@ function triggerBotTurnIfNeeded(roomId) {
       return;
     }
 
-    // Advance turns
+    // Process countdown turns remaining after a knock
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
       if (room.turnsLeftAfterKnock <= 0) {
@@ -328,7 +331,6 @@ io.on('connection', (socket) => {
     }
     const room = rooms[roomId];
 
-    // Mobile Reconnect handler: If player with same name already exists, update socket ID instead of duplicating
     const existingPlayer = room.players.find(p => p.name === playerName);
     if (existingPlayer) {
       existingPlayer.id = socket.id;
@@ -380,18 +382,25 @@ io.on('connection', (socket) => {
     startNewRound(roomId);
   });
 
+  // KNOCK: Player concludes their turn immediately
   socket.on('knock', (roomId) => {
     const room = rooms[roomId];
     const player = room?.players[room.currentTurnIdx];
     if (!room || !player || player.id !== socket.id || room.knockerId || room.isResolvingRound) return;
 
-    const minKnockScore = getActivePlayers(room).length === 2 ? 25 : 21;
+    const activeCount = getActivePlayers(room).length;
+    const minKnockScore = activeCount === 2 ? 25 : 21;
     const score = calculateScore(player.hand);
 
     if (score >= minKnockScore && !room.drawnCard) {
       room.knockerId = player.id;
-      room.turnsLeftAfterKnock = getActivePlayers(room).length - 1;
-      broadcastState(roomId, `🔔 ${player.name} KNOCKED! Everyone gets 1 final turn.`);
+      // Remaining players each get 1 turn
+      room.turnsLeftAfterKnock = activeCount - 1;
+
+      // Pass turn to the next player immediately (Knocker does not draw or discard)
+      advanceTurnIndex(room);
+      broadcastState(roomId, `🔔 ${player.name} KNOCKED with ${score} pts! Final turn for all other players.`);
+      triggerBotTurnIfNeeded(roomId);
     }
   });
 
@@ -447,7 +456,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Knocker turn progress
+    // Process countdown turns remaining after a knock
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
       if (room.turnsLeftAfterKnock <= 0) {
@@ -466,12 +475,10 @@ io.on('connection', (socket) => {
       const idx = room.players.findIndex(p => p.id === socket.id);
       if (idx !== -1) {
         const leaving = room.players[idx];
-        
-        // If the game hasn't started, remove them cleanly
+
         if (!room.gameStarted) {
           room.players.splice(idx, 1);
         } else {
-          // If in an active game, mark them as eliminated so it doesn't freeze turns
           leaving.lives = 0;
           if (room.currentTurnIdx === idx) {
             advanceTurnIndex(room);
