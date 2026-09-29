@@ -301,35 +301,6 @@ function settleFirstLoserBetsThisHand(room, newlyEliminatedNames) {
   return resultsSummary.length > 0 ? `First-Loser Bets Settled: ${resultsSummary.join(' | ')}` : '';
 }
 
-function checkFirstToLoseBothLivesBets(room, eliminatedPlayerName) {
-  if (!room.peerSideBets || room.peerSideBets.length === 0) return;
-  if (room.firstLoserDetermined) return;
-
-  room.firstLoserDetermined = true;
-  const resultsSummary = [];
-
-  room.peerSideBets.forEach(bet => {
-    if (!bet.accepted || bet.type !== 'firstLoser') return;
-
-    if (bet.targetPlayerName === eliminatedPlayerName) {
-      recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName} correctly predicted ${bet.targetPlayerName} would lose both lives first (+$${bet.amount} from ${bet.opponentName})`);
-    } else {
-      recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName} won first-loser bet vs ${bet.bettorName} (+$${bet.amount})`);
-    }
-  });
-
-  room.peerSideBets = room.peerSideBets.filter(b => b.type !== 'firstLoser');
-
-  if (resultsSummary.length > 0) {
-    io.to(room.id).emit('bannerAnnouncement', {
-      text: `💀 ${eliminatedPlayerName} lost both lives! First-Loser Side Bets Settled.`,
-      duration: 7500
-    });
-  }
-}
-
 function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
@@ -1299,7 +1270,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1468,6 +1439,18 @@ io.on('connection', (socket) => {
       const opponent = room.players.find(p => p.name === oppName);
       if (!opponent) return;
 
+      // Prevent duplicate active/pending First-to-Lose side bets between the same players in the same game
+      if (betType === 'firstLoser') {
+        const existingDuplicate = room.peerSideBets.find(b => 
+          b.type === 'firstLoser' &&
+          ((b.bettorId === bettor.id && b.opponentId === opponent.id) || (b.bettorId === opponent.id && b.opponentId === bettor.id)) &&
+          b.targetPlayerName === targetPlayer.name
+        );
+        if (existingDuplicate) {
+          return socket.emit('errorMsg', `You already have a First-to-Lose bet active or pending with ${opponent.name} on ${targetPlayer.name}!`);
+        }
+      }
+
       const betId = `sb_${Date.now()}_${Math.random()}`;
       const newBet = {
         id: betId,
@@ -1499,6 +1482,7 @@ io.on('connection', (socket) => {
           betId: betId,
           fromPlayer: bettor.name,
           amount: parsedAmt,
+          betType: betType,
           bettorTarget: targetPlayer.name
         });
       }
@@ -1508,13 +1492,13 @@ io.on('connection', (socket) => {
       return socket.emit('errorMsg', 'Invalid side bet selection.');
     }
 
-    let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each on ${targetPlayer.name}).`;
+    let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each).`;
     if (botAcceptedCount > 0) {
       msg += ` (${botAcceptedCount} bot(s) accepted immediately)`;
     }
 
     socket.emit('bannerAnnouncement', { text: msg, duration: 3200 });
-    broadcastState(roomId, `🎲 ${bettor.name} offered $${parsedAmt} side bets on ${targetPlayer.name} to ${proposedCount} player(s).`);
+    broadcastState(roomId, `🎲 ${bettor.name} offered $${parsedAmt} side bets to ${proposedCount} player(s).`);
   });
 
   socket.on('respondSideBet', ({ roomId, betId, accept, myTargetName }) => {
@@ -1648,6 +1632,21 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId);
+  });
+
+  // NEW: Voice chat invitation system
+  socket.on('inviteToVoice', ({ roomId, targetSocketId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    const inviter = room.players.find(p => p.id === socket.id);
+    const target = room.players.find(p => p.id === targetSocketId);
+    if (!inviter || !target || target.isInVoice) return;
+
+    io.to(target.id).emit('voiceInviteReceived', {
+      inviterName: inviter.name,
+      roomId: roomId
+    });
+    socket.emit('bannerAnnouncement', { text: `Voice invite sent to ${target.name}!`, duration: 3000 });
   });
 
   socket.on('voiceSignal', ({ target, signal }) => {
