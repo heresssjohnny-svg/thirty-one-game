@@ -283,6 +283,35 @@ function settleFirstLoserBetsThisHand(room, newlyEliminatedNames) {
   return resultsSummary.length > 0 ? `First-Loser Bets Settled: ${resultsSummary.join(' | ')}` : '';
 }
 
+function checkFirstToLoseBothLivesBets(room, eliminatedPlayerName) {
+  if (!room.peerSideBets || room.peerSideBets.length === 0) return;
+  if (room.firstLoserDetermined) return;
+
+  room.firstLoserDetermined = true;
+  const resultsSummary = [];
+
+  room.peerSideBets.forEach(bet => {
+    if (!bet.accepted || bet.type !== 'firstLoser') return;
+
+    if (bet.targetPlayerName === eliminatedPlayerName) {
+      recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
+      resultsSummary.push(`${bet.bettorName} correctly predicted ${bet.targetPlayerName} would lose both lives first (+$${bet.amount} from ${bet.opponentName})`);
+    } else {
+      recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
+      resultsSummary.push(`${bet.opponentName} won first-loser bet vs ${bet.bettorName} (+$${bet.amount})`);
+    }
+  });
+
+  room.peerSideBets = room.peerSideBets.filter(b => b.type !== 'firstLoser');
+
+  if (resultsSummary.length > 0) {
+    io.to(room.id).emit('bannerAnnouncement', {
+      text: `💀 ${eliminatedPlayerName} lost both lives! First-Loser Side Bets Settled.`,
+      duration: 6000
+    });
+  }
+}
+
 function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
@@ -439,16 +468,20 @@ function checkDealerCutComplete(room) {
   }, 3200);
 }
 
+// FIXED: Robust tiebreaker deck replenishment
 function startInteractiveTiebreaker(room, tiedPlayers) {
   room.tiebreakerActive = true;
   room.tiebreakerPicks = {};
   room.tiedPlayerIds = tiedPlayers.map(p => p.id);
 
-  let eligibleDeck = [...room.deck];
+  let eligibleDeck = [...(room.deck || [])];
   if (eligibleDeck.length < 15) {
-    const top = room.discardPile.pop();
+    const top = room.discardPile.length > 0 ? room.discardPile.pop() : null;
     eligibleDeck = eligibleDeck.concat(room.discardPile.sort(() => Math.random() - 0.5));
-    room.discardPile = [top];
+    if (top) room.discardPile = [top];
+  }
+  if (eligibleDeck.length < 5) {
+    eligibleDeck = createDeck();
   }
   room.tiebreakerDeck = eligibleDeck.sort(() => Math.random() - 0.5);
 
@@ -460,9 +493,11 @@ function startInteractiveTiebreaker(room, tiedPlayers) {
   tiedPlayers.forEach(p => {
     if (p.isBot) {
       setTimeout(() => {
-        if (!room.tiebreakerActive || room.tiebreakerPicks[p.id]) return;
+        if (!room.tiebreakerActive || (room.tiebreakerPicks && room.tiebreakerPicks[p.id])) return;
+        if (!room.tiebreakerDeck || room.tiebreakerDeck.length === 0) return;
         const chosenCardIdx = Math.floor(Math.random() * room.tiebreakerDeck.length);
         const card = room.tiebreakerDeck.splice(chosenCardIdx, 1)[0];
+        if (!room.tiebreakerPicks) room.tiebreakerPicks = {};
         room.tiebreakerPicks[p.id] = { player: p, card: card };
 
         io.to(room.id).emit('tiebreakerCardPicked', {
@@ -1075,7 +1110,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
