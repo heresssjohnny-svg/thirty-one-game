@@ -50,7 +50,6 @@ function createDeck() {
 function calculateScore(hand) {
   if (!hand || hand.length === 0) return 0;
 
-  // 3 of a kind = 30.5 pts
   if (hand.length === 3) {
     if (hand[0].rank === hand[1].rank && hand[1].rank === hand[2].rank) return 30.5;
   } else if (hand.length === 4) {
@@ -113,7 +112,6 @@ function startNewRound(roomId) {
       duration: 8000
     });
     room.gameStarted = false;
-    // Allow spectators to join future games once game ends
     room.players.forEach(p => { p.isSpectator = false; p.lives = 2; });
     return;
   }
@@ -133,7 +131,6 @@ function startNewRound(roomId) {
 
   room.discardPile.push(room.deck.pop());
 
-  // Dealer moves clockwise among living players
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
     const candidate = room.players[nextD];
@@ -246,7 +243,6 @@ function triggerBotTurnIfNeeded(roomId) {
     const roundHasPassed = room.turnsTakenInRound >= activeCount;
     const score = calculateScore(current.hand);
 
-    // Bot Knock Check
     if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
@@ -256,7 +252,6 @@ function triggerBotTurnIfNeeded(roomId) {
       return;
     }
 
-    // Bot Draw Decision
     const topDiscard = room.discardPile[room.discardPile.length - 1];
     let takeDiscard = false;
     if (topDiscard) {
@@ -283,7 +278,6 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     current.hand.push(drawn);
 
-    // Bot Discard
     let bestIdx = 0;
     let bestScore = -1;
     for (let i = 0; i < current.hand.length; i++) {
@@ -298,7 +292,6 @@ function triggerBotTurnIfNeeded(roomId) {
     room.discardPile.push(discarded);
     room.turnsTakenInRound += 1;
 
-    // Check for 31
     if (calculateScore(current.hand) === 31) {
       room.isResolvingRound = true;
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
@@ -367,7 +360,6 @@ io.on('connection', (socket) => {
     }
     const room = rooms[roomId];
 
-    // Reconnection handling
     const existingPlayer = room.players.find(p => p.name === playerName);
     if (existingPlayer) {
       existingPlayer.id = socket.id;
@@ -375,7 +367,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // If game has already started, join as Spectator
     const isSpectator = Boolean(room.gameStarted);
 
     room.players.push({
@@ -393,6 +384,23 @@ io.on('connection', (socket) => {
       : `${playerName} joined the room.`;
 
     broadcastState(roomId, joinMsg);
+  });
+
+  // Chat handling
+  socket.on('sendChatMessage', ({ roomId, message }) => {
+    const room = rooms[roomId];
+    if (!room || !message || !message.trim()) return;
+
+    const sender = room.players.find(p => p.id === socket.id);
+    const senderName = sender ? sender.name : 'Unknown';
+    const isSpectator = sender ? sender.isSpectator : false;
+
+    io.to(roomId).emit('newChatMessage', {
+      sender: senderName,
+      text: message.trim().slice(0, 150),
+      isSpectator: isSpectator,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
   });
 
   socket.on('addBot', (roomId) => {
@@ -479,7 +487,6 @@ io.on('connection', (socket) => {
     room.drawnCard = null;
     room.turnsTakenInRound += 1;
 
-    // Check for 31
     if (calculateScore(player.hand) === 31) {
       room.isResolvingRound = true;
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
