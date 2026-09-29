@@ -444,7 +444,7 @@ function checkDealerCutComplete(room) {
             if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
             const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
             const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
-            room.dealerCutPicks[l.player.id] = { player: l, card: card };
+            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
             checkDealerCutComplete(room);
           }, 1000 + Math.random() * 800);
         }
@@ -770,7 +770,7 @@ function startNewRound(roomId) {
   const firstDiscard = room.deck.pop();
   room.discardPile.push(firstDiscard);
   room.currentDiscardFeederId = null;
-  room.initialDiscardCard = firstDiscard; // Track initial deal top card
+  room.initialDiscardCard = firstDiscard;
 
   for (const p of active) {
     if (calculateScore(p.hand) === 31) {
@@ -828,6 +828,7 @@ function broadcastState(roomId, message = '') {
       players: room.players.map(pl => ({
         id: pl.id,
         name: pl.name,
+        avatar: pl.avatar || '👤',
         lives: pl.lives,
         cardCount: pl.hand ? pl.hand.length : 0,
         isDealer: room.players[room.dealerIdx]?.id === pl.id,
@@ -853,7 +854,7 @@ function broadcastState(roomId, message = '') {
       minKnockScore: minKnockScore,
       roundHasPassed: roundHasPassed,
       topDiscard: room.discardPile[room.discardPile.length - 1] || null,
-      deckCount: room.deck ? room.deck.length : 0, // NEW: send deck count remaining
+      deckCount: room.deck ? room.deck.length : 0,
       isMyTurn: isCurrent,
       hasDrawn: Boolean(room.drawnCard),
       canKnock: canKnock,
@@ -1021,13 +1022,12 @@ function triggerBotTurnIfNeeded(roomId) {
 
     let drawn;
     if (takeDiscard) {
-      // Check if picking up the initial discard card
       if (room.initialDiscardCard && topDiscard.rank === room.initialDiscardCard.rank && topDiscard.suit === room.initialDiscardCard.suit) {
         io.to(roomId).emit('bannerAnnouncement', {
           text: `📢 Reminder: ${current.name} picked up the first dealt card (${topDiscard.rank}${topDiscard.suit})!`,
           duration: 4500
         });
-        room.initialDiscardCard = null; // Clear trigger once picked up
+        room.initialDiscardCard = null;
       }
 
       drawn = room.discardPile.pop();
@@ -1152,7 +1152,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives }) => {
+  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives, avatar }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
       rooms[roomId] = {
@@ -1189,6 +1189,8 @@ io.on('connection', (socket) => {
     }
 
     let safeName = playerName ? playerName.trim() : '';
+    let safeAvatar = avatar || '👤';
+
     if (deviceId && room.playerRegistry[deviceId]) {
       if (safeName && safeName !== room.playerRegistry[deviceId]) {
         const oldName = room.playerRegistry[deviceId];
@@ -1250,6 +1252,7 @@ io.on('connection', (socket) => {
         delete disconnectTimeouts[key];
       }
       existingPlayer.name = safeName;
+      existingPlayer.avatar = safeAvatar;
       existingPlayer.id = socket.id;
       if (deviceId) existingPlayer.deviceId = deviceId;
       existingPlayer.disconnected = false;
@@ -1268,6 +1271,7 @@ io.on('connection', (socket) => {
       id: socket.id,
       deviceId: deviceId || null,
       name: safeName,
+      avatar: safeAvatar,
       lives: isSpectator ? 0 : (room.configuredLives || 2),
       hand: [],
       fedCardsTracker: {},
@@ -1549,7 +1553,7 @@ io.on('connection', (socket) => {
       }
       bet.accepted = true;
 
-      io.to(roomId).emit('bannerAnnouncement', {
+      io.to(room.id).emit('bannerAnnouncement', {
         text: `🤝 ${bet.opponentName} ACCEPTED ${bet.bettorName}'s $${bet.amount} side bet!`,
         duration: 3500
       });
@@ -1747,6 +1751,7 @@ io.on('connection', (socket) => {
     room.players.push({
       id: `bot_${Date.now()}_${Math.random()}`,
       name: botName,
+      avatar: '🤖',
       lives: room.configuredLives || 2,
       hand: [],
       fedCardsTracker: {},
@@ -1858,13 +1863,12 @@ io.on('connection', (socket) => {
       if (room.discardPile.length === 0) return;
       const topDiscardCheck = room.discardPile[room.discardPile.length - 1];
 
-      // Check if picking up the initial discard card
       if (room.initialDiscardCard && topDiscardCheck.rank === room.initialDiscardCard.rank && topDiscardCheck.suit === room.initialDiscardCard.suit) {
         io.to(roomId).emit('bannerAnnouncement', {
           text: `📢 Reminder: ${player.name} picked up the first dealt card (${topDiscardCheck.rank}${topDiscardCheck.suit})!`,
           duration: 4500
         });
-        room.initialDiscardCard = null; // Clear trigger once picked up
+        room.initialDiscardCard = null;
       }
 
       drawn = room.discardPile.pop();
