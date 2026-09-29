@@ -180,23 +180,24 @@
     }
     .showdown-cards-row { display: flex; gap: 4px; }
 
-    .tiebreaker-overlay {
+    /* OVERLAYS: TIEBREAKER & DEALER CUT */
+    .card-cut-overlay {
       position: absolute; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
       z-index: 950; padding: 14px; text-align: center;
     }
-    .tiebreaker-spread {
+    .card-cut-spread {
       display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; max-height: 250px;
       overflow-y: auto; padding: 10px; margin: 12px 0; background: rgba(0,0,0,0.25); border-radius: 12px;
     }
-    .tiebreaker-card-slot {
+    .card-cut-slot {
       width: 46px; height: 68px; background: #0d47a1; border: 2px solid #fff; border-radius: 6px;
       cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center;
       justify-content: center; font-size: 11px; font-weight: bold; color: #fff;
       transition: transform 0.15s ease, border-color 0.15s ease;
     }
-    .tiebreaker-card-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
-    .tiebreaker-picks-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+    .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
+    .card-cut-picks-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
 
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -276,6 +277,12 @@
           • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
         </div>
         <div>
+          <h4>👑 Initial Dealer Selection & New Players</h4>
+          • In a brand-new match, everyone cuts a face-down card. The <strong>lowest card deals</strong>!<br>
+          • The <strong>winner of the game deals</strong> the new game.<br>
+          • <strong>New players get dealt last.</strong>
+        </div>
+        <div>
           <h4>🔄 Turn Play</h4>
           On your turn, draw 1 card from the deck or discard pile, then choose 1 card from your 4 cards to discard.
         </div>
@@ -313,11 +320,20 @@
     </div>
   </div>
 
-  <div id="tiebreakerOverlay" class="tiebreaker-overlay">
+  <!-- INITIAL DEALER CUT OVERLAY -->
+  <div id="dealerCutOverlay" class="card-cut-overlay">
+    <h2 style="color:#ffd700; margin:0 0 6px 0;">👑 INITIAL DEALER CUT 👑</h2>
+    <div id="dealerCutInstruction" style="font-size:14px; font-weight:bold; margin-bottom:8px;">Tap any face-down card! Lowest card becomes Dealer.</div>
+    <div id="dealerCutSpread" class="card-cut-spread"></div>
+    <div id="dealerCutPicksContainer" class="card-cut-picks-row"></div>
+  </div>
+
+  <!-- INTERACTIVE TIEBREAKER OVERLAY -->
+  <div id="tiebreakerOverlay" class="card-cut-overlay">
     <h2 style="color:#ffd700; margin:0 0 6px 0;">⚡ SUDDEN DEATH TIEBREAKER ⚡</h2>
-    <div id="tiebreakerInstruction" style="font-size:15px; font-weight:bold; margin-bottom:8px;">Choose your face-down card!</div>
-    <div id="tiebreakerSpread" class="tiebreaker-spread"></div>
-    <div id="tiebreakerPicksContainer" class="tiebreaker-picks-row"></div>
+    <div id="tiebreakerInstruction" style="font-size:14px; font-weight:bold; margin-bottom:8px;">Choose your face-down card!</div>
+    <div id="tiebreakerSpread" class="card-cut-spread"></div>
+    <div id="tiebreakerPicksContainer" class="card-cut-picks-row"></div>
   </div>
 
   <div id="ledgerModal" class="custom-modal">
@@ -481,6 +497,7 @@
     let dealAnimationTimers = [];
     let amTiedForTiebreaker = false;
     let hasPickedTiebreakerCard = false;
+    let hasPickedDealerCard = false;
     let announcementTimer = null;
 
     let audioCtx = null;
@@ -775,15 +792,13 @@
       toggleRoundBetModal();
     }
 
-    // KNOCK SAFETY CHECK
     function attemptKnock() {
       if (isSpectator) return;
       if (!isTurn) return alert("You can only knock on your turn!");
       if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
       if (!roundHasPassed) return alert("1 full round must go by before anyone can knock!");
-      if (currentScore < minKnockScore) return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
+      if (currentScore < minKnockScore) return alert(`You need at least ${minKnockScore} points to knock (you have${currentScore}).`);
 
-      // Check if top discard has an Ace or Face/10-value card
       if (latestTopDiscard && (latestTopDiscard.rank === 'A' || latestTopDiscard.value === 10)) {
         document.getElementById('knockConfirmCard').innerText = `${latestTopDiscard.rank}${latestTopDiscard.suit}`;
         document.getElementById('knockConfirmModal').style.display = 'flex';
@@ -1063,6 +1078,73 @@
       });
     }
 
+    // INITIAL DEALER SELECTION HANDLERS
+    socket.on('startDealerSelectionCut', (data) => {
+      const overlay = document.getElementById('dealerCutOverlay');
+      const spread = document.getElementById('dealerCutSpread');
+      const container = document.getElementById('dealerCutPicksContainer');
+
+      spread.innerHTML = '';
+      container.innerHTML = '';
+      hasPickedDealerCard = false;
+
+      const isEligible = data.players.some(p => p.id === socket.id);
+      const instr = document.getElementById('dealerCutInstruction');
+      instr.innerText = isEligible 
+        ? "👉 Tap any face-down card! Lowest card becomes Dealer." 
+        : `Watching dealer cut: ${data.players.map(p => p.name).join(', ')}`;
+
+      for (let i = 0; i < data.deckCount; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'card-cut-slot';
+        slot.innerText = '🂠';
+        slot.onclick = () => {
+          if (!isEligible || hasPickedDealerCard) return;
+          hasPickedDealerCard = true;
+          slot.style.opacity = '0.3';
+          slot.style.pointerEvents = 'none';
+          playCardSlideSound();
+          socket.emit('pickDealerCutCard', { roomId: currentRoom, cardIndex: i });
+        };
+        spread.appendChild(slot);
+      }
+
+      overlay.style.display = 'flex';
+    });
+
+    socket.on('dealerCutCardPicked', (data) => {
+      const container = document.getElementById('dealerCutPicksContainer');
+      const div = document.createElement('div');
+      div.id = `dc_pick_${data.playerId}`;
+      div.className = 'showdown-player-box';
+      div.innerHTML = `<span style="font-size:12px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:4px;">DRAWN</div>`;
+      container.appendChild(div);
+      playCardSlideSound();
+    });
+
+    socket.on('dealerCutResultsReveal', (data) => {
+      const container = document.getElementById('dealerCutPicksContainer');
+      container.innerHTML = '';
+
+      data.results.forEach(res => {
+        const box = document.createElement('div');
+        box.className = 'showdown-player-box';
+        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
+        box.innerHTML = `
+          <span style="font-size:12px; font-weight:bold; color:#ffd700;">${res.name}</span>
+          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:4px;">
+            <span>${res.card.rank}</span><span>${res.card.suit}</span>
+          </div>
+        `;
+        container.appendChild(box);
+      });
+
+      setTimeout(() => {
+        document.getElementById('dealerCutOverlay').style.display = 'none';
+      }, 3500);
+    });
+
+    // TIEBREAKER HANDLERS
     socket.on('startTiebreakerCut', (data) => {
       const overlay = document.getElementById('tiebreakerOverlay');
       const spread = document.getElementById('tiebreakerSpread');
@@ -1085,7 +1167,7 @@
       const count = Math.min(data.deckCount, 24);
       for (let i = 0; i < count; i++) {
         const slot = document.createElement('div');
-        slot.className = 'tiebreaker-card-slot';
+        slot.className = 'card-cut-slot';
         slot.innerText = '🂠';
         slot.onclick = () => {
           if (!amTiedForTiebreaker || hasPickedTiebreakerCard) return;
@@ -1178,6 +1260,7 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
+      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -1194,6 +1277,7 @@
         roundPotBanner.style.display = 'none';
       }
 
+      // My Match Bet chips selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -1205,6 +1289,7 @@
         wagerSec.style.display = 'none';
       }
 
+      // Ledger Personal Net Balances Render
       const overallEl = document.getElementById('ledgerOverallTotal');
       const netTotal = state.netOverallBalance || 0;
       if (netTotal > 0) {
@@ -1244,9 +1329,10 @@
           ledgerList.appendChild(row);
         });
       } else {
-        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled bets yet.</div>';
       }
 
+      // Action Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const removeBotBtn = document.getElementById('removeBotBtn');
@@ -1328,7 +1414,7 @@
           div.className = 'player-tag spectator';
           div.innerText = `👁️ ${p.name}${voiceBadge}${dcBadge}`;
         } else {
-          div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
+          div.className = 'player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
           div.innerText = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
