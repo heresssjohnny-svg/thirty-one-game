@@ -267,7 +267,6 @@ function broadcastRoomList() {
   io.emit('roomListUpdate', roomList);
 }
 
-// Synchronize peeked hands to authorized spectators
 function broadcastSpectatorPeeks(room) {
   if (!room.spectatorPeeks) return;
 
@@ -575,7 +574,6 @@ function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
 
-  // Revoke all spectator hand peeking permissions on new round start
   if (room.spectatorPeeks) {
     for (const specId of Object.keys(room.spectatorPeeks)) {
       io.to(specId).emit('spectatorHandRevoked');
@@ -1045,7 +1043,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('joinRoom', ({ roomId, playerName }) => {
+  socket.on('joinRoom', ({ roomId, playerName, deviceId }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
       rooms[roomId] = {
@@ -1069,28 +1067,79 @@ io.on('connection', (socket) => {
         knownMembers: [],
         lastGameWinnerId: null,
         isFirstRoundOfMatch: false,
-        spectatorPeeks: {} // spectatorSocketId -> targetPlayerSocketId
+        spectatorPeeks: {}
       };
     }
     const room = rooms[roomId];
 
     const safeName = playerName || `Player ${room.players.length + 1}`;
-    if (!room.knownMembers.includes(safeName)) {
-      room.knownMembers.push(safeName);
+
+    // Look up by persistent deviceId first, then by username
+    let existingPlayer = null;
+    if (deviceId) {
+      existingPlayer = room.players.find(p => p.deviceId === deviceId);
+    }
+    if (!existingPlayer) {
+      existingPlayer = room.players.find(p => p.name === safeName);
     }
 
-    const existingPlayer = room.players.find(p => p.name === safeName);
     if (existingPlayer) {
       const key = `${roomId}:::${existingPlayer.name}`;
       if (disconnectTimeouts[key]) {
         clearTimeout(disconnectTimeouts[key]);
         delete disconnectTimeouts[key];
       }
+
+      // If user changed their name on this device, rename them across the room and ledger
+      if (existingPlayer.name !== safeName) {
+        const oldName = existingPlayer.name;
+
+        const kmIdx = room.knownMembers.indexOf(oldName);
+        if (kmIdx !== -1) room.knownMembers[kmIdx] = safeName;
+        else if (!room.knownMembers.includes(safeName)) room.knownMembers.push(safeName);
+
+        if (room.debts[oldName]) {
+          room.debts[safeName] = { ...(room.debts[safeName] || {}), ...room.debts[oldName] };
+          delete room.debts[oldName];
+        }
+
+        Object.keys(room.debts).forEach(debtor => {
+          if (room.debts[debtor][oldName] !== undefined) {
+            room.debts[debtor][safeName] = (room.debts[debtor][safeName] || 0) + room.debts[debtor][oldName];
+            delete room.debts[debtor][oldName];
+          }
+        });
+
+        if (room.debtBreakdowns) {
+          Object.keys(room.debtBreakdowns).forEach(pairKey => {
+            const [d, c] = pairKey.split(':::');
+            if (d === oldName || c === oldName) {
+              const newD = (d === oldName) ? safeName : d;
+              const newC = (c === oldName) ? safeName : c;
+              const newKey = `${newD}:::${newC}`;
+              room.debtBreakdowns[newKey] = room.debtBreakdowns[pairKey];
+              delete room.debtBreakdowns[pairKey];
+            }
+          });
+        }
+
+        existingPlayer.name = safeName;
+      }
+
+      if (!room.knownMembers.includes(safeName)) {
+        room.knownMembers.push(safeName);
+      }
+
       existingPlayer.id = socket.id;
+      if (deviceId) existingPlayer.deviceId = deviceId;
       existingPlayer.disconnected = false;
       broadcastState(roomId, `${safeName} reconnected.`);
       broadcastRoomList();
       return;
+    }
+
+    if (!room.knownMembers.includes(safeName)) {
+      room.knownMembers.push(safeName);
     }
 
     const currentActiveCount = getNonSpectatorCount(room);
@@ -1100,6 +1149,7 @@ io.on('connection', (socket) => {
     playerJoinCounter++;
     room.players.push({
       id: socket.id,
+      deviceId: deviceId || null,
       name: safeName,
       lives: isSpectator ? 0 : 2,
       hand: [],
@@ -1153,7 +1203,6 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  // SPECTATOR HAND PEEKING (Permission based, revoked on view change)
   socket.on('requestPeekingPermission', ({ roomId, targetPlayerId }) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted) return;
@@ -1162,13 +1211,11 @@ io.on('connection', (socket) => {
     const target = room.players.find(p => p.id === targetPlayerId && !p.isSpectator && p.lives > 0);
     if (!spectator || !target) return;
 
-    // RULE: Revoke existing peek permission if changing view
     if (room.spectatorPeeks && room.spectatorPeeks[socket.id]) {
       delete room.spectatorPeeks[socket.id];
       socket.emit('spectatorHandRevoked');
     }
 
-    // If target is a bot, automatically allow
     if (target.isBot) {
       if (!room.spectatorPeeks) room.spectatorPeeks = {};
       room.spectatorPeeks[socket.id] = target.id;
@@ -1182,7 +1229,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Forward permission request to human player
     io.to(target.id).emit('peekingPermissionRequested', {
       spectatorId: socket.id,
       spectatorName: spectator.name
