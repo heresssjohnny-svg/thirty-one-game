@@ -33,7 +33,6 @@ const VALUES = {
   '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
 };
 
-// Hierarchy for sudden-death card cut: Ace is 14 (highest), 2 is 2 (lowest)
 const CUT_RANKS = {
   '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
   '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
@@ -120,6 +119,15 @@ function checkAllPlayersReady(room) {
   return eligible.every(p => p.isReady || p.isBot);
 }
 
+function getRevealedHands(room) {
+  return getActivePlayers(room).map(p => ({
+    name: p.name,
+    score: calculateScore(p.hand),
+    hand: p.hand,
+    isKnocker: room.knockerId === p.id
+  }));
+}
+
 function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
@@ -174,6 +182,7 @@ function startNewRound(roomId) {
   active.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
     p.fedCardsTracker = {};
+    p.lastDrawnSource = null;
 
     if (dealer && dealer.id !== p.id) {
       p.fedCardsTracker[dealer.id] = [];
@@ -265,8 +274,8 @@ function resolveShowdown(roomId) {
 
   const lowestPlayers = active.filter(p => scores[p.id] === minScore);
   const knocker = room.players.find(p => p.id === room.knockerId);
+  const revealedHands = getRevealedHands(room);
 
-  // RULE: Knocker tie/failure rule takes precedence if knocker was strictly alone or tied
   if (knocker && lowestPlayers.some(p => p.id === knocker.id) && lowestPlayers.length === 1) {
     knocker.lives -= 1;
     const losersText = `${knocker.name} (Knocker lost alone)`;
@@ -274,66 +283,66 @@ function resolveShowdown(roomId) {
       title: '💀 ROUND OVER 💀',
       message: `LOSER: ${losersText}`,
       subtext: `Lowest Score: ${minScore}`,
-      duration: 4000
+      hands: revealedHands,
+      duration: 6500
     });
     broadcastState(roomId, `Showdown finished! Loser: ${losersText}`);
-    setTimeout(() => startNewRound(roomId), 4200);
+    setTimeout(() => startNewRound(roomId), 6500);
     return;
   }
 
-  // TIE CASE: More than 1 player tied for lowest score
   if (lowestPlayers.length > 1) {
-    // RULE 1: Heads-up (2 active players) tie => Re-deal round (Push)
     if (active.length === 2) {
       io.to(roomId).emit('bigAnnouncement', {
         title: '🤝 HEADS-UP TIE! 🤝',
         message: 'PUSH — RE-DEALING ROUND!',
         subtext: `Both players tied at ${minScore} points`,
-        duration: 4500
+        hands: revealedHands,
+        duration: 6500
       });
       broadcastState(roomId, `Heads-up tie at ${minScore}! Re-dealing with no lives lost.`);
-      setTimeout(() => startNewRound(roomId), 4500);
+      setTimeout(() => startNewRound(roomId), 6500);
       return;
     }
 
-    // RULE 2: 3 or more people in the game => Draw cards from remainder of deck. Lowest takes the loss!
-    let tiebreakReport = [];
-    let lowestCutVal = 999;
-    let cutLoser = null;
-
-    // Reshuffle discard into deck if running low
-    if (room.deck.length < lowestPlayers.length) {
+    let eligibleDeck = [...room.deck];
+    if (eligibleDeck.length < lowestPlayers.length) {
       const top = room.discardPile.pop();
-      room.deck = room.deck.concat(room.discardPile.sort(() => Math.random() - 0.5));
+      eligibleDeck = eligibleDeck.concat(room.discardPile.sort(() => Math.random() - 0.5));
       room.discardPile = [top];
     }
 
-    lowestPlayers.forEach(p => {
-      const cutCard = room.deck.pop();
-      const cutVal = CUT_RANKS[cutCard.rank];
-      tiebreakReport.push(`${p.name} drew ${cutCard.rank}${cutCard.suit}`);
+    let tiebreakReport = [];
+    let cutLoser = null;
+    let minCardVal = 99;
 
-      if (cutVal < lowestCutVal) {
-        lowestCutVal = cutVal;
-        cutLoser = { player: p, card: cutCard };
+    lowestPlayers.forEach(p => {
+      const drawnCard = eligibleDeck.pop() || { rank: '2', suit: '♠' };
+      const cardRankVal = CUT_RANKS[drawnCard.rank];
+      tiebreakReport.push(`${p.name}: ${drawnCard.rank}${drawnCard.suit}`);
+
+      if (cardRankVal < minCardVal) {
+        minCardVal = cardRankVal;
+        cutLoser = { player: p, card: drawnCard };
       }
     });
 
+    room.deck = eligibleDeck;
     cutLoser.player.lives -= 1;
 
     io.to(roomId).emit('bigAnnouncement', {
       title: '⚡ TIEBREAKER CUT! ⚡',
       message: `LOSER: ${cutLoser.player.name} (${cutLoser.card.rank}${cutLoser.card.suit})`,
-      subtext: tiebreakReport.join(' | '),
-      duration: 5500
+      subtext: tiebreakReport.join('  |  '),
+      hands: revealedHands,
+      duration: 7500
     });
 
-    broadcastState(roomId, `Tiebreaker Cut: ${cutLoser.player.name} drew lowest (${cutLoser.card.rank}${cutLoser.card.suit}) and loses a life!`);
-    setTimeout(() => startNewRound(roomId), 5500);
+    broadcastState(roomId, `Tiebreaker Cut: ${cutLoser.player.name} drew lowest card (${cutLoser.card.rank}${cutLoser.card.suit}) and lost a life!`);
+    setTimeout(() => startNewRound(roomId), 7500);
     return;
   }
 
-  // SINGLE LOSER CASE
   const singleLoser = lowestPlayers[0];
   singleLoser.lives -= 1;
 
@@ -341,11 +350,12 @@ function resolveShowdown(roomId) {
     title: '💀 ROUND OVER 💀',
     message: `LOSER: ${singleLoser.name}`,
     subtext: `Lowest Score: ${minScore}`,
-    duration: 4000
+    hands: revealedHands,
+    duration: 6500
   });
 
   broadcastState(roomId, `Showdown finished! Loser: ${singleLoser.name}`);
-  setTimeout(() => startNewRound(roomId), 4200);
+  setTimeout(() => startNewRound(roomId), 6500);
 }
 
 function checkAndHandle31(room, player) {
@@ -353,8 +363,9 @@ function checkAndHandle31(room, player) {
 
   room.isResolvingRound = true;
   let penalizedGiver = null;
+  const revealedHands = getRevealedHands(room);
 
-  if (player.fedCardsTracker) {
+  if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
       const hasAce = cards.some(c => c.rank === 'A');
       const hasTen = cards.some(c => c.value === 10);
@@ -368,10 +379,11 @@ function checkAndHandle31(room, player) {
   if (penalizedGiver) {
     penalizedGiver.lives = 0;
     io.to(room.id).emit('bigAnnouncement', {
-      title: '⚡ 31 HIT! ⚡',
+      title: '⚡ 31 HIT FROM DISCARD! ⚡',
       message: `LOSER: ${penalizedGiver.name} LOST BOTH LIVES!`,
-      subtext: `Fed an Ace and 10 to ${player.name} (21 of 31 rule)`,
-      duration: 4500
+      subtext: `Fed Ace & 10 to ${player.name} via discard!`,
+      hands: revealedHands,
+      duration: 6500
     });
   } else {
     const losers = [];
@@ -381,15 +393,18 @@ function checkAndHandle31(room, player) {
         losers.push(p.name);
       }
     });
+
+    const drawDesc = player.lastDrawnSource === 'deck' ? 'Grabbed from Deck!' : 'Natural 31!';
     io.to(room.id).emit('bigAnnouncement', {
       title: `⚡ ${player.name} HIT 31! ⚡`,
-      message: `LOSERS: ${losers.join(', ')}`,
-      subtext: 'Everyone else lost 1 life',
-      duration: 4500
+      message: `ALL OTHER PLAYERS LOSE A LIFE!`,
+      subtext: `${drawDesc} Losers: ${losers.join(', ')}`,
+      hands: revealedHands,
+      duration: 6500
     });
   }
 
-  setTimeout(() => startNewRound(room.id), 4500);
+  setTimeout(() => startNewRound(room.id), 6500);
   return true;
 }
 
@@ -425,7 +440,7 @@ function triggerBotTurnIfNeeded(roomId) {
       });
 
       advanceTurnIndex(room);
-      broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED with ${score} pts! Turn passes.`);
+      broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED! Turn passes.`);
       triggerBotTurnIfNeeded(roomId);
       return;
     }
@@ -445,6 +460,7 @@ function triggerBotTurnIfNeeded(roomId) {
     let drawn;
     if (takeDiscard) {
       drawn = room.discardPile.pop();
+      current.lastDrawnSource = 'discard';
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
       if (prevPlayer) {
         if (!current.fedCardsTracker) current.fedCardsTracker = {};
@@ -463,6 +479,7 @@ function triggerBotTurnIfNeeded(roomId) {
         room.discardPile = [top];
       }
       drawn = room.deck.pop();
+      current.lastDrawnSource = 'deck';
     }
     current.hand.push(drawn);
 
@@ -562,6 +579,7 @@ io.on('connection', (socket) => {
       lives: isSpectator ? 0 : 2,
       hand: [],
       fedCardsTracker: {},
+      lastDrawnSource: null,
       isBot: false,
       isSpectator: isSpectator,
       isReady: false,
@@ -660,6 +678,7 @@ io.on('connection', (socket) => {
       lives: 2,
       hand: [],
       fedCardsTracker: {},
+      lastDrawnSource: null,
       isBot: true,
       isSpectator: false,
       isReady: true,
@@ -700,7 +719,7 @@ io.on('connection', (socket) => {
       });
 
       advanceTurnIndex(room);
-      broadcastState(roomId, `🔔 ${player.name} KNOCKED with ${score} pts! Final turn for all other players.`);
+      broadcastState(roomId, `🔔 ${player.name} has KNOCKED! Final turn for all other players.`);
       triggerBotTurnIfNeeded(roomId);
     }
   });
@@ -722,6 +741,7 @@ io.on('connection', (socket) => {
     if (source === 'discard') {
       if (room.discardPile.length === 0) return;
       drawn = room.discardPile.pop();
+      player.lastDrawnSource = 'discard';
 
       const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
       if (prevPlayer) {
@@ -742,6 +762,7 @@ io.on('connection', (socket) => {
         room.discardPile = [top];
       }
       drawn = room.deck.pop();
+      player.lastDrawnSource = 'deck';
       broadcastState(roomId, `${player.name} drew a card from the deck.`);
     }
 
