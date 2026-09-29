@@ -237,7 +237,7 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-// FIXED: Correctly compares the scores of the two backed contenders (bettorTarget vs opponentTarget)
+// FIXED: Perfectly resolves round side bets by comparing the exact scores of the two selected player IDs
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
@@ -245,19 +245,32 @@ function settlePeerRoundBets(room, scores) {
   room.peerSideBets.forEach(bet => {
     if (!bet.accepted || bet.type !== 'round') return;
 
-    const bettorTargetScore = scores[bet.bettorTargetId] !== undefined ? scores[bet.bettorTargetId] : -1;
-    const opponentTargetScore = scores[bet.opponentTargetId] !== undefined ? scores[bet.opponentTargetId] : -1;
+    // Resolve target IDs using active players if stored names/IDs mismatch
+    let bTargetId = bet.bettorTargetId;
+    let oTargetId = bet.opponentTargetId;
 
+    if (!bTargetId || scores[bTargetId] === undefined) {
+      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      if (matchP) bTargetId = matchP.id;
+    }
+    if (!oTargetId || scores[oTargetId] === undefined) {
+      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      if (matchP) oTargetId = matchP.id;
+    }
+
+    const bettorTargetScore = (bTargetId && scores[bTargetId] !== undefined) ? scores[bTargetId] : -1;
+    const opponentTargetScore = (oTargetId && scores[oTargetId] !== undefined) ? scores[oTargetId] : -1;
+
+    // For a round side bet where bettor backs player A and opponent backs player B:
+    // If bettor's pick scores higher than opponent's pick, opponent owes bettor.
     if (bettorTargetScore > opponentTargetScore) {
-      // Bettor's pick scored higher: opponent pays bettor
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) beat ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.bettorName} won side bet vs ${bet.opponentName} (${bettorTargetScore} vs ${opponentTargetScore} pts -> +$${bet.amount})`);
     } else if (opponentTargetScore > bettorTargetScore) {
-      // Opponent's pick scored higher: bettor pays opponent
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) beat ${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.opponentName} won side bet vs ${bet.bettorName} (${opponentTargetScore} vs ${bettorTargetScore} pts -> +$${bet.amount})`);
     } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied on picks (${bettorTargetScore} pts - push)`);
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied at ${bettorTargetScore} pts (push)`);
     }
   });
 
@@ -654,7 +667,7 @@ function checkAndHandle31(room, player) {
     });
   }
 
-  setTimeout(() => startNewRound(roomId), 6500);
+  setTimeout(() => startNewRound(room.id), 6500);
   return true;
 }
 
@@ -1254,7 +1267,7 @@ io.on('connection', (socket) => {
 
     let joinMsg = `${safeName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
+      joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
