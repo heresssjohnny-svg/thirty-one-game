@@ -237,7 +237,7 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-// ROUND SIDE BET SETTLEMENT: Compares bettor's pick score vs opponent's pick score
+// ROUND SIDE BET SETTLEMENT
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
@@ -1266,7 +1266,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1445,14 +1445,13 @@ io.on('connection', (socket) => {
         opponentName: opponent.name,
         targetPlayerName: targetPlayer.name,
         bettorTargetId: targetPlayer.id,
-        opponentTargetId: targetPlayer.id, // Will be updated if opponent chooses their own pick
+        opponentTargetId: null,
         amount: parsedAmt,
         accepted: Boolean(opponent.isBot)
       };
 
       if (opponent.isBot) {
-        // Bot picks a random active player other than bettor's pick
-        const possibleBotTargets = getActivePlayers(room).filter(p => p.name !== targetPlayer.name);
+        const possibleBotTargets = getActivePlayers(room);
         const botPick = possibleBotTargets[Math.floor(Math.random() * possibleBotTargets.length)] || targetPlayer;
         newBet.opponentTargetName = botPick.name;
         newBet.opponentTargetId = botPick.id;
@@ -1534,7 +1533,7 @@ io.on('connection', (socket) => {
     const card = room.dealerCutDeck.splice(safeIdx, 1)[0];
     room.dealerCutPicks[socket.id] = { player: player, card: card };
 
-    io.to(roomId).emit('dealerCutCardPicked', {
+    io.to(room.id).emit('dealerCutCardPicked', {
       playerId: socket.id,
       playerName: player.name,
       remainingCount: room.dealerCutDeck.length
@@ -1555,7 +1554,7 @@ io.on('connection', (socket) => {
     const card = room.tiebreakerDeck.splice(safeIdx, 1)[0];
     room.tiebreakerPicks[socket.id] = { player: player, card: card };
 
-    io.to(roomId).emit('tiebreakerCardPicked', {
+    io.to(room.id).emit('tiebreakerCardPicked', {
       playerId: socket.id,
       playerName: player.name,
       remainingCount: room.tiebreakerDeck.length
