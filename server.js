@@ -521,7 +521,7 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: `⚡ ${player.name.toUpperCase()} HIT 31! ⚡`,
       message: `EVERYONE ELSE LOSES 1 LIFE!`,
-      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${drawDesc} Losers:${losers.join(', ')}`,
       hands: revealedHands,
       duration: 6500
     });
@@ -1093,7 +1093,7 @@ io.on('connection', (socket) => {
 
     const parsed = Math.max(0, parseInt(wager) || 0);
     player.matchWager = parsed;
-    broadcastState(roomId, `💰 ${player.name} set their match wager to $${parsed}.`);
+    broadcastState(roomId, `💰 ${player.name} set their match wager to$${parsed}.`);
     broadcastRoomList();
   });
 
@@ -1134,7 +1134,7 @@ io.on('connection', (socket) => {
       });
     }
 
-    broadcastState(roomId, `🎲 ${bettor.name} bet $${parsedAmt} on ${targetPlayer.name} to win this round!`);
+    broadcastState(roomId, `🎲 ${bettor.name} bet$${parsedAmt} on${targetPlayer.name} to win this round!`);
   });
 
   // INITIAL DEALER CUT: Player picks a face-down card
@@ -1219,7 +1219,7 @@ io.on('connection', (socket) => {
     if (!player || player.isSpectator) return;
 
     player.isReady = !player.isReady;
-    broadcastState(roomId, `${player.name} is ${player.isReady ? 'READY' : 'NOT READY'}.`);
+    broadcastState(roomId, `${player.name} is${player.isReady ? 'READY' : 'NOT READY'}.`);
 
     if (!room.gameStarted && checkAllPlayersReady(room)) {
       room.gameStarted = true;
