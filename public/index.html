@@ -233,8 +233,9 @@
       display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0;
     }
     .wager-chip {
-      padding: 3px 7px; border-radius: 12px; font-size: 11px; font-weight: bold;
+      padding: 5px 10px; border-radius: 12px; font-size: 11px; font-weight: bold;
       background: rgba(255,255,255,0.15); cursor: pointer; border: 1px solid #ccc;
+      touch-action: manipulation;
     }
     .wager-chip.selected {
       background: #ffd700; color: #111; border-color: #ffd700;
@@ -319,10 +320,6 @@
           • <strong>Face Cards (K, Q, J) & 10:</strong> 10 points<br>
           • <strong>Cards 2-9:</strong> Face value<br>
           • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
-        </div>
-        <div>
-          <h4>🖼️ Avatars & Screenshots</h4>
-          Choose custom emojis or photos as avatars in the lobby, and toggle whether your ledger standings download automatically when leaving!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -560,15 +557,15 @@
         <option value="💎">💎 Diamond</option>
       </select>
       <input type="file" id="avatarUpload" accept="image/*" style="display:none;" onchange="handleAvatarUpload(event)" />
-      <button type="button" onclick="document.getElementById('avatarUpload').click()" style="padding:6px 10px; font-size:11px; background:#0288d1; color:#fff;">📁 Photo</button>
+      <button type="button" onclick="document.getElementById('avatarUpload').click()" style="padding:6px 10px; font-size:11px; background:#0288d1; color:#fff; touch-action:manipulation;">📁 Photo</button>
     </div>
 
     <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
       <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
-      <div class="wager-chip" onclick="setInitialLives(1)">1</div>
-      <div class="wager-chip selected" id="defaultLivesChip" onclick="setInitialLives(2)">2</div>
-      <div class="wager-chip" onclick="setInitialLives(3)">3</div>
-      <div class="wager-chip" onclick="setInitialLives(5)">5</div>
+      <div class="wager-chip" onclick="setInitialLives(1)" ontouchend="event.preventDefault(); setInitialLives(1);">1</div>
+      <div class="wager-chip selected" id="defaultLivesChip" onclick="setInitialLives(2)" ontouchend="event.preventDefault(); setInitialLives(2);">2</div>
+      <div class="wager-chip" onclick="setInitialLives(3)" ontouchend="event.preventDefault(); setInitialLives(3);">3</div>
+      <div class="wager-chip" onclick="setInitialLives(5)" ontouchend="event.preventDefault(); setInitialLives(5);">5</div>
     </div>
 
     <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin: 2px 0; font-size:11px;">
@@ -824,6 +821,76 @@
         img.src = e.target.result;
       };
       reader.readAsDataURL(file);
+    }
+
+    function saveLedgerScreenshot() {
+      const toggle = document.getElementById('saveLedgerToggle');
+      if (!toggle || !toggle.checked) return;
+
+      try {
+        const canvas = document.getElementById('ledgerCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        ctx.fillStyle = '#164033';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 22px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`31! Final Ledger - Room: ${currentRoom}`, canvas.width / 2, 40);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '14px sans-serif';
+        ctx.fillText(`Player: ${myPlayerName} ${myAvatar.length <= 4 ? myAvatar : ''}`, canvas.width / 2, 68);
+
+        let startY = 110;
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText('Opponent', 50, startY);
+        ctx.fillText('Net Standing', 350, startY);
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.moveTo(50, startY + 8);
+        ctx.lineTo(550, startY + 8);
+        ctx.stroke();
+
+        startY += 30;
+        ctx.font = '14px sans-serif';
+
+        if (latestPersonalLedger.length === 0) {
+          ctx.fillStyle = '#aaaaaa';
+          ctx.fillText('No ledger activity recorded.', 50, startY);
+        } else {
+          latestPersonalLedger.forEach((item) => {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(item.player, 50, startY);
+
+            if (item.netBalance > 0) {
+              ctx.fillStyle = '#4caf50';
+              ctx.fillText(`+$${item.netBalance} (Owes You)`, 350, startY);
+            } else if (item.netBalance < 0) {
+              ctx.fillStyle = '#f44336';
+              ctx.fillText(`-$${Math.abs(item.netBalance)} (You Owe)`, 350, startY);
+            } else {
+              ctx.fillStyle = '#e0e0e0';
+              ctx.fillText(`$0 (Even)`, 350, startY);
+            }
+            startY += 35;
+          });
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `31-ledger-${currentRoom}-${Date.now()}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        console.error('Could not generate ledger screenshot:', e);
+      }
     }
 
     function playCardSlideSound() {
@@ -1253,7 +1320,7 @@
 
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
-          div.innerHTML = `${avHtml} 👁️️ ${p.name}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${avHtml} 👁️ ${p.name}${voiceBadge}${dcBadge}`;
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
