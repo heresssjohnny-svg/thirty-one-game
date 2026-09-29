@@ -561,7 +561,7 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -583,7 +583,7 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️️ Peek at Hand</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()">💀 First to Lose</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
@@ -1719,7 +1719,6 @@
           if (item.netBalance > 0) {
             balClass = 'balance-positive';
             balText = `+$${item.netBalance} (Owes You)`;
-            // If they owe you money, show a Clear Debt button
             clearBtnHtml = `<button type="button" onclick="promptClearDebt('${item.player}', ${item.netBalance})" style="background:#4caf50; color:#fff; padding:2px 6px; font-size:10px; margin-left:6px; border-radius:4px;">Clear</button>`;
           } else if (item.netBalance < 0) {
             balClass = 'balance-negative';
