@@ -128,6 +128,76 @@ function getRevealedHands(room) {
   }));
 }
 
+function checkAndHandle31(room, player) {
+  if (calculateScore(player.hand) !== 31) return false;
+  if (room.isResolvingRound) return true;
+  room.isResolvingRound = true;
+
+  let penalizedGiver = null;
+  const revealedHands = getRevealedHands(room);
+
+  // 21 of 31 RULE:
+  // 1. Must have grabbed the card making 31 from the DISCARD pile.
+  // 2. Both the Ace AND the Face/10-value card MUST have come from the SAME person.
+  if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
+    for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
+      // Find cards still in the final 3-card hand that came from this specific giver
+      const cardsInHandFromGiver = cards.filter(c => 
+        player.hand.some(hCard => hCard.rank === c.rank && hCard.suit === c.suit)
+      );
+
+      const hasAce = cardsInHandFromGiver.some(c => c.rank === 'A');
+      const hasTen = cardsInHandFromGiver.some(c => c.value === 10);
+
+      // Both must come from this single giver
+      if (hasAce && hasTen) {
+        penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
+        if (penalizedGiver) break;
+      }
+    }
+  }
+
+  if (penalizedGiver) {
+    penalizedGiver.lives = Math.max(0, penalizedGiver.lives - 2);
+    broadcastState(room.id);
+
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '⚡ 31 HIT FROM DISCARD! ⚡',
+      message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
+      subtext: `Fed both the Ace & Face card to ${player.name}!`,
+      hands: revealedHands,
+      duration: 6500
+    });
+  } else {
+    // If drawn from the deck, or if Ace and Face card did not come from the same person:
+    // ALL OTHER PLAYERS LOSE 1 LIFE!
+    const losers = [];
+    room.players.forEach(p => {
+      if (!p.isSpectator && p.lives > 0 && p.id !== player.id) {
+        p.lives -= 1;
+        losers.push(p.name);
+      }
+    });
+
+    broadcastState(room.id);
+
+    const drawDesc = player.lastDrawnSource === 'deck' 
+      ? 'Drawn directly from Deck!' 
+      : (player.lastDrawnSource === 'deal' ? 'Dealt 31!' : 'Natural 31!');
+
+    io.to(room.id).emit('bigAnnouncement', {
+      title: `⚡ ${player.name.toUpperCase()} HIT 31! ⚡`,
+      message: `EVERYONE ELSE LOSES 1 LIFE!`,
+      subtext: `${drawDesc} Losers: ${losers.join(', ')}`,
+      hands: revealedHands,
+      duration: 6500
+    });
+  }
+
+  setTimeout(() => startNewRound(room.id), 6500);
+  return true;
+}
+
 function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
@@ -167,6 +237,7 @@ function startNewRound(roomId) {
   room.drawnCard = null;
   room.isResolvingRound = false;
   room.turnsTakenInRound = 0;
+  room.currentDiscardFeederId = null;
 
   for (let i = 1; i <= room.players.length; i++) {
     const nextD = (room.dealerIdx + i) % room.players.length;
@@ -179,11 +250,13 @@ function startNewRound(roomId) {
 
   const dealer = room.players[room.dealerIdx];
 
+  // Deal 3 cards to each player
   active.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
     p.fedCardsTracker = {};
-    p.lastDrawnSource = null;
+    p.lastDrawnSource = 'deal';
 
+    // Attribute initial dealt cards to the dealer
     if (dealer && dealer.id !== p.id) {
       p.fedCardsTracker[dealer.id] = [];
       p.hand.forEach(c => {
@@ -194,7 +267,17 @@ function startNewRound(roomId) {
     }
   });
 
-  room.discardPile.push(room.deck.pop());
+  const firstDiscard = room.deck.pop();
+  room.discardPile.push(firstDiscard);
+  room.currentDiscardFeederId = dealer ? dealer.id : null;
+
+  for (const p of active) {
+    if (calculateScore(p.hand) === 31) {
+      broadcastState(roomId, `⚡ ${p.name} was dealt 31!`);
+      checkAndHandle31(room, p);
+      return;
+    }
+  }
 
   room.currentTurnIdx = room.dealerIdx;
   advanceTurnIndex(room);
@@ -301,7 +384,7 @@ function resolveShowdown(roomId) {
         duration: 6500
       });
       broadcastState(roomId, `Heads-up tie at ${minScore}! Re-dealing with no lives lost.`);
-      setTimeout(() => startNewRound(roomId), 6500);
+      setTimeout(() => startNewRound(roomId), 4500);
       return;
     }
 
@@ -358,56 +441,6 @@ function resolveShowdown(roomId) {
   setTimeout(() => startNewRound(roomId), 6500);
 }
 
-function checkAndHandle31(room, player) {
-  if (calculateScore(player.hand) !== 31) return false;
-
-  room.isResolvingRound = true;
-  let penalizedGiver = null;
-  const revealedHands = getRevealedHands(room);
-
-  if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
-    for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
-      const hasAce = cards.some(c => c.rank === 'A');
-      const hasTen = cards.some(c => c.value === 10);
-      if (hasAce && hasTen) {
-        penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
-        if (penalizedGiver) break;
-      }
-    }
-  }
-
-  if (penalizedGiver) {
-    penalizedGiver.lives = 0;
-    io.to(room.id).emit('bigAnnouncement', {
-      title: '⚡ 31 HIT FROM DISCARD! ⚡',
-      message: `LOSER: ${penalizedGiver.name} LOST BOTH LIVES!`,
-      subtext: `Fed Ace & 10 to ${player.name} via discard!`,
-      hands: revealedHands,
-      duration: 6500
-    });
-  } else {
-    const losers = [];
-    getActivePlayers(room).forEach(p => {
-      if (p.id !== player.id) {
-        p.lives -= 1;
-        losers.push(p.name);
-      }
-    });
-
-    const drawDesc = player.lastDrawnSource === 'deck' ? 'Grabbed from Deck!' : 'Natural 31!';
-    io.to(room.id).emit('bigAnnouncement', {
-      title: `⚡ ${player.name} HIT 31! ⚡`,
-      message: `ALL OTHER PLAYERS LOSE A LIFE!`,
-      subtext: `${drawDesc} Losers: ${losers.join(', ')}`,
-      hands: revealedHands,
-      duration: 6500
-    });
-  }
-
-  setTimeout(() => startNewRound(room.id), 6500);
-  return true;
-}
-
 function triggerBotTurnIfNeeded(roomId) {
   const room = rooms[roomId];
   if (!room || !room.gameStarted || room.isResolvingRound) return;
@@ -430,6 +463,7 @@ function triggerBotTurnIfNeeded(roomId) {
     if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
+      room.currentDiscardFeederId = current.id;
 
       io.to(roomId).emit('bigAnnouncement', {
         title: '🔔 KNOCK! 🔔',
@@ -461,11 +495,12 @@ function triggerBotTurnIfNeeded(roomId) {
     if (takeDiscard) {
       drawn = room.discardPile.pop();
       current.lastDrawnSource = 'discard';
-      const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
-      if (prevPlayer) {
+
+      const feederId = room.currentDiscardFeederId || getPrevActivePlayer(room, room.currentTurnIdx)?.id;
+      if (feederId) {
         if (!current.fedCardsTracker) current.fedCardsTracker = {};
-        if (!current.fedCardsTracker[prevPlayer.id]) current.fedCardsTracker[prevPlayer.id] = [];
-        current.fedCardsTracker[prevPlayer.id].push(drawn);
+        if (!current.fedCardsTracker[feederId]) current.fedCardsTracker[feederId] = [];
+        current.fedCardsTracker[feederId].push(drawn);
       }
 
       io.to(roomId).emit('bannerAnnouncement', {
@@ -495,6 +530,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     const [discarded] = current.hand.splice(bestIdx, 1);
     room.discardPile.push(discarded);
+    room.currentDiscardFeederId = current.id;
     room.turnsTakenInRound += 1;
 
     if (checkAndHandle31(room, current)) return;
@@ -557,7 +593,8 @@ io.on('connection', (socket) => {
         gameStarted: false,
         drawnCard: null,
         isResolvingRound: false,
-        turnsTakenInRound: 0
+        turnsTakenInRound: 0,
+        currentDiscardFeederId: null
       };
     }
     const room = rooms[roomId];
@@ -709,6 +746,7 @@ io.on('connection', (socket) => {
     if (score >= minKnockScore && !room.drawnCard) {
       room.knockerId = player.id;
       room.turnsLeftAfterKnock = activeCount - 1;
+      room.currentDiscardFeederId = player.id;
 
       io.to(roomId).emit('bigAnnouncement', {
         title: '🔔 KNOCK! 🔔',
@@ -743,11 +781,11 @@ io.on('connection', (socket) => {
       drawn = room.discardPile.pop();
       player.lastDrawnSource = 'discard';
 
-      const prevPlayer = getPrevActivePlayer(room, room.currentTurnIdx);
-      if (prevPlayer) {
+      const feederId = room.currentDiscardFeederId || getPrevActivePlayer(room, room.currentTurnIdx)?.id;
+      if (feederId) {
         if (!player.fedCardsTracker) player.fedCardsTracker = {};
-        if (!player.fedCardsTracker[prevPlayer.id]) player.fedCardsTracker[prevPlayer.id] = [];
-        player.fedCardsTracker[prevPlayer.id].push(drawn);
+        if (!player.fedCardsTracker[feederId]) player.fedCardsTracker[feederId] = [];
+        player.fedCardsTracker[feederId].push(drawn);
       }
       
       io.to(roomId).emit('bannerAnnouncement', {
@@ -789,6 +827,7 @@ io.on('connection', (socket) => {
 
     const [discarded] = player.hand.splice(cardIndex, 1);
     room.discardPile.push(discarded);
+    room.currentDiscardFeederId = player.id;
     room.drawnCard = null;
     room.turnsTakenInRound += 1;
 
