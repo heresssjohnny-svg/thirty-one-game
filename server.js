@@ -1607,7 +1607,6 @@ io.on('connection', (socket) => {
     checkTiebreakerComplete(room);
   });
 
-  // NEW: Voice channel join/leave alerts and bell hopper chime
   socket.on('joinVoice', (roomId) => {
     const room = rooms[roomId];
     if (!room) return;
