@@ -33,6 +33,8 @@ const VALUES = {
   '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
 };
 
+const MAX_ACTIVE_PLAYERS = 6;
+
 function createDeck() {
   const deck = [];
   for (const s of SUITS) {
@@ -71,6 +73,10 @@ const rooms = {};
 
 function getActivePlayers(room) {
   return room.players.filter(p => !p.isSpectator && p.lives > 0);
+}
+
+function getNonSpectatorCount(room) {
+  return room.players.filter(p => !p.isSpectator).length;
 }
 
 function advanceTurnIndex(room) {
@@ -118,16 +124,23 @@ function startNewRound(roomId) {
       duration: 8000
     });
     room.gameStarted = false;
+    
+    let activeAssigned = 0;
     room.players.forEach(p => { 
-      p.isSpectator = false; 
-      p.lives = 2; 
+      if (activeAssigned < MAX_ACTIVE_PLAYERS) {
+        p.isSpectator = false;
+        p.lives = 2;
+        activeAssigned++;
+      } else {
+        p.isSpectator = true;
+        p.lives = 0;
+      }
       p.isReady = false; 
     });
     broadcastState(roomId, `Game over! Toggle Ready to start the next game.`);
     return;
   }
 
-  // Clear ready states for the newly active round
   room.players.forEach(p => { p.isReady = false; });
 
   room.deck = createDeck();
@@ -187,7 +200,8 @@ function broadcastState(roomId, message = '') {
         isTurn: currentTurnPlayer?.id === pl.id,
         isBot: Boolean(pl.isBot),
         isSpectator: Boolean(pl.isSpectator),
-        isReady: Boolean(pl.isReady)
+        isReady: Boolean(pl.isReady),
+        isInVoice: Boolean(pl.isInVoice)
       })),
       hand: p.isSpectator ? [] : p.hand,
       score: score,
@@ -201,6 +215,8 @@ function broadcastState(roomId, message = '') {
       gameStarted: room.gameStarted,
       knocker: room.knockerId ? room.players.find(pl => pl.id === room.knockerId)?.name : null,
       isReady: Boolean(p.isReady),
+      activePlayersCount: getNonSpectatorCount(room),
+      maxActivePlayers: MAX_ACTIVE_PLAYERS,
       message: message
     });
   });
@@ -284,6 +300,11 @@ function triggerBotTurnIfNeeded(roomId) {
     if (takeDiscard) {
       drawn = room.discardPile.pop();
       current.takenFromPrev.push(drawn);
+      // Announce bot picked from discard
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `👀 ${current.name} took ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
+        duration: 3200
+      });
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
@@ -350,7 +371,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
 
     advanceTurnIndex(room);
-    broadcastState(roomId, `${current.name} discarded a card.`);
+    broadcastState(roomId, `${current.name} discarded ${discarded.rank}${discarded.suit}.`);
     triggerBotTurnIfNeeded(roomId);
   }, 1200);
 }
@@ -360,6 +381,8 @@ function handlePlayerExit(socketId) {
     const idx = room.players.findIndex(p => p.id === socketId);
     if (idx !== -1) {
       const leaving = room.players[idx];
+
+      io.to(roomId).emit('voiceUserLeft', { socketId: socketId });
 
       if (!room.gameStarted || leaving.isSpectator) {
         room.players.splice(idx, 1);
@@ -409,7 +432,9 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const isSpectator = Boolean(room.gameStarted);
+    const currentActiveCount = getNonSpectatorCount(room);
+    const roomIsFull = currentActiveCount >= MAX_ACTIVE_PLAYERS;
+    const isSpectator = Boolean(room.gameStarted || roomIsFull);
 
     room.players.push({
       id: socket.id,
@@ -419,14 +444,50 @@ io.on('connection', (socket) => {
       takenFromPrev: [],
       isBot: false,
       isSpectator: isSpectator,
-      isReady: false
+      isReady: false,
+      isInVoice: false
     });
 
-    const joinMsg = isSpectator 
-      ? `👁️ ${playerName} joined as a spectator.`
-      : `${playerName} joined the room.`;
+    let joinMsg = `${playerName} joined the room.`;
+    if (roomIsFull && !room.gameStarted) {
+      joinMsg = `👁️ Room active player limit (6) reached. ${playerName} joined as a spectator.`;
+    } else if (room.gameStarted) {
+      joinMsg = `👁️ ${playerName} joined as a spectator.`;
+    }
 
     broadcastState(roomId, joinMsg);
+  });
+
+  socket.on('joinVoice', (roomId) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) player.isInVoice = true;
+
+    const otherVoiceUsers = room.players
+      .filter(p => p.isInVoice && p.id !== socket.id)
+      .map(p => p.id);
+
+    socket.emit('currentVoiceUsers', otherVoiceUsers);
+    socket.to(roomId).emit('voiceUserJoined', { socketId: socket.id });
+    broadcastState(roomId);
+  });
+
+  socket.on('leaveVoice', (roomId) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) player.isInVoice = false;
+
+    socket.to(roomId).emit('voiceUserLeft', { socketId: socket.id });
+    broadcastState(roomId);
+  });
+
+  socket.on('voiceSignal', ({ target, signal }) => {
+    io.to(target).emit('voiceSignal', {
+      sender: socket.id,
+      signal: signal
+    });
   });
 
   socket.on('toggleReady', (roomId) => {
@@ -438,7 +499,6 @@ io.on('connection', (socket) => {
     player.isReady = !player.isReady;
     broadcastState(roomId, `${player.name} is ${player.isReady ? 'READY' : 'NOT READY'}.`);
 
-    // If game has not started and everyone is ready, start game
     if (!room.gameStarted && checkAllPlayersReady(room)) {
       room.gameStarted = true;
       startNewRound(roomId);
@@ -469,7 +529,9 @@ io.on('connection', (socket) => {
   socket.on('addBot', (roomId) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
-    if (room.players.length >= 6) return socket.emit('errorMsg', 'Max 6 players.');
+    if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
+      return socket.emit('errorMsg', 'Max 6 active players allowed in the game.');
+    }
 
     const botCount = room.players.filter(p => p.isBot).length + 1;
     room.players.push({
@@ -480,7 +542,8 @@ io.on('connection', (socket) => {
       takenFromPrev: [],
       isBot: true,
       isSpectator: false,
-      isReady: true
+      isReady: true,
+      isInVoice: false
     });
 
     broadcastState(roomId, `Bot ${botCount} joined.`);
@@ -522,6 +585,13 @@ io.on('connection', (socket) => {
     if (source === 'discard') {
       drawn = room.discardPile.pop();
       player.takenFromPrev.push(drawn);
+      
+      // Announce to everyone in the room that this player took from the discard pile
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
+        duration: 3200
+      });
+      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
@@ -529,11 +599,11 @@ io.on('connection', (socket) => {
         room.discardPile = [top];
       }
       drawn = room.deck.pop();
+      broadcastState(roomId, `${player.name} drew a card from the deck.`);
     }
 
     room.drawnCard = drawn;
     player.hand.push(drawn);
-    broadcastState(roomId, `${player.name} drew a card.`);
   });
 
   socket.on('discardCard', ({ roomId, cardIndex }) => {
