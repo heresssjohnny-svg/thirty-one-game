@@ -156,17 +156,25 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
 }
 
 function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1 = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2 = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  // How much does p2 owe p1 across match & side bets?
+  const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
   const key1 = `${p2Name}:::${p1Name}`;
   const key2 = `${p1Name}:::${p2Name}`;
+
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
 
+  const totalP2OwesP1 = p2OwesP1Match + p2SideBets;
+  const totalP1OwesP2 = p1OwesP2Match + p1SideBets;
+
+  const netTotal = totalP2OwesP1 - totalP1OwesP2;
+  const netSideBet = p2SideBets - p1SideBets;
+
   return {
-    net: p2OwesP1 - p1OwesP2,
-    sideBetNet: p2SideBets - p1SideBets
+    net: netTotal,
+    sideBetNet: netSideBet
   };
 }
 
@@ -1317,7 +1325,6 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  // CLEAR DEBT HANDLER (Forgive debt)
   socket.on('clearDebt', ({ roomId, debtorName }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -1328,7 +1335,6 @@ io.on('connection', (socket) => {
 
     let clearedAmount = 0;
 
-    // Zero out what debtorName owes creditorName
     if (room.debts && room.debts[debtorName] && room.debts[debtorName][creditorName]) {
       clearedAmount += room.debts[debtorName][creditorName];
       room.debts[debtorName][creditorName] = 0;
