@@ -155,25 +155,20 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   }
 }
 
+// FIXED: Perfectly isolates side bets and net balances without double addition
 function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  const key1 = `${p2Name}:::${p1Name}`; // p2 owes p1
+  const key2 = `${p1Name}:::${p2Name}`; // p1 owes p2
 
-  const key1 = `${p2Name}:::${p1Name}`;
-  const key2 = `${p1Name}:::${p2Name}`;
+  const p2OwesP1Total = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2Total = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
 
-  const totalP2OwesP1 = p2OwesP1Match + p2SideBets;
-  const totalP1OwesP2 = p1OwesP2Match + p1SideBets;
-
-  const netTotal = totalP2OwesP1 - totalP1OwesP2;
-  const netSideBet = p2SideBets - p1SideBets;
-
   return {
-    net: netTotal,
-    sideBetNet: netSideBet
+    net: p2OwesP1Total - p1OwesP2Total,
+    sideBetNet: p2SideBets - p1SideBets
   };
 }
 
@@ -406,7 +401,6 @@ function checkDealerCutComplete(room) {
   const eligible = getActivePlayers(room);
   room.dealerCutPlayerIds = eligible.map(p => p.id);
 
-  // Clean up any picks for players who disconnected
   for (const pickId of Object.keys(room.dealerCutPicks)) {
     if (!eligible.some(p => p.id === pickId)) {
       delete room.dealerCutPicks[pickId];
@@ -539,7 +533,6 @@ function checkTiebreakerComplete(room) {
   if (!room.tiebreakerActive) return;
   const activeEligible = getActivePlayers(room);
 
-  // Clean up picks for disconnected players
   for (const pickId of Object.keys(room.tiebreakerPicks || {})) {
     if (!activeEligible.some(p => p.id === pickId)) {
       delete room.tiebreakerPicks[pickId];
@@ -1140,7 +1133,6 @@ function finalizePlayerExit(roomId, playerName) {
     }
   }
 
-  // FIXED: If we are currently in a dealer cut or tiebreaker, check if we can complete it now
   if (room.dealerCutActive) {
     checkDealerCutComplete(room);
   }
