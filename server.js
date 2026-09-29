@@ -237,40 +237,48 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-// FIXED: Perfectly resolves round side bets by comparing the exact scores of the two selected player IDs
+// ROUND SIDE BET SETTLEMENT: Evaluates if your picked contender has the highest score in the hand vs opponent's pick
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
 
+  // Find the highest score among all active players this round
+  let maxScore = -1;
+  Object.values(scores).forEach(sc => {
+    if (sc > maxScore) maxScore = sc;
+  });
+
   room.peerSideBets.forEach(bet => {
     if (!bet.accepted || bet.type !== 'round') return;
 
-    // Resolve target IDs using active players if stored names/IDs mismatch
     let bTargetId = bet.bettorTargetId;
     let oTargetId = bet.opponentTargetId;
 
     if (!bTargetId || scores[bTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      const matchP = room.players.find(p => p.name === bet.bettorTargetName);
       if (matchP) bTargetId = matchP.id;
     }
     if (!oTargetId || scores[oTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
+      const matchP = room.players.find(p => p.name === bet.opponentTargetName);
       if (matchP) oTargetId = matchP.id;
     }
 
     const bettorTargetScore = (bTargetId && scores[bTargetId] !== undefined) ? scores[bTargetId] : -1;
     const opponentTargetScore = (oTargetId && scores[oTargetId] !== undefined) ? scores[oTargetId] : -1;
 
-    // For a round side bet where bettor backs player A and opponent backs player B:
-    // If bettor's pick scores higher than opponent's pick, opponent owes bettor.
-    if (bettorTargetScore > opponentTargetScore) {
+    const bettorPickIsHighest = (bettorTargetScore >= maxScore);
+    const opponentPickIsHighest = (opponentTargetScore >= maxScore);
+
+    if (bettorPickIsHighest && !opponentPickIsHighest) {
+      // Bettor's pick achieved highest score: opponent pays bettor
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName} won side bet vs ${bet.opponentName} (${bettorTargetScore} vs ${opponentTargetScore} pts -> +$${bet.amount})`);
-    } else if (opponentTargetScore > bettorTargetScore) {
+      resultsSummary.push(`${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) won highest score vs ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) -> +$${bet.amount}`);
+    } else if (opponentPickIsHighest && !bettorPickIsHighest) {
+      // Opponent's pick achieved highest score: bettor pays opponent
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName} won side bet vs ${bet.bettorName} (${opponentTargetScore} vs ${bettorTargetScore} pts -> +$${bet.amount})`);
+      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) won highest score vs ${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) -> +$${bet.amount}`);
     } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied at ${bettorTargetScore} pts (push)`);
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} both picks tied on score (${bettorTargetScore} pts - push)`);
     }
   });
 
@@ -323,7 +331,7 @@ function checkFirstToLoseBothLivesBets(room, eliminatedPlayerName) {
   if (resultsSummary.length > 0) {
     io.to(room.id).emit('bannerAnnouncement', {
       text: `💀 ${eliminatedPlayerName} lost both lives! First-Loser Side Bets Settled.`,
-      duration: 6000
+      duration: 7500
     });
   }
 }
@@ -584,11 +592,11 @@ function checkTiebreakerComplete(room) {
       message: `LOSER: ${ultimateLoser.player.name.toUpperCase()} (${ultimateLoser.card.rank}${ultimateLoser.card.suit})`,
       subtext: `${firstLoserReport ? firstLoserReport + ' | ' : ''}Picked lowest card from the deck!`,
       hands: getRevealedHands(room),
-      duration: 6500
+      duration: 7500
     });
 
     broadcastState(room.id, `Tiebreaker Cut: ${ultimateLoser.player.name} picked the lowest card (${ultimateLoser.card.rank}${ultimateLoser.card.suit}) and lost a life!`);
-    setTimeout(() => startNewRound(room.id), 6500);
+    setTimeout(() => startNewRound(room.id), 7500);
   }, 3200);
 }
 
@@ -637,7 +645,7 @@ function checkAndHandle31(room, player) {
       message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
       subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
       hands: revealedHands,
-      duration: 6500
+      duration: 7500
     });
   } else {
     const losers = [];
@@ -663,11 +671,11 @@ function checkAndHandle31(room, player) {
       message: `EVERYONE ELSE LOSES 1 LIFE!`,
       subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
       hands: revealedHands,
-      duration: 6500
+      duration: 7500
     });
   }
 
-  setTimeout(() => startNewRound(room.id), 6500);
+  setTimeout(() => startNewRound(room.id), 7500);
   return true;
 }
 
@@ -927,10 +935,10 @@ function resolveShowdown(roomId) {
       message: `LOSER: ${losersText}`,
       subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Lowest Score: ${minScore}`,
       hands: revealedHands,
-      duration: 6500
+      duration: 7500
     });
     broadcastState(roomId, `Showdown finished! Loser: ${losersText}`);
-    setTimeout(() => startNewRound(roomId), 6500);
+    setTimeout(() => startNewRound(roomId), 7500);
     return;
   }
 
@@ -941,7 +949,7 @@ function resolveShowdown(roomId) {
         message: 'PUSH — RE-DEALING ROUND!',
         subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}Both players tied at ${minScore} points`,
         hands: revealedHands,
-        duration: 6500
+        duration: 7500
       });
       broadcastState(roomId, `Heads-up tie at ${minScore}! Re-dealing with no lives lost.`);
       setTimeout(() => startNewRound(roomId), 4500);
@@ -964,11 +972,11 @@ function resolveShowdown(roomId) {
     message: `LOSER: ${singleLoser.name}`,
     subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Lowest Score: ${minScore}`,
     hands: revealedHands,
-    duration: 6500
+    duration: 7500
   });
 
   broadcastState(roomId, `Showdown finished! Loser: ${singleLoser.name}`);
-  setTimeout(() => startNewRound(roomId), 6500);
+  setTimeout(() => startNewRound(roomId), 7500);
 }
 
 function triggerBotTurnIfNeeded(roomId) {
