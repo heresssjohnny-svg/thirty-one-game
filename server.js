@@ -468,7 +468,6 @@ function checkDealerCutComplete(room) {
   }, 3200);
 }
 
-// FIXED: Robust tiebreaker deck replenishment
 function startInteractiveTiebreaker(room, tiedPlayers) {
   room.tiebreakerActive = true;
   room.tiebreakerPicks = {};
@@ -510,6 +509,150 @@ function startInteractiveTiebreaker(room, tiedPlayers) {
       }, 1000 + Math.random() * 800);
     }
   });
+}
+
+function checkTiebreakerComplete(room) {
+  const requiredCount = room.tiebreakerPicks ? Object.keys(room.tiebreakerPicks).length : 0;
+  if (requiredCount < room.tiedPlayerIds.length) return;
+
+  room.tiebreakerActive = false;
+  const picks = Object.values(room.tiebreakerPicks);
+
+  let minCardVal = 99;
+  let cutLosers = [];
+  const revealData = [];
+
+  picks.forEach(item => {
+    const rankVal = CUT_RANKS[item.card.rank];
+    revealData.push({
+      id: item.player.id,
+      name: item.player.name,
+      card: item.card,
+      rankVal: rankVal
+    });
+
+    if (rankVal < minCardVal) {
+      minCardVal = rankVal;
+      cutLosers = [item];
+    } else if (rankVal === minCardVal) {
+      cutLosers.push(item);
+    }
+  });
+
+  io.to(room.id).emit('tiebreakerResultsReveal', {
+    results: revealData
+  });
+
+  if (cutLosers.length > 1) {
+    setTimeout(() => {
+      io.to(room.id).emit('bannerAnnouncement', {
+        text: `Tie for lowest cut! Re-drawing lowest players...`,
+        duration: 2500
+      });
+      startInteractiveTiebreaker(room, cutLosers.map(l => l.player));
+    }, 2800);
+    return;
+  }
+
+  const ultimateLoser = cutLosers[0];
+  ultimateLoser.player.lives -= 1;
+  let newlyEliminated = [];
+  if (ultimateLoser.player.lives <= 0) {
+    newlyEliminated.push(ultimateLoser.player.name);
+  }
+  const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
+
+  setTimeout(() => {
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '⚡ TIEBREAKER FINISHED! ⚡',
+      message: `LOSER: ${ultimateLoser.player.name.toUpperCase()} (${ultimateLoser.card.rank}${ultimateLoser.card.suit})`,
+      subtext: `${firstLoserReport ? firstLoserReport + ' | ' : ''}Picked lowest card from the deck!`,
+      hands: getRevealedHands(room),
+      duration: 6500
+    });
+
+    broadcastState(room.id, `Tiebreaker Cut: ${ultimateLoser.player.name} picked the lowest card (${ultimateLoser.card.rank}${ultimateLoser.card.suit}) and lost a life!`);
+    setTimeout(() => startNewRound(room.id), 6500);
+  }, 3200);
+}
+
+function checkAndHandle31(room, player) {
+  if (calculateScore(player.hand) !== 31) return false;
+  if (room.isResolvingRound) return true;
+  room.isResolvingRound = true;
+
+  let penalizedGiver = null;
+  const revealedHands = getRevealedHands(room);
+
+  const scores = {};
+  getActivePlayers(room).forEach(p => {
+    scores[p.id] = calculateScore(p.hand);
+  });
+  scores[player.id] = 31;
+  const sideBetReport = settlePeerRoundBets(room, scores);
+
+  if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
+    for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
+      const cardsInHandFromGiver = cards.filter(c => 
+        player.hand.some(hCard => hCard.rank === c.rank && hCard.suit === c.suit)
+      );
+
+      const hasAce = cardsInHandFromGiver.some(c => c.rank === 'A');
+      const hasTen = cardsInHandFromGiver.some(c => c.value === 10);
+
+      if (hasAce && hasTen) {
+        penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
+        if (penalizedGiver) break;
+      }
+    }
+  }
+
+  let newlyEliminated = [];
+  if (penalizedGiver) {
+    penalizedGiver.lives = Math.max(0, penalizedGiver.lives - 2);
+    if (penalizedGiver.lives <= 0) {
+      newlyEliminated.push(penalizedGiver.name);
+    }
+    const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
+    broadcastState(room.id);
+
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '⚡ 31 HIT FROM DISCARD! ⚡',
+      message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
+      hands: revealedHands,
+      duration: 6500
+    });
+  } else {
+    const losers = [];
+    room.players.forEach(p => {
+      if (!p.isSpectator && p.lives > 0 && p.id !== player.id) {
+        p.lives -= 1;
+        if (p.lives <= 0) {
+          newlyEliminated.push(p.name);
+        }
+        losers.push(p.name);
+      }
+    });
+
+    const firstLoserReport = settleFirstLoserBetsThisHand(room, newlyEliminated);
+    broadcastState(room.id);
+
+    const drawDesc = player.lastDrawnSource === 'deck' 
+      ? 'Drawn from Deck!' 
+      : (player.lastDrawnSource === 'deal' ? 'Dealt 31!' : 'Natural 31!');
+
+    io.to(room.id).emit('bigAnnouncement', {
+      title: `⚡ ${player.name.toUpperCase()} HIT 31! ⚡`,
+      message: `EVERYONE ELSE LOSES 1 LIFE!`,
+      subtext: `${sideBetReport ? sideBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}${drawDesc} Losers: ${losers.join(', ')}`,
+      hands: revealedHands,
+      duration: 6500
+    });
+  }
+
+  setTimeout(() => startNewRound(room.id), 6500);
+  return true;
 }
 
 function startNewRound(roomId) {
@@ -1108,7 +1251,7 @@ io.on('connection', (socket) => {
 
     let joinMsg = `${safeName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
+      joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
