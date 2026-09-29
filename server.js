@@ -39,6 +39,8 @@ const CUT_RANKS = {
 };
 
 const MAX_ACTIVE_PLAYERS = 6;
+const rooms = {};
+const disconnectTimeouts = {};
 
 function createDeck() {
   const deck = [];
@@ -73,8 +75,6 @@ function calculateScore(hand) {
   }
   return Math.max(...Object.values(totals));
 }
-
-const rooms = {};
 
 function getActivePlayers(room) {
   return room.players.filter(p => !p.isSpectator && p.lives > 0);
@@ -172,13 +172,13 @@ function getPersonalLedger(room, playerName) {
 function recordGameWagerSettlement(room, winner) {
   if (!winner || !room.currentMatchParticipants) return 0;
   
-  const winnerData = room.currentMatchParticipants.find(p => p.id === winner.id);
+  const winnerData = room.currentMatchParticipants.find(p => p.id === winner.id || p.name === winner.name);
   if (!winnerData || winnerData.wager <= 0) return 0;
 
   let totalCollected = 0;
 
   room.currentMatchParticipants.forEach(loserData => {
-    if (loserData.id !== winner.id) {
+    if (loserData.name !== winnerData.name) {
       const amountToCollect = Math.min(winnerData.wager, loserData.wager);
       if (amountToCollect > 0) {
         recordDebt(room, loserData.name, winnerData.name, amountToCollect);
@@ -564,6 +564,7 @@ function broadcastState(roomId, message = '') {
         isSpectator: Boolean(pl.isSpectator),
         isReady: Boolean(pl.isReady),
         isInVoice: Boolean(pl.isInVoice),
+        disconnected: Boolean(pl.disconnected),
         matchWager: pl.matchWager || 0
       })),
       hand: p.isSpectator ? [] : p.hand,
@@ -775,33 +776,57 @@ function triggerBotTurnIfNeeded(roomId) {
   }, 1200);
 }
 
-function handlePlayerExit(socketId) {
+// Grace-period disconnection handler to prevent freeze when switching apps
+function handlePlayerDisconnect(socketId) {
   for (const [roomId, room] of Object.entries(rooms)) {
-    const idx = room.players.findIndex(p => p.id === socketId);
-    if (idx !== -1) {
-      const leaving = room.players[idx];
-
+    const player = room.players.find(p => p.id === socketId);
+    if (player && !player.isBot) {
+      player.disconnected = true;
       io.to(roomId).emit('voiceUserLeft', { socketId: socketId });
+      broadcastState(roomId, `${player.name} disconnected (reconnecting...).`);
 
-      if (!room.gameStarted || leaving.isSpectator) {
-        room.players.splice(idx, 1);
-      } else {
-        leaving.lives = 0;
-        if (room.currentTurnIdx === idx) {
-          advanceTurnIndex(room);
-          triggerBotTurnIfNeeded(roomId);
-        }
+      const key = `${roomId}:::${player.name}`;
+      if (disconnectTimeouts[key]) {
+        clearTimeout(disconnectTimeouts[key]);
       }
 
-      if (getActivePlayers(room).length === 0 && room.players.length === 0) {
-        delete rooms[roomId];
-      } else {
-        broadcastState(roomId, `${leaving.name} left the room.`);
-      }
-      broadcastRoomList();
+      // 45-second grace window to allow switching back into the browser
+      disconnectTimeouts[key] = setTimeout(() => {
+        delete disconnectTimeouts[key];
+        finalizePlayerExit(roomId, player.name);
+      }, 45000);
       break;
     }
   }
+}
+
+function finalizePlayerExit(roomId, playerName) {
+  const room = rooms[roomId];
+  if (!room) return;
+  const idx = room.players.findIndex(p => p.name === playerName);
+  if (idx === -1) return;
+  const leaving = room.players[idx];
+  if (!leaving.disconnected) return; // Player reconnected in time
+
+  if (!room.gameStarted || leaving.isSpectator) {
+    room.players.splice(idx, 1);
+  } else {
+    leaving.lives = 0;
+    if (room.currentTurnIdx === idx) {
+      advanceTurnIndex(room);
+      triggerBotTurnIfNeeded(roomId);
+    }
+  }
+
+  if (getActivePlayers(room).length === 0 && room.players.length === 0) {
+    delete rooms[roomId];
+  } else {
+    broadcastState(roomId, `${leaving.name} left the match.`);
+    if (room.gameStarted && getActivePlayers(room).length <= 1) {
+      startNewRound(roomId);
+    }
+  }
+  broadcastRoomList();
 }
 
 io.on('connection', (socket) => {
@@ -853,7 +878,13 @@ io.on('connection', (socket) => {
 
     const existingPlayer = room.players.find(p => p.name === playerName);
     if (existingPlayer) {
+      const key = `${roomId}:::${existingPlayer.name}`;
+      if (disconnectTimeouts[key]) {
+        clearTimeout(disconnectTimeouts[key]);
+        delete disconnectTimeouts[key];
+      }
       existingPlayer.id = socket.id;
+      existingPlayer.disconnected = false;
       broadcastState(roomId, `${playerName} reconnected.`);
       broadcastRoomList();
       return;
@@ -875,6 +906,7 @@ io.on('connection', (socket) => {
       manualSpectator: false,
       isReady: false,
       isInVoice: false,
+      disconnected: false,
       matchWager: 0
     });
 
@@ -1042,7 +1074,7 @@ io.on('connection', (socket) => {
 
   socket.on('leaveRoom', (roomId) => {
     socket.leave(roomId);
-    handlePlayerExit(socket.id);
+    finalizePlayerExit(roomId, room?.players.find(p => p.id === socket.id)?.name);
   });
 
   socket.on('sendChatMessage', ({ roomId, message }) => {
@@ -1081,6 +1113,7 @@ io.on('connection', (socket) => {
       manualSpectator: false,
       isReady: true,
       isInVoice: false,
+      disconnected: false,
       matchWager: 5
     });
 
@@ -1101,7 +1134,6 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
 
-    // Find the most recently added bot
     const lastBotIdx = room.players.map(p => p.isBot).lastIndexOf(true);
     if (lastBotIdx === -1) {
       return socket.emit('errorMsg', 'No bots in room to remove.');
@@ -1240,7 +1272,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    handlePlayerExit(socket.id);
+    handlePlayerDisconnect(socket.id);
   });
 });
 
