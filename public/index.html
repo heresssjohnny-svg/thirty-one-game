@@ -279,6 +279,14 @@
       font-weight: bold; display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 300px;
     }
 
+    /* Connection Status Notice */
+    .connection-banner {
+      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      background: #d32f2f; color: #fff; padding: 6px 14px; border-radius: 16px;
+      font-size: 11px; font-weight: bold; z-index: 1200; display: none; align-items: center; gap: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
     input, select {
       padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
       font-size: 13px; width: 100%; max-width: 280px; background: #fff; color: #111;
@@ -289,6 +297,10 @@
 <body>
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
+  <div id="connectionBanner" class="connection-banner">
+    <span>⚠️ Disconnected from server</span>
+    <button type="button" onclick="manualReconnect()" style="background:#fff; color:#d32f2f; padding:3px 8px; font-size:10px; border-radius:6px;">Retry Connection</button>
+  </div>
 
   <!-- TUTORIAL MODAL -->
   <div id="tutorialModal" class="custom-modal">
@@ -725,11 +737,22 @@
     window.addEventListener('pageshow', () => recoverFromBackground());
 
     socket.on('connect', () => {
+      document.getElementById('connectionBanner').style.display = 'none';
       if (currentRoom && myPlayerName) {
         socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
         socket.emit('requestStateSync', currentRoom);
       }
     });
+
+    socket.on('disconnect', () => {
+      document.getElementById('connectionBanner').style.display = 'flex';
+    });
+
+    function manualReconnect() {
+      if (!socket.connected) {
+        socket.connect();
+      }
+    }
 
     function playCardSlideSound() {
       try {
@@ -1300,7 +1323,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙 Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
