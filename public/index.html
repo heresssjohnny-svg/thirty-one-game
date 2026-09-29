@@ -162,7 +162,6 @@
     }
     .showdown-cards-row { display: flex; gap: 4px; }
 
-    /* MODALS: LEDGER & SIDE BETTING */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -318,6 +317,7 @@
     let currentRoom = '';
     let myHand = [];
     let isTurn = false;
+    let wasMyTurn = false;
     let hasDrawn = false;
     let isDiscarding = false;
     let minKnockScore = 21;
@@ -333,20 +333,83 @@
     let latestActivePlayers = [];
 
     let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) audioCtx = new AudioContext();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Bell sound synthesis on turn transition
+    function playTurnBellSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        const now = ctx.currentTime;
+
+        // Primary fundamental bell strike (A6 - 1760 Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(1760, now);
+
+        gain1.gain.setValueAtTime(0.7, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+
+        osc1.start(now);
+        osc1.stop(now + 0.9);
+
+        // Harmonic overtone for realistic brass chime ring (2640 Hz)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(2640, now);
+
+        gain2.gain.setValueAtTime(0.35, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+
+        osc2.start(now);
+        osc2.stop(now + 0.6);
+      } catch (err) {
+        console.warn('Turn bell synthesis unavailable:', err);
+      }
+    }
+
+    // Vibration trigger for mobile phones
+    function triggerTurnVibration() {
+      try {
+        if ('vibrate' in navigator) {
+          // Double-pulse vibration alert
+          navigator.vibrate([120, 80, 140]);
+        }
+      } catch (e) {
+        console.warn('Vibration API not permitted or supported:', e);
+      }
+    }
+
     function playKnockSound() {
       try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        if (!audioCtx) audioCtx = new AudioContext();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const ctx = getAudioContext();
+        if (!ctx) return;
 
         const knockTimes = [0, 0.14, 0.28];
         knockTimes.forEach((delay) => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
 
           osc.type = 'triangle';
-          const startTime = audioCtx.currentTime + delay;
+          const startTime = ctx.currentTime + delay;
 
           osc.frequency.setValueAtTime(140, startTime);
           osc.frequency.exponentialRampToValueAtTime(35, startTime + 0.08);
@@ -355,13 +418,13 @@
           gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08);
 
           osc.connect(gain);
-          gain.connect(audioCtx.destination);
+          gain.connect(ctx.destination);
 
           osc.start(startTime);
           osc.stop(startTime + 0.08);
         });
       } catch (err) {
-        console.warn('Audio synthesis unavailable:', err);
+        console.warn('Knock synthesis unavailable:', err);
       }
     }
 
@@ -378,6 +441,7 @@
     };
 
     function joinGame() {
+      getAudioContext(); // Pre-warm audio context on user gesture
       const name = document.getElementById('playerName').value.trim() || 'Player';
       const room = document.getElementById('roomId').value.trim();
       if (!room) return alert('Enter a room code');
@@ -394,6 +458,7 @@
         socket.emit('leaveRoom', currentRoom);
         currentRoom = '';
         myHand = [];
+        wasMyTurn = false;
         document.getElementById('lobby').style.display = 'flex';
         document.getElementById('roomLabel').innerText = 'Room: -';
         document.getElementById('scoreLabel').innerText = 'Score: 0';
@@ -685,7 +750,16 @@
     });
 
     socket.on('gameState', (state) => {
+      const turnJustBegan = state.isMyTurn && !wasMyTurn;
       isTurn = state.isMyTurn;
+      wasMyTurn = state.isMyTurn;
+
+      // Trigger bell chime and vibration when it becomes your turn
+      if (turnJustBegan && state.gameStarted && !state.isSpectator) {
+        playTurnBellSound();
+        triggerTurnVibration();
+      }
+
       hasDrawn = state.hasDrawn;
       isDiscarding = false;
       myHand = state.hand || [];
@@ -708,7 +782,7 @@
 
       if (state.message) document.getElementById('statusBar').innerText = state.message;
 
-      // Update Match Pot & Round Side Pot Banners
+      // Pots Display
       const potBanner = document.getElementById('potBanner');
       if (state.totalPot > 0) {
         potBanner.style.display = 'flex';
@@ -725,7 +799,7 @@
         roundPotBanner.style.display = 'none';
       }
 
-      // Update Game Wager selector in Lobby
+      // Game Wager Selector
       const wagerSec = document.getElementById('wagerSection');
       if (!state.gameStarted && !isSpectator) {
         wagerSec.style.display = 'flex';
@@ -737,7 +811,7 @@
         wagerSec.style.display = 'none';
       }
 
-      // Update Ledger Dialog
+      // Ledger Modal Content
       document.getElementById('ledgerWagerInfo').innerText = `Match Stakes: $${currentWager}/player | Round Side Pot: $${state.roundPot || 0}`;
       const ledgerList = document.getElementById('ledgerList');
       if (state.ledger && state.ledger.length > 0) {
@@ -753,7 +827,7 @@
         ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
       }
 
-      // Action buttons
+      // Buttons
       const readyBtn = document.getElementById('readyBtn');
       const addBotBtn = document.getElementById('addBotBtn');
       const spectateBtn = document.getElementById('spectateBtn');
