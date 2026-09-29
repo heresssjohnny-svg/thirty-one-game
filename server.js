@@ -237,16 +237,9 @@ function recordGameWagerSettlement(room, winner) {
   return totalCollected;
 }
 
-// ROUND SIDE BET SETTLEMENT: Evaluates if your picked contender has the highest score in the hand vs opponent's pick
 function settlePeerRoundBets(room, scores) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
   const resultsSummary = [];
-
-  // Find the highest score among all active players this round
-  let maxScore = -1;
-  Object.values(scores).forEach(sc => {
-    if (sc > maxScore) maxScore = sc;
-  });
 
   room.peerSideBets.forEach(bet => {
     if (!bet.accepted || bet.type !== 'round') return;
@@ -255,30 +248,33 @@ function settlePeerRoundBets(room, scores) {
     let oTargetId = bet.opponentTargetId;
 
     if (!bTargetId || scores[bTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.bettorTargetName);
+      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
       if (matchP) bTargetId = matchP.id;
     }
     if (!oTargetId || scores[oTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.opponentTargetName);
+      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
       if (matchP) oTargetId = matchP.id;
     }
 
     const bettorTargetScore = (bTargetId && scores[bTargetId] !== undefined) ? scores[bTargetId] : -1;
     const opponentTargetScore = (oTargetId && scores[oTargetId] !== undefined) ? scores[oTargetId] : -1;
 
+    let maxScore = -1;
+    Object.values(scores).forEach(sc => {
+      if (sc > maxScore) maxScore = sc;
+    });
+
     const bettorPickIsHighest = (bettorTargetScore >= maxScore);
     const opponentPickIsHighest = (opponentTargetScore >= maxScore);
 
     if (bettorPickIsHighest && !opponentPickIsHighest) {
-      // Bettor's pick achieved highest score: opponent pays bettor
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) won highest score vs ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.bettorName}'s pick (${bet.targetPlayerName}: ${bettorTargetScore}) won highest score vs ${bet.opponentName}'s pick -> +$${bet.amount}`);
     } else if (opponentPickIsHighest && !bettorPickIsHighest) {
-      // Opponent's pick achieved highest score: bettor pays opponent
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore}) won highest score vs ${bet.bettorName}'s pick (${bet.bettorTargetName}: ${bettorTargetScore}) -> +$${bet.amount}`);
+      resultsSummary.push(`${bet.opponentName}'s pick won highest score vs ${bet.bettorName}'s pick -> +$${bet.amount}`);
     } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} both picks tied on score (${bettorTargetScore} pts - push)`);
+      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} tied on picks (${bettorTargetScore} pts - push)`);
     }
   });
 
@@ -783,7 +779,9 @@ function startNewRound(roomId) {
 
   const firstDiscard = room.deck.pop();
   room.discardPile.push(firstDiscard);
-  room.currentDiscardFeederId = dealer ? dealer.id : null;
+  // FIXED: Initial first-card-of-round discard is dealt by the table/dealer automatically,
+  // so it does not count as a "fed" card from the dealer for the 21-out-of-31 rule.
+  room.currentDiscardFeederId = null; 
 
   for (const p of active) {
     if (calculateScore(p.hand) === 31) {
