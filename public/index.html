@@ -4,13 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>31 Card Game</title>
-    <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#1b4d3e">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="31 Cards">
-
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -18,48 +16,54 @@
       margin: 0; padding: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background: #1b4d3e; color: #fff;
-      display: flex; flex-direction: column; height: 100vh;
+      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
     }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .status-box { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; font-size: 14px; text-align: center; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; }
+    .status-box { background: rgba(0,0,0,0.35); padding: 8px; border-radius: 8px; font-size: 14px; text-align: center; min-height: 38px; display: flex; align-items: center; justify-content: center; }
     .table {
-      flex: 1; display: flex; flex-direction: column; justify-content: space-around;
+      flex: 1; display: flex; flex-direction: column; justify-content: space-between;
       align-items: center; background: #164033; border-radius: 12px; margin: 8px 0; padding: 10px;
     }
     .players-list { display: flex; gap: 8px; width: 100%; justify-content: center; flex-wrap: wrap; }
     .player-tag {
-      background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; font-size: 13px;
+      background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 16px; font-size: 13px;
     }
-    .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; }
-    .middle-piles { display: flex; gap: 20px; align-items: center; }
+    .player-tag.active { border: 2px solid #ffcc00; font-weight: bold; background: rgba(255,204,0,0.25); }
+    .middle-piles { display: flex; gap: 24px; align-items: center; margin: 8px 0; }
+    
     .card {
-      width: 70px; height: 100px; background: white; border-radius: 8px;
+      width: 72px; height: 104px; min-width: 72px; min-height: 104px;
+      background: #ffffff; border-radius: 8px;
       display: flex; flex-direction: column; justify-content: center; align-items: center;
-      font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      user-select: none;
+      font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.35);
+      user-select: none; border: 1px solid #ccc;
     }
     .card.red { color: #d32f2f; }
-    .card.black { color: #111; }
-    .card.back { background: #0d47a1; border: 2px solid white; color: white; font-size: 14px; }
-    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .hand-cards { display: flex; gap: 10px; }
-    .action-bar { display: flex; gap: 8px; width: 100%; justify-content: center; }
+    .card.black { color: #111111; }
+    .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 13px; text-align: center; }
+    .card.discard-highlight { outline: 3px solid #ffcc00; transform: translateY(-4px); }
+
+    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+    .hand-cards { display: flex; gap: 10px; justify-content: center; min-height: 110px; }
+    
+    .action-bar { display: flex; gap: 8px; width: 100%; justify-content: center; flex-wrap: wrap; }
     button {
-      padding: 12px 18px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold;
+      padding: 12px 16px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold;
       background: #ffcc00; color: #111; cursor: pointer;
     }
-    button:disabled { background: #888; color: #444; }
+    button.secondary { background: #e0e0e0; color: #222; }
+    button:disabled { background: #555; color: #888; }
     .lobby-modal {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+      display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; z-index: 100;
     }
-    input { padding: 12px; border-radius: 8px; border: none; font-size: 16px; width: 220px; }
+    input { padding: 12px; border-radius: 8px; border: none; font-size: 16px; width: 230px; }
   </style>
 </head>
 <body>
 
   <div id="lobby" class="lobby-modal">
-    <h2>31 Card Game</h2>
+    <h2 style="margin:0;">31 Card Game</h2>
     <input id="playerName" placeholder="Your Name" />
     <input id="roomId" placeholder="Room Code (e.g. 777)" />
     <button onclick="joinGame()">Enter Game Room</button>
@@ -70,24 +74,27 @@
     <div id="scoreLabel">Score: 0</div>
   </div>
 
-  <div class="status-box" id="statusBar">Waiting for players...</div>
+  <div class="status-box" id="statusBar">Waiting for players or bots...</div>
 
   <div class="table">
     <div class="players-list" id="playersArea"></div>
 
     <div class="middle-piles">
-      <div id="drawPile" class="card back" onclick="draw('deck')">DRAW</div>
+      <div id="drawPile" class="card back" onclick="draw('deck')">DRAW<br>DECK</div>
       <div id="discardPile" class="card" onclick="draw('discard')">--</div>
     </div>
 
     <div class="hand-area">
-      <div>Your Hand (tap to discard)</div>
-      <div class="hand-cards" id="handArea"></div>
+      <div id="handInstruction" style="font-size: 13px; opacity: 0.85;">Your Hand</div>
+      <div class="hand-cards" id="handArea">
+        <div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>
+      </div>
     </div>
   </div>
 
   <div class="action-bar">
-    <button id="startBtn" onclick="startGame()">Start Game</button>
+    <button id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
+    <button id="startBtn" onclick="startGame()" disabled>Need 2+ Players</button>
     <button id="knockBtn" onclick="knock()" disabled>Knock (21+)</button>
   </div>
 
@@ -99,7 +106,7 @@
     let hasDrawn = false;
 
     function joinGame() {
-      const name = document.getElementById('playerName').value.trim();
+      const name = document.getElementById('playerName').value.trim() || 'Player';
       const room = document.getElementById('roomId').value.trim();
       if (!room) return alert('Enter a room code');
       currentRoom = room;
@@ -108,17 +115,23 @@
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
     }
 
+    function addBot() {
+      socket.emit('addBot', currentRoom);
+    }
+
     function startGame() {
       socket.emit('startGame', currentRoom);
     }
 
     function draw(source) {
-      if (!isTurn || hasDrawn) return;
+      if (!isTurn) return alert("Not your turn!");
+      if (hasDrawn) return alert("You already drew. Tap a card in your hand to discard.");
       socket.emit('drawCard', { roomId: currentRoom, source });
     }
 
     function discard(idx) {
-      if (!isTurn || !hasDrawn) return;
+      if (!isTurn) return;
+      if (!hasDrawn) return alert("You must draw from the deck or discard pile first!");
       socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx });
     }
 
@@ -127,11 +140,11 @@
       socket.emit('knock', currentRoom);
     }
 
-    function renderCard(card, onClick) {
+    function renderCard(card, onClick, highlight = false) {
       const el = document.createElement('div');
       const isRed = card.suit === '♥' || card.suit === '♦';
-      el.className = `card ${isRed ? 'red' : 'black'}`;
-      el.innerHTML = `<span>${card.rank}</span><span>${card.suit}</span>`;
+      el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''}`;
+      el.innerHTML = `<span>${card.rank}</span><span style="font-size: 20px;">${card.suit}</span>`;
       if (onClick) el.onclick = onClick;
       return el;
     }
@@ -139,7 +152,7 @@
     socket.on('gameState', (state) => {
       isTurn = state.isMyTurn;
       hasDrawn = state.hasDrawn;
-      myHand = state.hand;
+      myHand = state.hand || [];
 
       document.getElementById('scoreLabel').innerText = `Score: ${state.score}`;
       if (state.message) document.getElementById('statusBar').innerText = state.message;
@@ -147,7 +160,38 @@
       // Update Knock button
       document.getElementById('knockBtn').disabled = !state.canKnock;
 
-      // Update Players
+      // Update Instruction text
+      const handInstr = document.getElementById('handInstruction');
+      if (state.gameStarted) {
+        if (isTurn) {
+          handInstr.innerText = hasDrawn ? "Tap a card below to DISCARD it" : "Your turn! Tap Draw Deck or Discard Pile";
+        } else {
+          handInstr.innerText = "Waiting for other players...";
+        }
+      } else {
+        handInstr.innerText = "Lobby: Add a Bot or wait for friends, then tap Start Game";
+      }
+
+      // Lobby Start / Bot Buttons Control
+      const startBtn = document.getElementById('startBtn');
+      const addBotBtn = document.getElementById('addBotBtn');
+
+      if (state.gameStarted) {
+        startBtn.style.display = 'none';
+        addBotBtn.style.display = 'none';
+      } else {
+        startBtn.style.display = 'inline-block';
+        addBotBtn.style.display = 'inline-block';
+        if (state.players.length >= 2) {
+          startBtn.disabled = false;
+          startBtn.innerText = `Start Game (${state.players.length} Players)`;
+        } else {
+          startBtn.disabled = true;
+          startBtn.innerText = 'Need 2+ Players';
+        }
+      }
+
+      // Update Players Area
       const pArea = document.getElementById('playersArea');
       pArea.innerHTML = '';
       state.players.forEach(p => {
@@ -157,40 +201,26 @@
         pArea.appendChild(div);
       });
 
-            // Manage Start Game button visibility
-      const startBtn = document.getElementById('startBtn');
-      if (myHand && myHand.length > 0) {
-        // Game has already started and cards are dealt
-        startBtn.style.display = 'none';
-      } else if (state.players && state.players.length >= 2) {
-        // 2 or more players are waiting in lobby: show active start button
-        startBtn.style.display = 'inline-block';
-        startBtn.disabled = false;
-        startBtn.innerText = `Start Game (${state.players.length} Players)`;
-      } else {
-        // Only 1 player joined so far
-        startBtn.style.display = 'inline-block';
-        startBtn.disabled = true;
-        startBtn.innerText = 'Waiting for 2nd Player...';
-      }
-
-      // Update Discard pile
+      // Update Discard Pile
       const disc = document.getElementById('discardPile');
       if (state.topDiscard) {
         const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
         disc.className = `card ${isRed ? 'red' : 'black'}`;
-        disc.innerHTML = `<span>${state.topDiscard.rank}</span><span>${state.topDiscard.suit}</span>`;
+        disc.innerHTML = `<span>${state.topDiscard.rank}</span><span style="font-size: 20px;">${state.topDiscard.suit}</span>`;
+      } else {
+        disc.className = 'card';
+        disc.innerText = '--';
       }
 
-      // Update Hand
+      // Update Hand Area
       const hArea = document.getElementById('handArea');
       hArea.innerHTML = '';
-      myHand.forEach((card, idx) => {
-        hArea.appendChild(renderCard(card, () => discard(idx)));
-      });
-
-      if (state.players.length >= 2) {
-        document.getElementById('startBtn').style.display = 'none';
+      if (myHand.length > 0) {
+        myHand.forEach((card, idx) => {
+          hArea.appendChild(renderCard(card, () => discard(idx), isTurn && hasDrawn));
+        });
+      } else {
+        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 40px; font-size: 14px;">(No cards dealt yet)</div>';
       }
     });
 
@@ -199,13 +229,10 @@
       alert(`Game Over! Winner: ${winner}`);
       location.reload();
     });
-  </script>
-    <script>
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js');
     }
   </script>
-</body>
-
 </body>
 </html>
