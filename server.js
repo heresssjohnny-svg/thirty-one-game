@@ -85,6 +85,12 @@ function calculateScore(hand) {
 }
 
 function getActivePlayers(room) {
+  room.players.forEach(p => {
+    if (!p.isSpectator && p.lives <= 0) {
+      p.isSpectator = true;
+      p.hand = [];
+    }
+  });
   return room.players.filter(p => !p.isSpectator && p.lives > 0);
 }
 
@@ -128,7 +134,7 @@ function checkAllPlayersReady(room) {
 }
 
 function getRevealedHands(room) {
-  return getActivePlayers(room).map(p => ({
+  return room.players.filter(p => !p.isSpectator).map(p => ({
     name: p.name,
     score: calculateScore(p.hand),
     hand: p.hand,
@@ -155,20 +161,25 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   }
 }
 
-// FIXED: Perfectly isolates side bets and net balances without double addition
 function getNetPairBalance(room, p1Name, p2Name) {
-  const key1 = `${p2Name}:::${p1Name}`; // p2 owes p1
-  const key2 = `${p1Name}:::${p2Name}`; // p1 owes p2
+  const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
-  const p2OwesP1Total = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2Total = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  const key1 = `${p2Name}:::${p1Name}`;
+  const key2 = `${p1Name}:::${p2Name}`;
 
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
 
+  const totalP2OwesP1 = p2OwesP1Match + p2SideBets;
+  const totalP1OwesP2 = p1OwesP2Match + p1SideBets;
+
+  const netTotal = totalP2OwesP1 - totalP1OwesP2;
+  const netSideBet = p2SideBets - p1SideBets;
+
   return {
-    net: p2OwesP1Total - p1OwesP2Total,
-    sideBetNet: p2SideBets - p1SideBets
+    net: netTotal,
+    sideBetNet: netSideBet
   };
 }
 
@@ -1517,7 +1528,7 @@ io.on('connection', (socket) => {
     if (bet.opponentId !== socket.id) return;
 
     if (accept) {
-      const oppTarget = room.players.find(p => p.name === myTargetName && !p.isSpectator);
+      const oppTarget = room.players.find(p => p.name === myTargetName);
       if (!oppTarget && bet.type === 'round') {
         return socket.emit('errorMsg', 'Please select a valid pick for your side of the bet.');
       }
@@ -1596,6 +1607,7 @@ io.on('connection', (socket) => {
     checkTiebreakerComplete(room);
   });
 
+  // NEW: Voice channel join/leave alerts and bell hopper chime
   socket.on('joinVoice', (roomId) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -1608,6 +1620,15 @@ io.on('connection', (socket) => {
 
     socket.emit('currentVoiceUsers', otherVoiceUsers);
     socket.to(roomId).emit('voiceUserJoined', { socketId: socket.id });
+
+    if (player) {
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `🎙️ ${player.name} joined the voice channel!`,
+        duration: 3500
+      });
+      io.to(roomId).emit('playVoiceBell');
+    }
+
     broadcastState(roomId);
   });
 
@@ -1618,6 +1639,15 @@ io.on('connection', (socket) => {
     if (player) player.isInVoice = false;
 
     socket.to(roomId).emit('voiceUserLeft', { socketId: socket.id });
+
+    if (player) {
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `🔇 ${player.name} left the voice channel.`,
+        duration: 3000
+      });
+      io.to(roomId).emit('playVoiceBell');
+    }
+
     broadcastState(roomId);
   });
 
