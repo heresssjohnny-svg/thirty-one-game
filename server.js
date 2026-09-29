@@ -12,6 +12,13 @@ const io = new Server(server, {
   pingInterval: 10000
 });
 
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION]:', reason);
+});
+
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -248,7 +255,6 @@ function settlePeerRoundBets(room, scores) {
   return resultsSummary.length > 0 ? `Side Bets: ${resultsSummary.join(' | ')}` : '';
 }
 
-// Settle "First to Lose" match side bets whenever a player hits 0 lives
 function checkFirstToLoseBets(room, eliminatedPlayerName) {
   if (!room.peerSideBets || room.peerSideBets.length === 0) return;
 
@@ -257,17 +263,14 @@ function checkFirstToLoseBets(room, eliminatedPlayerName) {
     if (!bet.accepted || bet.type !== 'firstLoser') return;
 
     if (bet.targetPlayerName === eliminatedPlayerName) {
-      // Bettor predicted correctly, opponent pays bettor
       recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
       resultsSummary.push(`${bet.bettorName} won first-loser bet vs ${bet.opponentName} (+$${bet.amount})`);
     } else {
-      // Bettor predicted incorrectly, bettor pays opponent
       recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
       resultsSummary.push(`${bet.opponentName} won first-loser bet vs ${bet.bettorName} (+$${bet.amount})`);
     }
   });
 
-  // Remove resolved first-loser bets
   room.peerSideBets = room.peerSideBets.filter(b => b.type !== 'firstLoser');
 
   if (resultsSummary.length > 0) {
@@ -474,9 +477,8 @@ function startInteractiveTiebreaker(room, tiedPlayers, sideBetReport) {
 }
 
 function checkTiebreakerComplete(room) {
-  const requiredCount = room.tiedPlayerIds.length;
-  const pickedCount = Object.keys(room.tiebreakerPicks).length;
-  if (pickedCount < requiredCount) return;
+  const requiredCount = room.tiebreakerPicks ? Object.keys(room.tiebreakerPicks).length : 0;
+  if (requiredCount < room.tiedPlayerIds.length) return;
 
   room.tiebreakerActive = false;
   const picks = Object.values(room.tiebreakerPicks);
@@ -681,7 +683,7 @@ function startNewRound(roomId) {
   room.isResolvingRound = false;
   room.turnsTakenInRound = 0;
   room.currentDiscardFeederId = null;
-  room.peerSideBets = room.peerSideBets.filter(b => b.type === 'firstLoser'); // Keep long-term match side bets active
+  room.peerSideBets = (room.peerSideBets || []).filter(b => b.type === 'firstLoser');
   room.tiebreakerActive = false;
 
   if (!room.isFirstRoundOfMatch) {
@@ -748,7 +750,7 @@ function broadcastState(roomId, message = '') {
   if (room.gameStarted && room.currentMatchParticipants) {
     totalGamePot = room.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
   } else {
-    totalGamePot = getActivePlayers(r || room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+    totalGamePot = getActivePlayers(room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
   }
 
   const activeSideBetsTotal = (room.peerSideBets || [])
@@ -1042,7 +1044,7 @@ function handlePlayerDisconnect(socketId) {
 
 function finalizePlayerExit(roomId, playerName) {
   const room = rooms[roomId];
-  if (!room) return;
+  if (!room || !playerName) return;
   const idx = room.players.findIndex(p => p.name === playerName);
   if (idx === -1) return;
   const leaving = room.players[idx];
@@ -1070,21 +1072,8 @@ function finalizePlayerExit(roomId, playerName) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('roomListUpdate', Object.entries(rooms).map(([id, r]) => {
-    let totalPot = 0;
-    if (r.gameStarted && r.currentMatchParticipants) {
-      totalPot = r.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
-    } else {
-      totalPot = getActivePlayers(r).reduce((sum, p) => sum + (p.matchWager || 0), 0);
-    }
-    return {
-      roomId: id,
-      gameStarted: r.gameStarted,
-      activeCount: r.players.filter(p => !p.isSpectator).length,
-      spectatorCount: r.players.filter(p => p.isSpectator).length,
-      totalPot: totalPot
-    };
-  }));
+  // CRITICAL FIX: Broadcast room list instantly upon initial socket connection so newly opened tabs see active lobbies
+  broadcastRoomList();
 
   socket.on('requestStateSync', (roomId) => {
     if (roomId && rooms[roomId]) {
@@ -1220,7 +1209,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁 Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1303,7 +1292,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -1329,7 +1318,6 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  // PROPOSE "FIRST TO LOSE" OR ROUND SIDE BETS WITH MULTIPLE OPPONENTS
   socket.on('proposeMultiSideBets', ({ roomId, betType, opponentNames, targetPlayerName, amount }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -1357,16 +1345,20 @@ io.on('connection', (socket) => {
       const opponent = room.players.find(p => p.name === oppName);
       if (!opponent) return;
 
+      if (betType === 'round' && opponent.name === targetPlayer.name) {
+        return; // Cannot bet an opponent on their own round hand
+      }
+
       const betId = `sb_${Date.now()}_${Math.random()}`;
       const newBet = {
         id: betId,
-        type: betType || 'round', // 'round' or 'firstLoser'
+        type: betType || 'round',
         bettorId: bettor.id,
         bettorName: bettor.name,
         opponentId: opponent.id,
         opponentName: opponent.name,
         targetPlayerName: targetPlayer.name,
-        bettorTargetId: targetPlayer.id, // For round side bets
+        bettorTargetId: targetPlayer.id,
         opponentTargetId: targetPlayer.id,
         amount: parsedAmt,
         accepted: Boolean(opponent.isBot)
@@ -1387,6 +1379,10 @@ io.on('connection', (socket) => {
         });
       }
     });
+
+    if (proposedCount === 0) {
+      return socket.emit('errorMsg', 'Invalid side bet selection.');
+    }
 
     let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each on ${targetPlayer.name}).`;
     if (botAcceptedCount > 0) {
