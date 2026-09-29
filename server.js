@@ -45,6 +45,24 @@ function createDeck() {
 }
 
 function calculateScore(hand) {
+  if (!hand || hand.length === 0) return 0;
+
+  // Rule: 3 of a kind = 30.5 points
+  // If player is holding 3 cards and all ranks match, score is 30.5
+  // If player is temporarily holding 4 cards (after drawing), check any 3-card combination
+  if (hand.length === 3) {
+    if (hand[0].rank === hand[1].rank && hand[1].rank === hand[2].rank) {
+      return 30.5;
+    }
+  } else if (hand.length === 4) {
+    const rankCounts = {};
+    for (const c of hand) {
+      rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1;
+      if (rankCounts[c.rank] >= 3) return 30.5;
+    }
+  }
+
+  // Standard suit sum calculation
   const totals = { '♠': 0, '♥': 0, '♦': 0, '♣': 0 };
   for (const c of hand) {
     totals[c.suit] += c.value;
@@ -111,13 +129,14 @@ function broadcastState(roomId, message = '') {
 
   const currentTurnPlayer = room.players[room.currentTurnIdx];
   const activeCount = getActivePlayers(room).length;
+  const minKnockScore = activeCount === 2 ? 25 : 21;
 
   room.players.forEach(p => {
-    if (p.isBot) return; // Bots don't need socket messages
+    if (p.isBot) return;
 
     const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id;
     const score = calculateScore(p.hand);
-    const canKnock = isCurrent && !room.knockerId && activeCount > 2 && score >= 21 && !room.drawnCard;
+    const canKnock = isCurrent && !room.knockerId && score >= minKnockScore && !room.drawnCard;
 
     io.to(p.id).emit('gameState', {
       players: room.players.map(pl => ({
@@ -131,6 +150,7 @@ function broadcastState(roomId, message = '') {
       })),
       hand: p.hand,
       score: score,
+      minKnockScore: minKnockScore,
       topDiscard: room.discardPile[room.discardPile.length - 1],
       isMyTurn: isCurrent,
       hasDrawn: Boolean(room.drawnCard),
@@ -178,10 +198,12 @@ function triggerBotTurnIfNeeded(roomId) {
   if (!current || !current.isBot || current.lives <= 0) return;
 
   setTimeout(() => {
-    // 1. Bot Knock Check
     const activeCount = getActivePlayers(room).length;
+    const minKnockScore = activeCount === 2 ? 25 : 21;
     const score = calculateScore(current.hand);
-    if (!room.knockerId && activeCount > 2 && score >= 27) {
+
+    // 1. Bot Knock Check
+    if (!room.knockerId && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
       broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED!`);
@@ -212,7 +234,7 @@ function triggerBotTurnIfNeeded(roomId) {
     }
     current.hand.push(drawn);
 
-    // 3. Bot Discard Decision (choose discard that maximizes remaining score)
+    // 3. Bot Discard Decision (maximize score)
     let bestIdx = 0;
     let bestScore = -1;
     for (let i = 0; i < current.hand.length; i++) {
@@ -245,7 +267,7 @@ function triggerBotTurnIfNeeded(roomId) {
       return;
     }
 
-    // Check Knock turn progression
+    // Knocker turn progress
     if (room.knockerId) {
       room.turnsLeftAfterKnock -= 1;
       if (room.turnsLeftAfterKnock <= 0) {
@@ -254,7 +276,7 @@ function triggerBotTurnIfNeeded(roomId) {
       }
     }
 
-    // Advance to next active player
+    // Advance turn
     do {
       room.currentTurnIdx = (room.currentTurnIdx + 1) % room.players.length;
     } while (room.players[room.currentTurnIdx].lives <= 0);
@@ -335,10 +357,16 @@ io.on('connection', (socket) => {
     const player = room?.players[room.currentTurnIdx];
     if (!room || !player || player.id !== socket.id || room.knockerId) return;
 
-    if (getActivePlayers(room).length > 2 && calculateScore(player.hand) >= 21) {
+    const activeCount = getActivePlayers(room).length;
+    const minKnockScore = activeCount === 2 ? 25 : 21;
+    const score = calculateScore(player.hand);
+
+    if (score >= minKnockScore && !room.drawnCard) {
       room.knockerId = player.id;
-      room.turnsLeftAfterKnock = getActivePlayers(room).length - 1;
-      broadcastState(roomId, `🔔 ${player.name} KNOCKED! Everyone gets one last turn.`);
+      room.turnsLeftAfterKnock = activeCount - 1;
+      broadcastState(roomId, `🔔 ${player.name} KNOCKED with ${score} pts! Final turn for remaining players.`);
+    } else {
+      socket.emit('errorMsg', `Cannot knock: need ${minKnockScore}+ points before drawing!`);
     }
   });
 
