@@ -12,6 +12,14 @@ const io = new Server(server, {
   pingInterval: 10000
 });
 
+// Guardrails against unhandled rejections/exceptions crashing the Node process
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION]:', reason);
+});
+
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -131,6 +139,7 @@ function getRevealedHands(room) {
 
 function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   if (debtorName === creditorName || amount <= 0) return;
+  if (!room.debts) room.debts = {};
   if (!room.debts[debtorName]) room.debts[debtorName] = {};
   if (!room.debtBreakdowns) room.debtBreakdowns = {};
 
@@ -148,8 +157,8 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
 }
 
 function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1 = (room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2 = (room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  const p2OwesP1 = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2 = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
   const key1 = `${p2Name}:::${p1Name}`;
   const key2 = `${p1Name}:::${p2Name}`;
@@ -169,10 +178,13 @@ function getPersonalLedger(room, playerName) {
 
   const allNames = new Set(room.knownMembers || []);
   room.players.forEach(p => allNames.add(p.name));
-  Object.keys(room.debts).forEach(name => {
-    allNames.add(name);
-    Object.keys(room.debts[name] || {}).forEach(target => allNames.add(target));
-  });
+
+  if (room.debts) {
+    Object.keys(room.debts).forEach(name => {
+      allNames.add(name);
+      Object.keys(room.debts[name] || {}).forEach(target => allNames.add(target));
+    });
+  }
 
   const activeNames = new Set(room.players.map(p => p.name));
 
@@ -200,7 +212,7 @@ function getPersonalLedger(room, playerName) {
 
 function recordGameWagerSettlement(room, winner) {
   if (!winner || !room.currentMatchParticipants) return 0;
-  
+
   const winnerData = room.currentMatchParticipants.find(p => p.id === winner.id || p.name === winner.name);
   if (!winnerData || winnerData.wager <= 0) return 0;
 
@@ -248,7 +260,7 @@ function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
     const specCount = r.players.filter(p => p.isSpectator).length;
-    
+
     let totalPot = 0;
     if (r.gameStarted && r.currentMatchParticipants) {
       totalPot = r.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
@@ -289,7 +301,7 @@ function broadcastSpectatorPeeks(room) {
 function startDealerCut(room) {
   room.dealerCutActive = true;
   room.dealerCutPicks = {};
-  
+
   const eligible = getActivePlayers(room);
   room.dealerCutPlayerIds = eligible.map(p => p.id);
 
@@ -700,7 +712,7 @@ function broadcastState(roomId, message = '') {
   const currentTurnPlayer = room.players[room.currentTurnIdx];
   const minKnockScore = active.length === 2 ? 25 : 21;
   const roundHasPassed = room.turnsTakenInRound >= active.length;
-  
+
   let totalGamePot = 0;
   if (room.gameStarted && room.currentMatchParticipants) {
     totalGamePot = room.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
@@ -993,7 +1005,7 @@ function handlePlayerDisconnect(socketId) {
 
 function finalizePlayerExit(roomId, playerName) {
   const room = rooms[roomId];
-  if (!room) return;
+  if (!room || !playerName) return;
   const idx = room.players.findIndex(p => p.name === playerName);
   if (idx === -1) return;
   const leaving = room.players[idx];
@@ -1065,6 +1077,7 @@ io.on('connection', (socket) => {
         debts: {},
         debtBreakdowns: {},
         knownMembers: [],
+        playerRegistry: {},
         lastGameWinnerId: null,
         isFirstRoundOfMatch: false,
         spectatorPeeks: {}
@@ -1072,9 +1085,55 @@ io.on('connection', (socket) => {
     }
     const room = rooms[roomId];
 
-    const safeName = playerName || `Player ${room.players.length + 1}`;
+    let safeName = playerName ? playerName.trim() : '';
+    if (deviceId && room.playerRegistry[deviceId]) {
+      if (safeName && safeName !== room.playerRegistry[deviceId]) {
+        const oldName = room.playerRegistry[deviceId];
 
-    // Look up by persistent deviceId first, then by username
+        const kmIdx = room.knownMembers.indexOf(oldName);
+        if (kmIdx !== -1) room.knownMembers[kmIdx] = safeName;
+        else if (!room.knownMembers.includes(safeName)) room.knownMembers.push(safeName);
+
+        if (room.debts && room.debts[oldName]) {
+          room.debts[safeName] = { ...(room.debts[safeName] || {}), ...room.debts[oldName] };
+          delete room.debts[oldName];
+        }
+
+        if (room.debts) {
+          Object.keys(room.debts).forEach(debtor => {
+            if (room.debts[debtor][oldName] !== undefined) {
+              room.debts[debtor][safeName] = (room.debts[debtor][safeName] || 0) + room.debts[debtor][oldName];
+              delete room.debts[debtor][oldName];
+            }
+          });
+        }
+
+        if (room.debtBreakdowns) {
+          Object.keys(room.debtBreakdowns).forEach(pairKey => {
+            const [d, c] = pairKey.split(':::');
+            if (d === oldName || c === oldName) {
+              const newD = (d === oldName) ? safeName : d;
+              const newC = (c === oldName) ? safeName : c;
+              const newKey = `${newD}:::${newC}`;
+              room.debtBreakdowns[newKey] = room.debtBreakdowns[pairKey];
+              delete room.debtBreakdowns[pairKey];
+            }
+          });
+        }
+
+        room.playerRegistry[deviceId] = safeName;
+      } else {
+        safeName = room.playerRegistry[deviceId];
+      }
+    } else {
+      if (!safeName) safeName = `Player ${room.players.length + 1}`;
+      if (deviceId) room.playerRegistry[deviceId] = safeName;
+    }
+
+    if (!room.knownMembers.includes(safeName)) {
+      room.knownMembers.push(safeName);
+    }
+
     let existingPlayer = null;
     if (deviceId) {
       existingPlayer = room.players.find(p => p.deviceId === deviceId);
@@ -1090,56 +1149,14 @@ io.on('connection', (socket) => {
         delete disconnectTimeouts[key];
       }
 
-      // If user changed their name on this device, rename them across the room and ledger
-      if (existingPlayer.name !== safeName) {
-        const oldName = existingPlayer.name;
-
-        const kmIdx = room.knownMembers.indexOf(oldName);
-        if (kmIdx !== -1) room.knownMembers[kmIdx] = safeName;
-        else if (!room.knownMembers.includes(safeName)) room.knownMembers.push(safeName);
-
-        if (room.debts[oldName]) {
-          room.debts[safeName] = { ...(room.debts[safeName] || {}), ...room.debts[oldName] };
-          delete room.debts[oldName];
-        }
-
-        Object.keys(room.debts).forEach(debtor => {
-          if (room.debts[debtor][oldName] !== undefined) {
-            room.debts[debtor][safeName] = (room.debts[debtor][safeName] || 0) + room.debts[debtor][oldName];
-            delete room.debts[debtor][oldName];
-          }
-        });
-
-        if (room.debtBreakdowns) {
-          Object.keys(room.debtBreakdowns).forEach(pairKey => {
-            const [d, c] = pairKey.split(':::');
-            if (d === oldName || c === oldName) {
-              const newD = (d === oldName) ? safeName : d;
-              const newC = (c === oldName) ? safeName : c;
-              const newKey = `${newD}:::${newC}`;
-              room.debtBreakdowns[newKey] = room.debtBreakdowns[pairKey];
-              delete room.debtBreakdowns[pairKey];
-            }
-          });
-        }
-
-        existingPlayer.name = safeName;
-      }
-
-      if (!room.knownMembers.includes(safeName)) {
-        room.knownMembers.push(safeName);
-      }
-
+      existingPlayer.name = safeName;
       existingPlayer.id = socket.id;
       if (deviceId) existingPlayer.deviceId = deviceId;
       existingPlayer.disconnected = false;
+
       broadcastState(roomId, `${safeName} reconnected.`);
       broadcastRoomList();
       return;
-    }
-
-    if (!room.knownMembers.includes(safeName)) {
-      room.knownMembers.push(safeName);
     }
 
     const currentActiveCount = getNonSpectatorCount(room);
@@ -1187,7 +1204,7 @@ io.on('connection', (socket) => {
       player.isSpectator = true;
       player.lives = 0;
       player.isReady = false;
-      broadcastState(roomId, `👁️ ${player.name} switched to Spectator Mode.`);
+      broadcastState(roomId, `👁 ${player.name} switched to Spectator Mode.`);
     } else {
       if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
         return socket.emit('errorMsg', 'Table is full (6 active players max).');
@@ -1487,9 +1504,14 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
+  // FIXED: Explicitly look up the room and player safely without undefined variable crash
   socket.on('leaveRoom', (roomId) => {
     socket.leave(roomId);
-    finalizePlayerExit(roomId, room?.players.find(p => p.id === socket.id)?.name);
+    const room = rooms[roomId];
+    const player = room?.players.find(p => p.id === socket.id);
+    if (room && player) {
+      finalizePlayerExit(roomId, player.name);
+    }
   });
 
   socket.on('sendChatMessage', ({ roomId, message }) => {
@@ -1643,12 +1665,12 @@ io.on('connection', (socket) => {
         if (!player.fedCardsTracker[feederId]) player.fedCardsTracker[feederId] = [];
         player.fedCardsTracker[feederId].push(drawn);
       }
-      
+
       io.to(roomId).emit('bannerAnnouncement', {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
       });
-      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      broadcastState(roomId, `⚠ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
