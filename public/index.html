@@ -318,8 +318,9 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>👁️ Spectator Hand Peeking</h4>
-          Spectators can request permission to view an active player's hand. If granted, they can watch that hand. <strong>If the spectator changes views or leaves, permission is immediately revoked</strong> and they must ask again!
+          <h4>🎲 Multi-Player Side Bets</h4>
+          • Bet on your choice against multiple opponents simultaneously.<br>
+          • Check off who you want to challenge, and each bet is settled independently in the ledger!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:10px;">Got It!</button>
@@ -451,7 +452,7 @@
       <div style="display:flex; gap:6px; width:100%;">
         <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick</label>
-          <select id="betMyTargetSelect"></select>
+          <select id="betMyTargetSelect" onchange="filterTheirTargetOptions()"></select>
         </div>
         <div style="flex:1; display:flex; flex-direction:column; gap:4px; text-align:left;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">3. Their Pick</label>
@@ -989,6 +990,27 @@
       updateMultiBetSummary();
     }
 
+    function filterTheirTargetOptions() {
+      const myTargetName = document.getElementById('betMyTargetSelect').value;
+      const theirSelect = document.getElementById('betTheirTargetSelect');
+      const currentSelection = theirSelect.value;
+
+      theirSelect.innerHTML = '';
+      latestActivePlayers.forEach(p => {
+        // Exclude your own pick from their options so they cannot bet on themselves
+        if (p.name !== myTargetName) {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.innerText = p.name;
+          theirSelect.appendChild(opt);
+        }
+      });
+
+      if (currentSelection && currentSelection !== myTargetName) {
+        theirSelect.value = currentSelection;
+      }
+    }
+
     function toggleRoundBetModal() {
       const modal = document.getElementById('roundBetModal');
       const isVisible = modal.style.display === 'flex';
@@ -1019,22 +1041,14 @@
           checklist.innerHTML = '<div style="font-size:12px; opacity:0.6; padding:4px;">No other players online.</div>';
         }
 
-        latestActivePlayers.forEach((p, idx) => {
+        latestActivePlayers.forEach(p => {
           const opt1 = document.createElement('option');
           opt1.value = p.name;
           opt1.innerText = p.name;
           myTargetSelect.appendChild(opt1);
-
-          const opt2 = document.createElement('option');
-          opt2.value = p.name;
-          opt2.innerText = p.name;
-          theirTargetSelect.appendChild(opt2);
         });
 
-        if (latestActivePlayers.length > 1) {
-          theirTargetSelect.selectedIndex = 1;
-        }
-
+        filterTheirTargetOptions();
         updateMultiBetSummary();
       }
       modal.style.display = isVisible ? 'none' : 'flex';
@@ -1064,9 +1078,15 @@
       if (!myTargetName || !theirTargetName) return alert('Select contenders for the side bet.');
       if (myTargetName === theirTargetName) return alert('You must pick different contenders to bet against each other!');
 
+      // RULE: Exclude the target from being bet against themselves
+      const validOpponents = opponentNames.filter(opp => opp !== theirTargetName);
+      if (validOpponents.length === 0) {
+        return alert('You cannot challenge opponents to bet on their own hand!');
+      }
+
       socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
-        opponentNames: opponentNames,
+        opponentNames: validOpponents,
         bettorTargetName: myTargetName,
         opponentTargetName: theirTargetName,
         amount: selectedSideBetAmt
@@ -1382,7 +1402,6 @@
       });
     }
 
-    // INITIAL DEALER CUT HANDLERS
     socket.on('startDealerSelectionCut', (data) => {
       const overlay = document.getElementById('dealerCutOverlay');
       const spread = document.getElementById('dealerCutSpread');
@@ -1448,7 +1467,6 @@
       }, 3500);
     });
 
-    // TIEBREAKER HANDLERS
     socket.on('startTiebreakerCut', (data) => {
       const overlay = document.getElementById('tiebreakerOverlay');
       const spread = document.getElementById('tiebreakerSpread');
