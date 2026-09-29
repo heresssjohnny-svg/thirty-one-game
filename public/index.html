@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>31 Card Game</title>
   <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='black'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='900' font-size='220'>31!</text></svg>">
   <meta name="theme-color" content="#1b4d3e">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -849,7 +850,6 @@
       } catch (err) {}
     }
 
-    // NEW: Bright "bell hopper" chime for voice channel connect/disconnect
     function playVoiceBellSound() {
       try {
         const ctx = getAudioContext();
@@ -858,8 +858,8 @@
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(1046.50, now); // C6
-        osc.frequency.setValueAtTime(1318.51, now + 0.1); // E6
+        osc.frequency.setValueAtTime(1046.50, now);
+        osc.frequency.setValueAtTime(1318.51, now + 0.1);
         gain.gain.setValueAtTime(0.5, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
         osc.connect(gain);
