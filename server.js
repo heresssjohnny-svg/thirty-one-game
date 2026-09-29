@@ -88,7 +88,6 @@ function advanceTurnIndex(room) {
     const candidate = room.players[nextIdx];
     if (candidate && !candidate.isSpectator && candidate.lives > 0) {
       room.currentTurnIdx = nextIdx;
-      // Auto-repair hand check: Ensure candidate has exactly 3 cards
       while (candidate.hand && candidate.hand.length < 3 && room.deck && room.deck.length > 0) {
         candidate.hand.push(room.deck.pop());
       }
@@ -190,7 +189,6 @@ function broadcastState(roomId, message = '') {
   room.players.forEach(p => {
     if (p.isBot) return;
 
-    // Hand sanity check before emitting state
     if (room.gameStarted && !p.isSpectator && p.lives > 0 && p.hand && p.hand.length < 3 && room.deck && room.deck.length > 0) {
       while (p.hand.length < 3 && room.deck.length > 0) {
         p.hand.push(room.deck.pop());
@@ -278,7 +276,6 @@ function triggerBotTurnIfNeeded(roomId) {
   const current = room.players[room.currentTurnIdx];
   if (!current || !current.isBot || current.lives <= 0 || current.isSpectator) return;
 
-  // Bot hand auto-heal
   while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
     current.hand.push(room.deck.pop());
   }
@@ -291,9 +288,20 @@ function triggerBotTurnIfNeeded(roomId) {
     const roundHasPassed = room.turnsTakenInRound >= activeCount;
     const score = calculateScore(current.hand);
 
+    // Bot Knock Check
     if (!room.knockerId && roundHasPassed && score >= Math.max(minKnockScore, 26)) {
       room.knockerId = current.id;
       room.turnsLeftAfterKnock = activeCount - 1;
+
+      // Broadcast big knock announcement with sound trigger
+      io.to(roomId).emit('bigAnnouncement', {
+        title: '🔔 KNOCK! 🔔',
+        message: `${current.name.toUpperCase()} KNOCKED!`,
+        subtext: 'Everyone gets 1 final turn!',
+        sound: 'knock',
+        duration: 3500
+      });
+
       advanceTurnIndex(room);
       broadcastState(roomId, `🔔 Bot ${current.name} KNOCKED with ${score} pts! Turn passes.`);
       triggerBotTurnIfNeeded(roomId);
@@ -585,6 +593,16 @@ io.on('connection', (socket) => {
     if (score >= minKnockScore && !room.drawnCard) {
       room.knockerId = player.id;
       room.turnsLeftAfterKnock = activeCount - 1;
+
+      // Broadcast big knock announcement with sound trigger
+      io.to(roomId).emit('bigAnnouncement', {
+        title: '🔔 KNOCK! 🔔',
+        message: `${player.name.toUpperCase()} KNOCKED!`,
+        subtext: 'Everyone gets 1 final turn!',
+        sound: 'knock',
+        duration: 3500
+      });
+
       advanceTurnIndex(room);
       broadcastState(roomId, `🔔 ${player.name} KNOCKED with ${score} pts! Final turn for all other players.`);
       triggerBotTurnIfNeeded(roomId);
@@ -596,7 +614,6 @@ io.on('connection', (socket) => {
     const player = room?.players[room.currentTurnIdx];
     if (!room || !player || player.id !== socket.id || room.drawnCard || room.isResolvingRound || player.isSpectator) return;
 
-    // Strict Hand-Size Check: Player MUST have exactly 3 cards to draw a 4th
     if (player.hand.length !== 3) {
       while (player.hand.length < 3 && room.deck.length > 0) {
         player.hand.push(room.deck.pop());
@@ -636,7 +653,6 @@ io.on('connection', (socket) => {
     const player = room?.players[room.currentTurnIdx];
     if (!room || !player || player.id !== socket.id || !room.drawnCard || room.isResolvingRound || player.isSpectator) return;
 
-    // Strict Hand-Size Check: Can ONLY discard if holding exactly 4 cards
     if (player.hand.length !== 4) {
       room.drawnCard = null;
       while (player.hand.length < 3 && room.deck.length > 0) {
