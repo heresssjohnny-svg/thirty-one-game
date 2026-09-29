@@ -162,6 +162,7 @@
     }
     .chat-input {
       flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; background: #fff; color: #111;
+      user-select: text; -webkit-user-select: text;
     }
 
     .big-announcement-overlay {
@@ -280,6 +281,7 @@
     input, select {
       padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
       font-size: 13px; width: 100%; max-width: 280px; background: #fff; color: #111;
+      user-select: text; -webkit-user-select: text;
     }
   </style>
 </head>
@@ -325,9 +327,8 @@
           If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
         </div>
         <div>
-          <h4>🎲 Peer Side Bets</h4>
-          • Propose a side bet by picking your own contender for highest score and challenging opponents.<br>
-          • Opponents choose their own competing pick when accepting the challenge! Whoever's pick scores higher wins.
+          <h4>💰 Clearing Debts in Ledger</h4>
+          In the Ledger, if someone owes you money, you can tap <strong>"Clear"</strong> to forgive and wipe out their debt.
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -522,8 +523,8 @@
   <div id="lobby" class="lobby-modal">
     <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
     <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
-    <input id="playerName" placeholder="Your Player Name" autocomplete="off" />
-    <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" />
+    <input id="playerName" placeholder="Your Player Name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111;">Enter Game Room</button>
 
     <div style="width:100%; max-width:280px; margin-top:10px;">
@@ -544,7 +545,7 @@
       <button type="button" class="tutorial-btn" onclick="toggleTutorialModal()">📖 Rules</button>
       <button type="button" class="ledger-btn" onclick="toggleLedgerModal()">💰 Ledger</button>
       <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️</button>
       <button type="button" class="danger" onclick="leaveLobby()">Leave</button>
     </div>
   </div>
@@ -566,7 +567,7 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -630,6 +631,7 @@
     let hasPickedDealerCard = false;
     let announcementTimer = null;
     let pendingOfferBetId = null;
+    let pendingOfferChallengerTarget = '';
 
     let currentlyViewingPlayerName = null;
     let currentlyViewingHand = null;
@@ -1125,6 +1127,8 @@
 
     socket.on('sideBetOfferReceived', (data) => {
       pendingOfferBetId = data.betId;
+      pendingOfferChallengerTarget = data.bettorTarget;
+
       document.getElementById('sideBetOfferText').innerHTML = `
         <strong>${data.fromPlayer}</strong> challenges you to a side bet ($${data.amount})!<br>
         • Their pick: <span style="color:#ffd700; font-weight:bold;">${data.bettorTarget}</span>
@@ -1132,11 +1136,14 @@
 
       const select = document.getElementById('offerMyTargetSelect');
       select.innerHTML = '';
+      // Filter out the challenger's pick so they cannot bet on the same player
       latestActivePlayers.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.name;
-        opt.innerText = p.name;
-        select.appendChild(opt);
+        if (p.name !== pendingOfferChallengerTarget) {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.innerText = p.name;
+          select.appendChild(opt);
+        }
       });
 
       document.getElementById('sideBetOfferModal').style.display = 'flex';
@@ -1146,6 +1153,10 @@
       if (!pendingOfferBetId) return;
       const myTargetName = accept ? document.getElementById('offerMyTargetSelect').value : null;
 
+      if (accept && myTargetName === pendingOfferChallengerTarget) {
+        return alert("You cannot bet on the same player as the challenger!");
+      }
+
       socket.emit('respondSideBet', {
         roomId: currentRoom,
         betId: pendingOfferBetId,
@@ -1154,6 +1165,7 @@
       });
       document.getElementById('sideBetOfferModal').style.display = 'none';
       pendingOfferBetId = null;
+      pendingOfferChallengerTarget = '';
     }
 
     function attemptKnock() {
