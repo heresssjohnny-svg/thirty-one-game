@@ -961,12 +961,11 @@ function broadcastState(roomId, message = '') {
     }
   }
 
-  // Calculate remaining deck count accurately: 52 - total dealt cards (3 per active player) - 1 initial discard - cards drawn/discarded
   let dealtCardsCount = active.length * 3;
   let discardedCount = room.discardPile ? room.discardPile.length : 0;
   let deckCount = Math.max(0, 52 - dealtCardsCount - discardedCount);
   if (room.deck && room.deck.length > 0) {
-    deckCount = room.deck.length; // Fallback to direct deck length if available
+    deckCount = room.deck.length;
   }
 
   const anyPlayerEliminated = room.players.some(p => !p.isSpectator && p.lives < (room.configuredLives || 2));
@@ -1399,7 +1398,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1937,7 +1936,7 @@ io.on('connection', (socket) => {
     if (agreedCount >= eligible.length) {
       io.to(roomId).emit('bigAnnouncement', {
         title: '🏳️ GAME ENDED',
-        message: 'MATCH CONCLUDED BY VOTE',
+        message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
         subtext: 'Returning everyone to the lobby...',
         duration: 4000
       });
@@ -1957,7 +1956,7 @@ io.on('connection', (socket) => {
       broadcastRoomList();
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `🏳️ ${player.name} requested to end the game (${agreedCount}/${eligible.length} agreed)`,
+        text: `🏳️ ${player.name} requested to end the game (${agreedCount}/${eligible.length} agreed - needs 100%)`,
         duration: 4000
       });
       broadcastState(roomId);
@@ -1985,8 +1984,8 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️️ GAME ENDED',
-          message: 'MATCH CONCLUDED BY VOTE',
+          title: '🏳️ GAME ENDED',
+          message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
         });
