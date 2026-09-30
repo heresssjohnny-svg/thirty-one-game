@@ -15,6 +15,9 @@
     * { 
       box-sizing: border-box; 
       -webkit-tap-highlight-color: transparent; 
+      user-select: none; 
+      -webkit-user-select: none; 
+      -webkit-touch-callout: none; 
     }
     body {
       margin: 0; padding: 6px;
@@ -22,7 +25,6 @@
       background: #1b4d3e; color: #fff;
       display: flex; flex-direction: column; height: 100vh; overflow: hidden;
       position: relative;
-      user-select: none; -webkit-user-select: none;
     }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; z-index: 10; }
     .header-controls { display: flex; align-items: center; gap: 4px; }
@@ -104,7 +106,7 @@
     .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 10; }
     button {
       padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
-      background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto;
+      background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto; touch-action: manipulation;
     }
     button.secondary { background: #e0e0e0; color: #222; }
     button.danger { background: #d32f2f; color: #fff; padding: 5px 8px; font-size: 11px; }
@@ -335,7 +337,7 @@
   <!-- KNOCK WARNING CONFIRMATION MODAL -->
   <div id="knockConfirmModal" class="custom-modal">
     <div class="modal-card" style="border-color:#f44336; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️ High Card in Discard!</div>
+      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️️ High Card in Discard!</div>
       <div style="font-size:12px; line-height:1.4; opacity:0.9;">
         There is an <strong id="knockConfirmCard" style="color:#ffd700;">Ace/Face card</strong> on top of the discard pile.<br><br>
         Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
