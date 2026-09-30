@@ -1053,6 +1053,7 @@ function triggerBotTurnIfNeeded(roomId) {
         if (!current.fedCardsTracker[feederId]) current.fedCardsTracker[feederId] = [];
         current.fedCardsTracker[feederId].push(drawn);
       }
+      io.to(roomId).emit('animateDraw', { playerName: current.name, playerId: current.id, source: 'discard', card: drawn });
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
@@ -1065,6 +1066,7 @@ function triggerBotTurnIfNeeded(roomId) {
       }
       drawn = room.deck.pop();
       current.lastDrawnSource = 'deck';
+      io.to(roomId).emit('animateDraw', { playerName: current.name, playerId: current.id, source: 'deck', card: null });
     }
     current.hand.push(drawn);
 
@@ -1304,7 +1306,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -2008,6 +2010,7 @@ io.on('connection', (socket) => {
         duration: 3200
       });
       broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: 'discard', card: drawn });
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
@@ -2021,12 +2024,11 @@ io.on('connection', (socket) => {
       drawn = room.deck.pop();
       player.lastDrawnSource = 'deck';
       broadcastState(roomId, `${player.name} drew a card from the deck.`);
+      io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: 'deck', card: null });
     }
 
     room.drawnCard = drawn;
     player.hand.push(drawn);
-    // Broadcast draw animation event to all clients in room
-    io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: source, card: source === 'discard' ? drawn : null });
     broadcastState(roomId);
   });
 
