@@ -601,6 +601,7 @@ function checkAndHandle31(room, player) {
   scores[player.id] = 31;
   const roundBetReport = settlePeerRoundBets(room, scores);
 
+  // STRICT REQUIREMENT: BOTH the Ace AND the Face card (10-value) must come from the discard pile fed by the opponent
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker && player.discardPickedCards) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
       const cardsInHandFromGiver = cards.filter(c => 
