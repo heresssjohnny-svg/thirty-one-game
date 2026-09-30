@@ -56,32 +56,16 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Fixed Table Ring Container with high z-index */
+    /* Repositioned Upward Table Ring Container */
     .table-ring {
       position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-      z-index: 100;
+      inset: -60px 0 40px 0;
+      display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
-
-    /* Individual Player Seat Positioning */
     .player-seat {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      pointer-events: auto;
-      transform: translate(-50%, -50%);
-      transition: all 0.3s ease;
-      z-index: 110;
+      position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px;
+      pointer-events: auto; transition: all 0.3s ease; z-index: 110;
     }
-
     .player-seat-tag {
       background: rgba(0,0,0,0.85); padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;
       border: 1px solid rgba(255,255,255,0.4); white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.6);
@@ -1241,7 +1225,7 @@
         latestActivePlayers.forEach(p => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          opt.innerText = `${p.name} (${p.lives} ❤️️)`;
+          opt.innerText = `${p.name} (${p.lives} ❤️)`;
           select.appendChild(opt);
         });
       }
@@ -1777,7 +1761,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Update Center Name Badge for You
+        // Update Center Name Badge for You (Locked Bottom Middle)
         const mePlayer = (state.players || []).find(p => p.name === myPlayerName);
         const centerBadge = document.getElementById('myCenterPlayerBadge');
         if (centerBadge) {
@@ -1801,12 +1785,13 @@
 
           const totalP = otherPlayers.length;
           const radiusX = 135; 
-          const radiusY = 165; 
+          const radiusY = 150; 
 
           otherPlayers.forEach((p, idx) => {
-            const angle = (idx / Math.max(1, totalP)) * 2 * Math.PI - Math.PI / 2;
+            // Distribute opponents across top and sides (avoiding bottom where you sit)
+            const angle = Math.PI + (idx / Math.max(1, totalP)) * Math.PI;
             const x = Math.cos(angle) * radiusX;
-            const y = Math.sin(angle) * radiusY;
+            const y = Math.sin(angle) * radiusY - 20;
 
             const seat = document.createElement('div');
             seat.id = `seat-${p.name}`;
