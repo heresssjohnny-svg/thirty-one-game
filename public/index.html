@@ -57,9 +57,9 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Tall Vertical Arch Oval Table Ring for Players */
+    /* Higher & Reduced Vertical Limit Oval Table Ring */
     .table-ring {
-      position: absolute; inset: 15px 2px 2px 2px;
+      position: absolute; inset: -35px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 6;
     }
     .player-seat {
@@ -469,7 +469,7 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️️ Request Hand View</span>
         <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
@@ -629,7 +629,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Tall Vertical Arch Perimeter Oval Table Ring for Players -->
+    <!-- Raised & Reduced Vertical Limit Oval Table Ring -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -1504,7 +1504,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a much higher vertical oval arch perimeter ring with user anchored at bottom-middle
+        // Render players in an oval ring shifted higher with reduced vertical limit
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1520,10 +1520,10 @@
           orderedPlayers.forEach((p, idx) => {
             const baseAngle = 0.5 * Math.PI; // Bottom-middle anchor angle
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 150; // balanced width
-            const radiusY = 245; // much higher vertical limit
+            const radiusX = 140; // balanced width
+            const radiusY = 170; // reduced vertical limit
             const x = Math.cos(angle) * radiusX;
-            const y = Math.sin(angle) * radiusY;
+            const y = Math.sin(angle) * radiusY - 25; // shifted toward the top
 
             const seat = document.createElement('div');
             seat.id = `seat-${p.name}`;
