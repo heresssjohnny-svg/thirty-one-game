@@ -248,9 +248,12 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   }
 }
 
+// Corrected Net Balance Calculation between any two players
 function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1 = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2 = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  // How much p2 owes p1 (match + side bets)
+  const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  // How much p1 owes p2 (match + side bets)
+  const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
   const key1 = `${p2Name}:::${p1Name}`;
   const key2 = `${p1Name}:::${p2Name}`;
@@ -258,12 +261,12 @@ function getNetPairBalance(room, p1Name, p2Name) {
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
 
-  const netBalance = p2OwesP1 - p1OwesP2;
-  const sideBetNet = p2SideBets - p1SideBets;
+  const netMatch = p2OwesP1Match - p1OwesP2Match;
+  const netSideBet = p2SideBets - p1SideBets;
 
   return {
-    net: netBalance,
-    sideBetNet: sideBetNet
+    net: netMatch,
+    sideBetNet: netSideBet
   };
 }
 
@@ -1398,7 +1401,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -2191,7 +2194,7 @@ io.on('connection', (socket) => {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
       });
-      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      broadcastState(roomId, `⚠️️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
       io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: 'discard', card: drawn });
     } else {
       if (room.deck.length === 0) {
