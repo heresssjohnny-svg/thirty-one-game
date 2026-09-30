@@ -532,7 +532,7 @@ function checkDealerCutComplete(room) {
             if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
             const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
             const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
-            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
+            room.dealerCutPicks[l.player.id] = { player: l, card: card };
             checkDealerCutComplete(room);
           }, 1000 + Math.random() * 800);
         }
@@ -658,7 +658,7 @@ function checkTiebreakerComplete(room) {
       cutLosers.forEach(l => {
         io.to(l.player.id).emit('startTiebreakerCut', {
           deckCount: Math.min(room.tiebreakerDeck.length, 30),
-          players: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
+          tiedPlayers: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
         });
       });
 
@@ -1006,6 +1006,7 @@ function broadcastState(roomId, message = '') {
       allTableMembers: (room.knownMembers || []).map(name => {
         const pl = room.players.find(x => x.name === name);
         return {
+          id: pl ? pl.id : name,
           name: name,
           isOnline: Boolean(pl && !pl.disconnected),
           isSpectator: Boolean(pl && pl.isSpectator),
@@ -1571,7 +1572,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -2314,7 +2315,7 @@ io.on('connection', (socket) => {
       room.configuredLives = winningLives;
       activeEligible.forEach(pl => { pl.lives = winningLives; });
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ Room starting lives updated to ${winningLives} by majority vote!`,
+        text: `❤️️ Room starting lives updated to ${winningLives} by majority vote!`,
         duration: 4000
       });
     } else {
