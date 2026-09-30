@@ -45,7 +45,6 @@ const CUT_RANKS = {
   '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
 };
 
-const VALID_FRAMES = ['frame-none', 'frame-gold', 'frame-neon', 'frame-diamond', 'frame-crown'];
 const MAX_ACTIVE_PLAYERS = 6;
 const rooms = {};
 const disconnectTimeouts = {};
@@ -445,7 +444,7 @@ function checkDealerCutComplete(room) {
             if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
             const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
             const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
-            room.dealerCutPicks[l.player.id] = { player: l, card: card };
+            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
             checkDealerCutComplete(room);
           }, 1000 + Math.random() * 800);
         }
@@ -829,7 +828,6 @@ function broadcastState(roomId, message = '') {
       players: room.players.map(pl => ({
         id: pl.id,
         name: pl.name,
-        avatar: pl.avatar || '👑',
         lives: pl.lives,
         cardCount: pl.hand ? pl.hand.length : 0,
         isDealer: room.players[room.dealerIdx]?.id === pl.id,
@@ -1153,7 +1151,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives, avatar, frame }) => {
+  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
       rooms[roomId] = {
@@ -1190,8 +1188,6 @@ io.on('connection', (socket) => {
     }
 
     let safeName = playerName ? playerName.trim() : '';
-    let safeAvatar = avatar || '👑';
-    let safeFrame = VALID_FRAMES.includes(frame) ? frame : 'frame-gold';
 
     if (deviceId && room.playerRegistry[deviceId]) {
       if (safeName && safeName !== room.playerRegistry[deviceId]) {
@@ -1254,8 +1250,6 @@ io.on('connection', (socket) => {
         delete disconnectTimeouts[key];
       }
       existingPlayer.name = safeName;
-      existingPlayer.avatar = safeAvatar;
-      existingPlayer.frame = safeFrame;
       existingPlayer.id = socket.id;
       if (deviceId) existingPlayer.deviceId = deviceId;
       existingPlayer.disconnected = false;
@@ -1274,8 +1268,6 @@ io.on('connection', (socket) => {
       id: socket.id,
       deviceId: deviceId || null,
       name: safeName,
-      avatar: safeAvatar,
-      frame: safeFrame,
       lives: isSpectator ? 0 : (room.configuredLives || 2),
       hand: [],
       fedCardsTracker: {},
@@ -1294,7 +1286,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1755,8 +1747,6 @@ io.on('connection', (socket) => {
     room.players.push({
       id: `bot_${Date.now()}_${Math.random()}`,
       name: botName,
-      avatar: '🤖',
-      frame: 'frame-gold',
       lives: room.configuredLives || 2,
       hand: [],
       fedCardsTracker: {},
