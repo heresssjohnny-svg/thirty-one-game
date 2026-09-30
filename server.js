@@ -886,7 +886,8 @@ function broadcastState(roomId, message = '') {
       personalLedger: personalLedgerData.balances,
       netOverallBalance: personalLedgerData.totalNet,
       netSideBetBalance: personalLedgerData.totalSideBetNet,
-      message: message
+      message: message,
+      endGameVote: room.endGameVote || null
     });
   });
 
@@ -1185,7 +1186,8 @@ io.on('connection', (socket) => {
         spectatorPeeks: {},
         configuredLives: parseInt(initialLives) || 2,
         initialDiscardCard: null,
-        firstCardPickedUp: null
+        firstCardPickedUp: null,
+        endGameVote: null
       };
     }
     const room = rooms[roomId];
@@ -1292,7 +1294,7 @@ io.on('connection', (socket) => {
 
     let joinMsg = `${safeName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
+      joinMsg = `👁️️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
@@ -1711,6 +1713,116 @@ io.on('connection', (socket) => {
       }
     }
     broadcastRoomList();
+  });
+
+  socket.on('proposeEndGame', (roomId) => {
+    const room = rooms[roomId];
+    if (!room || !room.gameStarted) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.isSpectator) return;
+
+    if (!room.endGameVote) {
+      room.endGameVote = {
+        proposer: player.name,
+        agreedIds: []
+      };
+    }
+
+    if (!room.endGameVote.agreedIds.includes(player.id)) {
+      room.endGameVote.agreedIds.push(player.id);
+    }
+
+    room.players.forEach(p => {
+      if (p.isBot && !room.endGameVote.agreedIds.includes(p.id)) {
+        room.endGameVote.agreedIds.push(p.id);
+      }
+    });
+
+    const eligible = room.players.filter(p => !p.isSpectator && p.lives > 0);
+    const agreedCount = room.endGameVote.agreedIds.length;
+
+    if (agreedCount >= eligible.length) {
+      io.to(roomId).emit('bigAnnouncement', {
+        title: '🏳️ GAME ENDED',
+        message: 'MATCH CONCLUDED BY VOTE',
+        subtext: 'Returning everyone to the lobby...',
+        duration: 4000
+      });
+
+      room.gameStarted = false;
+      room.currentMatchParticipants = [];
+      room.peerSideBets = [];
+      room.endGameVote = null;
+
+      room.players.forEach(p => {
+        p.isSpectator = false;
+        p.lives = room.configuredLives || 2;
+        p.isReady = false;
+      });
+
+      broadcastState(roomId, 'Game ended by unanimous vote.');
+      broadcastRoomList();
+    } else {
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `🏳️ ${player.name} requested to end the game (${agreedCount}/${eligible.length} agreed)`,
+        duration: 4000
+      });
+      broadcastState(roomId);
+    }
+  });
+
+  socket.on('respondEndGame', ({ roomId, agree }) => {
+    const room = rooms[roomId];
+    if (!room || !room.endGameVote) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    if (agree) {
+      if (!room.endGameVote.agreedIds.includes(player.id)) {
+        room.endGameVote.agreedIds.push(player.id);
+      }
+      room.players.forEach(p => {
+        if (p.isBot && !room.endGameVote.agreedIds.includes(p.id)) {
+          room.endGameVote.agreedIds.push(p.id);
+        }
+      });
+
+      const eligible = room.players.filter(p => !p.isSpectator && p.lives > 0);
+      const agreedCount = room.endGameVote.agreedIds.length;
+
+      if (agreedCount >= eligible.length) {
+        io.to(roomId).emit('bigAnnouncement', {
+          title: '🏳️ GAME ENDED',
+          message: 'MATCH CONCLUDED BY VOTE',
+          subtext: 'Returning everyone to the lobby...',
+          duration: 4000
+        });
+
+        room.gameStarted = false;
+        room.currentMatchParticipants = [];
+        room.peerSideBets = [];
+        room.endGameVote = null;
+
+        room.players.forEach(p => {
+          p.isSpectator = false;
+          p.lives = room.configuredLives || 2;
+          p.isReady = false;
+        });
+
+        broadcastState(roomId, 'Game ended by unanimous vote.');
+        broadcastRoomList();
+      } else {
+        broadcastState(roomId, `${player.name} agreed to end the game (${agreedCount}/${eligible.length}).`);
+      }
+    } else {
+      const proposer = room.endGameVote.proposer;
+      room.endGameVote = null;
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `❌ ${player.name} declined to end the game.`,
+        duration: 3500
+      });
+      broadcastState(roomId, `${player.name} declined to end the game proposed by ${proposer}.`);
+    }
   });
 
   socket.on('leaveRoom', (roomId) => {
