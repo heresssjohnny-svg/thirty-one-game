@@ -57,7 +57,7 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Tall Vertical Arch Oval Table Ring for Players (Strict Layering) */
+    /* Tall Vertical Arch Oval Table Ring for Players */
     .table-ring {
       position: absolute; inset: -45px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 2;
@@ -1121,7 +1121,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
