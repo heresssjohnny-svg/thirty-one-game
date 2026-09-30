@@ -564,7 +564,7 @@
     <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
-        <span id="closeRoundBetBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleRoundBetModal()">✕</span>
+        <span id="closeRoundRoundBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleRoundBetModal()">✕</span>
       </div>
       
       <div id="sideBetModalDesc" style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents:</div>
@@ -1669,6 +1669,71 @@
       if (onClick) el.onclick = onClick;
       return el;
     }
+
+    socket.on('startDealerSelectionCut', (data) => {
+      const overlay = document.getElementById('dealerCutOverlay');
+      const spread = document.getElementById('dealerCutSpread');
+      const container = document.getElementById('dealerCutPicksContainer');
+
+      spread.innerHTML = '';
+      container.innerHTML = '';
+      hasPickedDealerCard = false;
+
+      const isEligible = data.players.some(p => p.id === socket.id);
+      const instr = document.getElementById('dealerCutInstruction');
+      instr.innerText = isEligible 
+        ? "👉 Tap any face-down card! Lowest card becomes Dealer." 
+        : `Watching dealer cut: ${data.players.map(p => p.name).join(', ')}`;
+
+      for (let i = 0; i < data.deckCount; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'card-cut-slot';
+        slot.innerText = '🂠';
+        slot.onclick = () => {
+          if (!isEligible || hasPickedDealerCard) return;
+          hasPickedDealerCard = true;
+          slot.style.opacity = '0.3';
+          slot.style.pointerEvents = 'none';
+          playCardSlideSound();
+          socket.emit('pickDealerCutCard', { roomId: currentRoom, cardIndex: i });
+        };
+        spread.appendChild(slot);
+      }
+
+      overlay.classList.add('active');
+    });
+
+    socket.on('dealerCutCardPicked', (data) => {
+      const container = document.getElementById('dealerCutPicksContainer');
+      const div = document.createElement('div');
+      div.id = `dc_pick_${data.playerId}`;
+      div.className = 'showdown-player-box';
+      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
+      container.appendChild(div);
+      playCardSlideSound();
+    });
+
+    socket.on('dealerCutResultsReveal', (data) => {
+      const container = document.getElementById('dealerCutPicksContainer');
+      container.innerHTML = '';
+
+      data.results.forEach(res => {
+        const box = document.createElement('div');
+        box.className = 'showdown-player-box';
+        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
+        box.innerHTML = `
+          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
+          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:3px;">
+            <span>${res.card.rank}</span><span>${res.card.suit}</span>
+          </div>
+        `;
+        container.appendChild(box);
+      });
+
+      setTimeout(() => {
+        document.getElementById('dealerCutOverlay').classList.remove('active');
+      }, 3500);
+    });
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js');
