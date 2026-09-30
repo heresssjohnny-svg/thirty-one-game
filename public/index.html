@@ -213,7 +213,6 @@
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
 
-    /* MODAL OVERLAYS: Default to display: none and pointer-events: none so they never block clicks when closed */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -313,7 +312,7 @@
     <div class="modal-card" style="border-color:#00acc1; max-width:420px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:15px; color:#00acc1;">📖 How to Play 31</span>
-        <span onclick="toggleTutorialModal()" ontouchend="toggleTutorialModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span class="close-tutorial" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div class="tutorial-section">
         <div>
@@ -328,7 +327,7 @@
           • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
         </div>
       </div>
-      <button type="button" onclick="toggleTutorialModal()" ontouchend="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
+      <button type="button" class="close-tutorial" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
     </div>
   </div>
 
@@ -341,8 +340,8 @@
         Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" onclick="cancelKnockConfirm()" ontouchend="cancelKnockConfirm()" style="padding:8px 12px;">Cancel</button>
-        <button type="button" class="danger" onclick="confirmKnock()" ontouchend="confirmKnock()" style="padding:8px 12px;">Yes, Knock Anyway</button>
+        <button type="button" class="secondary cancel-knock" style="padding:8px 12px;">Cancel</button>
+        <button type="button" class="danger confirm-knock" style="padding:8px 12px;">Yes, Knock Anyway</button>
       </div>
     </div>
   </div>
@@ -355,8 +354,8 @@
         Are you sure you want to clear this player's debt to you?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" onclick="cancelClearDebt()" ontouchend="cancelClearDebt()" style="padding:8px 12px;">Cancel</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" onclick="executeClearDebt()" ontouchend="executeClearDebt()">Yes, Clear Debt</button>
+        <button type="button" class="secondary cancel-debt" style="padding:8px 12px;">Cancel</button>
+        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" class="execute-debt">Yes, Clear Debt</button>
       </div>
     </div>
   </div>
@@ -366,11 +365,11 @@
     <div class="modal-card" style="border-color:#00897b; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#00897b;">👥 Invite to Voice Chat</span>
-        <span onclick="toggleVoiceInviteModal()" ontouchend="toggleVoiceInviteModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span class="close-voice-invite" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Select an online player to invite to the voice channel:</div>
       <select id="voiceInviteSelect"></select>
-      <button type="button" onclick="sendVoiceInvite()" ontouchend="sendVoiceInvite()" style="background:#00897b; color:#fff; padding:8px; font-weight:bold;">Send Invitation</button>
+      <button type="button" id="sendVoiceInviteBtn" style="background:#00897b; color:#fff; padding:8px; font-weight:bold;">Send Invitation</button>
     </div>
   </div>
 
@@ -382,8 +381,8 @@
         Player invited you to join voice chat.
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" onclick="respondVoiceInvite(false)" ontouchend="respondVoiceInvite(false)" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#00897b; color:#fff; padding:8px 12px; font-weight:bold;" onclick="respondVoiceInvite(true)" ontouchend="respondVoiceInvite(true)">Accept & Join</button>
+        <button type="button" class="secondary decline-voice" style="padding:8px 12px;">Decline</button>
+        <button type="button" style="background:#00897b; color:#fff; padding:8px 12px; font-weight:bold;" class="accept-voice">Accept & Join</button>
       </div>
     </div>
   </div>
@@ -393,11 +392,11 @@
     <div class="modal-card" style="border-color:#0288d1; max-width:360px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:15px; color:#0288d1;">🎵 Voice Chat Music & Playlist</span>
-        <span onclick="toggleMusicModal()" ontouchend="toggleMusicModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span class="close-music" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Queue YouTube or audio stream links for everyone in voice chat:</div>
       <input id="musicUrlInput" placeholder="Paste YouTube link or Audio URL..." style="font-size:11px; padding:8px;" />
-      <button type="button" onclick="addSongToPlaylist()" ontouchend="addSongToPlaylist()" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold;">Add Song to Queue</button>
+      <button type="button" id="addSongBtn" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold;">Add Song to Queue</button>
       
       <div style="font-size:11px; font-weight:bold; color:#ffd700; margin-top:4px;">Playlist Queue:</div>
       <div id="playlistContainer" style="max-height:100px; overflow-y:auto; background:rgba(0,0,0,0.3); padding:6px; border-radius:6px; font-size:11px;">
@@ -406,10 +405,10 @@
 
       <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin-top:6px;">
         <span style="font-size:11px; font-weight:bold;">Volume:</span>
-        <input type="range" id="musicVolumeSlider" min="0" max="1" step="0.05" value="0.7" oninput="updateMusicVolume(this.value)" style="cursor:pointer;" />
+        <input type="range" id="musicVolumeSlider" min="0" max="1" step="0.05" value="0.7" style="cursor:pointer;" />
       </div>
       <div style="display:flex; gap:6px; justify-content:center; margin-top:4px;">
-        <button type="button" onclick="skipSong()" ontouchend="skipSong()" class="secondary" style="padding:6px 12px; font-size:11px;">Skip Track ⏭️</button>
+        <button type="button" id="skipSongBtn" class="secondary" style="padding:6px 12px; font-size:11px;">Skip Track ⏭️</button>
       </div>
     </div>
   </div>
@@ -442,8 +441,8 @@
         <select id="offerMyTargetSelect"></select>
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
-        <button type="button" class="secondary" onclick="respondSideBet(false)" ontouchend="respondSideBet(false)" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" onclick="respondSideBet(true)" ontouchend="respondSideBet(true)">Accept & Verify</button>
+        <button type="button" class="secondary decline-side-bet" style="padding:8px 12px;">Decline</button>
+        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" class="accept-side-bet">Accept & Verify</button>
       </div>
     </div>
   </div>
@@ -456,8 +455,8 @@
         Spectator wants to view your hand. Allow them?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" onclick="respondPeekPermission(false)" ontouchend="respondPeekPermission(false)" style="padding:8px 12px;">Deny</button>
-        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" onclick="respondPeekPermission(true)" ontouchend="respondPeekPermission(true)">Allow Peek</button>
+        <button type="button" class="secondary deny-peek" style="padding:8px 12px;">Deny</button>
+        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" class="allow-peek">Allow Peek</button>
       </div>
     </div>
   </div>
@@ -467,12 +466,12 @@
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
-        <span onclick="togglePeekSelectorModal()" ontouchend="togglePeekSelectorModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span class="close-peek-selector" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
       <select id="peekPlayerSelect"></select>
       <div style="font-size:10px; opacity:0.75;">(Note: If you switch views or the round ends, permission expires!)</div>
-      <button type="button" onclick="submitPeekRequest()" ontouchend="submitPeekRequest()" style="background:#7b1fa2; color:#fff; padding:8px; font-weight:bold;">Send Request</button>
+      <button type="button" id="submitPeekBtn" style="background:#7b1fa2; color:#fff; padding:8px; font-weight:bold;">Send Request</button>
     </div>
   </div>
 
@@ -481,7 +480,7 @@
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:15px; color:#ffd700;">💰 Table Ledger & Side Bets</span>
-        <span onclick="toggleLedgerModal()" ontouchend="toggleLedgerModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span class="close-ledger" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
 
       <div class="ledger-summary-banner">
@@ -500,7 +499,7 @@
       <div id="ledgerList" style="display:flex; flex-direction:column; gap:5px; font-size:12px; max-height:200px; overflow-y:auto; padding:5px; background:rgba(0,0,0,0.3); border-radius:8px;">
         <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
       </div>
-      <button type="button" onclick="toggleLedgerModal()" ontouchend="toggleLedgerModal()" class="secondary" style="padding:6px;">Close</button>
+      <button type="button" class="secondary close-ledger" style="padding:6px;">Close</button>
     </div>
   </div>
 
@@ -509,7 +508,7 @@
     <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
-        <span onclick="toggleRoundBetModal()" ontouchend="toggleRoundBetModal()" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span class="close-round-bet" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       
       <div id="sideBetModalDesc" style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents:</div>
@@ -518,8 +517,8 @@
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">1. Choose Opponents To Challenge:</label>
           <div style="font-size:10px; display:flex; gap:6px;">
-            <a href="javascript:void(0)" onclick="selectAllOpponents(true)" ontouchend="selectAllOpponents(true)" style="color:#00acc1; text-decoration:none;">All</a> | 
-            <a href="javascript:void(0)" onclick="selectAllOpponents(false)" ontouchend="selectAllOpponents(false)" style="color:#aaa; text-decoration:none;">Clear</a>
+            <a href="javascript:void(0)" id="selectAllOpp" style="color:#00acc1; text-decoration:none;">All</a> | 
+            <a href="javascript:void(0)" id="clearAllOpp" style="color:#aaa; text-decoration:none;">Clear</a>
           </div>
         </div>
         <div id="opponentsChecklist" class="opponents-checklist"></div>
@@ -532,37 +531,37 @@
 
       <div style="display:flex; gap:6px; justify-content:center; align-items:center; margin: 2px 0;">
         <span style="font-size:11px; font-weight:bold;">Per-Opponent Bet:</span>
-        <div class="wager-chip" onclick="selectRoundBetAmt(1)" ontouchend="selectRoundBetAmt(1)">$1</div>
-        <div class="wager-chip selected" id="defaultBetChip" onclick="selectRoundBetAmt(5)" ontouchend="selectRoundBetAmt(5)">$5</div>
-        <div class="wager-chip" onclick="selectRoundBetAmt(10)" ontouchend="selectRoundBetAmt(10)">$10</div>
-        <div class="wager-chip" onclick="selectRoundBetAmt(20)" ontouchend="selectRoundBetAmt(20)">$20</div>
+        <div class="wager-chip bet-amt-chip" data-amt="1">$1</div>
+        <div class="wager-chip selected bet-amt-chip" id="defaultBetChip" data-amt="5">$5</div>
+        <div class="wager-chip bet-amt-chip" data-amt="10">$10</div>
+        <div class="wager-chip bet-amt-chip" data-amt="20">$20</div>
       </div>
 
       <div id="multiBetSummary" style="font-size:11px; font-weight:bold; color:#ffd700; text-align:center;">
         0 opponents selected (Total stake: $0)
       </div>
 
-      <button type="button" onclick="submitMultiPeerSideBet()" ontouchend="submitMultiPeerSideBet()" style="background:#ff9800; color:#111; padding:8px; font-weight:bold;">Send Challenges</button>
+      <button type="button" id="submitMultiBetBtn" style="background:#ff9800; color:#111; padding:8px; font-weight:bold;">Send Challenges</button>
     </div>
   </div>
 
-  <button type="button" class="chat-btn" onclick="toggleChat()" ontouchend="toggleChat()">
+  <button type="button" class="chat-btn" id="chatToggleBtn">
     💬 Chat <span id="chatBadge" class="chat-badge">0</span>
   </button>
 
   <div id="chatPanel" class="chat-panel">
     <div class="chat-header">
       <span>Table Chat</span>
-      <span onclick="toggleChat()" ontouchend="toggleChat()" style="cursor:pointer; font-size: 20px;">✕</span>
+      <span id="chatCloseBtn" style="cursor:pointer; font-size: 20px;">✕</span>
     </div>
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-footer">
-      <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" onkeypress="if(event.key==='Enter') sendChat()" />
-      <button type="button" onclick="sendChat()" ontouchend="sendChat()" style="padding: 6px 10px; font-size: 12px;">Send</button>
+      <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" />
+      <button type="button" id="sendChatBtn" style="padding: 6px 10px; font-size: 12px;">Send</button>
     </div>
   </div>
 
-  <div id="announcementOverlay" class="big-announcement-overlay" onclick="dismissAnnouncement()" ontouchend="dismissAnnouncement()">
+  <div id="announcementOverlay" class="big-announcement-overlay">
     <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
     <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
     <div id="annSubtext" class="ann-subtext">Lowest score: 14</div>
@@ -580,7 +579,7 @@
       <span style="font-size:11px; font-weight:bold; color:#ffd700;">Avatar Emoji:</span>
       <select id="avatarSelect" style="max-width:180px; padding:8px; font-size:16px;">
         <option value="👑">👑 Crown</option>
-        <option value="🏎️️" selected>🏎️ Racing</option>
+        <option value="🏎️" selected>🏎️ Racing</option>
         <option value="🔥">🔥 Fire</option>
         <option value="💀">💀 Skull</option>
         <option value="🃏">🃏 Joker</option>
@@ -592,10 +591,10 @@
 
     <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
       <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
-      <div class="wager-chip" onclick="setInitialLives(1)" ontouchend="setInitialLives(1)">1</div>
-      <div class="wager-chip selected" id="defaultLivesChip" onclick="setInitialLives(2)" ontouchend="setInitialLives(2)">2</div>
-      <div class="wager-chip" onclick="setInitialLives(3)" ontouchend="setInitialLives(3)">3</div>
-      <div class="wager-chip" onclick="setInitialLives(5)" ontouchend="setInitialLives(5)">5</div>
+      <div class="wager-chip lives-chip" data-lives="1">1</div>
+      <div class="wager-chip selected lives-chip" id="defaultLivesChip" data-lives="2">2</div>
+      <div class="wager-chip lives-chip" data-lives="3">3</div>
+      <div class="wager-chip lives-chip" data-lives="5">5</div>
     </div>
 
     <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin: 2px 0; font-size:11px;">
@@ -620,13 +619,13 @@
     <div id="roomLabel">Room: -</div>
     <div id="scoreLabel">Score: 0</div>
     <div class="header-controls">
-      <button type="button" class="tutorial-btn" onclick="toggleTutorialModal()" ontouchend="toggleTutorialModal()">📖 Rules</button>
-      <button type="button" class="ledger-btn" onclick="toggleLedgerModal()" ontouchend="toggleLedgerModal()">💰 Ledger</button>
-      <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()" ontouchend="toggleVoice()">🎤 Voice</button>
-      <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;" onclick="toggleVoiceInviteModal()" ontouchend="toggleVoiceInviteModal()">👥 Invite</button>
-      <button type="button" id="musicBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#0288d1; color:#fff;" onclick="toggleMusicModal()" ontouchend="toggleMusicModal()">🎵 Music</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()" ontouchend="toggleMute()">🎙️</button>
-      <button type="button" class="danger" onclick="leaveLobby()" ontouchend="leaveLobby()">Leave</button>
+      <button type="button" class="tutorial-btn" id="rulesHeaderBtn">📖 Rules</button>
+      <button type="button" class="ledger-btn" id="ledgerHeaderBtn">💰 Ledger</button>
+      <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
+      <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
+      <button type="button" id="musicBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#0288d1; color:#fff;">🎵 Music</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
+      <button type="button" class="danger" id="leaveRoomBtn">Leave</button>
     </div>
   </div>
 
@@ -641,23 +640,23 @@
     <div class="players-list" id="playersArea"></div>
 
     <div class="middle-piles">
-      <div id="drawPile" class="card back" onclick="draw('deck')" ontouchend="draw('deck')">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(32)</span></div>
-      <div id="discardPile" class="card" onclick="draw('discard')" ontouchend="draw('discard')">--</div>
+      <div id="drawPile" class="card back">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(32)</span></div>
+      <div id="discardPile" class="card">--</div>
     </div>
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
         <span id="peekBarText">👁️ Viewing Player's Hand</span>
-        <span onclick="stopPeekingHand()" ontouchend="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
+        <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
       <div id="wagerSection" class="wager-bar" style="display:none;">
         <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
-        <div class="wager-chip" onclick="setWager(0)" ontouchend="setWager(0)">$0</div>
-        <div class="wager-chip" onclick="setWager(1)" ontouchend="setWager(1)">$1</div>
-        <div class="wager-chip" onclick="setWager(5)" ontouchend="setWager(5)">$5</div>
-        <div class="wager-chip" onclick="setWager(10)" ontouchend="setWager(10)">$10</div>
-        <div class="wager-chip" onclick="setWager(20)" ontouchend="setWager(20)">$20</div>
+        <div class="wager-chip wager-chip-btn" data-wager="0">$0</div>
+        <div class="wager-chip wager-chip-btn" data-wager="1">$1</div>
+        <div class="wager-chip wager-chip-btn" data-wager="5">$5</div>
+        <div class="wager-chip wager-chip-btn" data-wager="10">$10</div>
+        <div class="wager-chip wager-chip-btn" data-wager="20">$20</div>
       </div>
 
       <div id="handInstruction" style="font-size: 12px; opacity: 0.85;">Your Hand</div>
@@ -668,14 +667,14 @@
   </div>
 
   <div class="action-bar" id="actionBar">
-    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()" ontouchend="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()" ontouchend="togglePeekSelectorModal()">👁️ Peek at Hand</button>
-    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()" ontouchend="openRoundSideBetModal()">🎲 Side Bet</button>
-    <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()" ontouchend="openFirstLoserSideBetModal()">💀 First to Lose</button>
-    <button type="button" id="readyBtn" onclick="toggleReady()" ontouchend="toggleReady()">⏳ Tap to Ready</button>
-    <button type="button" id="addBotBtn" class="secondary" onclick="addBot()" ontouchend="addBot()">+ Add Bot</button>
-    <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()" ontouchend="removeBot()">- Remove Bot</button>
-    <button type="button" id="knockBtn" onclick="attemptKnock()" ontouchend="attemptKnock()" disabled>Knock</button>
+    <button type="button" id="spectateBtn" class="spectate-btn">👁️ Spectate</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;">👁️ Peek at Hand</button>
+    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;">🎲 Side Bet</button>
+    <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;">💀 First to Lose</button>
+    <button type="button" id="readyBtn">⏳ Tap to Ready</button>
+    <button type="button" id="addBotBtn" class="secondary">+ Add Bot</button>
+    <button type="button" id="removeBotBtn" class="secondary" style="display:none;">- Remove Bot</button>
+    <button type="button" id="knockBtn" disabled>Knock</button>
   </div>
 
   <div id="audioContainer"></div>
@@ -828,8 +827,9 @@
 
     function setInitialLives(lives) {
       selectedInitialLives = lives;
-      document.querySelectorAll('#lobby div[style*="Starting Lives"] ~ .wager-chip').forEach(c => {
-        c.classList.toggle('selected', parseInt(c.innerText) === lives);
+      document.querySelectorAll('.lives-chip').forEach(c => {
+        const l = parseInt(c.getAttribute('data-lives'));
+        c.classList.toggle('selected', l === lives);
       });
     }
 
@@ -1323,7 +1323,7 @@
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
+        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         const av = p.avatar || '👑';
 
@@ -1334,7 +1334,7 @@
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -1514,6 +1514,7 @@
       }
     }
 
+    // UNIVERSAL CLICK & TOUCH EVENT BINDER TO GUARANTEE RESPONSIVENESS
     document.addEventListener('DOMContentLoaded', () => {
       try {
         const saved = localStorage.getItem('thirtyOne_playerName');
@@ -1551,37 +1552,110 @@
         });
       }
 
-      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect', 'avatarSelect', 'musicUrlInput'].forEach(id => {
+      // Universal click/touch dispatcher for all interactive elements
+      const clickMap = {
+        'enterGameBtn': () => { document.getElementById('lobby').style.display = 'none'; joinGame(); },
+        'lobbyTutorialBtn': toggleTutorialModal,
+        'rulesHeaderBtn': toggleTutorialModal,
+        'ledgerHeaderBtn': toggleLedgerModal,
+        'voiceBtn': toggleVoice,
+        'voiceInviteBtn': toggleVoiceInviteModal,
+        'musicBtn': toggleMusicModal,
+        'muteBtn': toggleMute,
+        'leaveRoomBtn': leaveLobby,
+        'spectateBtn': toggleSpectate,
+        'spectatorPeekBtn': togglePeekSelectorModal,
+        'roundBetBtn': openRoundSideBetModal,
+        'firstLoserBetBtn': openFirstLoserSideBetModal,
+        'readyBtn': toggleReady,
+        'addBotBtn': addBot,
+        'removeBotBtn': removeBot,
+        'knockBtn': attemptKnock,
+        'chatToggleBtn': toggleChat,
+        'chatCloseBtn': toggleChat,
+        'sendChatBtn': sendChat,
+        'submitPeekBtn': submitPeekRequest,
+        'addSongBtn': addSongToPlaylist,
+        'skipSongBtn': skipSong,
+        'selectAllOpp': () => selectAllOpponents(true),
+        'clearAllOpp': () => selectAllOpponents(false),
+        'submitMultiBetBtn': submitMultiPeerSideBet
+      };
+
+      Object.keys(clickMap).forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-          el.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            el.focus();
-          }, { passive: true });
+          const handler = (e) => {
+            e.preventDefault();
+            clickMap[id]();
+          };
+          el.addEventListener('click', handler);
+          el.addEventListener('touchend', handler);
         }
       });
 
-      const enterBtn = document.getElementById('enterGameBtn');
-      if (enterBtn) {
-        enterBtn.addEventListener('click', () => {
-          document.getElementById('lobby').style.display = 'none';
-          joinGame();
-        });
-        enterBtn.addEventListener('touchend', (e) => {
+      // Bind class-based chips and modal closers
+      document.querySelectorAll('.lives-chip').forEach(el => {
+        const handler = (e) => {
           e.preventDefault();
-          document.getElementById('lobby').style.display = 'none';
-          joinGame();
-        });
-      }
+          setInitialLives(parseInt(el.getAttribute('data-lives')));
+        };
+        el.addEventListener('click', handler);
+        el.addEventListener('touchend', handler);
+      });
 
-      const tutBtn = document.getElementById('lobbyTutorialBtn');
-      if (tutBtn) {
-        tutBtn.addEventListener('click', toggleTutorialModal);
-        tutBtn.addEventListener('touchend', (e) => {
+      document.querySelectorAll('.wager-chip-btn').forEach(el => {
+        const handler = (e) => {
           e.preventDefault();
-          toggleTutorialModal();
+          setWager(parseInt(el.getAttribute('data-wager')));
+        };
+        el.addEventListener('click', handler);
+        el.addEventListener('touchend', handler);
+      });
+
+      document.querySelectorAll('.bet-amt-chip').forEach(el => {
+        const handler = (e) => {
+          e.preventDefault();
+          selectRoundBetAmt(parseInt(el.getAttribute('data-amt')));
+        };
+        el.addEventListener('click', handler);
+        el.addEventListener('touchend', handler);
+      });
+
+      // Close modal bindings
+      const closeMap = {
+        'close-tutorial': 'tutorialModal',
+        'cancel-knock': 'knockConfirmModal',
+        'confirm-knock': () => { confirmKnock(); },
+        'cancel-debt': 'clearDebtConfirmModal',
+        'execute-debt': () => { executeClearDebt(); },
+        'close-voice-invite': 'voiceInviteModal',
+        'decline-voice': 'incomingVoiceInviteModal',
+        'accept-voice': () => { respondVoiceInvite(true); },
+        'close-music': 'musicModal',
+        'decline-side-bet': 'sideBetOfferModal',
+        'accept-side-bet': () => { respondSideBet(true); },
+        'deny-peek': 'peekRequestModal',
+        'allow-peek': () => { respondPeekPermission(true); },
+        'close-peek-selector': 'spectatorPeekSelectorModal',
+        'close-ledger': 'ledgerModal',
+        'close-round-bet': 'roundBetModal'
+      };
+
+      Object.keys(closeMap).forEach(cls => {
+        document.querySelectorAll('.' + cls).forEach(el => {
+          const handler = (e) => {
+            e.preventDefault();
+            if (typeof closeMap[cls] === 'string') {
+              document.getElementById(closeMap[cls]).style.display = 'none';
+            } else {
+              closeMap[cls]();
+            }
+          };
+          el.addEventListener('click', handler);
+          el.addEventListener('touchend', handler);
         });
-      }
+      });
     });
 
     if ('serviceWorker' in navigator) {
