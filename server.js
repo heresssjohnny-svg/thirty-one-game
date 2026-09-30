@@ -130,7 +130,7 @@ function handleTurnTimeout(roomId) {
   if (!current || current.isSpectator || current.lives <= 0) return;
 
   io.to(roomId).emit('bannerAnnouncement', {
-    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
+    text: `⏱️️ Time's up for ${current.name}! AI taking turn...`,
     duration: 3500
   });
 
@@ -178,7 +178,7 @@ function handleTurnTimeout(roomId) {
   }
 
   advanceTurnIndex(room);
-  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  broadcastState(roomId, `⏱️️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
   startTurnTimer(roomId);
   triggerBotTurnIfNeeded(roomId);
 }
@@ -438,10 +438,12 @@ function startDealerCut(room) {
   room.dealerCutDeck = cutDeck;
 
   eligible.forEach(p => {
-    io.to(p.id).emit('startDealerSelectionCut', {
-      deckCount: Math.min(cutDeck.length, 30),
-      players: eligible.map(pl => ({ id: pl.id, name: pl.name }))
-    });
+    if (!p.isSpectator) {
+      io.to(p.id).emit('startDealerSelectionCut', {
+        deckCount: Math.min(cutDeck.length, 30),
+        players: eligible.map(pl => ({ id: pl.id, name: pl.name }))
+      });
+    }
   });
 
   eligible.forEach(p => {
@@ -520,10 +522,12 @@ function checkDealerCutComplete(room) {
       room.dealerCutDeck = createDeck();
 
       lowestPickers.forEach(l => {
-        io.to(l.player.id).emit('startDealerSelectionCut', {
-          deckCount: Math.min(room.dealerCutDeck.length, 30),
-          players: lowestPickers.map(lp => ({ id: lp.player.id, name: lp.player.name }))
-        });
+        if (!l.player.isSpectator) {
+          io.to(l.player.id).emit('startDealerSelectionCut', {
+            deckCount: Math.min(room.dealerCutDeck.length, 30),
+            players: lowestPickers.map(lp => ({ id: lp.player.id, name: lp.player.name }))
+          });
+        }
       });
 
       lowestPickers.forEach(l => {
@@ -574,10 +578,12 @@ function startInteractiveTiebreaker(room, tiedPlayers) {
   room.tiebreakerDeck = eligibleDeck.sort(() => Math.random() - 0.5);
 
   activeTied.forEach(p => {
-    io.to(p.id).emit('startTiebreakerCut', {
-      deckCount: room.tiebreakerDeck.length,
-      tiedPlayers: activeTied.map(tp => ({ id: tp.id, name: tp.name }))
-    });
+    if (!p.isSpectator) {
+      io.to(p.id).emit('startTiebreakerCut', {
+        deckCount: room.tiebreakerDeck.length,
+        tiedPlayers: activeTied.map(tp => ({ id: tp.id, name: tp.name }))
+      });
+    }
   });
 
   activeTied.forEach(p => {
@@ -656,10 +662,12 @@ function checkTiebreakerComplete(room) {
       room.tiebreakerDeck = createDeck();
 
       cutLosers.forEach(l => {
-        io.to(l.player.id).emit('startTiebreakerCut', {
-          deckCount: Math.min(room.tiebreakerDeck.length, 30),
-          tiedPlayers: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
-        });
+        if (!l.player.isSpectator) {
+          io.to(l.player.id).emit('startTiebreakerCut', {
+            deckCount: Math.min(room.tiebreakerDeck.length, 30),
+            tiedPlayers: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
+          });
+        }
       });
 
       cutLosers.forEach(l => {
@@ -1399,7 +1407,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -2019,7 +2027,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️ GAME ENDED',
+          title: '🏳️️ GAME ENDED',
           message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
