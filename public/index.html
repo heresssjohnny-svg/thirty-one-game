@@ -27,7 +27,7 @@
       display: flex; flex-direction: column; height: 100vh; overflow: hidden;
       position: relative;
     }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; z-index: 10; }
     .header-controls { display: flex; align-items: center; gap: 4px; }
     .status-box { background: rgba(0,0,0,0.35); padding: 6px; border-radius: 8px; font-size: 13px; text-align: center; min-height: 32px; display: flex; align-items: center; justify-content: center; }
     
@@ -144,6 +144,7 @@
       position: fixed; top: 0; right: -100%; width: 85%; max-width: 320px; height: 100%;
       background: #0f2d24; z-index: 200; display: flex; flex-direction: column;
       box-shadow: -4px 0 15px rgba(0,0,0,0.6); transition: right 0.25s ease-in-out;
+      pointer-events: auto;
     }
     .chat-panel.open { right: 0; }
     .chat-header {
@@ -212,10 +213,14 @@
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
 
+    /* CRITICAL FIX: Ensure inactive modals never block pointer clicks */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 1100; padding: 16px; pointer-events: auto;
+      z-index: 1100; padding: 16px; pointer-events: none;
+    }
+    .custom-modal[style*="display: flex"] {
+      pointer-events: auto;
     }
     .modal-card {
       background: #164033; border: 2px solid #ffd700; border-radius: 12px;
@@ -245,7 +250,10 @@
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
       display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
-      gap: 10px; z-index: 1000; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
+      gap: 10px; z-index: 1000; padding: 24px 16px; overflow-y: auto; pointer-events: none;
+    }
+    .lobby-modal[style*="display: flex"], .lobby-modal:not([style*="display: none"]) {
+      pointer-events: auto;
     }
     .room-directory {
       width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
@@ -564,7 +572,7 @@
     <div id="showdownHandsContainer" class="showdown-hands-grid"></div>
   </div>
 
-  <!-- LOBBY SCREEN (Photo upload removed) -->
+  <!-- LOBBY SCREEN -->
   <div id="lobby" class="lobby-modal">
     <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
     <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
@@ -664,7 +672,7 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()" ontouchend="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()" ontouchend="togglePeekSelectorModal()">👁️ Peek at Hand</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()" ontouchend="togglePeekSelectorModal()">👁️️ Peek at Hand</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()" ontouchend="openRoundSideBetModal()">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()" ontouchend="openFirstLoserSideBetModal()">💀 First to Lose</button>
     <button type="button" id="readyBtn" onclick="toggleReady()" ontouchend="toggleReady()">⏳ Tap to Ready</button>
