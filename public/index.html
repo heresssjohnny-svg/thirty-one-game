@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Moved Upward Table Ring Container */
+    /* Expanded Table Ring Container for edge-to-edge touch */
     .table-ring {
       position: absolute;
-      inset: -65px 0 50px 0;
+      inset: -85px -10px 50px -10px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -318,7 +318,7 @@
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
-    <span>⚠️ Disconnected from server</span>
+    <span>⚠️️ Disconnected from server</span>
     <button type="button" id="retryConnBtn" onclick="manualReconnect()">Retry Connection</button>
   </div>
 
@@ -1225,7 +1225,7 @@
         latestActivePlayers.forEach(p => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          opt.innerText = `${p.name} (${p.lives} ❤️️)`;
+          opt.innerText = `${p.name} (${p.lives} ❤️)`;
           select.appendChild(opt);
         });
       }
@@ -1293,7 +1293,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
@@ -1779,7 +1779,7 @@
           }
         }
 
-        // Dynamically Render Opponents in Oval Ring strictly configured as: 2 Left, 1 Top, 2 Right
+        // Dynamically Render Opponents in Oval Ring (2 Left, 1 Top, 2 Right hugging edges)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1787,11 +1787,11 @@
           let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
 
           const slotCoordinates = [
-            { x: -140, y: -30 }, // Left Top
-            { x: -140, y: 70 },  // Left Bottom
-            { x: 0,    y: -95 }, // Top Center
-            { x: 140,  y: -30 }, // Right Top
-            { x: 140,  y: 70 }   // Right Bottom
+            { x: -160, y: -20 }, // Left Top
+            { x: -160, y: 75 },  // Left Bottom
+            { x: 0,    y: -115 }, // Top Center (raised higher above Your Score)
+            { x: 160,  y: -20 }, // Right Top
+            { x: 160,  y: 75 }   // Right Bottom
           ];
 
           otherPlayers.forEach((p, idx) => {
