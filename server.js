@@ -2019,7 +2019,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️ GAME ENDED',
+          title: '🏳️️ GAME ENDED',
           message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
@@ -2218,7 +2218,7 @@ io.on('connection', (socket) => {
       const feederId = room.currentDiscardFeederId || getPrevActivePlayer(room, room.currentTurnIdx)?.id;
       if (feederId) {
         if (!player.fedCardsTracker) player.fedCardsTracker = {};
-        if (!player.fedCardsTracker[feederId]) player.fedCardsTracker[feederId] = [];
+        if (!player.fedCardsTracker[feederId]) player.fedCardsTracker[feerdId] = [];
         player.fedCardsTracker[feederId].push(drawn);
       }
       
@@ -2320,7 +2320,7 @@ io.on('connection', (socket) => {
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
+        text: `❤️️ ${player.name} proposed ${lives} lives. Vote in progress...`,
         duration: 3000
       });
     }
