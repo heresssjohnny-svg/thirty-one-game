@@ -235,12 +235,12 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   if (!room.debts[debtorName]) room.debts[debtorName] = {};
   if (!room.debtBreakdowns) room.debtBreakdowns = {};
 
+  room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
+
   const key = `${debtorName}:::${creditorName}`;
   if (!room.debtBreakdowns[key]) {
     room.debtBreakdowns[key] = { match: 0, sideBets: 0 };
   }
-
-  room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
   if (reason === 'sideBet') {
     room.debtBreakdowns[key].sideBets += amount;
   } else {
@@ -249,8 +249,8 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
 }
 
 function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1Match = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2Match = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
+  const p2OwesP1 = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
+  const p1OwesP2 = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
 
   const key1 = `${p2Name}:::${p1Name}`;
   const key2 = `${p1Name}:::${p2Name}`;
@@ -258,15 +258,12 @@ function getNetPairBalance(room, p1Name, p2Name) {
   const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
   const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
 
-  const p2MatchOnly = Math.max(0, p2OwesP1Match - p2SideBets);
-  const p1MatchOnly = Math.max(0, p1OwesP2Match - p1SideBets);
-
-  const netMatch = p2MatchOnly - p1MatchOnly;
-  const netSideBet = p2SideBets - p1SideBets;
+  const netBalance = p2OwesP1 - p1OwesP2;
+  const sideBetNet = p2SideBets - p1SideBets;
 
   return {
-    net: netMatch + netSideBet,
-    sideBetNet: netSideBet
+    net: netBalance,
+    sideBetNet: sideBetNet
   };
 }
 
@@ -440,9 +437,11 @@ function startDealerCut(room) {
   let cutDeck = createDeck();
   room.dealerCutDeck = cutDeck;
 
-  io.to(room.id).emit('startDealerSelectionCut', {
-    deckCount: Math.min(cutDeck.length, 30),
-    players: eligible.map(p => ({ id: p.id, name: p.name }))
+  eligible.forEach(p => {
+    io.to(p.id).emit('startDealerSelectionCut', {
+      deckCount: Math.min(cutDeck.length, 30),
+      players: eligible.map(pl => ({ id: pl.id, name: pl.name }))
+    });
   });
 
   eligible.forEach(p => {
@@ -520,9 +519,11 @@ function checkDealerCutComplete(room) {
       room.dealerCutPlayerIds = lowestPickers.map(l => l.player.id);
       room.dealerCutDeck = createDeck();
 
-      io.to(room.id).emit('startDealerSelectionCut', {
-        deckCount: Math.min(room.dealerCutDeck.length, 30),
-        players: lowestPickers.map(l => ({ id: l.player.id, name: l.player.name }))
+      lowestPickers.forEach(l => {
+        io.to(l.player.id).emit('startDealerSelectionCut', {
+          deckCount: Math.min(room.dealerCutDeck.length, 30),
+          players: lowestPickers.map(lp => ({ id: lp.player.id, name: lp.player.name }))
+        });
       });
 
       lowestPickers.forEach(l => {
@@ -558,7 +559,8 @@ function checkDealerCutComplete(room) {
 function startInteractiveTiebreaker(room, tiedPlayers) {
   room.tiebreakerActive = true;
   room.tiebreakerPicks = {};
-  room.tiedPlayerIds = tiedPlayers.map(p => p.id);
+  const activeTied = tiedPlayers.filter(p => !p.isSpectator);
+  room.tiedPlayerIds = activeTied.map(p => p.id);
 
   let eligibleDeck = [...(room.deck || [])];
   if (eligibleDeck.length < 15) {
@@ -571,12 +573,14 @@ function startInteractiveTiebreaker(room, tiedPlayers) {
   }
   room.tiebreakerDeck = eligibleDeck.sort(() => Math.random() - 0.5);
 
-  io.to(room.id).emit('startTiebreakerCut', {
-    deckCount: room.tiebreakerDeck.length,
-    tiedPlayers: tiedPlayers.map(p => ({ id: p.id, name: p.name }))
+  activeTied.forEach(p => {
+    io.to(p.id).emit('startTiebreakerCut', {
+      deckCount: room.tiebreakerDeck.length,
+      tiedPlayers: activeTied.map(tp => ({ id: tp.id, name: tp.name }))
+    });
   });
 
-  tiedPlayers.forEach(p => {
+  activeTied.forEach(p => {
     if (p.isBot) {
       setTimeout(() => {
         if (!room.tiebreakerActive || (room.tiebreakerPicks && room.tiebreakerPicks[p.id])) return;
@@ -765,6 +769,32 @@ function startNewRound(roomId) {
       io.to(specId).emit('spectatorHandRevoked');
     }
     room.spectatorPeeks = {};
+  }
+
+  if (room.pendingJoinedSpectator) {
+    const spec = room.players.find(p => p.id === room.pendingJoinedSpectator.id);
+    if (spec) {
+      spec.isSpectator = false;
+      spec.lives = 1;
+      spec.matchWager = room.pendingJoinedSpectator.wager;
+      spec.joinOrder = ++playerJoinCounter;
+
+      const joinerWager = room.pendingJoinedSpectator.wager;
+      if (room.currentMatchParticipants) {
+        room.currentMatchParticipants.forEach(participant => {
+          if (participant.wager < joinerWager) {
+            const diff = (joinerWager - participant.wager) + 5;
+            recordDebt(room, participant.name, spec.name, diff, 'match');
+          }
+        });
+        room.currentMatchParticipants.push({
+          id: spec.id,
+          name: spec.name,
+          wager: joinerWager
+        });
+      }
+    }
+    room.pendingJoinedSpectator = null;
   }
 
   const active = getActivePlayers(room);
@@ -1233,7 +1263,8 @@ io.on('connection', (socket) => {
         firstCardPickupTracker: null,
         endGameVote: null,
         lifeVotes: {},
-        joinGameVote: null
+        joinGameVote: null,
+        pendingJoinedSpectator: null
       };
     }
     const room = rooms[roomId];
@@ -1368,7 +1399,6 @@ io.on('connection', (socket) => {
 
     const minRequiredWager = maxTableWager + 5;
     const parsedWager = Math.max(minRequiredWager, parseInt(wager) || minRequiredWager);
-    player.matchWager = parsedWager;
 
     room.joinGameVote = {
       spectatorId: player.id,
@@ -1407,37 +1437,20 @@ io.on('connection', (socket) => {
       if (agreedCount >= Math.ceil(eligible.length / 2)) {
         const spec = room.players.find(p => p.id === room.joinGameVote.spectatorId);
         if (spec) {
-          spec.isSpectator = false;
-          spec.lives = 1; // Costs 1 life to join mid-game
-          spec.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
-          spec.fedCardsTracker = {};
-          spec.discardPickedCards = [];
-          spec.lastDrawnSource = 'deal';
-
-          const joinerWager = room.joinGameVote.wager;
-          if (room.currentMatchParticipants) {
-            room.currentMatchParticipants.forEach(participant => {
-              if (participant.wager < joinerWager) {
-                const diff = (joinerWager - participant.wager) + 5;
-                recordDebt(room, participant.name, spec.name, diff, 'match');
-              }
-            });
-            room.currentMatchParticipants.push({
-              id: spec.id,
-              name: spec.name,
-              wager: joinerWager
-            });
-          }
+          room.pendingJoinedSpectator = {
+            id: spec.id,
+            wager: room.joinGameVote.wager
+          };
 
           io.to(roomId).emit('bigAnnouncement', {
-            title: '🎮 NEW PLAYER JOINED!',
-            message: `${spec.name.toUpperCase()} JOINED THE TABLE!`,
-            subtext: `Paid 1 life and $${joinerWager} wager!`,
+            title: '🎮 JOIN APPROVED!',
+            message: `${spec.name.toUpperCase()} WILL JOIN NEXT ROUND!`,
+            subtext: `Paid $${room.joinGameVote.wager} wager and 1 life cost.`,
             duration: 4500
           });
         }
         room.joinGameVote = null;
-        broadcastState(roomId, 'Spectator successfully joined the game.');
+        broadcastState(roomId, 'Spectator join approved. Will join next round.');
         broadcastRoomList();
       } else {
         broadcastState(roomId);
@@ -1599,7 +1612,7 @@ io.on('connection', (socket) => {
       return socket.emit('errorMsg', 'Select at least one opponent for your side bet.');
     }
 
-    const targetPlayer = room.players.find(p => p.name === targetPlayerName && !p.isSpectator);
+    const targetPlayer = room.players.find(p => p.name === targetPlayerName);
     if (!targetPlayer && betType === 'round') {
       return socket.emit('errorMsg', 'Invalid target player for side bet.');
     }
