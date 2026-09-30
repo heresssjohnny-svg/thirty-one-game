@@ -57,7 +57,7 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Wide Outer Perimeter Oval Table Ring for Players */
+    /* Outer Perimeter Oval Table Ring for Players */
     .table-ring {
       position: absolute; inset: 25px 5px 5px 5px;
       display: flex; justify-content: center; align-items: center; pointer-events: none;
@@ -318,7 +318,7 @@
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
-    <span>⚠️ Disconnected from server</span>
+    <span>⚠️️ Disconnected from server</span>
     <button type="button" id="retryConnBtn">Retry Connection</button>
   </div>
 
@@ -1061,7 +1061,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
@@ -1144,7 +1144,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1723,7 +1723,7 @@
         'closePeekModalBtn': togglePeekSelectorModal,
         'closeLedgerBtn1': toggleLedgerModal,
         'closeLedgerBtn2': toggleLedgerModal,
-        'closeRoundBetBtn': toggleRoundBetModal
+        'closeRoundRoundBtn': toggleRoundBetModal
       };
 
       Object.keys(actionMap).forEach(id => {
