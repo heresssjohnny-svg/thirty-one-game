@@ -41,12 +41,12 @@
     .pot-banner {
       background: #ffd700; color: #111; font-weight: 900; font-size: 11px;
       padding: 2px 8px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      display: none; align-items: center; gap: 4px;
+      display: flex; align-items: center; gap: 4px;
     }
     .round-pot-banner {
       background: #ff9800; color: #111; font-weight: 900; font-size: 11px;
       padding: 2px 8px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      display: none; align-items: center; gap: 4px;
+      display: flex; align-items: center; gap: 4px;
     }
 
     /* Top-Left First Card Picked Window (80% opacity, persistent while card is held) */
@@ -637,8 +637,8 @@
 
   <div class="table">
     <div class="pots-header">
-      <div id="potBanner" class="pot-banner">🏆 MATCH POT: $0</div>
-      <div id="roundPotBanner" class="round-pot-banner">🎲 SIDE BETS: $0</div>
+      <div id="potBanner" class="pot-banner" style="display:flex;">🏆 MATCH POT: $0</div>
+      <div id="roundPotBanner" class="round-pot-banner" style="display:flex;">🎲 SIDE BETS: $0</div>
     </div>
 
     <!-- Top-Left First Card Picked Window (80% Opacity, Persistent while card is held) -->
@@ -693,8 +693,8 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn">👁️ Spectate</button>
-    <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;">🎮 Join Game</button>
     <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;">👁️ Peek at Hand</button>
+    <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;">🎮 Join Game</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;">💀 First to Lose</button>
     <button type="button" id="readyBtn">⏳ Tap to Ready</button>
@@ -1204,7 +1204,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1537,6 +1537,18 @@
         latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
         latestAllTableMembers = state.allTableMembers || [];
         latestPersonalLedger = state.personalLedger || [];
+
+        // Always display pot banners at the top when in a game room
+        const potBanner = document.getElementById('potBanner');
+        const roundPotBanner = document.getElementById('roundPotBanner');
+        if (potBanner) {
+          potBanner.style.display = 'flex';
+          potBanner.innerText = `🏆 MATCH POT: $${state.totalPot || 0}`;
+        }
+        if (roundPotBanner) {
+          roundPotBanner.style.display = state.sideBetActionTotal > 0 ? 'flex' : 'none';
+          roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal || 0}`;
+        }
 
         if (state.endGameVote) {
           document.getElementById('endGameVoteText').innerHTML = `
