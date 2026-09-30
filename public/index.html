@@ -1073,10 +1073,11 @@
       rooms.forEach(r => {
         const item = document.createElement('div');
         item.className = 'room-dir-item';
-        item.onclick = () => {
+        const triggerJoin = () => {
           document.getElementById('roomId').value = r.roomId;
           joinGame();
         };
+        item.addEventListener('pointerup', (e) => { e.preventDefault(); triggerJoin(); });
 
         const statusBadge = r.gameStarted 
           ? `<span class="badge-in-play">🎮 In Game</span>` 
@@ -1087,7 +1088,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -1206,7 +1207,7 @@
           if (item.netBalance > 0) {
             balClass = 'balance-positive';
             balText = `+$${item.netBalance} (Owes You)`;
-            clearBtnHtml = `<button type="button" onclick="promptClearDebt('${item.player}', ${item.netBalance})" ontouchend="promptClearDebt('${item.player}', ${item.netBalance})" style="background:#4caf50; color:#fff; padding:2px 6px; font-size:10px; margin-left:6px; border-radius:4px;">Clear</button>`;
+            clearBtnHtml = `<button type="button" class="clear-debt-btn" data-player="${item.player}" data-amt="${item.netBalance}" style="background:#4caf50; color:#fff; padding:2px 6px; font-size:10px; margin-left:6px; border-radius:4px;">Clear</button>`;
           } else if (item.netBalance < 0) {
             balClass = 'balance-negative';
             balText = `-$${Math.abs(item.netBalance)} (You Owe)`;
@@ -1233,6 +1234,14 @@
             </div>
           `;
           ledgerList.appendChild(row);
+        });
+
+        // Re-bind dynamically generated clear debt buttons
+        document.querySelectorAll('.clear-debt-btn').forEach(btn => {
+          btn.addEventListener('pointerup', (e) => {
+            e.preventDefault();
+            promptClearDebt(btn.getAttribute('data-player'), parseInt(btn.getAttribute('data-amt')));
+          });
         });
       } else {
         ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
@@ -1334,7 +1343,7 @@
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -1561,6 +1570,7 @@
         }
       });
 
+      // UNIVERSAL POINTERUP BINDER: Fires instantly on touch and mouse release without click-delay conflicts
       const clickMap = {
         'enterGameBtn': () => { document.getElementById('lobby').style.display = 'none'; joinGame(); },
         'lobbyTutorialBtn': toggleTutorialModal,
@@ -1588,46 +1598,41 @@
         'selectAllOpp': () => selectAllOpponents(true),
         'clearAllOpp': () => selectAllOpponents(false),
         'submitMultiBetBtn': submitMultiPeerSideBet,
-        'retryConnBtn': manualReconnect
+        'retryConnBtn': manualReconnect,
+        'drawPile': () => draw('deck'),
+        'discardPile': () => draw('discard'),
+        'stopPeekBtn': stopPeekingHand
       };
 
       Object.keys(clickMap).forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-          const handler = (e) => {
+          el.addEventListener('pointerup', (e) => {
             e.preventDefault();
             clickMap[id]();
-          };
-          el.addEventListener('click', handler);
-          el.addEventListener('touchend', handler);
+          });
         }
       });
 
       document.querySelectorAll('.lives-chip').forEach(el => {
-        const handler = (e) => {
+        el.addEventListener('pointerup', (e) => {
           e.preventDefault();
           setInitialLives(parseInt(el.getAttribute('data-lives')));
-        };
-        el.addEventListener('click', handler);
-        el.addEventListener('touchend', handler);
+        });
       });
 
       document.querySelectorAll('.wager-chip-btn').forEach(el => {
-        const handler = (e) => {
+        el.addEventListener('pointerup', (e) => {
           e.preventDefault();
           setWager(parseInt(el.getAttribute('data-wager')));
-        };
-        el.addEventListener('click', handler);
-        el.addEventListener('touchend', handler);
+        });
       });
 
       document.querySelectorAll('.bet-amt-chip').forEach(el => {
-        const handler = (e) => {
+        el.addEventListener('pointerup', (e) => {
           e.preventDefault();
           selectRoundBetAmt(parseInt(el.getAttribute('data-amt')));
-        };
-        el.addEventListener('click', handler);
-        el.addEventListener('touchend', handler);
+        });
       });
 
       const closeMap = {
@@ -1651,16 +1656,14 @@
 
       Object.keys(closeMap).forEach(cls => {
         document.querySelectorAll('.' + cls).forEach(el => {
-          const handler = (e) => {
+          el.addEventListener('pointerup', (e) => {
             e.preventDefault();
             if (typeof closeMap[cls] === 'string') {
               document.getElementById(closeMap[cls]).style.display = 'none';
             } else {
               closeMap[cls]();
             }
-          };
-          el.addEventListener('click', handler);
-          el.addEventListener('touchend', handler);
+          });
         });
       });
     });
