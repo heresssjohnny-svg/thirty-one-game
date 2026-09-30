@@ -304,7 +304,7 @@
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
     <span>⚠️ Disconnected from server</span>
-    <button type="button" onclick="manualReconnect()" ontouchend="manualReconnect()" style="background:#fff; color:#d32f2f; padding:3px 8px; font-size:10px; border-radius:6px;">Retry Connection</button>
+    <button type="button" id="retryConnBtn" style="background:#fff; color:#d32f2f; padding:3px 8px; font-size:10px; border-radius:6px;">Retry Connection</button>
   </div>
 
   <!-- TUTORIAL MODAL -->
@@ -1323,18 +1323,18 @@
       pArea.innerHTML = '';
       state.players.forEach(p => {
         const div = document.createElement('div');
-        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
+        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         const av = p.avatar || '👑';
 
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
-          div.innerHTML = `${av} 👁️ ${p.name}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} 👁️️ ${p.name}${voiceBadge}${dcBadge}`;
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -1514,7 +1514,6 @@
       }
     }
 
-    // UNIVERSAL CLICK & TOUCH EVENT BINDER TO GUARANTEE RESPONSIVENESS
     document.addEventListener('DOMContentLoaded', () => {
       try {
         const saved = localStorage.getItem('thirtyOne_playerName');
@@ -1552,7 +1551,16 @@
         });
       }
 
-      // Universal click/touch dispatcher for all interactive elements
+      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect', 'avatarSelect', 'musicUrlInput'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            el.focus();
+          }, { passive: true });
+        }
+      });
+
       const clickMap = {
         'enterGameBtn': () => { document.getElementById('lobby').style.display = 'none'; joinGame(); },
         'lobbyTutorialBtn': toggleTutorialModal,
@@ -1579,7 +1587,8 @@
         'skipSongBtn': skipSong,
         'selectAllOpp': () => selectAllOpponents(true),
         'clearAllOpp': () => selectAllOpponents(false),
-        'submitMultiBetBtn': submitMultiPeerSideBet
+        'submitMultiBetBtn': submitMultiPeerSideBet,
+        'retryConnBtn': manualReconnect
       };
 
       Object.keys(clickMap).forEach(id => {
@@ -1594,7 +1603,6 @@
         }
       });
 
-      // Bind class-based chips and modal closers
       document.querySelectorAll('.lives-chip').forEach(el => {
         const handler = (e) => {
           e.preventDefault();
@@ -1622,7 +1630,6 @@
         el.addEventListener('touchend', handler);
       });
 
-      // Close modal bindings
       const closeMap = {
         'close-tutorial': 'tutorialModal',
         'cancel-knock': 'knockConfirmModal',
