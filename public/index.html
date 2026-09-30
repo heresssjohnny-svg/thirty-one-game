@@ -57,7 +57,7 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Much Higher & Slightly Wider Vertical Arch Oval Table Ring */
+    /* Tall Vertical Arch Oval Table Ring for Players */
     .table-ring {
       position: absolute; inset: 15px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 6;
@@ -639,7 +639,7 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️ Viewing Player's Hand</span>
         <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -653,7 +653,8 @@
         <div class="wager-chip wager-chip-btn" data-wager="20" onclick="setWager(20)">$20</div>
       </div>
 
-      <div id="handInstruction" style="font-size: 12px; opacity: 0.85;">Your Hand</div>
+      <!-- Invisible Hand Instruction Label -->
+      <div id="handInstruction" style="font-size: 12px; opacity: 0; display: none;">Your Hand</div>
       <div class="hand-cards" id="handArea">
         <div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>
       </div>
@@ -1063,7 +1064,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
@@ -1503,7 +1504,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a much higher vertical oval arch perimeter ring
+        // Render players in a much higher vertical oval arch perimeter ring with user anchored at bottom-middle
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1519,8 +1520,8 @@
           orderedPlayers.forEach((p, idx) => {
             const baseAngle = 0.5 * Math.PI; // Bottom-middle anchor angle
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 145; // balanced width
-            const radiusY = 225; // much higher vertical limit
+            const radiusX = 150; // balanced width
+            const radiusY = 245; // much higher vertical limit
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
