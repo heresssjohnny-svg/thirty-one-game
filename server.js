@@ -178,7 +178,7 @@ function handleTurnTimeout(roomId) {
   }
 
   advanceTurnIndex(room);
-  broadcastState(roomId, `⏱️️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
   startTurnTimer(roomId);
   triggerBotTurnIfNeeded(roomId);
 }
@@ -1407,7 +1407,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁 ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -2027,7 +2027,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️ GAME ENDED',
+          title: '🏳️️ GAME ENDED',
           message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
