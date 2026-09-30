@@ -128,7 +128,7 @@
       position: fixed; top: 10px; left: 50%; transform: translateX(-50%) translateY(-100px);
       background: #ff9800; color: #111; font-weight: 800; font-size: 13px;
       padding: 8px 14px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-      z-index: 500; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 3000; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       pointer-events: none; text-align: center; border: 2px solid #fff;
     }
     .banner-announcement.show { transform: translateX(-50%) translateY(0); }
@@ -174,7 +174,7 @@
     .big-announcement-overlay {
       position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
       display: flex; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 1300; opacity: 0; pointer-events: none;
+      z-index: 3500; opacity: 0; pointer-events: none;
       transition: opacity 0.3s ease; text-align: center; padding: 16px; overflow-y: auto;
     }
     .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
@@ -219,7 +219,7 @@
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 1100; padding: 16px; pointer-events: none;
+      z-index: 2200; padding: 16px; pointer-events: none;
     }
     .custom-modal[style*="display: flex"] {
       pointer-events: auto;
@@ -1055,7 +1055,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1144,9 +1144,31 @@
     function toggleReady() { socket.emit('toggleReady', currentRoom); }
     function addBot() { socket.emit('addBot', currentRoom); }
     function removeBot() { socket.emit('removeBot', currentRoom); }
-    function attemptKnock() { confirmKnock(); }
-    function confirmKnock() { socket.emit('knock', currentRoom); }
-    function cancelKnockConfirm() { document.getElementById('knockConfirmModal').style.display = 'none'; }
+
+    function attemptKnock() {
+      if (isSpectator) return;
+      if (!isTurn) return alert("You can only knock on your turn!");
+      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
+      if (!roundHasPassed) return alert("1 full round must go by before anyone can knock!");
+      if (currentScore < minKnockScore) return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
+
+      if (latestTopDiscard && (latestTopDiscard.rank === 'A' || latestTopDiscard.value === 10)) {
+        document.getElementById('knockConfirmCard').innerText = `${latestTopDiscard.rank}${latestTopDiscard.suit}`;
+        document.getElementById('knockConfirmModal').style.display = 'flex';
+        return;
+      }
+      confirmKnock();
+    }
+
+    function confirmKnock() {
+      cancelKnockConfirm();
+      socket.emit('knock', currentRoom);
+    }
+
+    function cancelKnockConfirm() {
+      document.getElementById('knockConfirmModal').style.display = 'none';
+    }
+
     function toggleChat() {
       isChatOpen = !isChatOpen;
       document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
@@ -1252,6 +1274,17 @@
       }, 3500);
     });
 
+    let bannerTimer = null;
+    socket.on('bannerAnnouncement', (data) => {
+      const banner = document.getElementById('bannerAnnouncement');
+      banner.innerText = data.text;
+      banner.classList.add('show');
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => {
+        banner.classList.remove('show');
+      }, data.duration || 3200);
+    });
+
     socket.on('gameState', (state) => {
       try {
         isTurn = state.isMyTurn;
@@ -1325,6 +1358,26 @@
             removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
             readyBtn.className = isReady ? 'ready-on' : '';
             readyBtn.innerText = isReady ? '✅ You are Ready' : '⏳ Tap to Ready';
+          }
+        }
+
+        const knockBtn = document.getElementById('knockBtn');
+        if (isSpectator || !state.gameStarted) {
+          knockBtn.style.display = 'none';
+        } else {
+          knockBtn.style.display = 'inline-block';
+          if (state.knocker) {
+            knockBtn.disabled = true;
+            knockBtn.innerText = `Knocked by ${state.knocker}`;
+          } else {
+            knockBtn.disabled = !state.canKnock;
+            if (!roundHasPassed) {
+              knockBtn.innerText = `Knock (Round 1 active)`;
+            } else if (state.canKnock) {
+              knockBtn.innerText = `⚡ Knock Now!`;
+            } else {
+              knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+            }
           }
         }
 
