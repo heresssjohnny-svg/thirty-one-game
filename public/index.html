@@ -481,7 +481,7 @@
   <!-- INCOMING SPECTATOR PEEK REQUEST PROMPT FOR ACTIVE PLAYERS -->
   <div id="peekRequestModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️️ Spectator Peek Request</div>
+      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Spectator Peek Request</div>
       <div id="peekRequestText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Spectator wants to view your hand. Allow them?
       </div>
@@ -1204,7 +1204,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
