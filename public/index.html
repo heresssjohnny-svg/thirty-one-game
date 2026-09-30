@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Shifted Left Table Ring Container (Hugging Left/Right Edges, Higher Top Vertical Limit) */
+    /* Smaller Width & Higher Top Limit Table Ring Container */
     .table-ring {
       position: absolute;
-      inset: -95px 10px 50px -10px;
+      inset: -105px 20px 50px 20px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -768,6 +768,7 @@
     let isAnimatingDeal = false;
     let dealAnimationTimers = [];
     let announcementTimer = null;
+    let bannerTimer = null;
     let pendingOfferBetId = null;
     let pendingOfferChallengerTarget = '';
 
@@ -1580,7 +1581,7 @@
             label.className = 'opp-checkbox-item';
             label.innerHTML = `
               <input type="checkbox" value="${m.name}" checked />
-              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️️]' : ''}</span>
             `;
             checklist.appendChild(label);
           }
@@ -1688,136 +1689,6 @@
       return el;
     }
 
-    socket.on('startDealerSelectionCut', (data) => {
-      if (isSpectator) return;
-      const overlay = document.getElementById('dealerCutOverlay');
-      const spread = document.getElementById('dealerCutSpread');
-      const container = document.getElementById('dealerCutPicksContainer');
-
-      spread.innerHTML = '';
-      container.innerHTML = '';
-      hasPickedDealerCard = false;
-
-      const isEligible = data.players.some(p => p.id === socket.id);
-      const instr = document.getElementById('dealerCutInstruction');
-      instr.innerText = isEligible 
-        ? "👉 Tap any face-down card! Lowest card becomes Dealer." 
-        : `Watching dealer cut: ${data.players.map(p => p.name).join(', ')}`;
-
-      for (let i = 0; i < data.deckCount; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'card-cut-slot';
-        slot.innerText = '🂠';
-        slot.onclick = () => {
-          if (!isEligible || hasPickedDealerCard) return;
-          hasPickedDealerCard = true;
-          slot.style.opacity = '0.3';
-          slot.style.pointerEvents = 'none';
-          playTurnBellSound();
-          socket.emit('pickDealerCutCard', { roomId: currentRoom, cardIndex: i });
-        };
-        spread.appendChild(slot);
-      }
-
-      overlay.classList.add('active');
-    });
-
-    socket.on('dealerCutCardPicked', (data) => {
-      const container = document.getElementById('dealerCutPicksContainer');
-      if (!container) return;
-      const div = document.createElement('div');
-      div.id = `dc_pick_${data.playerId}`;
-      div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
-      container.appendChild(div);
-    });
-
-    socket.on('dealerCutResultsReveal', (data) => {
-      const container = document.getElementById('dealerCutPicksContainer');
-      if (!container) return;
-      container.innerHTML = '';
-
-      data.results.forEach(res => {
-        const box = document.createElement('div');
-        box.className = 'showdown-player-box';
-        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
-        box.innerHTML = `
-          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:3px;">
-            <span>${res.card.rank}</span><span>${res.card.suit}</span>
-          </div>
-        `;
-        container.appendChild(box);
-      });
-
-      setTimeout(() => {
-        document.getElementById('dealerCutOverlay').classList.remove('active');
-      }, 3500);
-    });
-
-    socket.on('startTiebreakerCut', (data) => {
-      if (isSpectator) return;
-      const overlay = document.getElementById('tiebreakerOverlay');
-      const spread = document.getElementById('tiebreakerSpread');
-      const container = document.getElementById('tiebreakerPicksContainer');
-
-      spread.innerHTML = '';
-      container.innerHTML = '';
-      hasPickedTiebreakerCard = false;
-
-      const instr = document.getElementById('tiebreakerInstruction');
-      instr.innerText = "⚡ Choose a tiebreaker card from the deck!";
-
-      for (let i = 0; i < data.deckCount; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'card-cut-slot';
-        slot.innerText = '🂠';
-        slot.onclick = () => {
-          if (hasPickedTiebreakerCard) return;
-          hasPickedTiebreakerCard = true;
-          slot.style.opacity = '0.3';
-          slot.style.pointerEvents = 'none';
-          playTurnBellSound();
-          socket.emit('pickTiebreakerCard', { roomId: currentRoom, cardIndex: i });
-        };
-        spread.appendChild(slot);
-      }
-
-      overlay.classList.add('active');
-    });
-
-    socket.on('tiebreakerCardPicked', (data) => {
-      const container = document.getElementById('tiebreakerPicksContainer');
-      if (!container) return;
-      const div = document.createElement('div');
-      div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
-      container.appendChild(div);
-    });
-
-    socket.on('tiebreakerResultsReveal', (data) => {
-      const container = document.getElementById('tiebreakerPicksContainer');
-      if (!container) return;
-      container.innerHTML = '';
-
-      data.results.forEach(res => {
-        const box = document.createElement('div');
-        box.className = 'showdown-player-box';
-        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
-        box.innerHTML = `
-          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'}" style="margin-top:3px;">
-            <span>${res.card.rank}</span><span>${res.card.suit}</span>
-          </div>
-        `;
-        container.appendChild(box);
-      });
-
-      setTimeout(() => {
-        document.getElementById('tiebreakerOverlay').classList.remove('active');
-      }, 3500);
-    });
-
     socket.on('gameState', (state) => {
       try {
         const turnJustBegan = state.isMyTurn && !wasMyTurn;
@@ -1909,7 +1780,7 @@
           }
         }
 
-        // Dynamically Render Opponents in Oval Ring (Shifted Left & Higher Top Limit)
+        // Dynamically Render Opponents in Oval Ring (Narrower Width & Higher Top Limit)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1917,11 +1788,11 @@
           let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
 
           const slotCoordinates = [
-            { x: -175, y: -25 }, // Left Top
-            { x: -175, y: 70 },  // Left Bottom
-            { x: 0,    y: -130 }, // Top Center (Raised higher)
-            { x: 175,  y: -25 }, // Right Top
-            { x: 175,  y: 70 }   // Right Bottom
+            { x: -125, y: -25 }, // Left Top
+            { x: -125, y: 70 },  // Left Bottom
+            { x: 0,    y: -140 }, // Top Center (Raised higher)
+            { x: 125,  y: -25 }, // Right Top
+            { x: 125,  y: 70 }   // Right Bottom
           ];
 
           otherPlayers.forEach((p, idx) => {
@@ -2111,7 +1982,7 @@
       if (bannerTimer) clearTimeout(bannerTimer);
       bannerTimer = setTimeout(() => {
         banner.classList.remove('show');
-      }, data.duration || 3200);
+      }, data.duration || 4000);
     });
 
     socket.on('errorMsg', (msg) => alert(msg));
