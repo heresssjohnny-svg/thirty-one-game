@@ -318,7 +318,8 @@ function broadcastRoomList() {
       gameStarted: r.gameStarted,
       activeCount: activeCount,
       spectatorCount: specCount,
-      totalPot: totalPot
+      totalPot: totalPot,
+      players: r.players.map(p => ({ name: p.name, isSpectator: p.isSpectator, lives: p.lives }))
     };
   });
   io.emit('roomListUpdate', roomList);
@@ -801,7 +802,7 @@ function broadcastState(roomId, message = '') {
   if (room.gameStarted && room.currentMatchParticipants) {
     totalGamePot = room.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
   } else {
-    totalGamePot = getActivePlayers(r).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+    totalGamePot = getActivePlayers(room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
   }
 
   const activeSideBetsTotal = (room.peerSideBets || [])
@@ -1708,7 +1709,7 @@ io.on('connection', (socket) => {
   socket.on('leaveRoom', (roomId) => {
     socket.leave(roomId);
     const room = rooms[roomId];
-    const player = room?.players[p => p.id === socket.id];
+    const player = room?.players.find(p => p.id === socket.id);
     if (room && player) {
       finalizePlayerExit(roomId, player.name);
     }
