@@ -1158,10 +1158,17 @@
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span class="${netClass}">${netText}</span>
-                <button type="button" class="secondary" style="padding:2px 6px; font-size:10px;" onclick="requestClearDebt('${b.player}')">Clear</button>
+                <button type="button" class="secondary clear-debt-item-btn" data-player="${b.player}" style="padding:2px 6px; font-size:10px;">Clear</button>
               </div>
             `;
             ledgerList.appendChild(div);
+          });
+
+          document.querySelectorAll('.clear-debt-item-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              requestClearDebt(btn.getAttribute('data-player'));
+            });
           });
 
           const overallEl = document.getElementById('ledgerOverallTotal');
@@ -1325,7 +1332,7 @@
           if (m.name !== myPlayerName && m.isOnline) {
             count++;
             const opt = document.createElement('option');
-            opt.value = m.name;
+            opt.value = m.id || m.name;
             opt.innerText = m.name;
             select.appendChild(opt);
           }
@@ -1338,14 +1345,14 @@
     }
 
     function sendVoiceInvite() {
-      const targetName = document.getElementById('voiceInviteSelect').value;
-      if (!targetName) return alert('No player selected.');
-      const targetMember = latestAllTableMembers.find(m => m.name === targetName);
-      if (!targetMember) return alert('Player not found.');
+      const targetIdOrName = document.getElementById('voiceInviteSelect').value;
+      if (!targetIdOrName) return alert('No player selected.');
+      const targetMember = latestAllTableMembers.find(m => m.id === targetIdOrName || m.name === targetIdOrName);
+      const targetName = targetMember ? targetMember.name : targetIdOrName;
 
       socket.emit('inviteToVoice', {
         roomId: currentRoom,
-        targetSocketId: targetMember.id || targetName
+        targetSocketId: targetIdOrName
       });
       toggleVoiceInviteModal();
       alert(`Invitation sent to ${targetName}!`);
@@ -1879,6 +1886,7 @@
         'closeVoiceModalBtn': toggleVoiceInviteModal,
         'declineVoiceBtn': () => respondVoiceInvite(false),
         'acceptVoiceBtn': () => respondVoiceInvite(true),
+        'sendVoiceInviteBtn': sendVoiceInvite,
         'declineSideBetBtn': () => respondSideBet(false),
         'acceptSideBetBtn': () => respondSideBet(true),
         'denyPeekBtn': () => respondPeekPermission(false),
