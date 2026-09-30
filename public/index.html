@@ -377,7 +377,7 @@
   <!-- INCOMING VOICE INVITE ALERT MODAL -->
   <div id="incomingVoiceInviteModal" class="custom-modal">
     <div class="modal-card" style="border-color:#00897b; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️ Voice Invitation</div>
+      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️️ Voice Invitation</div>
       <div id="incomingVoiceText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Player invited you to join voice chat.
       </div>
@@ -609,11 +609,11 @@
 
       <div id="wagerSection" class="wager-bar" style="display:none;">
         <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
-        <div class="wager-chip wager-chip-btn" data-wager="0">$0</div>
-        <div class="wager-chip wager-chip-btn" data-wager="1">$1</div>
-        <div class="wager-chip wager-chip-btn" data-wager="5">$5</div>
-        <div class="wager-chip wager-chip-btn" data-wager="10">$10</div>
-        <div class="wager-chip wager-chip-btn" data-wager="20">$20</div>
+        <div class="wager-chip wager-chip-btn" data-wager="0" onclick="setWager(0)">$0</div>
+        <div class="wager-chip wager-chip-btn" data-wager="1" onclick="setWager(1)">$1</div>
+        <div class="wager-chip wager-chip-btn" data-wager="5" onclick="setWager(5)">$5</div>
+        <div class="wager-chip wager-chip-btn" data-wager="10" onclick="setWager(10)">$10</div>
+        <div class="wager-chip wager-chip-btn" data-wager="20" onclick="setWager(20)">$20</div>
       </div>
 
       <div id="handInstruction" style="font-size: 12px; opacity: 0.85;">Your Hand</div>
@@ -673,6 +673,12 @@
     let currentlyViewingHand = null;
     let pendingPeekRequesterId = null;
     let pendingClearDebtName = null;
+
+    let isInVoice = false;
+    let isMuted = false;
+    let localStream = null;
+    let peerConnections = {};
+    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     function playTurnBellSound() {}
     function triggerTurnVibration() { if (navigator.vibrate) navigator.vibrate(200); }
@@ -856,6 +862,7 @@
     function leaveLobby() {
       if (!currentRoom) return;
       if (confirm('Leave this game room?')) {
+        if (isInVoice) leaveVoice();
         cancelDealAnimation();
         dismissAnnouncement();
         stopPeekingHand();
@@ -950,27 +957,191 @@
       pendingClearDebtName = null;
     }
 
-    function toggleVoice() {}
-    function toggleMute() {}
-    function toggleVoiceInviteModal() {}
-    function sendVoiceInvite() {}
-    function respondVoiceInvite(acc) {}
-    function openRoundSideBetModal() { toggleRoundBetModal(); }
-    function openFirstLoserSideBetModal() { toggleRoundBetModal(); }
-    function toggleRoundBetModal() {
-      const modal = document.getElementById('roundBetModal');
-      modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+    async function toggleVoice() {
+      if (!isInVoice) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          isInVoice = true;
+          isMuted = false;
+          document.getElementById('voiceBtn').className = 'voice-on';
+          document.getElementById('voiceBtn').innerText = '🔴 Leave';
+          document.getElementById('voiceInviteBtn').style.display = 'inline-block';
+          document.getElementById('muteBtn').style.display = 'inline-block';
+          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          socket.emit('joinVoice', currentRoom);
+        } catch (err) {
+          alert('Microphone access denied: ' + err.message);
+        }
+      } else {
+        leaveVoice();
+      }
     }
-    function selectAllOpponents(chk) {}
-    function selectRoundBetAmt(amt) {}
-    function submitMultiPeerSideBet() {}
-    function respondSideBet(acc) {}
-    function attemptKnock() { confirmKnock(); }
-    function confirmKnock() { socket.emit('knock', currentRoom); }
-    function cancelKnockConfirm() { document.getElementById('knockConfirmModal').style.display = 'none'; }
+
+    function leaveVoice() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      Object.keys(peerConnections).forEach(id => {
+        if (peerConnections[id]) peerConnections[id].close();
+      });
+      peerConnections = {};
+      document.getElementById('audioContainer').innerHTML = '';
+      isInVoice = false;
+      document.getElementById('voiceBtn').className = 'voice-btn';
+      document.getElementById('voiceBtn').innerText = '🎤 Voice';
+      document.getElementById('voiceInviteBtn').style.display = 'none';
+      document.getElementById('muteBtn').style.display = 'none';
+      socket.emit('leaveVoice', currentRoom);
+    }
+
+    function toggleVoiceInviteModal() {
+      const modal = document.getElementById('voiceInviteModal');
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const select = document.getElementById('voiceInviteSelect');
+        select.innerHTML = '';
+        let count = 0;
+        latestAllTableMembers.forEach(m => {
+          if (m.name !== myPlayerName && m.isOnline) {
+            count++;
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            select.appendChild(opt);
+          }
+        });
+        if (count === 0) {
+          select.innerHTML = '<option value="">No other players online</option>';
+        }
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function sendVoiceInvite() {
+      const targetName = document.getElementById('voiceInviteSelect').value;
+      if (!targetName) return alert('No player selected.');
+      const targetMember = latestAllTableMembers.find(m => m.name === targetName);
+      if (!targetMember) return alert('Player not found.');
+
+      socket.emit('inviteToVoice', {
+        roomId: currentRoom,
+        targetSocketId: targetMember.id || targetName
+      });
+      toggleVoiceInviteModal();
+      alert(`Invitation sent to ${targetName}!`);
+    }
+
+    socket.on('voiceInviteReceived', (data) => {
+      document.getElementById('incomingVoiceText').innerHTML = `
+        <strong>${data.inviterName}</strong> invited you to join voice chat!
+      `;
+      document.getElementById('incomingVoiceInviteModal').style.display = 'flex';
+    });
+
+    function respondVoiceInvite(accept) {
+      document.getElementById('incomingVoiceInviteModal').style.display = 'none';
+      if (accept) {
+        if (!isInVoice) toggleVoice();
+      }
+    }
+
+    function toggleMute() {
+      if (!localStream) return;
+      isMuted = !isMuted;
+      localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+    }
+
+    function createPeerConnection(targetSocketId, isInitiator) {
+      const pc = new RTCPeerConnection(rtcConfig);
+      peerConnections[targetSocketId] = pc;
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('voiceSignal', {
+            target: targetSocketId,
+            signal: { candidate: event.candidate }
+          });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        let audioEl = document.getElementById(`audio_${targetSocketId}`);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = `audio_${targetSocketId}`;
+          audioEl.autoplay = true;
+          audioEl.playsInline = true;
+          document.getElementById('audioContainer').appendChild(audioEl);
+        }
+        audioEl.srcObject = event.streams[0];
+      };
+
+      if (isInitiator) {
+        pc.onnegotiationneeded = async () => {
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('voiceSignal', {
+              target: targetSocketId,
+              signal: { description: pc.localDescription }
+            });
+          } catch (err) {}
+        };
+      }
+
+      return pc;
+    }
+
+    socket.on('currentVoiceUsers', (users) => {
+      users.forEach(userId => createPeerConnection(userId, true));
+    });
+
+    socket.on('voiceUserJoined', ({ socketId }) => {
+      createPeerConnection(socketId, false);
+    });
+
+    socket.on('voiceUserLeft', ({ socketId }) => {
+      if (peerConnections[socketId]) {
+        peerConnections[socketId].close();
+        delete peerConnections[socketId];
+      }
+      const audioEl = document.getElementById(`audio_${socketId}`);
+      if (audioEl) audioEl.remove();
+    });
+
+    socket.on('voiceSignal', async ({ sender, signal }) => {
+      let pc = peerConnections[sender];
+      if (!pc) pc = createPeerConnection(sender, false);
+
+      try {
+        if (signal.description) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.description));
+          if (signal.description.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('voiceSignal', {
+              target: sender,
+              signal: { description: pc.localDescription }
+            });
+          }
+        } else if (signal.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+      } catch (err) {}
+    });
+
     function toggleReady() { socket.emit('toggleReady', currentRoom); }
     function addBot() { socket.emit('addBot', currentRoom); }
     function removeBot() { socket.emit('removeBot', currentRoom); }
+    function attemptKnock() { confirmKnock(); }
+    function confirmKnock() { socket.emit('knock', currentRoom); }
+    function cancelKnockConfirm() { document.getElementById('knockConfirmModal').style.display = 'none'; }
     function toggleChat() {
       isChatOpen = !isChatOpen;
       document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
@@ -985,35 +1156,180 @@
     function draw(src) { socket.emit('drawCard', { roomId: currentRoom, source: src }); }
     function discard(idx) { socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx }); }
 
+    function openRoundSideBetModal() { toggleRoundBetModal(); }
+    function openFirstLoserSideBetModal() { toggleRoundBetModal(); }
+    function toggleRoundBetModal() {
+      const modal = document.getElementById('roundBetModal');
+      modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+    }
+    function selectAllOpponents(chk) {
+      document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => cb.checked = chk);
+    }
+    function selectRoundBetAmt(amt) {
+      selectedSideBetAmt = amt;
+      document.querySelectorAll('.bet-amt-chip').forEach(c => {
+        c.classList.toggle('selected', parseInt(c.getAttribute('data-amt')) === amt);
+      });
+    }
+    function submitMultiPeerSideBet() { toggleRoundBetModal(); }
+
+    function renderCard(card, onClick, highlight = false, isMini = false, isFlip = false) {
+      const el = document.createElement('div');
+      const isRed = card.suit === '♥' || card.suit === '♦';
+      el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''} ${isMini ? 'mini' : ''} ${isFlip ? 'card-flip-reveal' : ''}`;
+      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '13px' : '20px'};">${card.suit}</span>`;
+      if (onClick) el.onclick = onClick;
+      return el;
+    }
+
     socket.on('gameState', (state) => {
       try {
+        isTurn = state.isMyTurn;
+        hasDrawn = state.hasDrawn;
+        myHand = state.hand || [];
+        minKnockScore = state.minKnockScore || 21;
+        roundHasPassed = state.roundHasPassed;
+        currentScore = state.score || 0;
+        isSpectator = Boolean(state.isSpectator);
+        manualSpectator = Boolean(state.manualSpectator);
+        isReady = Boolean(state.isReady);
+        currentWager = state.myWager || 0;
+        latestTopDiscard = state.topDiscard || null;
+        latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
+        latestAllTableMembers = state.allTableMembers || [];
+        latestPersonalLedger = state.personalLedger || [];
+
         const pArea = document.getElementById('playersArea');
         if (pArea) {
           pArea.innerHTML = '';
           (state.players || []).forEach(p => {
             const div = document.createElement('div');
-            div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
-            div.innerHTML = `${p.name} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}`;
+            const voiceBadge = p.isInVoice ? ' 🎙️' : '';
+            const dcBadge = p.disconnected ? ' ⚠️' : '';
+            if (p.isSpectator) {
+              div.className = 'player-tag spectator';
+              div.innerHTML = `👁️ ${p.name}${voiceBadge}${dcBadge}`;
+            } else {
+              div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
+              const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
+              const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
+              div.innerHTML = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+            }
             pArea.appendChild(div);
           });
         }
-        currentScore = state.score || 0;
-        document.getElementById('scoreLabel').innerText = `Score: ${currentScore}`;
+
+        document.getElementById('scoreLabel').innerText = isSpectator ? 'Spectating' : `Score: ${currentScore}`;
+        
+        const wagerSec = document.getElementById('wagerSection');
+        if (!state.gameStarted && !isSpectator) {
+          wagerSec.style.display = 'flex';
+          document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
+            const val = parseInt(chip.getAttribute('data-wager')) || 0;
+            chip.classList.toggle('selected', val === currentWager);
+          });
+        } else {
+          wagerSec.style.display = 'none';
+        }
+
+        const readyBtn = document.getElementById('readyBtn');
+        const addBotBtn = document.getElementById('addBotBtn');
+        const removeBotBtn = document.getElementById('removeBotBtn');
+        const spectateBtn = document.getElementById('spectateBtn');
+
+        if (state.gameStarted) {
+          readyBtn.style.display = 'none';
+          addBotBtn.style.display = 'none';
+          removeBotBtn.style.display = 'none';
+          spectateBtn.style.display = 'none';
+        } else {
+          spectateBtn.style.display = 'inline-block';
+          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+          if (isSpectator) {
+            readyBtn.style.display = 'none';
+            addBotBtn.style.display = 'none';
+            removeBotBtn.style.display = 'none';
+          } else {
+            readyBtn.style.display = 'inline-block';
+            addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
+            removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
+            readyBtn.className = isReady ? 'ready-on' : '';
+            readyBtn.innerText = isReady ? '✅ You are Ready' : '⏳ Tap to Ready';
+          }
+        }
+
         const disc = document.getElementById('discardPile');
         if (state.topDiscard) {
-          disc.innerText = `${state.topDiscard.rank}${state.topDiscard.suit}`;
+          const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
+          disc.className = `card ${isRed ? 'red' : 'black'}`;
+          disc.innerHTML = `<span>${state.topDiscard.rank}</span><span style="font-size: 20px;">${state.topDiscard.suit}</span>`;
+        } else {
+          disc.className = 'card';
+          disc.innerText = '--';
         }
-      } catch (e) {}
+
+        forceRenderHand();
+      } catch (err) {
+        console.error('Error in gameState handler:', err);
+      }
     });
 
+    socket.on('bigAnnouncement', (data) => {
+      dismissAnnouncement();
+      const overlay = document.getElementById('announcementOverlay');
+      document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
+      document.getElementById('annMessage').innerText = data.message || '';
+      document.getElementById('annSubtext').innerText = data.subtext || '';
+      overlay.classList.add('show');
+      announcementTimer = setTimeout(() => dismissAnnouncement(), data.duration || 5500);
+    });
+
+    socket.on('errorMsg', (msg) => alert(msg));
+
     document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const saved = localStorage.getItem('thirtyOne_playerName');
+        if (saved) {
+          const pInput = document.getElementById('playerName');
+          if (pInput) pInput.value = saved;
+        }
+      } catch (e) {}
+
+      const nameInput = document.getElementById('playerName');
+      if (nameInput) {
+        nameInput.addEventListener('input', (e) => {
+          const val = e.target.value.trim();
+          if (val) {
+            try {
+              localStorage.setItem('thirtyOne_playerName', val);
+            } catch (err) {}
+          }
+        });
+      }
+
+      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            e.target.focus();
+          }, { passive: true });
+        }
+      });
+
       const actionMap = {
         'enterGameBtn': joinGame,
         'lobbyTutorialBtn': toggleTutorialModal,
         'rulesHeaderBtn': toggleTutorialModal,
         'ledgerHeaderBtn': toggleLedgerModal,
+        'voiceBtn': toggleVoice,
+        'voiceInviteBtn': toggleVoiceInviteModal,
+        'muteBtn': toggleMute,
         'leaveRoomBtn': leaveLobby,
         'spectateBtn': toggleSpectate,
+        'spectatorPeekBtn': togglePeekSelectorModal,
+        'roundBetBtn': openRoundSideBetModal,
+        'firstLoserBetBtn': openFirstLoserSideBetModal,
         'readyBtn': toggleReady,
         'addBotBtn': addBot,
         'removeBotBtn': removeBot,
@@ -1021,16 +1337,28 @@
         'chatToggleBtn': toggleChat,
         'chatCloseBtn': toggleChat,
         'sendChatBtn': sendChat,
+        'submitPeekBtn': submitPeekRequest,
+        'submitMultiBetBtn': submitMultiPeerSideBet,
         'retryConnBtn': manualReconnect,
         'drawPile': () => draw('deck'),
         'discardPile': () => draw('discard'),
         'stopPeekBtn': stopPeekingHand,
+        'selectAllOppBtn': () => selectAllOpponents(true),
+        'clearAllOppBtn': () => selectAllOpponents(false),
         'closeTutorialBtn1': toggleTutorialModal,
         'closeTutorialBtn2': toggleTutorialModal,
         'cancelKnockBtn': cancelKnockConfirm,
         'confirmKnockBtn': confirmKnock,
         'cancelDebtBtn': cancelClearDebt,
         'executeDebtBtn': executeClearDebt,
+        'closeVoiceModalBtn': toggleVoiceInviteModal,
+        'declineVoiceBtn': () => respondVoiceInvite(false),
+        'acceptVoiceBtn': () => respondVoiceInvite(true),
+        'declineSideBetBtn': () => respondSideBet(false),
+        'acceptSideBetBtn': () => respondSideBet(true),
+        'denyPeekBtn': () => respondPeekPermission(false),
+        'allowPeekBtn': () => respondPeekPermission(true),
+        'closePeekModalBtn': togglePeekSelectorModal,
         'closeLedgerBtn1': toggleLedgerModal,
         'closeLedgerBtn2': toggleLedgerModal,
         'closeRoundBetBtn': toggleRoundBetModal
@@ -1044,6 +1372,12 @@
             actionMap[id]();
           });
         }
+      });
+
+      document.querySelectorAll('.lives-chip').forEach(el => {
+        el.addEventListener('click', (e) => {
+          setInitialLives(parseInt(el.getAttribute('data-lives')));
+        });
       });
     });
 
