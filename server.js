@@ -1398,7 +1398,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1571,7 +1571,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -1597,16 +1597,58 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  socket.on('clearDebt', ({ roomId, debtorName }) => {
+  // Bidirectional Debt Clearance with Creditor Permission Workflow
+  socket.on('requestClearDebt', ({ roomId, targetPlayerName }) => {
     const room = rooms[roomId];
     if (!room) return;
+    const requester = room.players.find(p => p.id === socket.id);
+    if (!requester) return;
 
+    const targetPlayer = room.players.find(p => p.name === targetPlayerName);
+    
+    // Check if requester is debtor wanting target (creditor) to clear
+    const debtorOwesCreditor = (room.debts && room.debts[requester.name] && room.debts[requester.name][targetPlayerName]) || 0;
+    // Check if requester is creditor wanting target (debtor) debt cleared
+    const creditorOwesDebtor = (room.debts && room.debts[targetPlayerName] && room.debts[targetPlayerName][requester.name]) || 0;
+
+    if (debtorOwesCreditor > 0) {
+      // Requester owes target. Ask target (creditor) permission!
+      if (targetPlayer && !targetPlayer.isBot) {
+        io.to(targetPlayer.id).emit('debtClearPermissionRequested', {
+          debtorName: requester.name,
+          amount: debtorOwesCreditor
+        });
+        socket.emit('bannerAnnouncement', { text: `Requested ${targetPlayerName}'s permission to forgive your debt of $${debtorOwesCreditor}...`, duration: 3500 });
+      } else {
+        // Bot or offline creditor auto-approves
+        clearDebtAction(room, roomId, targetPlayerName, requester.name);
+      }
+    } else if (creditorOwesDebtor > 0) {
+      // Requester is creditor forgiving debtor instantly
+      clearDebtAction(room, roomId, requester.name, targetPlayerName);
+    } else {
+      socket.emit('errorMsg', `No active debt found between you and ${targetPlayerName}.`);
+    }
+  });
+
+  socket.on('respondDebtPermission', ({ roomId, debtorName, allow }) => {
+    const room = rooms[roomId];
+    if (!room) return;
     const creditor = room.players.find(p => p.id === socket.id);
     if (!creditor) return;
-    const creditorName = creditor.name;
 
+    if (allow) {
+      clearDebtAction(room, roomId, creditor.name, debtorName);
+    } else {
+      const debtor = room.players.find(p => p.name === debtorName);
+      if (debtor) {
+        io.to(debtor.id).emit('bannerAnnouncement', { text: `❌ ${creditor.name} declined to forgive your debt.`, duration: 3500 });
+      }
+    }
+  });
+
+  function clearDebtAction(room, roomId, creditorName, debtorName) {
     let clearedAmount = 0;
-
     if (room.debts && room.debts[debtorName] && room.debts[debtorName][creditorName]) {
       clearedAmount += room.debts[debtorName][creditorName];
       room.debts[debtorName][creditorName] = 0;
@@ -1625,10 +1667,8 @@ io.on('connection', (socket) => {
         text: `🤝 ${creditorName} cleared ${debtorName}'s debt of $${clearedAmount}!`,
         duration: 4000
       });
-    } else {
-      socket.emit('errorMsg', `No active debt found from ${debtorName}.`);
     }
-  });
+  }
 
   socket.on('proposeMultiSideBets', ({ roomId, betType, opponentNames, targetPlayerName, amount }) => {
     const room = rooms[roomId];
