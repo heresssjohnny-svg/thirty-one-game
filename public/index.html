@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Repositioned Upward Table Ring Container */
+    /* Table Ring Container positioned just above the life selector table */
     .table-ring {
       position: absolute;
-      inset: -60px 0 40px 0;
+      inset: -55px 0 60px 0;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -674,7 +674,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Outer Perimeter Oval Table Ring for Other Players / Bots -->
+    <!-- Outer Perimeter Oval Table Ring for Opponents/Bots configured as: 2 Left, 1 Top, 2 Right -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -712,9 +712,9 @@
         <div class="wager-chip wager-chip-btn" data-wager="20" onclick="setWager(20)">$20</div>
       </div>
 
-      <!-- Locked Central Player Name Badge Right Above Cards -->
+      <!-- Locked Central Player Name Badge Right Above Cards (No Duplicate Status) -->
       <div id="myCenterPlayerBadge" style="background: rgba(0,0,0,0.85); border: 2px solid #ffd700; padding: 4px 12px; border-radius: 14px; font-size: 11px; font-weight: bold; color: #ffd700; margin-bottom: 2px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.6); display: inline-block;">
-        👤 <span id="centerPlayerNameLabel">Player</span> (2 ❤️)
+        👤 <span id="centerPlayerNameLabel">Player</span>
       </div>
 
       <!-- Invisible Hand Instruction Label -->
@@ -1770,34 +1770,39 @@
             const readyMark = (!state.gameStarted && mePlayer && mePlayer.isReady) ? '✓ ' : '';
             const dealerMark = (mePlayer && mePlayer.isDealer) ? ' [D]' : '';
             const myLives = mePlayer ? mePlayer.lives : 2;
-            document.getElementById('centerPlayerNameLabel').innerText = `${readyMark}${myPlayerName}${dealerMark} (${myLives} ❤️)`;
+            const turnMark = (mePlayer && mePlayer.isTurn) ? ' ⭐' : '';
+            document.getElementById('centerPlayerNameLabel').innerText = `${readyMark}${myPlayerName}${dealerMark}${turnMark} (${myLives} ❤️)`;
+            centerBadge.style.borderColor = (mePlayer && mePlayer.isTurn) ? '#ffcc00' : '#ffd700';
+            centerBadge.style.background = (mePlayer && mePlayer.isTurn) ? 'rgba(255,204,0,0.3)' : 'rgba(0,0,0,0.85)';
           } else {
             centerBadge.style.display = 'none';
           }
         }
 
-        // Dynamically Render Other Players/Bots in Oval Ring (excluding yourself)
+        // Dynamically Render Opponents in Oval Ring strictly configured as: 2 Left, 1 Top, 2 Right (Total 5 slots for 6-player max)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
           const rawPlayers = state.players || [];
           let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
 
-          const totalP = otherPlayers.length;
-          const radiusX = 135; 
-          const radiusY = 150; 
+          // Fixed seat coordinates mapped around the oval ring: 2 Left, 1 Top, 2 Right
+          const slotCoordinates = [
+            { x: -140, y: -45 }, // Left Top
+            { x: -140, y: 55 },  // Left Bottom
+            { x: 0,    y: -85 }, // Top Center
+            { x: 140,  y: -45 }, // Right Top
+            { x: 140,  y: 55 }   // Right Bottom
+          ];
 
           otherPlayers.forEach((p, idx) => {
-            // Distribute opponents across top and sides (avoiding bottom where you sit)
-            const angle = Math.PI + (idx / Math.max(1, totalP)) * Math.PI;
-            const x = Math.cos(angle) * radiusX;
-            const y = Math.sin(angle) * radiusY - 20;
+            const pos = slotCoordinates[idx % slotCoordinates.length];
 
             const seat = document.createElement('div');
             seat.id = `seat-${p.name}`;
             seat.className = `player-seat ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
-            seat.style.left = `calc(50% + ${x}px)`;
-            seat.style.top = `calc(50% + ${y}px)`;
+            seat.style.left = `calc(50% + ${pos.x}px)`;
+            seat.style.top = `calc(50% + ${pos.y}px)`;
 
             const voiceBadge = p.isInVoice ? ' 🎙️' : '';
             const dcBadge = p.disconnected ? ' ⚠️' : '';
