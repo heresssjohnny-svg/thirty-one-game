@@ -740,6 +740,7 @@ function startNewRound(roomId) {
   room.peerSideBets = (room.peerSideBets || []).filter(b => b.type === 'firstLoser');
   room.tiebreakerActive = false;
   room.firstCardPickedUp = null;
+  room.firstCardPickupTracker = null;
 
   if (!room.isFirstRoundOfMatch) {
     for (let i = 1; i <= room.players.length; i++) {
@@ -814,6 +815,14 @@ function broadcastState(roomId, message = '') {
     .filter(b => b.accepted)
     .reduce((sum, b) => sum + (b.amount * 2), 0);
 
+  // Check if first card pickup tracker card is still in the player's hand
+  if (room.firstCardPickupTracker) {
+    const targetPlayer = room.players.find(p => p.name === room.firstCardPickupTracker.player);
+    if (!targetPlayer || !targetPlayer.hand || !targetPlayer.hand.some(c => c.rank === room.firstCardPickupTracker.card.rank && c.suit === room.firstCardPickupTracker.card.suit)) {
+      room.firstCardPickupTracker = null;
+    }
+  }
+
   room.players.forEach(p => {
     if (p.isBot) return;
 
@@ -859,7 +868,7 @@ function broadcastState(roomId, message = '') {
       minKnockScore: minKnockScore,
       roundHasPassed: roundHasPassed,
       topDiscard: room.discardPile[room.discardPile.length - 1] || null,
-      firstCardPickedUp: room.firstCardPickedUp || null,
+      firstCardPickedUp: room.firstCardPickupTracker || null,
       deckCount: room.deck ? room.deck.length : 0,
       isMyTurn: isCurrent,
       hasDrawn: Boolean(room.drawnCard),
@@ -1030,7 +1039,7 @@ function triggerBotTurnIfNeeded(roomId) {
     let drawn;
     if (takeDiscard) {
       if (room.initialDiscardCard && topDiscard.rank === room.initialDiscardCard.rank && topDiscard.suit === room.initialDiscardCard.suit) {
-        room.firstCardPickedUp = { player: current.name, card: topDiscard };
+        room.firstCardPickupTracker = { player: current.name, card: topDiscard };
         room.initialDiscardCard = null;
       }
 
@@ -1186,7 +1195,7 @@ io.on('connection', (socket) => {
         spectatorPeeks: {},
         configuredLives: parseInt(initialLives) || 2,
         initialDiscardCard: null,
-        firstCardPickedUp: null,
+        firstCardPickupTracker: null,
         endGameVote: null
       };
     }
@@ -1294,7 +1303,7 @@ io.on('connection', (socket) => {
 
     let joinMsg = `${safeName} joined the room.`;
     if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁️️ Room active limit (6) reached. ${safeName} is spectating.`;
+      joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
       joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
@@ -1979,7 +1988,7 @@ io.on('connection', (socket) => {
       const topDiscardCheck = room.discardPile[room.discardPile.length - 1];
 
       if (room.initialDiscardCard && topDiscardCheck.rank === room.initialDiscardCard.rank && topDiscardCheck.suit === room.initialDiscardCard.suit) {
-        room.firstCardPickedUp = { player: player.name, card: topDiscardCheck };
+        room.firstCardPickupTracker = { player: player.name, card: topDiscardCheck };
         room.initialDiscardCard = null;
       }
 
