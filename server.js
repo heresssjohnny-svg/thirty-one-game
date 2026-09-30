@@ -1377,7 +1377,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -1887,7 +1887,7 @@ io.on('connection', (socket) => {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
       });
-      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      broadcastState(roomId, `⚠️️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
