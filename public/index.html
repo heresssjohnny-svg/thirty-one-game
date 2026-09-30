@@ -57,7 +57,7 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Outer Perimeter Oval Table Ring for Players */
+    /* Wide Outer Perimeter Oval Table Ring for Players */
     .table-ring {
       position: absolute; inset: 25px 5px 5px 5px;
       display: flex; justify-content: center; align-items: center; pointer-events: none;
@@ -608,7 +608,7 @@
       <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;">🏳️ End Game</button>
       <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
       <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
       <button type="button" class="danger" id="leaveRoomBtn">Leave</button>
     </div>
   </div>
@@ -1144,7 +1144,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1501,7 +1501,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a wide outer oval perimeter ring around the center piles
+        // Render players in a wide outer oval perimeter ring around the table (Your player always at bottom right, no mini cards for you)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
