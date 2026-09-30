@@ -1193,326 +1193,110 @@ function triggerBotTurnIfNeeded(roomId) {
   }, 1200);
 }
 
-function handlePlayerDisconnect(socketId) {
-  for (const [roomId, room] of Object.entries(rooms)) {
-    const player = room.players.find(p => p.id === socketId);
-    if (player && !player.isBot) {
-      player.disconnected = true;
-      io.to(roomId).emit('voiceUserLeft', { socketId: socketId });
-      broadcastState(roomId, `${player.name} disconnected (reconnecting...).`);
-
-      const key = `${roomId}:::${player.name}`;
-      if (disconnectTimeouts[key]) {
-        clearTimeout(disconnectTimeouts[key]);
-      }
-
-      disconnectTimeouts[key] = setTimeout(() => {
-        delete disconnectTimeouts[key];
-        finalizePlayerExit(roomId, player.name);
-      }, 45000);
-      break;
-    }
-  }
-}
-
-function finalizePlayerExit(roomId, playerName) {
+socket.on('proposeJoinGame', ({ roomId, wager }) => {
   const room = rooms[roomId];
-  if (!room || !playerName) return;
-  const idx = room.players.findIndex(p => p.name === playerName);
-  if (idx === -1) return;
-  const leaving = room.players[idx];
-  if (!leaving.disconnected) return;
+  if (!room || !room.gameStarted) return;
+  const player = room.players.find(p => p.id === socket.id && p.isSpectator);
+  if (!player) return;
 
-  if (!room.gameStarted || leaving.isSpectator) {
-    room.players.splice(idx, 1);
-  } else {
-    leaving.lives = 0;
-    if (room.currentTurnIdx === idx) {
-      advanceTurnIndex(room);
-      triggerBotTurnIfNeeded(roomId);
-    }
+  const anyPlayerEliminated = room.players.some(p => !p.isSpectator && p.lives < (room.configuredLives || 2));
+  if (anyPlayerEliminated) {
+    return socket.emit('errorMsg', 'Cannot join mid-game after a player has already lost a life.');
   }
 
-  if (room.dealerCutActive) {
-    checkDealerCutComplete(room);
-  }
-  if (room.tiebreakerActive) {
-    checkTiebreakerComplete(room);
+  if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
+    return socket.emit('errorMsg', 'Table is full (6 active players max).');
   }
 
-  if (getActivePlayers(room).length === 0 && room.players.length === 0) {
-    delete rooms[roomId];
-  } else {
-    broadcastState(roomId, `${leaving.name} left the room.`);
-    if (room.gameStarted && getActivePlayers(room).length <= 1) {
-      startNewRound(roomId);
-    }
-  }
-  broadcastRoomList();
-}
-
-io.on('connection', (socket) => {
-  broadcastRoomList();
-
-  socket.on('requestStateSync', (roomId) => {
-    if (roomId && rooms[roomId]) {
-      broadcastState(roomId);
-    }
+  const activePlayersList = room.players.filter(p => !p.isSpectator);
+  let maxTableWager = 0;
+  activePlayersList.forEach(pl => {
+    if ((pl.matchWager || 0) > maxTableWager) maxTableWager = pl.matchWager || 0;
   });
 
-  socket.on('joinRoom', ({ roomId, playerName, deviceId }) => {
-    socket.join(roomId);
-    if (!rooms[roomId]) {
-      rooms[roomId] = {
-        id: roomId,
-        players: [],
-        deck: [],
-        discardPile: [],
-        dealerIdx: 0,
-        currentTurnIdx: 0,
-        knockerId: null,
-        turnsLeftAfterKnock: null,
-        gameStarted: false,
-        drawnCard: null,
-        isResolvingRound: false,
-        turnsTakenInRound: 0,
-        currentDiscardFeederId: null,
-        currentMatchParticipants: [],
-        peerSideBets: [],
-        debts: {},
-        debtBreakdowns: {},
-        knownMembers: [],
-        playerRegistry: {},
-        lastGameWinnerId: null,
-        isFirstRoundOfMatch: false,
-        spectatorPeeks: {},
-        configuredLives: 2,
-        initialDiscardCard: null,
-        firstCardPickupTracker: null,
-        endGameVote: null,
-        lifeVotes: {},
-        joinGameVote: null
-      };
-    }
-    const room = rooms[roomId];
+  const minRequiredWager = maxTableWager + 5;
+  const parsedWager = Math.max(minRequiredWager, parseInt(wager) || minRequiredWager);
+  player.matchWager = parsedWager;
 
-    let safeName = playerName ? playerName.trim() : '';
+  room.joinGameVote = {
+    spectatorId: player.id,
+    spectatorName: player.name,
+    wager: parsedWager,
+    agreedIds: []
+  };
 
-    if (deviceId && room.playerRegistry[deviceId]) {
-      if (safeName && safeName !== room.playerRegistry[deviceId]) {
-        const oldName = room.playerRegistry[deviceId];
-
-        const kmIdx = room.knownMembers.indexOf(oldName);
-        if (kmIdx !== -1) room.knownMembers[kmIdx] = safeName;
-        else if (!room.knownMembers.includes(safeName)) room.knownMembers.push(safeName);
-
-        if (room.debts[oldName]) {
-          room.debts[safeName] = { ...(room.debts[safeName] || {}), ...room.debts[oldName] };
-          delete room.debts[oldName];
-        }
-
-        Object.keys(room.debts).forEach(debtor => {
-          if (room.debts[debtor][oldName] !== undefined) {
-            room.debts[debtor][safeName] = (room.debts[debtor][safeName] || 0) + room.debts[debtor][oldName];
-            delete room.debts[debtor][oldName];
-          }
-        });
-
-        if (room.debtBreakdowns) {
-          Object.keys(room.debtBreakdowns).forEach(pairKey => {
-            const [d, c] = pairKey.split(':::');
-            if (d === oldName || c === oldName) {
-              const newD = (d === oldName) ? safeName : d;
-              const newC = (c === oldName) ? safeName : c;
-              const newKey = `${newD}:::${newC}`;
-              room.debtBreakdowns[newKey] = room.debtBreakdowns[pairKey];
-              delete room.debtBreakdowns[pairKey];
-            }
-          });
-        }
-
-        room.playerRegistry[deviceId] = safeName;
-      } else {
-        safeName = room.playerRegistry[deviceId];
-      }
-    } else {
-      if (!safeName) safeName = `Player ${room.players.length + 1}`;
-      if (deviceId) room.playerRegistry[deviceId] = safeName;
-    }
-
-    if (!room.knownMembers.includes(safeName)) {
-      room.knownMembers.push(safeName);
-    }
-
-    let existingPlayer = null;
-    if (deviceId) {
-      existingPlayer = room.players.find(p => p.deviceId === deviceId);
-    }
-    if (!existingPlayer) {
-      existingPlayer = room.players.find(p => p.name === safeName);
-    }
-
-    if (existingPlayer) {
-      const key = `${roomId}:::${existingPlayer.name}`;
-      if (disconnectTimeouts[key]) {
-        clearTimeout(disconnectTimeouts[key]);
-        delete disconnectTimeouts[key];
-      }
-      existingPlayer.name = safeName;
-      existingPlayer.id = socket.id;
-      if (deviceId) existingPlayer.deviceId = deviceId;
-      existingPlayer.disconnected = false;
-
-      broadcastState(roomId, `${safeName} reconnected.`);
-      broadcastRoomList();
-      return;
-    }
-
-    const currentActiveCount = getNonSpectatorCount(room);
-    const roomIsFull = currentActiveCount >= MAX_ACTIVE_PLAYERS;
-    const isSpectator = Boolean(room.gameStarted || roomIsFull);
-
-    playerJoinCounter++;
-    room.players.push({
-      id: socket.id,
-      deviceId: deviceId || null,
-      name: safeName,
-      lives: isSpectator ? 0 : (room.configuredLives || 2),
-      hand: [],
-      fedCardsTracker: {},
-      discardPickedCards: [],
-      lastDrawnSource: null,
-      isBot: false,
-      isSpectator: isSpectator,
-      manualSpectator: false,
-      isReady: false,
-      isInVoice: false,
-      disconnected: false,
-      matchWager: 0,
-      joinOrder: playerJoinCounter
-    });
-
-    let joinMsg = `${safeName} joined the room.`;
-    if (roomIsFull && !room.gameStarted) {
-      joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
-    } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
-    }
-
-    broadcastState(roomId, joinMsg);
-    broadcastRoomList();
+  io.to(roomId).emit('bannerAnnouncement', {
+    text: `👁️ ${player.name} requested to join the active game ($${parsedWager} wager, cost: 1 life). Vote in progress!`,
+    duration: 5000
   });
 
-  socket.on('proposeJoinGame', ({ roomId, wager }) => {
-    const room = rooms[roomId];
-    if (!room || !room.gameStarted) return;
-    const player = room.players.find(p => p.id === socket.id && p.isSpectator);
-    if (!player) return;
-
-    const anyPlayerEliminated = room.players.some(p => !p.isSpectator && p.lives < (room.configuredLives || 2));
-    if (anyPlayerEliminated) {
-      return socket.emit('errorMsg', 'Cannot join mid-game after a player has already lost a life.');
-    }
-
-    if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
-      return socket.emit('errorMsg', 'Table is full (6 active players max).');
-    }
-
-    const activePlayersList = room.players.filter(p => !p.isSpectator);
-    let maxTableWager = 0;
-    activePlayersList.forEach(pl => {
-      if ((pl.matchWager || 0) > maxTableWager) maxTableWager = pl.matchWager || 0;
-    });
-
-    const minRequiredWager = maxTableWager + 5;
-    const parsedWager = Math.max(minRequiredWager, parseInt(wager) || minRequiredWager);
-    player.matchWager = parsedWager;
-
-    room.joinGameVote = {
-      spectatorId: player.id,
-      spectatorName: player.name,
-      wager: parsedWager,
-      agreedIds: []
-    };
-
-    io.to(roomId).emit('bannerAnnouncement', {
-      text: `👁️ ${player.name} requested to join the active game ($${parsedWager} wager, cost: 1 life). Vote in progress!`,
-      duration: 5000
-    });
-
-    broadcastState(roomId);
-  });
-
-  socket.on('respondJoinGame', ({ roomId, agree }) => {
-    const room = rooms[roomId];
-    if (!room || !room.joinGameVote) return;
-    const player = room.players.find(p => p.id === socket.id && !p.isSpectator && p.lives > 0);
-    if (!player) return;
-
-    if (agree) {
-      if (!room.joinGameVote.agreedIds.includes(player.id)) {
-        room.joinGameVote.agreedIds.push(player.id);
-      }
-      room.players.forEach(p => {
-        if (p.isBot && !room.joinGameVote.agreedIds.includes(p.id)) {
-          room.joinGameVote.agreedIds.push(p.id);
-        }
-      });
-
-      const eligible = room.players.filter(p => !p.isSpectator && p.lives > 0);
-      const agreedCount = room.joinGameVote.agreedIds.length;
-
-      if (agreedCount >= Math.ceil(eligible.length / 2)) {
-        const spec = room.players.find(p => p.id === room.joinGameVote.spectatorId);
-        if (spec) {
-          spec.isSpectator = false;
-          spec.lives = 1; // Costs 1 life to join mid-game
-          spec.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
-          spec.fedCardsTracker = {};
-          spec.discardPickedCards = [];
-          spec.lastDrawnSource = 'deal';
-
-          const joinerWager = room.joinGameVote.wager;
-          if (room.currentMatchParticipants) {
-            room.currentMatchParticipants.forEach(participant => {
-              if (participant.wager < joinerWager) {
-                const diff = joinerWager - participant.wager;
-                recordDebt(room, participant.name, spec.name, diff, 'match');
-              }
-            });
-            room.currentMatchParticipants.push({
-              id: spec.id,
-              name: spec.name,
-              wager: joinerWager
-            });
-          }
-
-          io.to(roomId).emit('bigAnnouncement', {
-            title: '🎮 NEW PLAYER JOINED!',
-            message: `${spec.name.toUpperCase()} JOINED THE TABLE!`,
-            subtext: `Paid 1 life and $${joinerWager} wager!`,
-            duration: 4500
-          });
-        }
-        room.joinGameVote = null;
-        broadcastState(roomId, 'Spectator successfully joined the game.');
-        broadcastRoomList();
-      } else {
-        broadcastState(roomId);
-      }
-    } else {
-      const specName = room.joinGameVote.spectatorName;
-      room.joinGameVote = null;
-      io.to(roomId).emit('bannerAnnouncement', {
-        text: `❌ Table declined ${specName}'s request to join mid-game.`,
-        duration: 3500
-      });
-      broadcastState(roomId, `${player.name} declined join request from ${specName}.`);
-    }
-  });
+  broadcastState(roomId);
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server online on port ${PORT}`);
+socket.on('respondJoinGame', ({ roomId, agree }) => {
+  const room = rooms[roomId];
+  if (!room || !room.joinGameVote) return;
+  const player = room.players.find(p => p.id === socket.id && !p.isSpectator && p.lives > 0);
+  if (!player) return;
+
+  if (agree) {
+    if (!room.joinGameVote.agreedIds.includes(player.id)) {
+      room.joinGameVote.agreedIds.push(player.id);
+    }
+    room.players.forEach(p => {
+      if (p.isBot && !room.joinGameVote.agreedIds.includes(p.id)) {
+        room.joinGameVote.agreedIds.push(p.id);
+      }
+    });
+
+    const eligible = room.players.filter(p => !p.isSpectator && p.lives > 0);
+    const agreedCount = room.joinGameVote.agreedIds.length;
+
+    if (agreedCount >= Math.ceil(eligible.length / 2)) {
+      const spec = room.players.find(p => p.id === room.joinGameVote.spectatorId);
+      if (spec) {
+        spec.isSpectator = false;
+        spec.lives = 1; // Costs 1 life to join mid-game
+        spec.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+        spec.fedCardsTracker = {};
+        spec.discardPickedCards = [];
+        spec.lastDrawnSource = 'deal';
+
+        const joinerWager = room.joinGameVote.wager;
+        if (room.currentMatchParticipants) {
+          room.currentMatchParticipants.forEach(participant => {
+            if (participant.wager < joinerWager) {
+              const diff = (joinerWager - participant.wager) + 5; // Difference plus $5 added to pot
+              recordDebt(room, participant.name, spec.name, diff, 'match');
+            }
+          });
+          room.currentMatchParticipants.push({
+            id: spec.id,
+            name: spec.name,
+            wager: joinerWager
+          });
+        }
+
+        io.to(roomId).emit('bigAnnouncement', {
+          title: '🎮 NEW PLAYER JOINED!',
+          message: `${spec.name.toUpperCase()} JOINED THE TABLE!`,
+          subtext: `Paid 1 life and $${joinerWager} wager!`,
+          duration: 4500
+        });
+      }
+      room.joinGameVote = null;
+      broadcastState(roomId, 'Spectator successfully joined the game.');
+      broadcastRoomList();
+    } else {
+      broadcastState(roomId);
+    }
+  } else {
+    const specName = room.joinGameVote.spectatorName;
+    room.joinGameVote = null;
+    io.to(roomId).emit('bannerAnnouncement', {
+      text: `❌ Table declined ${specName}'s request to join mid-game.`,
+      duration: 3500
+    });
+    broadcastState(roomId, `${player.name} declined join request from ${specName}.`);
+  }
 });
