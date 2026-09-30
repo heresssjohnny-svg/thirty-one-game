@@ -49,7 +49,6 @@
       display: flex; align-items: center; gap: 4px;
     }
 
-    /* Top-Left First Card Picked Window (80% opacity, persistent while card is held) */
     .first-card-banner {
       position: absolute; left: 8px; top: 6px;
       background: rgba(0, 0, 0, 0.8); border: 1px solid #ffd700; color: #ffd700; font-weight: bold; font-size: 10px;
@@ -57,7 +56,6 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Tall Vertical Arch Oval Table Ring for Players */
     .table-ring {
       position: absolute; inset: -45px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 2;
@@ -81,7 +79,6 @@
       font-size: 7px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
     }
 
-    /* Center piles layered beneath the perimeter seats */
     .middle-piles { display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 3; position: relative; }
     
     .card {
@@ -265,7 +262,7 @@
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
       display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
-      gap: 10px; z-index: 1000; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
+      gap: 10px; z-index: 2000; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
     }
     .room-directory {
       width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
