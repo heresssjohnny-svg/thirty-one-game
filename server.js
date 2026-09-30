@@ -1411,7 +1411,7 @@ io.on('connection', (socket) => {
       player.isSpectator = true;
       player.lives = 0;
       player.isReady = false;
-      broadcastState(roomId, `👁️️ ${player.name} switched to Spectator Mode.`);
+      broadcastState(roomId, `👁️ ${player.name} switched to Spectator Mode.`);
     } else {
       if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
         return socket.emit('errorMsg', 'Table is full (6 active players max).');
