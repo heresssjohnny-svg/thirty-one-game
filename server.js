@@ -178,7 +178,7 @@ function handleTurnTimeout(roomId) {
   }
 
   advanceTurnIndex(room);
-  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  broadcastState(roomId, `⏱️️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
   startTurnTimer(roomId);
   triggerBotTurnIfNeeded(roomId);
 }
