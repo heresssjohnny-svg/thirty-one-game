@@ -348,6 +348,20 @@
     </div>
   </div>
 
+  <!-- END GAME VOTE MODAL -->
+  <div id="endGameModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#e53935; text-align:center;">
+      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️ End Game Vote</div>
+      <div id="endGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        A player wants to end the current game and return to the lobby. Agree?
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" id="declineEndGameBtn" style="padding:8px 12px;">Decline</button>
+        <button type="button" class="danger" id="acceptEndGameBtn" style="padding:8px 12px; font-weight:bold;">Yes, End Game</button>
+      </div>
+    </div>
+  </div>
+
   <!-- CLEAR DEBT CONFIRMATION MODAL -->
   <div id="clearDebtConfirmModal" class="custom-modal">
     <div class="modal-card" style="border-color:#4caf50; text-align:center;">
@@ -578,6 +592,7 @@
     <div class="header-controls">
       <button type="button" class="tutorial-btn" id="rulesHeaderBtn">📖 Rules</button>
       <button type="button" class="ledger-btn" id="ledgerHeaderBtn">💰 Ledger</button>
+      <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;">🏳️ End Game</button>
       <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
       <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
       <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
@@ -1055,7 +1070,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1169,6 +1184,16 @@
       document.getElementById('knockConfirmModal').style.display = 'none';
     }
 
+    function requestEndGame() {
+      if (!currentRoom || isSpectator) return;
+      socket.emit('proposeEndGame', currentRoom);
+    }
+
+    function respondEndGame(agree) {
+      socket.emit('respondEndGame', { roomId: currentRoom, agree: agree });
+      document.getElementById('endGameModal').style.display = 'none';
+    }
+
     function toggleChat() {
       isChatOpen = !isChatOpen;
       document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
@@ -1183,12 +1208,60 @@
     function draw(src) { socket.emit('drawCard', { roomId: currentRoom, source: src }); }
     function discard(idx) { socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx }); }
 
-    function openRoundSideBetModal() { toggleRoundBetModal(); }
-    function openFirstLoserSideBetModal() { toggleRoundBetModal(); }
+    function openRoundSideBetModal() {
+      currentSideBetType = 'round';
+      document.getElementById('sideBetModalTitle').innerText = '🎲 Round Side Bet';
+      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender against multiple opponents:';
+      document.getElementById('roundContenderSection').style.display = 'flex';
+      toggleRoundBetModal();
+    }
+
+    function openFirstLoserSideBetModal() {
+      currentSideBetType = 'firstLoser';
+      document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Both Lives';
+      document.getElementById('sideBetModalDesc').innerText = 'This bet is for the first person to lose both lives (out of the game).';
+      document.getElementById('roundContenderSection').style.display = 'none';
+      toggleRoundBetModal();
+    }
+
     function toggleRoundBetModal() {
       const modal = document.getElementById('roundBetModal');
-      modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const checklist = document.getElementById('opponentsChecklist');
+        const myTargetSelect = document.getElementById('betMyTargetSelect');
+
+        checklist.innerHTML = '';
+        myTargetSelect.innerHTML = '';
+
+        let selectableOpponents = 0;
+        latestAllTableMembers.forEach(m => {
+          if (m.name !== myPlayerName && m.isOnline) {
+            selectableOpponents++;
+            const label = document.createElement('div');
+            label.className = 'opp-checkbox-item';
+            label.innerHTML = `
+              <input type="checkbox" value="${m.name}" checked />
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
+            `;
+            checklist.appendChild(label);
+          }
+        });
+
+        if (selectableOpponents === 0) {
+          checklist.innerHTML = '<div style="font-size:11px; opacity:0.6; padding:4px;">No other players online.</div>';
+        }
+
+        latestActivePlayers.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.innerText = p.name;
+          myTargetSelect.appendChild(opt);
+        });
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
     }
+
     function selectAllOpponents(chk) {
       document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => cb.checked = chk);
     }
@@ -1198,7 +1271,28 @@
         c.classList.toggle('selected', parseInt(c.getAttribute('data-amt')) === amt);
       });
     }
-    function submitMultiPeerSideBet() { toggleRoundBetModal(); }
+
+    function submitMultiPeerSideBet() {
+      const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
+      const opponentNames = Array.from(checkedBoxes).map(cb => cb.value);
+
+      if (opponentNames.length === 0) {
+        return alert('Please check off at least one opponent to challenge.');
+      }
+
+      const targetName = currentSideBetType === 'firstLoser' ? '' : document.getElementById('betMyTargetSelect').value;
+      if (currentSideBetType === 'round' && !targetName) return alert('Select your pick.');
+
+      socket.emit('proposeMultiSideBets', {
+        roomId: currentRoom,
+        betType: currentSideBetType,
+        opponentNames: opponentNames,
+        targetPlayerName: currentSideBetType === 'firstLoser' ? latestActivePlayers[0]?.name : targetName,
+        amount: selectedSideBetAmt
+      });
+
+      toggleRoundBetModal();
+    }
 
     function renderCard(card, onClick, highlight = false, isMini = false, isFlip = false) {
       const el = document.createElement('div');
@@ -1302,6 +1396,16 @@
         latestAllTableMembers = state.allTableMembers || [];
         latestPersonalLedger = state.personalLedger || [];
 
+        if (state.endGameVote) {
+          document.getElementById('endGameVoteText').innerHTML = `
+            <strong>${state.endGameVote.proposer}</strong> proposed ending the game.<br>
+            Votes agreed: ${state.endGameVote.agreedIds.length}
+          `;
+          document.getElementById('endGameModal').style.display = 'flex';
+        } else {
+          document.getElementById('endGameModal').style.display = 'none';
+        }
+
         const pArea = document.getElementById('playersArea');
         if (pArea) {
           pArea.innerHTML = '';
@@ -1339,13 +1443,22 @@
         const addBotBtn = document.getElementById('addBotBtn');
         const removeBotBtn = document.getElementById('removeBotBtn');
         const spectateBtn = document.getElementById('spectateBtn');
+        const roundBetBtn = document.getElementById('roundBetBtn');
+        const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
+        const endGameBtn = document.getElementById('endGameBtn');
 
         if (state.gameStarted) {
           readyBtn.style.display = 'none';
           addBotBtn.style.display = 'none';
           removeBotBtn.style.display = 'none';
           spectateBtn.style.display = 'none';
+          endGameBtn.style.display = isSpectator ? 'none' : 'inline-block';
+          roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+          firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
         } else {
+          roundBetBtn.style.display = 'none';
+          firstLoserBetBtn.style.display = 'none';
+          endGameBtn.style.display = 'none';
           spectateBtn.style.display = 'inline-block';
           spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
           if (isSpectator) {
@@ -1445,6 +1558,7 @@
         'lobbyTutorialBtn': toggleTutorialModal,
         'rulesHeaderBtn': toggleTutorialModal,
         'ledgerHeaderBtn': toggleLedgerModal,
+        'endGameBtn': requestEndGame,
         'voiceBtn': toggleVoice,
         'voiceInviteBtn': toggleVoiceInviteModal,
         'muteBtn': toggleMute,
@@ -1474,6 +1588,8 @@
         'confirmKnockBtn': confirmKnock,
         'cancelDebtBtn': cancelClearDebt,
         'executeDebtBtn': executeClearDebt,
+        'acceptEndGameBtn': () => respondEndGame(true),
+        'declineEndGameBtn': () => respondEndGame(false),
         'closeVoiceModalBtn': toggleVoiceInviteModal,
         'declineVoiceBtn': () => respondVoiceInvite(false),
         'acceptVoiceBtn': () => respondVoiceInvite(true),
