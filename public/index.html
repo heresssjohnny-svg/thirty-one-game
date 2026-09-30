@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Shifted Left Table Ring Container */
+    /* Shifted Left Table Ring Container for perfect vertical alignment */
     .table-ring {
       position: absolute;
-      inset: -115px 45px 50px 10px;
+      inset: -115px 40px 50px 0px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -616,7 +616,7 @@
     </div>
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-footer">
-      <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" />
+      <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" onkeydown="if(event.key==='Enter') sendChat()" />
       <button type="button" id="sendChatBtn" style="padding: 6px 10px; font-size: 12px;" onclick="sendChat()">Send</button>
     </div>
   </div>
@@ -1785,7 +1785,7 @@
           }
         }
 
-        // Dynamically Render Opponents in Oval Ring (Shifted Left & Smaller Width Range)
+        // Dynamically Render Opponents in Oval Ring with Perfect Vertical Alignment
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1793,11 +1793,11 @@
           let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
 
           const slotCoordinates = [
-            { x: -135, y: -25 }, // Left Top
-            { x: -135, y: 70 },  // Left Bottom
-            { x: 0,    y: -145 }, // Top Center (Raised higher)
-            { x: 135,  y: -25 }, // Right Top
-            { x: 135,  y: 70 }   // Right Bottom
+            { x: -125, y: -25 }, // Left Top
+            { x: -125, y: 70 },  // Left Bottom
+            { x: 0,    y: -145 }, // Top Center (Aligned with center name badge)
+            { x: 125,  y: -25 }, // Right Top
+            { x: 125,  y: 70 }   // Right Bottom
           ];
 
           otherPlayers.forEach((p, idx) => {
