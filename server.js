@@ -130,7 +130,7 @@ function handleTurnTimeout(roomId) {
   if (!current || current.isSpectator || current.lives <= 0) return;
 
   io.to(roomId).emit('bannerAnnouncement', {
-    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
+    text: `⏱️️ Time's up for ${current.name}! AI taking turn...`,
     duration: 3500
   });
 
@@ -178,7 +178,7 @@ function handleTurnTimeout(roomId) {
   }
 
   advanceTurnIndex(room);
-  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  broadcastState(roomId, `⏱️️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
   startTurnTimer(roomId);
   triggerBotTurnIfNeeded(roomId);
 }
@@ -1399,7 +1399,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1507,7 +1507,7 @@ io.on('connection', (socket) => {
       player.isSpectator = true;
       player.lives = 0;
       player.isReady = false;
-      broadcastState(roomId, `👁️ ${player.name} switched to Spectator Mode.`);
+      broadcastState(roomId, `👁️️ ${player.name} switched to Spectator Mode.`);
     } else {
       if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
         return socket.emit('errorMsg', 'Table is full (6 active players max).');
