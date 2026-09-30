@@ -130,8 +130,8 @@ function handleTurnTimeout(roomId) {
   if (!current || current.isSpectator || current.lives <= 0) return;
 
   io.to(roomId).emit('bannerAnnouncement', {
-    text: `⏱️️ Time's up for ${current.name}! AI taking turn...`,
-    duration: 3500
+    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
+    duration: 4000
   });
 
   while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
@@ -178,7 +178,7 @@ function handleTurnTimeout(roomId) {
   }
 
   advanceTurnIndex(room);
-  broadcastState(roomId, `⏱️️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
   startTurnTimer(roomId);
   triggerBotTurnIfNeeded(roomId);
 }
@@ -514,7 +514,7 @@ function checkDealerCutComplete(room) {
       if (!room) return;
       io.to(room.id).emit('bannerAnnouncement', {
         text: `Tie for lowest dealer cut card! Re-cutting...`,
-        duration: 2500
+        duration: 4000
       });
       room.dealerCutActive = true;
       room.dealerCutPicks = {};
@@ -554,7 +554,7 @@ function checkDealerCutComplete(room) {
       title: '👑 DEALER SELECTED! 👑',
       message: `${chosenDealer.name.toUpperCase()} IS DEALER!`,
       subtext: `Drew lowest card (${lowestPickers[0].card.rank}${lowestPickers[0].card.suit})`,
-      duration: 3500
+      duration: 4000
     });
     setTimeout(() => startNewRound(room.id), 3800);
   }, 3200);
@@ -654,7 +654,7 @@ function checkTiebreakerComplete(room) {
       if (!room) return;
       io.to(room.id).emit('bannerAnnouncement', {
         text: `Tie for lowest cut! Re-drawing lowest players...`,
-        duration: 2500
+        duration: 4000
       });
       room.tiebreakerActive = true;
       room.tiebreakerPicks = {};
@@ -2027,7 +2027,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️️ GAME ENDED',
+          title: '🏳️ GAME ENDED',
           message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
@@ -2232,7 +2232,7 @@ io.on('connection', (socket) => {
       
       io.to(roomId).emit('bannerAnnouncement', {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
-        duration: 3200
+        duration: 4000
       });
       broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
       io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: 'discard', card: drawn });
@@ -2323,13 +2323,13 @@ io.on('connection', (socket) => {
       room.configuredLives = winningLives;
       activeEligible.forEach(pl => { pl.lives = winningLives; });
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ Room starting lives updated to ${winningLives} by majority vote!`,
+        text: `❤️️ Room starting lives updated to ${winningLives} by majority vote!`,
         duration: 4000
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
         text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
-        duration: 3000
+        duration: 4000
       });
     }
 
