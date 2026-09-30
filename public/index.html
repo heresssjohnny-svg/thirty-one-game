@@ -262,7 +262,7 @@
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
       display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
-      gap: 10px; z-index: 2000; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
+      gap: 10px; z-index: 2500; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
     }
     .room-directory {
       width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
@@ -317,7 +317,7 @@
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
     <span>⚠️ Disconnected from server</span>
-    <button type="button" id="retryConnBtn">Retry Connection</button>
+    <button type="button" id="retryConnBtn" onclick="manualReconnect()">Retry Connection</button>
   </div>
 
   <!-- TUTORIAL MODAL -->
@@ -325,7 +325,7 @@
     <div class="modal-card" style="border-color:#00acc1; max-width:420px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:15px; color:#00acc1;">📖 How to Play 31</span>
-        <span id="closeTutorialBtn1" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span id="closeTutorialBtn1" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleTutorialModal()">✕</span>
       </div>
       <div class="tutorial-section">
         <div>
@@ -340,7 +340,7 @@
           • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
         </div>
       </div>
-      <button type="button" id="closeTutorialBtn2" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
+      <button type="button" id="closeTutorialBtn2" style="background:#00acc1; color:#fff; padding:8px;" onclick="toggleTutorialModal()">Got It!</button>
     </div>
   </div>
 
@@ -353,8 +353,8 @@
         Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="cancelKnockBtn" style="padding:8px 12px;">Cancel</button>
-        <button type="button" class="danger" id="confirmKnockBtn" style="padding:8px 12px;">Yes, Knock Anyway</button>
+        <button type="button" class="secondary" id="cancelKnockBtn" style="padding:8px 12px;" onclick="cancelKnockConfirm()">Cancel</button>
+        <button type="button" class="danger" id="confirmKnockBtn" style="padding:8px 12px;" onclick="confirmKnock()">Yes, Knock Anyway</button>
       </div>
     </div>
   </div>
@@ -367,8 +367,8 @@
         A player wants to end the current game and return to the lobby. Agree?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineEndGameBtn" style="padding:8px 12px;">Decline</button>
-        <button type="button" class="danger" id="acceptEndGameBtn" style="padding:8px 12px; font-weight:bold;">Yes, End Game</button>
+        <button type="button" class="secondary" id="declineEndGameBtn" style="padding:8px 12px;" onclick="respondEndGame(false)">Decline</button>
+        <button type="button" class="danger" id="acceptEndGameBtn" style="padding:8px 12px; font-weight:bold;" onclick="respondEndGame(true)">Yes, End Game</button>
       </div>
     </div>
   </div>
@@ -381,8 +381,8 @@
         Spectator wants to join the game. Allow them?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineJoinVoteBtn" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptJoinVoteBtn">Allow Join</button>
+        <button type="button" class="secondary" id="declineJoinVoteBtn" style="padding:8px 12px;" onclick="respondJoinVote(false)">Decline</button>
+        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptJoinVoteBtn" onclick="respondJoinVote(true)">Allow Join</button>
       </div>
     </div>
   </div>
@@ -392,11 +392,11 @@
     <div class="modal-card" style="border-color:#0288d1; max-width:320px; text-align:center;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#0288d1;">🎮 Join Active Game</span>
-        <span id="closeSpectatorJoinBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span id="closeSpectatorJoinBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="document.getElementById('spectatorJoinModal').style.display='none'">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9; margin: 4px 0;">Joining mid-game costs <strong>1 life</strong>. Enter starting wager (must be at least $5 above maximum table wager):</div>
       <input id="spectatorWagerInput" type="number" min="15" value="15" style="text-align:center;" />
-      <button type="button" id="submitSpectatorJoinBtn" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold; margin-top:6px;">Request to Join</button>
+      <button type="button" id="submitSpectatorJoinBtn" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold; margin-top:6px;" onclick="submitSpectatorJoinRequest()">Request to Join</button>
     </div>
   </div>
 
@@ -408,8 +408,8 @@
         Would you like to download a screenshot of your ledger balances before leaving?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineScreenshotBtn" style="padding:8px 12px;">No, Just Leave</button>
-        <button type="button" style="background:#ffd700; color:#111; padding:8px 12px; font-weight:bold;" id="acceptScreenshotBtn">Yes, Save Screenshot</button>
+        <button type="button" class="secondary" id="declineScreenshotBtn" style="padding:8px 12px;" onclick="executeLeave(false)">No, Just Leave</button>
+        <button type="button" style="background:#ffd700; color:#111; padding:8px 12px; font-weight:bold;" id="acceptScreenshotBtn" onclick="executeLeave(true)">Yes, Save Screenshot</button>
       </div>
     </div>
   </div>
@@ -422,8 +422,8 @@
         Spectator wants to view your hand. Allow them?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="denyPeekBtn" style="padding:8px 12px;">Deny</button>
-        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" id="allowPeekBtn">Allow Peek</button>
+        <button type="button" class="secondary" id="denyPeekBtn" style="padding:8px 12px;" onclick="respondPeekPermission(false)">Deny</button>
+        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" id="allowPeekBtn" onclick="respondPeekPermission(true)">Allow Peek</button>
       </div>
     </div>
   </div>
@@ -436,8 +436,8 @@
         Player wants to clear their debt to you. Do you forgive and grant permission?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="denyDebtPermBtn" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="allowDebtPermBtn">Forgive Debt</button>
+        <button type="button" class="secondary" id="denyDebtPermBtn" style="padding:8px 12px;" onclick="respondDebtPermission(false)">Decline</button>
+        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="allowDebtPermBtn" onclick="respondDebtPermission(true)">Forgive Debt</button>
       </div>
     </div>
   </div>
@@ -450,8 +450,8 @@
         Are you sure you want to clear this player's debt to you?
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="cancelDebtBtn" style="padding:8px 12px;">Cancel</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="executeDebtBtn">Yes, Clear Debt</button>
+        <button type="button" class="secondary" id="cancelDebtBtn" style="padding:8px 12px;" onclick="cancelClearDebt()">Cancel</button>
+        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="executeDebtBtn" onclick="executeClearDebt()">Yes, Clear Debt</button>
       </div>
     </div>
   </div>
@@ -461,11 +461,11 @@
     <div class="modal-card" style="border-color:#00897b; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#00897b;">👥 Invite to Voice Chat</span>
-        <span id="closeVoiceModalBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span id="closeVoiceModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleVoiceInviteModal()">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Select an online player to invite to the voice channel:</div>
       <select id="voiceInviteSelect"></select>
-      <button type="button" id="sendVoiceInviteBtn" style="background:#00897b; color:#fff; padding:8px; font-weight:bold;">Send Invitation</button>
+      <button type="button" id="sendVoiceInviteBtn" style="background:#00897b; color:#fff; padding:8px; font-weight:bold;" onclick="sendVoiceInvite()">Send Invitation</button>
     </div>
   </div>
 
@@ -477,8 +477,8 @@
         Player invited you to join voice chat.
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineVoiceBtn" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#00897b; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptVoiceBtn">Accept & Join</button>
+        <button type="button" class="secondary" id="declineVoiceBtn" style="padding:8px 12px;" onclick="respondVoiceInvite(false)">Decline</button>
+        <button type="button" style="background:#00897b; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptVoiceBtn" onclick="respondVoiceInvite(true)">Accept & Join</button>
       </div>
     </div>
   </div>
@@ -511,8 +511,8 @@
         <select id="offerMyTargetSelect"></select>
       </div>
       <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
-        <button type="button" class="secondary" id="declineSideBetBtn" style="padding:8px 12px;">Decline</button>
-        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" id="acceptSideBetBtn">Accept & Verify</button>
+        <button type="button" class="secondary" id="declineSideBetBtn" style="padding:8px 12px;" onclick="respondSideBet(false)">Decline</button>
+        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" id="acceptSideBetBtn" onclick="respondSideBet(true)">Accept & Verify</button>
       </div>
     </div>
   </div>
@@ -522,12 +522,12 @@
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
-        <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="togglePeekSelectorModal()">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
       <select id="peekPlayerSelect"></select>
       <div style="font-size:10px; opacity:0.75;">(Note: If you switch views or the round ends, permission expires!)</div>
-      <button type="button" id="submitPeekBtn" style="background:#7b1fa2; color:#fff; padding:8px; font-weight:bold;">Send Request</button>
+      <button type="button" id="submitPeekBtn" style="background:#7b1fa2; color:#fff; padding:8px; font-weight:bold;" onclick="submitPeekRequest()">Send Request</button>
     </div>
   </div>
 
@@ -536,7 +536,7 @@
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:15px; color:#ffd700;">💰 Table Ledger & Side Bets</span>
-        <span id="closeLedgerBtn1" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span id="closeLedgerBtn1" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleLedgerModal()">✕</span>
       </div>
 
       <div class="ledger-summary-banner">
@@ -555,7 +555,7 @@
       <div id="ledgerList" style="display:flex; flex-direction:column; gap:5px; font-size:12px; max-height:200px; overflow-y:auto; padding:5px; background:rgba(0,0,0,0.3); border-radius:8px;">
         <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
       </div>
-      <button type="button" id="closeLedgerBtn2" class="secondary" style="padding:6px;">Close</button>
+      <button type="button" id="closeLedgerBtn2" class="secondary" style="padding:6px;" onclick="toggleLedgerModal()">Close</button>
     </div>
   </div>
 
@@ -564,7 +564,7 @@
     <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:900; font-size:14px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
-        <span id="closeRoundBetBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+        <span id="closeRoundBetBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleRoundBetModal()">✕</span>
       </div>
       
       <div id="sideBetModalDesc" style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents:</div>
@@ -573,8 +573,8 @@
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <label style="font-size:11px; font-weight:bold; color:#ffd700;">1. Choose Opponents To Challenge:</label>
           <div style="font-size:10px; display:flex; gap:6px;">
-            <a href="javascript:void(0)" id="selectAllOppBtn" style="color:#00acc1; text-decoration:none;">All</a> | 
-            <a href="javascript:void(0)" id="clearAllOppBtn" style="color:#aaa; text-decoration:none;">Clear</a>
+            <a href="javascript:void(0)" id="selectAllOppBtn" style="color:#00acc1; text-decoration:none;" onclick="selectAllOpponents(true)">All</a> | 
+            <a href="javascript:void(0)" id="clearAllOppBtn" style="color:#aaa; text-decoration:none;" onclick="selectAllOpponents(false)">Clear</a>
           </div>
         </div>
         <div id="opponentsChecklist" class="opponents-checklist"></div>
@@ -587,33 +587,33 @@
 
       <div style="display:flex; gap:6px; justify-content:center; align-items:center; margin: 2px 0;">
         <span style="font-size:11px; font-weight:bold;">Per-Opponent Bet:</span>
-        <div class="wager-chip bet-amt-chip" data-amt="1">$1</div>
-        <div class="wager-chip selected bet-amt-chip" id="defaultBetChip" data-amt="5">$5</div>
-        <div class="wager-chip bet-amt-chip" data-amt="10">$10</div>
-        <div class="wager-chip bet-amt-chip" data-amt="20">$20</div>
+        <div class="wager-chip bet-amt-chip" data-amt="1" onclick="selectRoundBetAmt(1)">$1</div>
+        <div class="wager-chip selected bet-amt-chip" id="defaultBetChip" data-amt="5" onclick="selectRoundBetAmt(5)">$5</div>
+        <div class="wager-chip bet-amt-chip" data-amt="10" onclick="selectRoundBetAmt(10)">$10</div>
+        <div class="wager-chip bet-amt-chip" data-amt="20" onclick="selectRoundBetAmt(20)">$20</div>
       </div>
 
       <div id="multiBetSummary" style="font-size:11px; font-weight:bold; color:#ffd700; text-align:center;">
         0 opponents selected (Total stake: $0)
       </div>
 
-      <button type="button" id="submitMultiBetBtn" style="background:#ff9800; color:#111; padding:8px; font-weight:bold;">Send Challenges</button>
+      <button type="button" id="submitMultiBetBtn" style="background:#ff9800; color:#111; padding:8px; font-weight:bold;" onclick="submitMultiPeerSideBet()">Send Challenges</button>
     </div>
   </div>
 
-  <button type="button" class="chat-btn" id="chatToggleBtn">
+  <button type="button" class="chat-btn" id="chatToggleBtn" onclick="toggleChat()">
     💬 Chat <span id="chatBadge" class="chat-badge">0</span>
   </button>
 
   <div id="chatPanel" class="chat-panel">
     <div class="chat-header">
       <span>Table Chat</span>
-      <span id="chatCloseBtn" style="cursor:pointer; font-size: 20px;">✕</span>
+      <span id="chatCloseBtn" style="cursor:pointer; font-size: 20px;" onclick="toggleChat()">✕</span>
     </div>
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-footer">
       <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" />
-      <button type="button" id="sendChatBtn" style="padding: 6px 10px; font-size: 12px;">Send</button>
+      <button type="button" id="sendChatBtn" style="padding: 6px 10px; font-size: 12px;" onclick="sendChat()">Send</button>
     </div>
   </div>
 
@@ -627,11 +627,11 @@
   <!-- LOBBY SCREEN -->
   <div id="lobby" class="lobby-modal">
     <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
-    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
+    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;" onclick="toggleTutorialModal()">📖 How to Play & Rules</button>
     <input id="playerName" placeholder="Your Player Name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     
-    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111; margin-top: 6px;">Enter Game Room</button>
+    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111; margin-top: 6px;" onclick="joinGame()">Enter Game Room</button>
 
     <div style="width:100%; max-width:280px; margin-top:10px;">
       <div style="font-size:12px; font-weight:bold; color:#ffd700; margin-bottom:4px; display:flex; justify-content:space-between;">
@@ -647,13 +647,13 @@
   <div class="header">
     <div id="roomLabel">Room: -</div>
     <div class="header-controls">
-      <button type="button" class="tutorial-btn" id="rulesHeaderBtn">📖 Rules</button>
-      <button type="button" class="ledger-btn" id="ledgerHeaderBtn">💰 Ledger</button>
-      <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;">🏳️ End Game</button>
-      <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
-      <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
-      <button type="button" class="danger" id="leaveRoomBtn">Leave</button>
+      <button type="button" class="tutorial-btn" id="rulesHeaderBtn" onclick="toggleTutorialModal()">📖 Rules</button>
+      <button type="button" class="ledger-btn" id="ledgerHeaderBtn" onclick="toggleLedgerModal()">💰 Ledger</button>
+      <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;" onclick="requestEndGame()">🏳️ End Game</button>
+      <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
+      <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;" onclick="toggleVoiceInviteModal()">👥 Invite</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️</button>
+      <button type="button" class="danger" id="leaveRoomBtn" onclick="leaveLobby()">Leave</button>
     </div>
   </div>
 
@@ -678,15 +678,15 @@
     <div class="middle-piles">
       <div style="font-size: 11px; font-weight: bold; color: #ffd700; text-align: center; margin-bottom: -2px;">Your Score: <span id="scoreLabel">0</span></div>
       <div style="display: flex; gap: 20px; align-items: center;">
-        <div id="drawPile" class="card back">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(52)</span></div>
-        <div id="discardPile" class="card">--</div>
+        <div id="drawPile" class="card back" onclick="draw('deck')">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(52)</span></div>
+        <div id="discardPile" class="card" onclick="draw('discard')">--</div>
       </div>
     </div>
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
         <span id="peekBarText">👁️ Viewing Player's Hand</span>
-        <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
+        <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;" onclick="stopPeekingHand()">Stop Viewing</span>
       </div>
 
       <!-- Life Selector Dropdown Menu in Game Room -->
@@ -719,15 +719,15 @@
   </div>
 
   <div class="action-bar" id="actionBar">
-    <button type="button" id="spectateBtn" class="spectate-btn">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;">👁️ Peek at Hand</button>
-    <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;">🎮 Join Game</button>
-    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;">🎲 Side Bet</button>
-    <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;">💀 First to Lose</button>
-    <button type="button" id="readyBtn">⏳ Tap to Ready</button>
-    <button type="button" id="addBotBtn" class="secondary">+ Add Bot</button>
-    <button type="button" id="removeBotBtn" class="secondary" style="display:none;">- Remove Bot</button>
-    <button type="button" id="knockBtn" disabled>Knock</button>
+    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
+    <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;" onclick="openSpectatorJoinModal()">🎮 Join Game</button>
+    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()">🎲 Side Bet</button>
+    <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()">💀 First to Lose</button>
+    <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
+    <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
+    <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
+    <button type="button" id="knockBtn" disabled onclick="attemptKnock()">Knock</button>
   </div>
 
   <div id="audioContainer"></div>
@@ -803,11 +803,6 @@
         try { navigator.vibrate([200, 100, 200]); } catch (e) {}
       } 
     }
-
-    function playKnockSound() {}
-    function playCardSlideSound() {}
-    function playAcceptSound() {}
-    function playDeclineSound() {}
 
     try {
       deviceId = localStorage.getItem('thirtyOne_deviceId');
@@ -1207,12 +1202,6 @@
       pendingDebtDebtorName = null;
     }
 
-    function toggleTutorialModal() {
-      const modal = document.getElementById('tutorialModal');
-      const isVisible = modal.style.display === 'flex';
-      modal.style.display = isVisible ? 'none' : 'flex';
-    }
-
     function togglePeekSelectorModal() {
       const modal = document.getElementById('spectatorPeekSelectorModal');
       const isVisible = modal.style.display === 'flex';
@@ -1373,7 +1362,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1495,16 +1484,6 @@
     function respondEndGame(agree) {
       socket.emit('respondEndGame', { roomId: currentRoom, agree: agree });
       document.getElementById('endGameModal').style.display = 'none';
-    }
-
-    function toggleChat() {
-      isChatOpen = !isChatOpen;
-      document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
-      if (isChatOpen) {
-        unreadCount = 0;
-        const badge = document.getElementById('chatBadge');
-        if (badge) badge.style.display = 'none';
-      }
     }
 
     function sendChat() {
@@ -1684,226 +1663,6 @@
       if (onClick) el.onclick = onClick;
       return el;
     }
-
-    socket.on('startDealerSelectionCut', (data) => {
-      const overlay = document.getElementById('dealerCutOverlay');
-      const spread = document.getElementById('dealerCutSpread');
-      const container = document.getElementById('dealerCutPicksContainer');
-
-      spread.innerHTML = '';
-      container.innerHTML = '';
-      hasPickedDealerCard = false;
-
-      const isEligible = data.players.some(p => p.id === socket.id);
-      const instr = document.getElementById('dealerCutInstruction');
-      instr.innerText = isEligible 
-        ? "👉 Tap any face-down card! Lowest card becomes Dealer." 
-        : `Watching dealer cut: ${data.players.map(p => p.name).join(', ')}`;
-
-      for (let i = 0; i < data.deckCount; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'card-cut-slot';
-        slot.innerText = '🂠';
-        slot.onclick = () => {
-          if (!isEligible || hasPickedDealerCard) return;
-          hasPickedDealerCard = true;
-          slot.style.opacity = '0.3';
-          slot.style.pointerEvents = 'none';
-          playCardSlideSound();
-          socket.emit('pickDealerCutCard', { roomId: currentRoom, cardIndex: i });
-        };
-        spread.appendChild(slot);
-      }
-
-      overlay.classList.add('active');
-    });
-
-    socket.on('dealerCutCardPicked', (data) => {
-      const container = document.getElementById('dealerCutPicksContainer');
-      const div = document.createElement('div');
-      div.id = `dc_pick_${data.playerId}`;
-      div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
-      container.appendChild(div);
-      playCardSlideSound();
-    });
-
-    socket.on('dealerCutResultsReveal', (data) => {
-      const container = document.getElementById('dealerCutPicksContainer');
-      container.innerHTML = '';
-
-      data.results.forEach(res => {
-        const box = document.createElement('div');
-        box.className = 'showdown-player-box';
-        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
-        box.innerHTML = `
-          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:3px;">
-            <span>${res.card.rank}</span><span>${res.card.suit}</span>
-          </div>
-        `;
-        container.appendChild(box);
-      });
-
-      setTimeout(() => {
-        document.getElementById('dealerCutOverlay').classList.remove('active');
-      }, 3500);
-    });
-
-    let bannerTimer = null;
-    socket.on('bannerAnnouncement', (data) => {
-      const banner = document.getElementById('bannerAnnouncement');
-      banner.innerText = data.text;
-      banner.classList.add('show');
-      if (bannerTimer) clearTimeout(bannerTimer);
-      bannerTimer = setTimeout(() => {
-        banner.classList.remove('show');
-      }, data.duration || 3200);
-    });
-
-    socket.on('bigAnnouncement', (data) => {
-      dismissAnnouncement();
-      const overlay = document.getElementById('announcementOverlay');
-      document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
-      document.getElementById('annMessage').innerText = data.message || '';
-      document.getElementById('annSubtext').innerText = data.subtext || '';
-
-      const handsContainer = document.getElementById('showdownHandsContainer');
-      if (handsContainer && data.hands && data.hands.length > 0) {
-        handsContainer.innerHTML = '';
-        data.hands.forEach(h => {
-          const pBox = document.createElement('div');
-          pBox.className = 'showdown-player-box';
-          
-          let cardsHtml = '';
-          (h.hand || []).forEach(c => {
-            const isRed = c.suit === '♥' || c.suit === '♦';
-            cardsHtml += `
-              <div class="card mini ${isRed ? 'red' : 'black'}">
-                <span>${c.rank}</span><span style="font-size:11px;">${c.suit}</span>
-              </div>
-            `;
-          });
-
-          pBox.innerHTML = `
-            <div class="showdown-player-info">
-              <span>${h.name}</span>
-              <span style="color:#ffd700;">(${h.score} pts)</span>
-              ${h.isKnocker ? '<span style="color:#ff3344;">[Knocker]</span>' : ''}
-            </div>
-            <div class="showdown-cards-row">${cardsHtml}</div>
-          `;
-          handsContainer.appendChild(pBox);
-        });
-      }
-
-      overlay.classList.add('show');
-      announcementTimer = setTimeout(() => dismissAnnouncement(), data.duration || 7500);
-    });
-
-    socket.on('errorMsg', (msg) => alert(msg));
-
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        const saved = localStorage.getItem('thirtyOne_playerName');
-        if (saved) {
-          const pInput = document.getElementById('playerName');
-          if (pInput) pInput.value = saved;
-        }
-      } catch (e) {}
-
-      const nameInput = document.getElementById('playerName');
-      if (nameInput) {
-        nameInput.addEventListener('input', (e) => {
-          const val = e.target.value.trim();
-          if (val) {
-            try {
-              localStorage.setItem('thirtyOne_playerName', val);
-            } catch (err) {}
-          }
-        });
-      }
-
-      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect', 'spectatorWagerInput'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            e.target.focus();
-          }, { passive: true });
-        }
-      });
-
-      const actionMap = {
-        'enterGameBtn': joinGame,
-        'lobbyTutorialBtn': toggleTutorialModal,
-        'rulesHeaderBtn': toggleTutorialModal,
-        'ledgerHeaderBtn': toggleLedgerModal,
-        'endGameBtn': requestEndGame,
-        'voiceBtn': toggleVoice,
-        'voiceInviteBtn': toggleVoiceInviteModal,
-        'muteBtn': toggleMute,
-        'leaveRoomBtn': leaveLobby,
-        'spectateBtn': toggleSpectate,
-        'spectatorJoinBtn': openSpectatorJoinModal,
-        'spectatorPeekBtn': togglePeekSelectorModal,
-        'roundBetBtn': openRoundSideBetModal,
-        'firstLoserBetBtn': openFirstLoserSideBetModal,
-        'readyBtn': toggleReady,
-        'addBotBtn': addBot,
-        'removeBotBtn': removeBot,
-        'knockBtn': attemptKnock,
-        'chatToggleBtn': toggleChat,
-        'chatCloseBtn': toggleChat,
-        'sendChatBtn': sendChat,
-        'submitPeekBtn': submitPeekRequest,
-        'submitMultiBetBtn': submitMultiPeerSideBet,
-        'retryConnBtn': manualReconnect,
-        'drawPile': () => draw('deck'),
-        'discardPile': () => draw('discard'),
-        'stopPeekBtn': stopPeekingHand,
-        'selectAllOppBtn': () => selectAllOpponents(true),
-        'clearAllOppBtn': () => selectAllOpponents(false),
-        'closeTutorialBtn1': toggleTutorialModal,
-        'closeTutorialBtn2': toggleTutorialModal,
-        'cancelKnockBtn': cancelKnockConfirm,
-        'confirmKnockBtn': confirmKnock,
-        'cancelDebtBtn': cancelClearDebt,
-        'executeDebtBtn': executeClearDebt,
-        'acceptEndGameBtn': () => respondEndGame(true),
-        'declineEndGameBtn': () => respondEndGame(false),
-        'closeSpectatorJoinBtn': () => document.getElementById('spectatorJoinModal').style.display = 'none',
-        'submitSpectatorJoinBtn': submitSpectatorJoinRequest,
-        'acceptJoinVoteBtn': () => respondJoinVote(true),
-        'declineJoinVoteBtn': () => respondJoinVote(false),
-        'declineScreenshotBtn': () => executeLeave(false),
-        'acceptScreenshotBtn': () => executeLeave(true),
-        'allowDebtPermBtn': () => respondDebtPermission(true),
-        'denyDebtPermBtn': () => respondDebtPermission(false),
-        'closeVoiceModalBtn': toggleVoiceInviteModal,
-        'declineVoiceBtn': () => respondVoiceInvite(false),
-        'acceptVoiceBtn': () => respondVoiceInvite(true),
-        'sendVoiceInviteBtn': sendVoiceInvite,
-        'declineSideBetBtn': () => respondSideBet(false),
-        'acceptSideBetBtn': () => respondSideBet(true),
-        'denyPeekBtn': () => respondPeekPermission(false),
-        'allowPeekBtn': () => respondPeekPermission(true),
-        'closePeekModalBtn': togglePeekSelectorModal,
-        'closeLedgerBtn1': toggleLedgerModal,
-        'closeLedgerBtn2': toggleLedgerModal,
-        'closeRoundBetBtn': toggleRoundBetModal
-      };
-
-      Object.keys(actionMap).forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.addEventListener('click', (e) => {
-            e.preventDefault();
-            actionMap[id]();
-          });
-        }
-      });
-    });
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js');
