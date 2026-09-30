@@ -99,7 +99,7 @@
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
     
-    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; }
+    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 10; }
     button {
       padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
       background: #ffcc00; color: #111; cursor: pointer; touch-action: manipulation;
@@ -142,11 +142,11 @@
     }
     .chat-panel {
       position: fixed; top: 0; right: -100%; width: 85%; max-width: 320px; height: 100%;
-      background: #0f2d24; z-index: 200; display: flex; flex-direction: column;
+      background: #0f2d24; z-index: 1200; display: flex; flex-direction: column;
       box-shadow: -4px 0 15px rgba(0,0,0,0.6); transition: right 0.25s ease-in-out;
-      pointer-events: auto;
+      pointer-events: none;
     }
-    .chat-panel.open { right: 0; }
+    .chat-panel.open { right: 0; pointer-events: auto; }
     .chat-header {
       padding: 10px; background: rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center;
       font-weight: bold; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -171,7 +171,7 @@
     .big-announcement-overlay {
       position: absolute; inset: 0; background: rgba(0, 0, 0, 0.92);
       display: flex; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 999; opacity: 0; pointer-events: none;
+      z-index: 1300; opacity: 0; pointer-events: none;
       transition: opacity 0.3s ease; text-align: center; padding: 16px; overflow-y: auto;
     }
     .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
@@ -195,7 +195,7 @@
     .card-cut-overlay {
       position: absolute; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 950; padding: 14px; text-align: center; pointer-events: none;
+      z-index: 1250; padding: 14px; text-align: center; pointer-events: none;
     }
     .card-cut-overlay.active {
       display: flex; pointer-events: auto;
@@ -213,7 +213,7 @@
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
 
-    /* CRITICAL FIX: Ensure inactive modals never block pointer clicks */
+    /* MODAL OVERLAYS: Default to display: none and pointer-events: none so they never block clicks when closed */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -250,10 +250,7 @@
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
       display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
-      gap: 10px; z-index: 1000; padding: 24px 16px; overflow-y: auto; pointer-events: none;
-    }
-    .lobby-modal[style*="display: flex"], .lobby-modal:not([style*="display: none"]) {
-      pointer-events: auto;
+      gap: 10px; z-index: 1000; padding: 24px 16px; overflow-y: auto; pointer-events: auto;
     }
     .room-directory {
       width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
@@ -292,7 +289,7 @@
     .connection-banner {
       position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
       background: #d32f2f; color: #fff; padding: 6px 14px; border-radius: 16px;
-      font-size: 11px; font-weight: bold; z-index: 1200; display: none; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: bold; z-index: 1400; display: none; align-items: center; gap: 8px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     }
 
@@ -583,7 +580,7 @@
       <span style="font-size:11px; font-weight:bold; color:#ffd700;">Avatar Emoji:</span>
       <select id="avatarSelect" style="max-width:180px; padding:8px; font-size:16px;">
         <option value="👑">👑 Crown</option>
-        <option value="🏎️" selected>🏎️ Racing</option>
+        <option value="🏎️️" selected>🏎️ Racing</option>
         <option value="🔥">🔥 Fire</option>
         <option value="💀">💀 Skull</option>
         <option value="🃏">🃏 Joker</option>
@@ -672,7 +669,7 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()" ontouchend="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()" ontouchend="togglePeekSelectorModal()">👁️️ Peek at Hand</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()" ontouchend="togglePeekSelectorModal()">👁️ Peek at Hand</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()" ontouchend="openRoundSideBetModal()">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()" ontouchend="openFirstLoserSideBetModal()">💀 First to Lose</button>
     <button type="button" id="readyBtn" onclick="toggleReady()" ontouchend="toggleReady()">⏳ Tap to Ready</button>
@@ -1090,7 +1087,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -1337,7 +1334,7 @@
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -1566,9 +1563,13 @@
 
       const enterBtn = document.getElementById('enterGameBtn');
       if (enterBtn) {
-        enterBtn.addEventListener('click', joinGame);
+        enterBtn.addEventListener('click', () => {
+          document.getElementById('lobby').style.display = 'none';
+          joinGame();
+        });
         enterBtn.addEventListener('touchend', (e) => {
           e.preventDefault();
+          document.getElementById('lobby').style.display = 'none';
           joinGame();
         });
       }
