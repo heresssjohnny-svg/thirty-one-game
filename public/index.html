@@ -1317,7 +1317,7 @@
             label.className = 'opp-checkbox-item';
             label.innerHTML = `
               <input type="checkbox" value="${m.name}" checked />
-              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️️]' : ''}</span>
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
             `;
             checklist.appendChild(label);
           }
@@ -1502,7 +1502,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a wide outer oval perimeter ring (Strictly layered above center piles)
+        // Render players in a wide outer oval perimeter ring matching your layout blueprint
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1516,10 +1516,10 @@
 
           const totalP = orderedPlayers.length;
           orderedPlayers.forEach((p, idx) => {
-            const baseAngle = 0.25 * Math.PI; // Bottom-right anchor angle
+            const baseAngle = 0.25 * Math.PI; // Bottom-right anchor angle (Yellow X position)
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 170; // wide edge spread
-            const radiusY = 110; // wide edge spread
+            const radiusX = 185; // extreme edge spread clear of center piles
+            const radiusY = 125; // extreme edge spread clear of center piles
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
