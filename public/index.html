@@ -82,7 +82,7 @@
     }
 
     /* Center piles layered beneath the perimeter seats */
-    .middle-piles { display: flex; gap: 20px; align-items: center; z-index: 3; position: relative; }
+    .middle-piles { display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 3; position: relative; }
     
     .card {
       width: 66px; height: 96px; min-width: 66px; min-height: 96px;
@@ -403,6 +403,20 @@
     </div>
   </div>
 
+  <!-- SCREENSHOT LEDGER CONFIRMATION MODAL (ON LEAVE) -->
+  <div id="screenshotModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#ffd700; text-align:center;">
+      <div style="font-weight:900; font-size:15px; color:#ffd700;">📸 Save Ledger Screenshot?</div>
+      <div style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Would you like to download a screenshot of your ledger balances before leaving?
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" id="declineScreenshotBtn" style="padding:8px 12px;">No, Just Leave</button>
+        <button type="button" style="background:#ffd700; color:#111; padding:8px 12px; font-weight:bold;" id="acceptScreenshotBtn">Yes, Save Screenshot</button>
+      </div>
+    </div>
+  </div>
+
   <!-- PEEK PERMISSION REQUEST PROMPT FOR ACTIVE PLAYERS -->
   <div id="peekRequestModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
@@ -621,7 +635,6 @@
 
   <div class="header">
     <div id="roomLabel">Room: -</div>
-    <div id="scoreLabel">Score: 0</div>
     <div class="header-controls">
       <button type="button" class="tutorial-btn" id="rulesHeaderBtn">📖 Rules</button>
       <button type="button" class="ledger-btn" id="ledgerHeaderBtn">💰 Ledger</button>
@@ -652,8 +665,12 @@
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
-      <div id="drawPile" class="card back">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(32)</span></div>
-      <div id="discardPile" class="card">--</div>
+      <!-- Your Score Displayed in the Middle of Table Above Discard Pile -->
+      <div style="font-size: 11px; font-weight: bold; color: #ffd700; text-align: center; margin-bottom: -2px;">Your Score: <span id="scoreLabel">0</span></div>
+      <div style="display: flex; gap: 20px; align-items: center;">
+        <div id="drawPile" class="card back">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(52)</span></div>
+        <div id="discardPile" class="card">--</div>
+      </div>
     </div>
 
     <div class="hand-area">
@@ -1015,21 +1032,70 @@
 
     function leaveLobby() {
       if (!currentRoom) return;
-      if (confirm('Leave this game room?')) {
-        if (isInVoice) leaveVoice();
-        cancelDealAnimation();
-        dismissAnnouncement();
-        stopPeekingHand();
-        socket.emit('leaveRoom', currentRoom);
-        currentRoom = '';
-        myHand = [];
-        wasMyTurn = false;
-        document.getElementById('lobby').style.display = 'flex';
-        document.getElementById('roomLabel').innerText = 'Room: -';
-        document.getElementById('scoreLabel').innerText = 'Score: 0';
-        document.getElementById('handArea').innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
-        document.getElementById('tableRing').innerHTML = '';
+      document.getElementById('screenshotModal').style.display = 'flex';
+    }
+
+    function executeLeave(takeScreenshot) {
+      document.getElementById('screenshotModal').style.display = 'none';
+      if (takeScreenshot) {
+        const canvas = document.getElementById('ledgerCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#164033';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`31 Card Game - Ledger Summary (${myPlayerName})`, canvas.width / 2, 35);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Date & Time: ${new Date().toLocaleString()}`, 30, 65);
+
+        let y = 100;
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText('Player / Member', 30, y);
+        ctx.fillText('Net Balance', 300, y);
+        ctx.fillText('Side Bets', 450, y);
+
+        y += 25;
+        ctx.font = '13px sans-serif';
+        if (latestPersonalLedger.length === 0) {
+          ctx.fillStyle = '#aaaaaa';
+          ctx.fillText('No active balances recorded.', 30, y);
+        } else {
+          latestPersonalLedger.forEach(b => {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(b.player + (b.hasLeft ? ' (Left)' : ''), 30, y);
+            ctx.fillStyle = b.netBalance > 0 ? '#4caf50' : (b.netBalance < 0 ? '#f44336' : '#ffffff');
+            ctx.fillText((b.netBalance > 0 ? '+' : '') + '$' + b.netBalance, 300, y);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('$' + b.sideBetBalance, 450, y);
+            y += 24;
+          });
+        }
+
+        const link = document.createElement('a');
+        link.download = `31_Ledger_${myPlayerName}_${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
       }
+
+      if (isInVoice) leaveVoice();
+      cancelDealAnimation();
+      dismissAnnouncement();
+      stopPeekingHand();
+      socket.emit('leaveRoom', currentRoom);
+      currentRoom = '';
+      myHand = [];
+      wasMyTurn = false;
+      document.getElementById('lobby').style.display = 'flex';
+      document.getElementById('roomLabel').innerText = 'Room: -';
+      document.getElementById('scoreLabel').innerText = '0';
+      document.getElementById('handArea').innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
+      document.getElementById('tableRing').innerHTML = '';
     }
 
     function toggleSpectate() {
@@ -1048,7 +1114,6 @@
       modal.style.display = isVisible ? 'none' : 'flex';
       
       if (!isVisible) {
-        // Render ledger balance list
         const ledgerList = document.getElementById('ledgerList');
         ledgerList.innerHTML = '';
         if (latestPersonalLedger.length === 0) {
@@ -1796,7 +1861,7 @@
           });
         }
 
-        document.getElementById('scoreLabel').innerText = isSpectator ? 'Spectating' : `Score: ${currentScore}`;
+        document.getElementById('scoreLabel').innerText = isSpectator ? '-' : `${currentScore}`;
         
         // Manage Lives Dropdown and Match Wager visibility
         const livesSelectorSec = document.getElementById('livesSelectorSection');
@@ -1912,8 +1977,38 @@
       document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
       document.getElementById('annMessage').innerText = data.message || '';
       document.getElementById('annSubtext').innerText = data.subtext || '';
+
+      const handsContainer = document.getElementById('showdownHandsContainer');
+      if (handsContainer && data.hands && data.hands.length > 0) {
+        handsContainer.innerHTML = '';
+        data.hands.forEach(h => {
+          const pBox = document.createElement('div');
+          pBox.className = 'showdown-player-box';
+          
+          let cardsHtml = '';
+          (h.hand || []).forEach(c => {
+            const isRed = c.suit === '♥' || c.suit === '♦';
+            cardsHtml += `
+              <div class="card mini ${isRed ? 'red' : 'black'}">
+                <span>${c.rank}</span><span style="font-size:11px;">${c.suit}</span>
+              </div>
+            `;
+          });
+
+          pBox.innerHTML = `
+            <div class="showdown-player-info">
+              <span>${h.name}</span>
+              <span style="color:#ffd700;">(${h.score} pts)</span>
+              ${h.isKnocker ? '<span style="color:#ff3344;">[Knocker]</span>' : ''}
+            </div>
+            <div class="showdown-cards-row">${cardsHtml}</div>
+          `;
+          handsContainer.appendChild(pBox);
+        });
+      }
+
       overlay.classList.add('show');
-      announcementTimer = setTimeout(() => dismissAnnouncement(), data.duration || 5500);
+      announcementTimer = setTimeout(() => dismissAnnouncement(), data.duration || 7500);
     });
 
     socket.on('errorMsg', (msg) => alert(msg));
@@ -1991,6 +2086,8 @@
         'submitSpectatorJoinBtn': submitSpectatorJoinRequest,
         'acceptJoinVoteBtn': () => respondJoinVote(true),
         'declineJoinVoteBtn': () => respondJoinVote(false),
+        'declineScreenshotBtn': () => executeLeave(false),
+        'acceptScreenshotBtn': () => executeLeave(true),
         'closeVoiceModalBtn': toggleVoiceInviteModal,
         'declineVoiceBtn': () => respondVoiceInvite(false),
         'acceptVoiceBtn': () => respondVoiceInvite(true),
