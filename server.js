@@ -131,7 +131,7 @@ function handleTurnTimeout(roomId) {
 
   io.to(roomId).emit('bannerAnnouncement', {
     text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
-    duration: 4000
+    duration: 3500
   });
 
   while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
@@ -2323,7 +2323,7 @@ io.on('connection', (socket) => {
       room.configuredLives = winningLives;
       activeEligible.forEach(pl => { pl.lives = winningLives; });
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️️ Room starting lives updated to ${winningLives} by majority vote!`,
+        text: `❤️ Room starting lives updated to ${winningLives} by majority vote!`,
         duration: 4000
       });
     } else {
