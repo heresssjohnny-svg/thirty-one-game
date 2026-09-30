@@ -629,7 +629,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Tall Arch Perimeter Oval Table Ring for Players -->
+    <!-- Tall Vertical Arch Perimeter Oval Table Ring for Players -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -1145,7 +1145,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1502,7 +1502,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a tall vertical arch oval perimeter ring
+        // Render players in a tall vertical arch oval perimeter ring with user anchored at bottom-middle
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1516,10 +1516,10 @@
 
           const totalP = orderedPlayers.length;
           orderedPlayers.forEach((p, idx) => {
-            const baseAngle = 0.25 * Math.PI; // Bottom-right anchor angle (Yellow X position)
+            const baseAngle = 0.5 * Math.PI; // Bottom-middle anchor angle (90 degrees)
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 145; // balanced width
-            const radiusY = 155; // tall vertical arch matching diagram
+            const radiusX = 135; // balanced width
+            const radiusY = 180; // tall vertical arch
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
