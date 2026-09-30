@@ -49,12 +49,12 @@
       display: none; align-items: center; gap: 4px;
     }
 
-    /* Left-Side First Card Picked Window (80% opacity, persistent while card is held) */
+    /* Top-Left First Card Picked Window (80% opacity, persistent while card is held) */
     .first-card-banner {
-      position: fixed; left: 8px; top: 50%; transform: translateY(-50%);
-      background: rgba(0, 0, 0, 0.8); border: 1px solid #ffd700; color: #ffd700; font-weight: bold; font-size: 11px;
-      padding: 10px 8px; border-radius: 10px; display: none; flex-direction: column; align-items: center; gap: 6px;
-      z-index: 200; opacity: 0.8; box-shadow: 0 4px 12px rgba(0,0,0,0.5); text-align: center; max-width: 90px;
+      position: absolute; left: 8px; top: 8px;
+      background: rgba(0, 0, 0, 0.8); border: 1px solid #ffd700; color: #ffd700; font-weight: bold; font-size: 10px;
+      padding: 6px; border-radius: 8px; display: none; flex-direction: column; align-items: center; gap: 4px;
+      z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
     /* Circular / Oval Table Layout for Players */
@@ -97,25 +97,20 @@
     .card.discard-highlight { outline: 3px solid #ffcc00; transform: translateY(-4px); }
 
     .card.mini {
-      width: 40px; height: 58px; min-width: 40px; min-height: 58px;
-      font-size: 13px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      width: 36px; height: 50px; min-width: 36px; min-height: 50px;
+      font-size: 11px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
-    .card.mini span:last-child { font-size: 13px !important; }
+    .card.mini span:last-child { font-size: 11px !important; }
 
     .flying-card {
-      position: fixed; width: 66px; height: 96px;
-      background: #0d47a1; border: 2px solid #ffffff; border-radius: 8px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.5); pointer-events: none; z-index: 800;
-      transition: all 0.42s cubic-bezier(0.25, 1, 0.5, 1);
+      position: fixed; width: 50px; height: 72px;
+      background: #0d47a1; border: 2px solid #ffffff; border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5); pointer-events: none; z-index: 900;
+      transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+      display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 14px; font-weight: bold; color: #fff;
     }
-
-    .card.card-flip-reveal {
-      animation: flipIn 0.38s ease-out forwards;
-    }
-    @keyframes flipIn {
-      0% { transform: rotateY(90deg) scale(0.8); opacity: 0.3; }
-      100% { transform: rotateY(0deg) scale(1); opacity: 1; }
-    }
+    .flying-card.red { background: #ffffff; color: #d32f2f; }
+    .flying-card.black { background: #ffffff; color: #111111; }
 
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 5; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
@@ -626,11 +621,11 @@
       <div id="roundPotBanner" class="round-pot-banner">🎲 SIDE BETS: $0</div>
     </div>
 
-    <!-- Left-Side First Card Picked Window (80% Opacity, Persistent while card is held) -->
+    <!-- Top-Left First Card Picked Window (80% Opacity, Persistent while card is held) -->
     <div id="firstCardBanner" class="first-card-banner">
-      <div style="font-size:9px; color:#fff; opacity:0.8;">FIRST CARD</div>
-      <div id="firstCardMiniBox" style="margin:2px 0;"></div>
-      <span id="firstCardText" style="font-size:9px; line-height:1.2;">-</span>
+      <div style="font-size:8px; color:#fff; opacity:0.8;">FIRST CARD</div>
+      <div id="firstCardMiniBox" style="margin:1px 0;"></div>
+      <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
     <!-- Circular / Oval Table Ring for Players -->
@@ -816,6 +811,39 @@
       }
     }
 
+    function animateDrawCard(playerName, source, card) {
+      const seatEl = document.getElementById(`seat-${playerName}`);
+      const sourceEl = document.getElementById(source === 'discard' ? 'discardPile' : 'drawPile');
+      if (!seatEl || !sourceEl) return;
+
+      const srcRect = sourceEl.getBoundingClientRect();
+      const targetRect = seatEl.getBoundingClientRect();
+
+      const fly = document.createElement('div');
+      fly.className = `flying-card ${source === 'discard' && card ? ((card.suit === '♥' || card.suit === '♦') ? 'red' : 'black') : ''}`;
+      fly.style.left = `${srcRect.left}px`;
+      fly.style.top = `${srcRect.top}px`;
+      
+      if (source === 'discard' && card) {
+        fly.innerHTML = `<span>${card.rank}</span><span>${card.suit}</span>`;
+      } else {
+        fly.innerText = '🂠';
+      }
+
+      document.body.appendChild(fly);
+
+      requestAnimationFrame(() => {
+        fly.style.transform = `translate3d(${targetRect.left - srcRect.left}px, ${targetRect.top - srcRect.top}px, 0) scale(0.4)`;
+        fly.style.opacity = '0.2';
+      });
+
+      setTimeout(() => fly.remove(), 470);
+    }
+
+    socket.on('animateDraw', (data) => {
+      animateDrawCard(data.playerName, data.source, data.card);
+    });
+
     function recoverFromBackground() {
       cancelDealAnimation();
       isDiscarding = false;
@@ -895,7 +923,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -1344,7 +1372,7 @@
       const el = document.createElement('div');
       const isRed = card.suit === '♥' || card.suit === '♦';
       el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''} ${isMini ? 'mini' : ''} ${isFlip ? 'card-flip-reveal' : ''}`;
-      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '13px' : '20px'};">${card.suit}</span>`;
+      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '11px' : '20px'};">${card.suit}</span>`;
       if (onClick) el.onclick = onClick;
       return el;
     }
@@ -1460,7 +1488,7 @@
           document.getElementById('endGameModal').style.display = 'none';
         }
 
-        // Left-side first card pickup window (80% opacity, active as long as card is held)
+        // Top-left first card pickup window (80% opacity, active as long as card is held)
         const firstCardBanner = document.getElementById('firstCardBanner');
         const firstCardMiniBox = document.getElementById('firstCardMiniBox');
         const firstCardText = document.getElementById('firstCardText');
@@ -1468,34 +1496,44 @@
           firstCardBanner.style.display = 'flex';
           firstCardMiniBox.innerHTML = '';
           firstCardMiniBox.appendChild(renderCard(state.firstCardPickedUp.card, null, false, true));
-          firstCardText.innerText = `${state.firstCardPickedUp.player} holds ${state.firstCardPickedUp.card.rank}${state.firstCardPickedUp.card.suit}`;
+          firstCardText.innerText = `${state.firstCardPickedUp.player} holds`;
         } else {
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a circular/oval ring around the table
+        // Render players in a circular/oval ring around the table (Your player always at bottom right, no mini cards for you)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
-          const totalP = (state.players || []).length;
-          (state.players || []).forEach((p, idx) => {
-            const angle = (idx / Math.max(1, totalP)) * 2 * Math.PI - Math.PI / 2;
-            const radiusX = 125;
-            const radiusY = 85;
+          const rawPlayers = state.players || [];
+          
+          let orderedPlayers = [...rawPlayers];
+          const myIdx = orderedPlayers.findIndex(p => p.name === myPlayerName && !p.isSpectator);
+          if (myIdx !== -1) {
+            orderedPlayers = orderedPlayers.slice(myIdx).concat(orderedPlayers.slice(0, myIdx));
+          }
+
+          const totalP = orderedPlayers.length;
+          orderedPlayers.forEach((p, idx) => {
+            const baseAngle = 0.25 * Math.PI; // Bottom-right anchor angle
+            const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
+            const radiusX = 145; // pushed towards edges
+            const radiusY = 95;  // pushed towards edges
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
             const seat = document.createElement('div');
+            seat.id = `seat-${p.name}`;
             seat.className = `player-seat ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
             seat.style.transform = `translate(${x}px, ${y}px)`;
 
             const voiceBadge = p.isInVoice ? ' 🎙️' : '';
-            const dcBadge = p.disconnected ? ' ⚠️️' : '';
+            const dcBadge = p.disconnected ? ' ⚠️' : '';
             const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
             const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
 
             let miniCardsHtml = '';
-            if (state.gameStarted && !p.isSpectator) {
+            if (state.gameStarted && !p.isSpectator && p.name !== myPlayerName) {
               miniCardsHtml = `<div class="seat-mini-cards">
                 <div class="mini-card-back">🂠</div>
                 <div class="mini-card-back">🂠</div>
