@@ -539,7 +539,7 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️️ Request Hand View</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
         <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="togglePeekSelectorModal()">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
@@ -690,7 +690,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Outer Perimeter Oval Table Ring for Players -->
+    <!-- Outer Perimeter Oval Table Ring for Other Players / Bots -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -726,6 +726,11 @@
         <div class="wager-chip wager-chip-btn" data-wager="5" onclick="setWager(5)">$5</div>
         <div class="wager-chip wager-chip-btn" data-wager="10" onclick="setWager(10)">$10</div>
         <div class="wager-chip wager-chip-btn" data-wager="20" onclick="setWager(20)">$20</div>
+      </div>
+
+      <!-- Locked Central Player Name Badge Right Above Cards -->
+      <div id="myCenterPlayerBadge" style="background: rgba(0,0,0,0.85); border: 2px solid #ffd700; padding: 4px 12px; border-radius: 14px; font-size: 11px; font-weight: bold; color: #ffd700; margin-bottom: 2px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.6); display: inline-block;">
+        👤 <span id="centerPlayerNameLabel">Player</span> (2 ❤️)
       </div>
 
       <!-- Invisible Hand Instruction Label -->
@@ -1052,6 +1057,7 @@
       });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
+      document.getElementById('centerPlayerNameLabel').innerText = myPlayerName;
     }
 
     function leaveLobby() {
@@ -1235,7 +1241,7 @@
         latestActivePlayers.forEach(p => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          opt.innerText = `${p.name} (${p.lives} ❤️)`;
+          opt.innerText = `${p.name} (${p.lives} ❤️️)`;
           select.appendChild(opt);
         });
       }
@@ -1771,23 +1777,33 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Dynamically Render Players in Oval Ring around Table Center
+        // Update Center Name Badge for You
+        const mePlayer = (state.players || []).find(p => p.name === myPlayerName);
+        const centerBadge = document.getElementById('myCenterPlayerBadge');
+        if (centerBadge) {
+          if (myPlayerName) {
+            centerBadge.style.display = 'inline-block';
+            const readyMark = (!state.gameStarted && mePlayer && mePlayer.isReady) ? '✓ ' : '';
+            const dealerMark = (mePlayer && mePlayer.isDealer) ? ' [D]' : '';
+            const myLives = mePlayer ? mePlayer.lives : 2;
+            document.getElementById('centerPlayerNameLabel').innerText = `${readyMark}${myPlayerName}${dealerMark} (${myLives} ❤️)`;
+          } else {
+            centerBadge.style.display = 'none';
+          }
+        }
+
+        // Dynamically Render Other Players/Bots in Oval Ring (excluding yourself)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
           const rawPlayers = state.players || [];
-          
-          let orderedPlayers = [...rawPlayers];
-          const myIdx = orderedPlayers.findIndex(p => p.name === myPlayerName && !p.isSpectator);
-          if (myIdx !== -1) {
-            orderedPlayers = orderedPlayers.slice(myIdx).concat(orderedPlayers.slice(0, myIdx));
-          }
+          let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
 
-          const totalP = orderedPlayers.length;
-          const radiusX = 125; 
-          const radiusY = 155; 
+          const totalP = otherPlayers.length;
+          const radiusX = 135; 
+          const radiusY = 165; 
 
-          orderedPlayers.forEach((p, idx) => {
+          otherPlayers.forEach((p, idx) => {
             const angle = (idx / Math.max(1, totalP)) * 2 * Math.PI - Math.PI / 2;
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
@@ -1804,7 +1820,7 @@
             const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
 
             let miniCardsHtml = '';
-            if (state.gameStarted && !p.isSpectator && p.name !== myPlayerName) {
+            if (state.gameStarted && !p.isSpectator) {
               miniCardsHtml = `<div class="seat-mini-cards">
                 <div class="mini-card-back">🂠</div>
                 <div class="mini-card-back">🂠</div>
@@ -1980,6 +1996,10 @@
     });
 
     socket.on('errorMsg', (msg) => alert(msg));
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
   </script>
 </body>
 </html>
