@@ -130,7 +130,7 @@ function handleTurnTimeout(roomId) {
   if (!current || current.isSpectator || current.lives <= 0) return;
 
   io.to(roomId).emit('bannerAnnouncement', {
-    text: `⏱️️ Time's up for ${current.name}! AI taking turn...`,
+    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
     duration: 3500
   });
 
@@ -926,6 +926,7 @@ function broadcastState(roomId, message = '') {
 
     io.to(p.id).emit('gameState', {
       myWager: p.matchWager || 0,
+      configuredLives: room.configuredLives || 2,
       players: room.players.map(pl => ({
         id: pl.id,
         name: pl.name,
@@ -1255,7 +1256,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('joinRoom', ({ roomId, playerName, deviceId, initialLives }) => {
+  socket.on('joinRoom', ({ roomId, playerName, deviceId }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
       rooms[roomId] = {
@@ -1281,17 +1282,14 @@ io.on('connection', (socket) => {
         lastGameWinnerId: null,
         isFirstRoundOfMatch: false,
         spectatorPeeks: {},
-        configuredLives: parseInt(initialLives) || 2,
+        configuredLives: 2,
         initialDiscardCard: null,
         firstCardPickupTracker: null,
-        endGameVote: null
+        endGameVote: null,
+        lifeVotes: {}
       };
     }
     const room = rooms[roomId];
-
-    if (initialLives && !room.gameStarted) {
-      room.configuredLives = parseInt(initialLives) || 2;
-    }
 
     let safeName = playerName ? playerName.trim() : '';
 
@@ -1393,7 +1391,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
