@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Table Ring Container positioned just above the life selector table */
+    /* Moved Upward Table Ring Container */
     .table-ring {
       position: absolute;
-      inset: -55px 0 60px 0;
+      inset: -65px 0 50px 0;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -1225,7 +1225,7 @@
         latestActivePlayers.forEach(p => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          opt.innerText = `${p.name} (${p.lives} ❤️)`;
+          opt.innerText = `${p.name} (${p.lives} ❤️️)`;
           select.appendChild(opt);
         });
       }
@@ -1293,7 +1293,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
@@ -1779,20 +1779,19 @@
           }
         }
 
-        // Dynamically Render Opponents in Oval Ring strictly configured as: 2 Left, 1 Top, 2 Right (Total 5 slots for 6-player max)
+        // Dynamically Render Opponents in Oval Ring strictly configured as: 2 Left, 1 Top, 2 Right
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
           const rawPlayers = state.players || [];
           let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
 
-          // Fixed seat coordinates mapped around the oval ring: 2 Left, 1 Top, 2 Right
           const slotCoordinates = [
-            { x: -140, y: -45 }, // Left Top
-            { x: -140, y: 55 },  // Left Bottom
-            { x: 0,    y: -85 }, // Top Center
-            { x: 140,  y: -45 }, // Right Top
-            { x: 140,  y: 55 }   // Right Bottom
+            { x: -140, y: -30 }, // Left Top
+            { x: -140, y: 70 },  // Left Bottom
+            { x: 0,    y: -95 }, // Top Center
+            { x: 140,  y: -30 }, // Right Top
+            { x: 140,  y: 70 }   // Right Bottom
           ];
 
           otherPlayers.forEach((p, idx) => {
