@@ -444,7 +444,7 @@ function checkDealerCutComplete(room) {
             if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
             const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
             const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
-            room.dealerCutPicks[l.player.id] = { player: l, card: card };
+            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
             checkDealerCutComplete(room);
           }, 1000 + Math.random() * 800);
         }
@@ -601,16 +601,22 @@ function checkAndHandle31(room, player) {
   scores[player.id] = 31;
   const roundBetReport = settlePeerRoundBets(room, scores);
 
-  if (player.lastDrawnSource === 'discard' && player.fedCardsTracker) {
+  // Updated Rule: Both the Ace and the Face card must come from the discard pile tracking
+  if (player.lastDrawnSource === 'discard' && player.fedCardsTracker && player.discardPickedCards) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
       const cardsInHandFromGiver = cards.filter(c => 
         player.hand.some(hCard => hCard.rank === c.rank && hCard.suit === c.suit)
       );
 
+      // Verify they were picked up from discard pile
+      const pickedFromDiscard = cardsInHandFromGiver.every(c => 
+        player.discardPickedCards.some(dCard => dCard.rank === c.rank && dCard.suit === c.suit)
+      );
+
       const hasAce = cardsInHandFromGiver.some(c => c.rank === 'A');
       const hasTen = cardsInHandFromGiver.some(c => c.value === 10);
 
-      if (hasAce && hasTen) {
+      if (hasAce && hasTen && pickedFromDiscard) {
         penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
         if (penalizedGiver) break;
       }
@@ -629,7 +635,7 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: '⚡ 31 HIT FROM DISCARD! ⚡',
       message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
-      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & 10 to ${player.name}!`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & Face card from Discard to ${player.name}!`,
       hands: revealedHands,
       duration: 7500
     });
@@ -735,6 +741,7 @@ function startNewRound(roomId) {
   room.currentDiscardFeederId = null;
   room.peerSideBets = (room.peerSideBets || []).filter(b => b.type === 'firstLoser');
   room.tiebreakerActive = false;
+  room.firstCardPickedUp = null; // Reset first card pickup tracker
 
   if (!room.isFirstRoundOfMatch) {
     for (let i = 1; i <= room.players.length; i++) {
@@ -755,6 +762,7 @@ function startNewRound(roomId) {
   dealOrder.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
     p.fedCardsTracker = {};
+    p.discardPickedCards = [];
     p.lastDrawnSource = 'deal';
 
     if (dealer && dealer.id !== p.id) {
@@ -770,7 +778,7 @@ function startNewRound(roomId) {
   const firstDiscard = room.deck.pop();
   room.discardPile.push(firstDiscard);
   room.currentDiscardFeederId = null;
-  room.initialDiscardCard = firstDiscard; // Track initial deal top card
+  room.initialDiscardCard = firstDiscard;
 
   for (const p of active) {
     if (calculateScore(p.hand) === 31) {
@@ -853,7 +861,8 @@ function broadcastState(roomId, message = '') {
       minKnockScore: minKnockScore,
       roundHasPassed: roundHasPassed,
       topDiscard: room.discardPile[room.discardPile.length - 1] || null,
-      deckCount: room.deck ? room.deck.length : 0, // NEW: send deck count remaining
+      firstCardPickedUp: room.firstCardPickedUp || null,
+      deckCount: room.deck ? room.deck.length : 0,
       isMyTurn: isCurrent,
       hasDrawn: Boolean(room.drawnCard),
       canKnock: canKnock,
@@ -1021,17 +1030,15 @@ function triggerBotTurnIfNeeded(roomId) {
 
     let drawn;
     if (takeDiscard) {
-      // Check if picking up the initial discard card
       if (room.initialDiscardCard && topDiscard.rank === room.initialDiscardCard.rank && topDiscard.suit === room.initialDiscardCard.suit) {
-        io.to(roomId).emit('bannerAnnouncement', {
-          text: `📢 Reminder: ${current.name} picked up the first dealt card (${topDiscard.rank}${topDiscard.suit})!`,
-          duration: 4500
-        });
-        room.initialDiscardCard = null; // Clear trigger once picked up
+        room.firstCardPickedUp = { player: current.name, card: topDiscard };
+        room.initialDiscardCard = null;
       }
 
       drawn = room.discardPile.pop();
       current.lastDrawnSource = 'discard';
+      if (!current.discardPickedCards) current.discardPickedCards = [];
+      current.discardPickedCards.push(drawn);
 
       const feederId = room.currentDiscardFeederId || getPrevActivePlayer(room, room.currentTurnIdx)?.id;
       if (feederId) {
@@ -1179,7 +1186,8 @@ io.on('connection', (socket) => {
         isFirstRoundOfMatch: false,
         spectatorPeeks: {},
         configuredLives: parseInt(initialLives) || 2,
-        initialDiscardCard: null
+        initialDiscardCard: null,
+        firstCardPickedUp: null
       };
     }
     const room = rooms[roomId];
@@ -1189,6 +1197,7 @@ io.on('connection', (socket) => {
     }
 
     let safeName = playerName ? playerName.trim() : '';
+
     if (deviceId && room.playerRegistry[deviceId]) {
       if (safeName && safeName !== room.playerRegistry[deviceId]) {
         const oldName = room.playerRegistry[deviceId];
@@ -1271,6 +1280,7 @@ io.on('connection', (socket) => {
       lives: isSpectator ? 0 : (room.configuredLives || 2),
       hand: [],
       fedCardsTracker: {},
+      discardPickedCards: [],
       lastDrawnSource: null,
       isBot: false,
       isSpectator: isSpectator,
@@ -1549,7 +1559,7 @@ io.on('connection', (socket) => {
       }
       bet.accepted = true;
 
-      io.to(roomId).emit('bannerAnnouncement', {
+      io.to(room.id).emit('bannerAnnouncement', {
         text: `🤝 ${bet.opponentName} ACCEPTED ${bet.bettorName}'s $${bet.amount} side bet!`,
         duration: 3500
       });
@@ -1750,6 +1760,7 @@ io.on('connection', (socket) => {
       lives: room.configuredLives || 2,
       hand: [],
       fedCardsTracker: {},
+      discardPickedCards: [],
       lastDrawnSource: null,
       isBot: true,
       isSpectator: false,
@@ -1858,17 +1869,15 @@ io.on('connection', (socket) => {
       if (room.discardPile.length === 0) return;
       const topDiscardCheck = room.discardPile[room.discardPile.length - 1];
 
-      // Check if picking up the initial discard card
       if (room.initialDiscardCard && topDiscardCheck.rank === room.initialDiscardCard.rank && topDiscardCheck.suit === room.initialDiscardCard.suit) {
-        io.to(roomId).emit('bannerAnnouncement', {
-          text: `📢 Reminder: ${player.name} picked up the first dealt card (${topDiscardCheck.rank}${topDiscardCheck.suit})!`,
-          duration: 4500
-        });
-        room.initialDiscardCard = null; // Clear trigger once picked up
+        room.firstCardPickedUp = { player: player.name, card: topDiscardCheck };
+        room.initialDiscardCard = null;
       }
 
       drawn = room.discardPile.pop();
       player.lastDrawnSource = 'discard';
+      if (!player.discardPickedCards) player.discardPickedCards = [];
+      player.discardPickedCards.push(drawn);
 
       const feederId = room.currentDiscardFeederId || getPrevActivePlayer(room, room.currentTurnIdx)?.id;
       if (feederId) {
