@@ -380,7 +380,7 @@
   <!-- INCOMING VOICE INVITE ALERT MODAL -->
   <div id="incomingVoiceInviteModal" class="custom-modal">
     <div class="modal-card" style="border-color:#00897b; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️ Voice Invitation</div>
+      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️️ Voice Invitation</div>
       <div id="incomingVoiceText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Player invited you to join voice chat.
       </div>
@@ -1187,7 +1187,7 @@
         }
       });
 
-      // Explicit event binding for lobby buttons to ensure 100% click/touch responsiveness
+      // Explicit event binding for lobby buttons & chips using pointerup for instantaneous mobile response
       const clickMap = {
         'enterGameBtn': joinGame,
         'lobbyTutorialBtn': toggleTutorialModal,
@@ -1225,8 +1225,7 @@
             e.preventDefault();
             clickMap[id]();
           };
-          el.addEventListener('click', triggerAction);
-          el.addEventListener('touchend', triggerAction);
+          el.addEventListener('pointerup', triggerAction);
         }
       });
 
@@ -1235,8 +1234,7 @@
           e.preventDefault();
           setInitialLives(parseInt(el.getAttribute('data-lives')));
         };
-        el.addEventListener('click', trigger);
-        el.addEventListener('touchend', trigger);
+        el.addEventListener('pointerup', trigger);
       });
     });
 
