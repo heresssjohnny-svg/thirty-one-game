@@ -57,9 +57,9 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Outer Perimeter Oval Table Ring for Players (Strictly above center piles) */
+    /* Tall Vertical Arch Oval Table Ring for Players */
     .table-ring {
-      position: absolute; inset: 25px 5px 5px 5px;
+      position: absolute; inset: 20px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 6;
     }
     .player-seat {
@@ -629,7 +629,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Outer Perimeter Oval Table Ring for Players (Strictly above center piles) -->
+    <!-- Tall Arch Perimeter Oval Table Ring for Players -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -1502,7 +1502,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a wide outer oval perimeter ring matching your layout blueprint
+        // Render players in a tall vertical arch oval perimeter ring
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1518,8 +1518,8 @@
           orderedPlayers.forEach((p, idx) => {
             const baseAngle = 0.25 * Math.PI; // Bottom-right anchor angle (Yellow X position)
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 185; // extreme edge spread clear of center piles
-            const radiusY = 125; // extreme edge spread clear of center piles
+            const radiusX = 145; // balanced width
+            const radiusY = 155; // tall vertical arch matching diagram
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
