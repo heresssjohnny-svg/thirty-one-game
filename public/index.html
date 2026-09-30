@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Shifted Left Table Ring Container for perfect vertical alignment */
+    /* Shifted Left Table Ring Container */
     .table-ring {
       position: absolute;
-      inset: -115px 40px 50px 0px;
+      inset: -115px 55px 50px 0px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -156,10 +156,10 @@
       background: #d32f2f; color: white; border-radius: 50%;
       padding: 2px 5px; font-size: 10px; font-weight: bold; display: none;
     }
-    /* Constrained Chat Panel above table cloth and bottom action buttons */
+    /* Fixed Chat Panel with full pointer events */
     .chat-panel {
       position: fixed; top: 38px; right: -100%; width: 85%; max-width: 300px; height: calc(100vh - 110px);
-      background: #0f2d24; z-index: 1200; display: flex; flex-direction: column;
+      background: #0f2d24; z-index: 2400; display: flex; flex-direction: column;
       box-shadow: -4px 0 15px rgba(0,0,0,0.6); transition: right 0.25s ease-in-out;
       border-top-left-radius: 12px; border-bottom-left-radius: 12px;
       pointer-events: none;
@@ -179,7 +179,7 @@
     .chat-msg .time { font-size: 9px; opacity: 0.6; float: right; margin-left: 6px; }
     .chat-msg.spec .sender { color: #81d4fa; }
     .chat-footer {
-      padding: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.3);
+      padding: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.3); pointer-events: auto;
     }
     .chat-input {
       flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; background: #fff; color: #111;
@@ -320,7 +320,7 @@
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
-    <span>⚠️ Disconnected from server</span>
+    <span>⚠️️ Disconnected from server</span>
     <button type="button" id="retryConnBtn" onclick="manualReconnect()">Retry Connection</button>
   </div>
 
@@ -676,7 +676,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Outer Perimeter Oval Table Ring for Opponents/Bots configured as: 2 Left, 1 Top, 2 Right -->
+    <!-- Outer Perimeter Oval Table Ring for Opponents/Bots (Dealing order relative seating) -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -1518,7 +1518,7 @@
 
     function sendChat() {
       const input = document.getElementById('chatInput');
-      if (input.value.trim()) {
+      if (input && input.value.trim()) {
         socket.emit('sendChatMessage', { roomId: currentRoom, message: input.value.trim() });
         input.value = '';
       }
@@ -1785,22 +1785,36 @@
           }
         }
 
-        // Dynamically Render Opponents in Oval Ring with Perfect Vertical Alignment
+        // Render Opponents in Oval Ring ordered by dealing turn relative to you (Bottom-Left = next turn, Bottom-Right = previous turn)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
           const rawPlayers = state.players || [];
-          let otherPlayers = rawPlayers.filter(p => p.name !== myPlayerName);
+          
+          let orderedOthers = [];
+          const myIdx = rawPlayers.findIndex(p => p.name === myPlayerName);
+          if (myIdx !== -1) {
+            // Reorder starting from player after you (index + 1) around clockwise
+            for (let i = 1; i < rawPlayers.length; i++) {
+              const p = rawPlayers[(myIdx + i) % rawPlayers.length];
+              if (p.name !== myPlayerName) {
+                orderedOthers.push(p);
+              }
+            }
+          } else {
+            orderedOthers = rawPlayers.filter(p => p.name !== myPlayerName);
+          }
 
+          // Slot coordinates: [0] = Bottom Left (Next Turn), [1] = Top Left, [2] = Top Center, [3] = Top Right, [4] = Bottom Right (Previous Turn)
           const slotCoordinates = [
-            { x: -125, y: -25 }, // Left Top
-            { x: -125, y: 70 },  // Left Bottom
-            { x: 0,    y: -145 }, // Top Center (Aligned with center name badge)
-            { x: 125,  y: -25 }, // Right Top
-            { x: 125,  y: 70 }   // Right Bottom
+            { x: -125, y: 70 },  // Bottom Left (Next turn after you)
+            { x: -125, y: -25 }, // Top Left
+            { x: 0,    y: -145 }, // Top Center
+            { x: 125,  y: -25 }, // Top Right
+            { x: 125,  y: 70 }   // Bottom Right (Turn before you)
           ];
 
-          otherPlayers.forEach((p, idx) => {
+          orderedOthers.forEach((p, idx) => {
             const pos = slotCoordinates[idx % slotCoordinates.length];
 
             const seat = document.createElement('div');
