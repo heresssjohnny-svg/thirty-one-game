@@ -56,15 +56,32 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Tall Vertical Arch Oval Table Ring for Players with high z-index */
+    /* Fixed Table Ring Container */
     .table-ring {
-      position: absolute; inset: 0;
-      display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 50; overflow: visible;
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 50;
     }
+
+    /* Individual Player Seat Positioning */
     .player-seat {
-      position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px;
-      pointer-events: auto; transition: all 0.3s ease; z-index: 60;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      pointer-events: auto;
+      transform: translate(-50%, -50%);
+      transition: all 0.3s ease;
+      z-index: 60;
     }
+
     .player-seat-tag {
       background: rgba(0,0,0,0.85); padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;
       border: 1px solid rgba(255,255,255,0.4); white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.6);
@@ -114,7 +131,7 @@
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 50; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
     
-    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 100; pointer-events: auto; }
+    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding: 8px 4px; z-index: 2100; pointer-events: auto; }
     button {
       padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
       background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto; z-index: 100;
@@ -1671,9 +1688,288 @@
       return el;
     }
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js');
-    }
+    socket.on('gameState', (state) => {
+      try {
+        const turnJustBegan = state.isMyTurn && !wasMyTurn;
+        isTurn = state.isMyTurn;
+        wasMyTurn = state.isMyTurn;
+
+        if (turnJustBegan && state.gameStarted && !state.isSpectator) {
+          playTurnBellSound();
+          triggerTurnVibration();
+        }
+
+        hasDrawn = state.hasDrawn;
+        myHand = state.hand || [];
+        minKnockScore = state.minKnockScore || 21;
+        roundHasPassed = state.roundHasPassed;
+        currentScore = state.score || 0;
+        isSpectator = Boolean(state.isSpectator);
+        manualSpectator = Boolean(state.manualSpectator);
+        isReady = Boolean(state.isReady);
+        currentWager = state.myWager || 0;
+        latestTopDiscard = state.topDiscard || null;
+        latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
+        latestAllTableMembers = state.allTableMembers || [];
+        latestPersonalLedger = state.personalLedger || [];
+
+        const potBanner = document.getElementById('potBanner');
+        const roundPotBanner = document.getElementById('roundPotBanner');
+        if (potBanner) {
+          potBanner.style.display = 'flex';
+          potBanner.innerText = `🏆 MATCH POT: $${state.totalPot || 0}`;
+        }
+        if (roundPotBanner) {
+          roundPotBanner.style.display = state.sideBetActionTotal > 0 ? 'flex' : 'none';
+          roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal || 0}`;
+        }
+
+        const deckCountLabel = document.getElementById('deckCountLabel');
+        if (deckCountLabel) {
+          deckCountLabel.innerText = `(${state.deckCount})`;
+        }
+
+        if (state.endGameVote) {
+          document.getElementById('endGameVoteText').innerHTML = `
+            <strong>${state.endGameVote.proposer}</strong> proposed ending the game (Requires 100%).<br>
+            Votes agreed: ${state.endGameVote.agreedIds.length}
+          `;
+          document.getElementById('endGameModal').style.display = 'flex';
+        } else {
+          document.getElementById('endGameModal').style.display = 'none';
+        }
+
+        if (state.joinGameVote) {
+          document.getElementById('joinGameVoteText').innerHTML = `
+            <strong>${state.joinGameVote.spectatorName}</strong> wants to join mid-game ($${state.joinGameVote.wager} wager, 1 life cost).<br>
+            Votes agreed: ${state.joinGameVote.agreedIds.length}
+          `;
+          document.getElementById('joinGameVoteModal').style.display = 'flex';
+        } else {
+          document.getElementById('joinGameVoteModal').style.display = 'none';
+        }
+
+        const firstCardBanner = document.getElementById('firstCardBanner');
+        const firstCardMiniBox = document.getElementById('firstCardMiniBox');
+        const firstCardText = document.getElementById('firstCardText');
+        if (state.firstCardPickedUp) {
+          firstCardBanner.style.display = 'flex';
+          firstCardMiniBox.innerHTML = '';
+          firstCardMiniBox.appendChild(renderCard(state.firstCardPickedUp.card, null, false, true));
+          firstCardText.innerText = `${state.firstCardPickedUp.player} holds`;
+        } else {
+          firstCardBanner.style.display = 'none';
+        }
+
+        // Dynamically Render Players in Oval Ring around Table Center
+        const tableRing = document.getElementById('tableRing');
+        if (tableRing) {
+          tableRing.innerHTML = '';
+          const rawPlayers = state.players || [];
+          
+          let orderedPlayers = [...rawPlayers];
+          const myIdx = orderedPlayers.findIndex(p => p.name === myPlayerName && !p.isSpectator);
+          if (myIdx !== -1) {
+            orderedPlayers = orderedPlayers.slice(myIdx).concat(orderedPlayers.slice(0, myIdx));
+          }
+
+          const totalP = orderedPlayers.length;
+          const radiusX = 125; 
+          const radiusY = 155; 
+
+          orderedPlayers.forEach((p, idx) => {
+            const angle = (idx / Math.max(1, totalP)) * 2 * Math.PI - Math.PI / 2;
+            const x = Math.cos(angle) * radiusX;
+            const y = Math.sin(angle) * radiusY;
+
+            const seat = document.createElement('div');
+            seat.id = `seat-${p.name}`;
+            seat.className = `player-seat ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
+            seat.style.left = `calc(50% + ${x}px)`;
+            seat.style.top = `calc(50% + ${y}px)`;
+
+            const voiceBadge = p.isInVoice ? ' 🎙️' : '';
+            const dcBadge = p.disconnected ? ' ⚠️️' : '';
+            const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
+            const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
+
+            let miniCardsHtml = '';
+            if (state.gameStarted && !p.isSpectator && p.name !== myPlayerName) {
+              miniCardsHtml = `<div class="seat-mini-cards">
+                <div class="mini-card-back">🂠</div>
+                <div class="mini-card-back">🂠</div>
+                <div class="mini-card-back">🂠</div>
+              </div>`;
+            }
+
+            seat.innerHTML = `
+              <div class="player-seat-tag">${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}</div>
+              ${miniCardsHtml}
+            `;
+            tableRing.appendChild(seat);
+          });
+        }
+
+        document.getElementById('scoreLabel').innerText = isSpectator ? '-' : `${currentScore}`;
+        
+        const livesSelectorSec = document.getElementById('livesSelectorSection');
+        const wagerSec = document.getElementById('wagerSection');
+        const dropdown = document.getElementById('livesDropdown');
+
+        if (state.gameStarted) {
+          if (livesSelectorSec) livesSelectorSec.style.display = 'none';
+          if (wagerSec) wagerSec.style.display = 'none';
+        } else {
+          if (livesSelectorSec) livesSelectorSec.style.display = 'flex';
+          if (dropdown && state.configuredLives) {
+            dropdown.value = state.configuredLives.toString();
+          }
+          if (!isSpectator && wagerSec) {
+            wagerSec.style.display = 'flex';
+            document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
+              const val = parseInt(chip.getAttribute('data-wager')) || 0;
+              chip.classList.toggle('selected', val === currentWager);
+            });
+          } else if (wagerSec) {
+            wagerSec.style.display = 'none';
+          }
+        }
+
+        const readyBtn = document.getElementById('readyBtn');
+        const addBotBtn = document.getElementById('addBotBtn');
+        const removeBotBtn = document.getElementById('removeBotBtn');
+        const spectateBtn = document.getElementById('spectateBtn');
+        const spectatorJoinBtn = document.getElementById('spectatorJoinBtn');
+        const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
+        const roundBetBtn = document.getElementById('roundBetBtn');
+        const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
+        const endGameBtn = document.getElementById('endGameBtn');
+
+        if (state.gameStarted) {
+          readyBtn.style.display = 'none';
+          addBotBtn.style.display = 'none';
+          removeBotBtn.style.display = 'none';
+          spectateBtn.style.display = 'none';
+          endGameBtn.style.display = isSpectator ? 'none' : 'inline-block';
+          
+          if (isSpectator) {
+            spectatorJoinBtn.style.display = state.anyPlayerEliminated ? 'none' : 'inline-block';
+            spectatorPeekBtn.style.display = 'inline-block';
+          } else {
+            spectatorJoinBtn.style.display = 'none';
+            spectatorPeekBtn.style.display = 'none';
+          }
+
+          roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+          firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        } else {
+          spectatorJoinBtn.style.display = 'none';
+          spectatorPeekBtn.style.display = 'none';
+          roundBetBtn.style.display = 'none';
+          firstLoserBetBtn.style.display = 'none';
+          endGameBtn.style.display = 'none';
+          spectateBtn.style.display = 'inline-block';
+          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+          if (isSpectator) {
+            readyBtn.style.display = 'none';
+            addBotBtn.style.display = 'none';
+            removeBotBtn.style.display = 'none';
+          } else {
+            readyBtn.style.display = 'inline-block';
+            addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
+            removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
+            readyBtn.className = isReady ? 'ready-on' : '';
+            readyBtn.innerText = isReady ? '✅ You are Ready' : '⏳ Tap to Ready';
+          }
+        }
+
+        const knockBtn = document.getElementById('knockBtn');
+        if (isSpectator || !state.gameStarted) {
+          knockBtn.style.display = 'none';
+        } else {
+          knockBtn.style.display = 'inline-block';
+          if (state.knocker) {
+            knockBtn.disabled = true;
+            knockBtn.innerText = `Knocked by ${state.knocker}`;
+          } else {
+            knockBtn.disabled = !state.canKnock;
+            if (!roundHasPassed) {
+              knockBtn.innerText = `Knock (Round 1 active)`;
+            } else if (state.canKnock) {
+              knockBtn.innerText = `⚡ Knock Now!`;
+            } else {
+              knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+            }
+          }
+        }
+
+        const disc = document.getElementById('discardPile');
+        if (state.topDiscard) {
+          const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
+          disc.className = `card ${isRed ? 'red' : 'black'}`;
+          disc.innerHTML = `<span>${state.topDiscard.rank}</span><span style="font-size: 20px;">${state.topDiscard.suit}</span>`;
+        } else {
+          disc.className = 'card';
+          disc.innerText = '--';
+        }
+
+        forceRenderHand();
+      } catch (err) {
+        console.error('Error in gameState handler:', err);
+      }
+    });
+
+    socket.on('bigAnnouncement', (data) => {
+      dismissAnnouncement();
+      const overlay = document.getElementById('announcementOverlay');
+      document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
+      document.getElementById('annMessage').innerText = data.message || '';
+      document.getElementById('annSubtext').innerText = data.subtext || '';
+
+      const handsContainer = document.getElementById('showdownHandsContainer');
+      if (handsContainer && data.hands && data.hands.length > 0) {
+        handsContainer.innerHTML = '';
+        data.hands.forEach(h => {
+          const pBox = document.createElement('div');
+          pBox.className = 'showdown-player-box';
+          
+          let cardsHtml = '';
+          (h.hand || []).forEach(c => {
+            const isRed = c.suit === '♥' || c.suit === '♦';
+            cardsHtml += `
+              <div class="card mini ${isRed ? 'red' : 'black'}">
+                <span>${c.rank}</span><span style="font-size:11px;">${c.suit}</span>
+              </div>
+            `;
+          });
+
+          pBox.innerHTML = `
+            <div class="showdown-player-info">
+              <span>${h.name}</span>
+              <span style="color:#ffd700;">(${h.score} pts)</span>
+              ${h.isKnocker ? '<span style="color:#ff3344;">[Knocker]</span>' : ''}
+            </div>
+            <div class="showdown-cards-row">${cardsHtml}</div>
+          `;
+          handsContainer.appendChild(pBox);
+        });
+      }
+
+      overlay.classList.add('show');
+      announcementTimer = setTimeout(() => dismissAnnouncement(), data.duration || 7500);
+    });
+
+    socket.on('bannerAnnouncement', (data) => {
+      const banner = document.getElementById('bannerAnnouncement');
+      banner.innerText = data.text;
+      banner.classList.add('show');
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => {
+        banner.classList.remove('show');
+      }, data.duration || 3200);
+    });
+
+    socket.on('errorMsg', (msg) => alert(msg));
   </script>
 </body>
 </html>
