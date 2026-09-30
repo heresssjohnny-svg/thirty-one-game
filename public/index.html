@@ -24,14 +24,14 @@
       position: relative;
       user-select: none; -webkit-user-select: none;
     }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; z-index: 10; }
-    .header-controls { display: flex; align-items: center; gap: 4px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; z-index: 10; pointer-events: auto; }
+    .header-controls { display: flex; align-items: center; gap: 4px; pointer-events: auto; }
     .status-box { background: rgba(0,0,0,0.35); padding: 6px; border-radius: 8px; font-size: 13px; text-align: center; min-height: 32px; display: flex; align-items: center; justify-content: center; }
     
     .table {
       flex: 1; display: flex; flex-direction: column; justify-content: space-between;
       align-items: center; background: #164033; border-radius: 12px; margin: 4px 0; padding: 6px;
-      position: relative; min-height: 0; z-index: 1;
+      position: relative; min-height: 0; z-index: 1; pointer-events: auto;
     }
     
     .pots-header {
@@ -69,7 +69,7 @@
       background: #ffffff; border-radius: 8px;
       display: flex; flex-direction: column; justify-content: center; align-items: center;
       font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.35);
-      border: 1px solid #ccc;
+      border: 1px solid #ccc; pointer-events: auto;
       transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     .card.red { color: #d32f2f; }
@@ -101,7 +101,7 @@
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
     
-    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 10; }
+    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 20; pointer-events: auto; }
     button {
       padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
       background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto; touch-action: manipulation;
@@ -136,7 +136,7 @@
       position: fixed; right: 10px; bottom: 65px;
       background: #0288d1; color: white; border-radius: 24px;
       padding: 6px 12px; font-size: 13px; display: flex; align-items: center;
-      gap: 4px; z-index: 50; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+      gap: 4px; z-index: 50; box-shadow: 0 4px 10px rgba(0,0,0,0.4); pointer-events: auto;
     }
     .chat-badge {
       background: #d32f2f; color: white; border-radius: 50%;
@@ -167,7 +167,7 @@
     }
     .chat-input {
       flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; background: #fff; color: #111;
-      user-select: text; -webkit-user-select: text;
+      user-select: text; -webkit-user-select: text; pointer-events: auto;
     }
 
     .big-announcement-overlay {
@@ -225,7 +225,7 @@
     }
     .modal-card {
       background: #164033; border: 2px solid #ffd700; border-radius: 12px;
-      padding: 14px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 8px;
+      padding: 14px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 8px; pointer-events: auto;
     }
     .ledger-summary-banner {
       background: rgba(0,0,0,0.4); border-radius: 8px; padding: 6px; text-align: center;
@@ -241,7 +241,7 @@
     }
     .wager-chip {
       padding: 3px 7px; border-radius: 12px; font-size: 11px; font-weight: bold;
-      background: rgba(255,255,255,0.15); cursor: pointer; border: 1px solid #ccc;
+      background: rgba(255,255,255,0.15); cursor: pointer; border: 1px solid #ccc; pointer-events: auto;
     }
     .wager-chip.selected {
       background: #ffd700; color: #111; border-color: #ffd700;
@@ -258,7 +258,7 @@
     .room-dir-item {
       background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px;
       padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
-      cursor: pointer; font-size: 12px;
+      cursor: pointer; font-size: 12px; pointer-events: auto;
     }
     .room-dir-item:hover { background: rgba(255,255,255,0.2); }
     .badge-in-play { background: #e53935; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
@@ -275,10 +275,10 @@
       background: rgba(0,0,0,0.25); padding: 5px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
     }
     .opp-checkbox-item {
-      display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px; cursor: pointer; pointer-events: auto;
     }
     .opp-checkbox-item input {
-      width: 15px; height: 15px; margin: 0; cursor: pointer;
+      width: 15px; height: 15px; margin: 0; cursor: pointer; pointer-events: auto;
     }
 
     .peek-status-bar {
@@ -290,13 +290,13 @@
       position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
       background: #d32f2f; color: #fff; padding: 6px 14px; border-radius: 16px;
       font-size: 11px; font-weight: bold; z-index: 1400; display: none; align-items: center; gap: 8px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: auto;
     }
 
     input, select {
       padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
       font-size: 13px; width: 100%; max-width: 280px; background: #fff; color: #111;
-      user-select: text; -webkit-user-select: text;
+      user-select: text; -webkit-user-select: text; pointer-events: auto;
     }
   </style>
 </head>
