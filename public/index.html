@@ -57,9 +57,9 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Circular / Oval Table Layout for Players */
+    /* Outer Perimeter Oval Table Ring for Players */
     .table-ring {
-      position: absolute; inset: 40px 10px 10px 10px;
+      position: absolute; inset: 25px 5px 5px 5px;
       display: flex; justify-content: center; align-items: center; pointer-events: none;
     }
     .player-seat {
@@ -67,18 +67,18 @@
       pointer-events: auto; transition: all 0.3s ease;
     }
     .player-seat-tag {
-      background: rgba(0,0,0,0.6); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;
-      border: 1px solid rgba(255,255,255,0.2); white-space: nowrap;
+      background: rgba(0,0,0,0.7); padding: 3px 7px; border-radius: 12px; font-size: 10px; font-weight: bold;
+      border: 1px solid rgba(255,255,255,0.25); white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     }
-    .player-seat.active .player-seat-tag { border: 2px solid #ffcc00; background: rgba(255,204,0,0.3); }
+    .player-seat.active .player-seat-tag { border: 2px solid #ffcc00; background: rgba(255,204,0,0.35); }
     .player-seat.is-ready .player-seat-tag { border-left: 3px solid #4caf50; }
     
     .seat-mini-cards {
       display: flex; gap: 2px;
     }
     .mini-card-back {
-      width: 18px; height: 26px; background: #0d47a1; border: 1px solid #fff; border-radius: 3px;
-      font-size: 8px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+      width: 16px; height: 24px; background: #0d47a1; border: 1px solid #fff; border-radius: 3px;
+      font-size: 7px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
     }
 
     .middle-piles { display: flex; gap: 20px; align-items: center; z-index: 4; }
@@ -608,7 +608,7 @@
       <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;">🏳️ End Game</button>
       <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
       <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️️</button>
       <button type="button" class="danger" id="leaveRoomBtn">Leave</button>
     </div>
   </div>
@@ -628,7 +628,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Circular / Oval Table Ring for Players -->
+    <!-- Outer Perimeter Oval Table Ring for Players -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -1501,7 +1501,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a circular/oval ring around the table (Your player always at bottom right, no mini cards for you)
+        // Render players in a wide outer oval perimeter ring around the center piles
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1517,8 +1517,8 @@
           orderedPlayers.forEach((p, idx) => {
             const baseAngle = 0.25 * Math.PI; // Bottom-right anchor angle
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 145; // pushed towards edges
-            const radiusY = 95;  // pushed towards edges
+            const radiusX = 170; // wide edge spread
+            const radiusY = 110; // wide edge spread
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
