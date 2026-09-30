@@ -601,6 +601,7 @@ function checkAndHandle31(room, player) {
   scores[player.id] = 31;
   const roundBetReport = settlePeerRoundBets(room, scores);
 
+  // STRICT REQUIREMENT: BOTH the Ace AND the Face card (10-value) must come from the discard pile fed by the opponent
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker && player.discardPickedCards) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
       const cardsInHandFromGiver = cards.filter(c => 
@@ -612,9 +613,9 @@ function checkAndHandle31(room, player) {
       );
 
       const hasAce = cardsInHandFromGiver.some(c => c.rank === 'A');
-      const hasTen = cardsInHandFromGiver.some(c => c.value === 10);
+      const hasFaceCard = cardsInHandFromGiver.some(c => c.value === 10);
 
-      if (hasAce && hasTen && pickedFromDiscard) {
+      if (hasAce && hasFaceCard && pickedFromDiscard) {
         penalizedGiver = room.players.find(p => p.id === giverId && p.lives > 0);
         if (penalizedGiver) break;
       }
@@ -633,7 +634,7 @@ function checkAndHandle31(room, player) {
     io.to(room.id).emit('bigAnnouncement', {
       title: '⚡ 31 HIT FROM DISCARD! ⚡',
       message: `LOSER: ${penalizedGiver.name.toUpperCase()} LOST 2 LIVES!`,
-      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed Ace & Face card from Discard to ${player.name}!`,
+      subtext: `${roundBetReport ? roundBetReport + ' | ' : ''}${firstLoserReport ? firstLoserReport + ' | ' : ''}Fed BOTH Ace & Face card from Discard to ${player.name}!`,
       hands: revealedHands,
       duration: 7500
     });
@@ -1377,7 +1378,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -1887,7 +1888,7 @@ io.on('connection', (socket) => {
         text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
         duration: 3200
       });
-      broadcastState(roomId, `⚠️️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
+      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
