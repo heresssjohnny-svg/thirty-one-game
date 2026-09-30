@@ -909,6 +909,8 @@ function broadcastState(roomId, message = '') {
     }
   }
 
+  const anyPlayerEliminated = room.players.some(p => !p.isSpectator && p.lives < (room.configuredLives || 2));
+
   room.players.forEach(p => {
     if (p.isBot) return;
 
@@ -927,6 +929,7 @@ function broadcastState(roomId, message = '') {
     io.to(p.id).emit('gameState', {
       myWager: p.matchWager || 0,
       configuredLives: room.configuredLives || 2,
+      anyPlayerEliminated: anyPlayerEliminated,
       players: room.players.map(pl => ({
         id: pl.id,
         name: pl.name,
@@ -983,7 +986,8 @@ function broadcastState(roomId, message = '') {
       netOverallBalance: personalLedgerData.totalNet,
       netSideBetBalance: personalLedgerData.totalSideBetNet,
       message: message,
-      endGameVote: room.endGameVote || null
+      endGameVote: room.endGameVote || null,
+      joinGameVote: room.joinGameVote || null
     });
   });
 
@@ -1286,7 +1290,8 @@ io.on('connection', (socket) => {
         initialDiscardCard: null,
         firstCardPickupTracker: null,
         endGameVote: null,
-        lifeVotes: {}
+        lifeVotes: {},
+        joinGameVote: null
       };
     }
     const room = rooms[roomId];
@@ -1398,764 +1403,112 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  socket.on('toggleSpectate', (roomId) => {
-    const room = rooms[roomId];
-    if (!room || room.gameStarted) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
-
-    if (!player.manualSpectator) {
-      player.manualSpectator = true;
-      player.isSpectator = true;
-      player.lives = 0;
-      player.isReady = false;
-      broadcastState(roomId, `👁️ ${player.name} switched to Spectator Mode.`);
-    } else {
-      if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
-        return socket.emit('errorMsg', 'Table is full (6 active players max).');
-      }
-      playerJoinCounter++;
-      player.joinOrder = playerJoinCounter;
-      player.manualSpectator = false;
-      player.isSpectator = false;
-      player.lives = room.configuredLives || 2;
-      player.isReady = false;
-      broadcastState(roomId, `🃏 ${player.name} rejoined as an active player.`);
-    }
-    broadcastRoomList();
-  });
-
-  socket.on('requestPeekingPermission', ({ roomId, targetPlayerId }) => {
+  socket.on('proposeJoinGame', ({ roomId, wager }) => {
     const room = rooms[roomId];
     if (!room || !room.gameStarted) return;
-
-    const spectator = room.players.find(p => p.id === socket.id && p.isSpectator);
-    const target = room.players.find(p => p.id === targetPlayerId && !p.isSpectator && p.lives > 0);
-    if (!spectator || !target) return;
-
-    if (room.spectatorPeeks && room.spectatorPeeks[socket.id]) {
-      delete room.spectatorPeeks[socket.id];
-      socket.emit('spectatorHandRevoked');
-    }
-
-    if (target.isBot) {
-      if (!room.spectatorPeeks) room.spectatorPeeks = {};
-      room.spectatorPeeks[socket.id] = target.id;
-      socket.emit('spectatorHandUpdate', {
-        targetPlayerName: target.name,
-        targetPlayerId: target.id,
-        hand: target.hand,
-        score: calculateScore(target.hand)
-      });
-      socket.emit('bannerAnnouncement', { text: `Now peeking at ${target.name}'s hand.`, duration: 2500 });
-      return;
-    }
-
-    io.to(target.id).emit('peekingPermissionRequested', {
-      spectatorId: socket.id,
-      spectatorName: spectator.name
-    });
-    socket.emit('bannerAnnouncement', { text: `Requested permission to view ${target.name}'s hand...`, duration: 3000 });
-  });
-
-  socket.on('respondPeekingPermission', ({ roomId, spectatorId, allow }) => {
-    const room = rooms[roomId];
-    if (!room || !room.spectatorPeeks) return;
-
-    const targetPlayer = room.players.find(p => p.id === socket.id);
-    const spectator = room.players.find(p => p.id === spectatorId);
-    if (!targetPlayer || !spectator) return;
-
-    if (allow) {
-      room.spectatorPeeks[spectatorId] = targetPlayer.id;
-      io.to(spectatorId).emit('spectatorHandUpdate', {
-        targetPlayerName: targetPlayer.name,
-        targetPlayerId: targetPlayer.id,
-        hand: targetPlayer.hand,
-        score: calculateScore(targetPlayer.hand)
-      });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
-    } else {
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
-    }
-  });
-
-  socket.on('stopPeekingHand', (roomId) => {
-    const room = rooms[roomId];
-    if (room && room.spectatorPeeks && room.spectatorPeeks[socket.id]) {
-      delete room.spectatorPeeks[socket.id];
-      socket.emit('spectatorHandRevoked');
-    }
-  });
-
-  socket.on('setWager', ({ roomId, wager }) => {
-    const room = rooms[roomId];
-    if (!room || room.gameStarted) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player || player.isSpectator) return;
-
-    const parsed = Math.max(0, parseInt(wager) || 0);
-    player.matchWager = parsed;
-    broadcastState(roomId, `💰 ${player.name} set their match wager to $${parsed}.`);
-    broadcastRoomList();
-  });
-
-  socket.on('clearDebt', ({ roomId, debtorName }) => {
-    const room = rooms[roomId];
-    if (!room) return;
-
-    const creditor = room.players.find(p => p.id === socket.id);
-    if (!creditor) return;
-    const creditorName = creditor.name;
-
-    let clearedAmount = 0;
-
-    if (room.debts && room.debts[debtorName] && room.debts[debtorName][creditorName]) {
-      clearedAmount += room.debts[debtorName][creditorName];
-      room.debts[debtorName][creditorName] = 0;
-    }
-
-    if (room.debtBreakdowns) {
-      const key = `${debtorName}:::${creditorName}`;
-      if (room.debtBreakdowns[key]) {
-        room.debtBreakdowns[key] = { match: 0, sideBets: 0 };
-      }
-    }
-
-    if (clearedAmount > 0) {
-      broadcastState(roomId, `🤝 ${creditorName} forgave and cleared ${debtorName}'s debt of $${clearedAmount}!`);
-      io.to(roomId).emit('bannerAnnouncement', {
-        text: `🤝 ${creditorName} cleared ${debtorName}'s debt of $${clearedAmount}!`,
-        duration: 4000
-      });
-    } else {
-      socket.emit('errorMsg', `No active debt found from ${debtorName}.`);
-    }
-  });
-
-  socket.on('proposeMultiSideBets', ({ roomId, betType, opponentNames, targetPlayerName, amount }) => {
-    const room = rooms[roomId];
-    if (!room) return;
-
-    const bettor = room.players.find(p => p.id === socket.id);
-    if (!bettor) return;
-
-    if (!Array.isArray(opponentNames) || opponentNames.length === 0) {
-      return socket.emit('errorMsg', 'Select at least one opponent for your side bet.');
-    }
-
-    const targetPlayer = room.players.find(p => p.name === targetPlayerName && !p.isSpectator);
-    if (!targetPlayer && betType === 'round') {
-      return socket.emit('errorMsg', 'Invalid target player for side bet.');
-    }
-
-    const parsedAmt = Math.max(1, parseInt(amount) || 1);
-    if (!room.peerSideBets) room.peerSideBets = [];
-
-    let proposedCount = 0;
-    let botAcceptedCount = 0;
-
-    opponentNames.forEach(oppName => {
-      if (oppName === bettor.name) return;
-      const opponent = room.players.find(p => p.name === oppName);
-      if (!opponent) return;
-
-      if (betType === 'firstLoser') {
-        const existingDuplicate = room.peerSideBets.find(b => 
-          b.type === 'firstLoser' &&
-          ((b.bettorId === bettor.id && b.opponentId === opponent.id) || (b.bettorId === opponent.id && b.opponentId === bettor.id)) &&
-          b.targetPlayerName === targetPlayerName
-        );
-        if (existingDuplicate) {
-          return socket.emit('errorMsg', `You already have a First-to-Lose bet active or pending with ${opponent.name} on ${targetPlayerName}!`);
-        }
-      }
-
-      const betId = `sb_${Date.now()}_${Math.random()}`;
-      const newBet = {
-        id: betId,
-        type: betType || 'round',
-        bettorId: bettor.id,
-        bettorName: bettor.name,
-        opponentId: opponent.id,
-        opponentName: opponent.name,
-        targetPlayerName: betType === 'firstLoser' ? targetPlayerName : targetPlayer.name,
-        bettorTargetId: betType === 'firstLoser' ? null : targetPlayer.id,
-        opponentTargetId: null,
-        amount: parsedAmt,
-        accepted: Boolean(opponent.isBot)
-      };
-
-      if (opponent.isBot) {
-        const possibleBotTargets = getActivePlayers(room).filter(p => p.name !== targetPlayerName);
-        const botPick = possibleBotTargets[Math.floor(Math.random() * possibleBotTargets.length)] || targetPlayer;
-        newBet.opponentTargetName = botPick.name;
-        newBet.opponentTargetId = botPick.id;
-        botAcceptedCount++;
-      }
-
-      room.peerSideBets.push(newBet);
-      proposedCount++;
-
-      if (!opponent.isBot) {
-        io.to(opponent.id).emit('sideBetOfferReceived', {
-          betId: betId,
-          fromPlayer: bettor.name,
-          amount: parsedAmt,
-          betType: betType,
-          bettorTarget: betType === 'firstLoser' ? targetPlayerName : targetPlayer.name
-        });
-      }
-    });
-
-    if (proposedCount === 0) {
-      return socket.emit('errorMsg', 'Invalid side bet selection.');
-    }
-
-    let msg = `Sent ${proposedCount} side bet proposals ($${parsedAmt} each).`;
-    if (botAcceptedCount > 0) {
-      msg += ` (${botAcceptedCount} bot(s) accepted immediately)`;
-    }
-
-    socket.emit('bannerAnnouncement', { text: msg, duration: 3200 });
-    broadcastState(roomId, `🎲 ${bettor.name} offered $${parsedAmt} side bets to ${proposedCount} player(s).`);
-  });
-
-  socket.on('respondSideBet', ({ roomId, betId, accept, myTargetName }) => {
-    const room = rooms[roomId];
-    if (!room || !room.peerSideBets) return;
-
-    const betIdx = room.peerSideBets.findIndex(b => b.id === betId);
-    if (betIdx === -1) return;
-    const bet = room.peerSideBets[betIdx];
-
-    if (bet.opponentId !== socket.id) return;
-
-    if (accept) {
-      const oppTarget = room.players.find(p => p.name === myTargetName);
-      if (!oppTarget && bet.type === 'round') {
-        return socket.emit('errorMsg', 'Please select a valid pick for your side of the bet.');
-      }
-
-      if (bet.type === 'round' && oppTarget.name === bet.targetPlayerName) {
-        room.peerSideBets.splice(betIdx, 1);
-        socket.emit('errorMsg', 'You cannot bet on the same player as the challenger!');
-        io.to(bet.bettorId).emit('bannerAnnouncement', {
-          text: `❌ ${bet.opponentName} tried to pick the same player as you and the bet was cancelled.`,
-          duration: 3500
-        });
-        broadcastState(roomId, `${bet.opponentName} tried to pick the same contender as ${bet.bettorName} (side bet cancelled).`);
-        return;
-      }
-
-      if (bet.type === 'round') {
-        bet.opponentTargetName = oppTarget.name;
-        bet.opponentTargetId = oppTarget.id;
-      }
-      bet.accepted = true;
-
-      io.to(room.id).emit('bannerAnnouncement', {
-        text: `🤝 ${bet.opponentName} ACCEPTED ${bet.bettorName}'s $${bet.amount} side bet!`,
-        duration: 3500
-      });
-      broadcastState(roomId, `🤝 ${bet.opponentName} accepted side bet vs ${bet.bettorName} ($${bet.amount}).`);
-    } else {
-      room.peerSideBets.splice(betIdx, 1);
-      io.to(bet.bettorId).emit('bannerAnnouncement', {
-        text: `❌ ${bet.opponentName} declined your $${bet.amount} side bet.`,
-        duration: 3000
-      });
-      broadcastState(roomId, `${bet.opponentName} declined side bet with ${bet.bettorName}.`);
-    }
-  });
-
-  socket.on('pickDealerCutCard', ({ roomId, cardIndex }) => {
-    const room = rooms[roomId];
-    if (!room || !room.dealerCutActive || !room.dealerCutPlayerIds.includes(socket.id)) return;
-    if (room.dealerCutPicks[socket.id]) return;
-
-    const player = room.players.find(p => p.id === socket.id);
+    const player = room.players.find(p => p.id === socket.id && p.isSpectator);
     if (!player) return;
 
-    const safeIdx = Math.min(Math.max(0, cardIndex), room.dealerCutDeck.length - 1);
-    const card = room.dealerCutDeck.splice(safeIdx, 1)[0];
-    room.dealerCutPicks[socket.id] = { player: player, card: card };
-
-    io.to(room.id).emit('dealerCutCardPicked', {
-      playerId: socket.id,
-      playerName: player.name,
-      remainingCount: room.dealerCutDeck.length
-    });
-
-    checkDealerCutComplete(room);
-  });
-
-  socket.on('pickTiebreakerCard', ({ roomId, cardIndex }) => {
-    const room = rooms[roomId];
-    if (!room || !room.tiebreakerActive || !room.tiedPlayerIds.includes(socket.id)) return;
-    if (room.tiebreakerPicks[socket.id]) return;
-
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
-
-    const safeIdx = Math.min(Math.max(0, cardIndex), room.tiebreakerDeck.length - 1);
-    const card = room.tiebreakerDeck.splice(safeIdx, 1)[0];
-    room.tiebreakerPicks[socket.id] = { player: player, card: card };
-
-    io.to(room.id).emit('tiebreakerCardPicked', {
-      playerId: socket.id,
-      playerName: player.name,
-      remainingCount: room.tiebreakerDeck.length
-    });
-
-    checkTiebreakerComplete(room);
-  });
-
-  socket.on('joinVoice', (roomId) => {
-    const room = rooms[roomId];
-    if (!room) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (player) player.isInVoice = true;
-
-    const otherVoiceUsers = room.players
-      .filter(p => p.isInVoice && p.id !== socket.id)
-      .map(p => p.id);
-
-    socket.emit('currentVoiceUsers', otherVoiceUsers);
-    socket.to(roomId).emit('voiceUserJoined', { socketId: socket.id });
-
-    if (player) {
-      io.to(roomId).emit('bannerAnnouncement', {
-        text: `🎙️ ${player.name} joined the voice channel!`,
-        duration: 3500
-      });
-      io.to(roomId).emit('playVoiceBell');
+    const anyPlayerEliminated = room.players.some(p => !p.isSpectator && p.lives < (room.configuredLives || 2));
+    if (anyPlayerEliminated) {
+      return socket.emit('errorMsg', 'Cannot join mid-game after a player has already lost a life.');
     }
+
+    if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
+      return socket.emit('errorMsg', 'Table is full (6 active players max).');
+    }
+
+    const activePlayersList = room.players.filter(p => !p.isSpectator);
+    let maxTableWager = 0;
+    activePlayersList.forEach(pl => {
+      if ((pl.matchWager || 0) > maxTableWager) maxTableWager = pl.matchWager || 0;
+    });
+
+    const minRequiredWager = maxTableWager + 5;
+    const parsedWager = Math.max(minRequiredWager, parseInt(wager) || minRequiredWager);
+    player.matchWager = parsedWager;
+
+    room.joinGameVote = {
+      spectatorId: player.id,
+      spectatorName: player.name,
+      wager: parsedWager,
+      agreedIds: []
+    };
+
+    io.to(roomId).emit('bannerAnnouncement', {
+      text: `👁️ ${player.name} requested to join the active game ($${parsedWager} wager, cost: 1 life). Vote in progress!`,
+      duration: 5000
+    });
 
     broadcastState(roomId);
   });
 
-  socket.on('leaveVoice', (roomId) => {
+  socket.on('respondJoinGame', ({ roomId, agree }) => {
     const room = rooms[roomId];
-    if (!room) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (player) player.isInVoice = false;
-
-    socket.to(roomId).emit('voiceUserLeft', { socketId: socket.id });
-
-    if (player) {
-      io.to(roomId).emit('bannerAnnouncement', {
-        text: `🔇 ${player.name} left the voice channel.`,
-        duration: 3000
-      });
-      io.to(roomId).emit('playVoiceBell');
-    }
-
-    broadcastState(roomId);
-  });
-
-  socket.on('inviteToVoice', ({ roomId, targetSocketId }) => {
-    const room = rooms[roomId];
-    if (!room) return;
-    const inviter = room.players.find(p => p.id === socket.id);
-    const target = room.players.find(p => p.id === targetSocketId || p.name === targetSocketId);
-    if (!inviter || !target || target.isInVoice) return;
-
-    io.to(target.id).emit('voiceInviteReceived', {
-      inviterName: inviter.name,
-      roomId: roomId
-    });
-    socket.emit('bannerAnnouncement', { text: `Voice invite sent to ${target.name}!`, duration: 3000 });
-  });
-
-  socket.on('voiceSignal', ({ target, signal }) => {
-    io.to(target).emit('voiceSignal', {
-      sender: socket.id,
-      signal: signal
-    });
-  });
-
-  socket.on('toggleReady', (roomId) => {
-    const room = rooms[roomId];
-    if (!room) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player || player.isSpectator) return;
-
-    player.isReady = !player.isReady;
-    broadcastState(roomId, `${player.name} is ${player.isReady ? 'READY' : 'NOT READY'}.`);
-
-    if (!room.gameStarted && checkAllPlayersReady(room)) {
-      room.gameStarted = true;
-      room.isFirstRoundOfMatch = true;
-      room.currentMatchParticipants = getActivePlayers(room).map(p => ({
-        id: p.id,
-        name: p.name,
-        wager: p.matchWager || 0
-      }));
-
-      const previousWinner = room.lastGameWinnerId ? room.players.find(p => p.id === room.lastGameWinnerId && !p.isSpectator) : null;
-      if (previousWinner) {
-        room.dealerIdx = room.players.findIndex(p => p.id === previousWinner.id);
-        io.to(roomId).emit('bigAnnouncement', {
-          title: '👑 RETURNING CHAMPION 👑',
-          message: `${previousWinner.name.toUpperCase()} DEALS!`,
-          subtext: 'Winner of the last game deals the new game',
-          duration: 3500
-        });
-        setTimeout(() => startNewRound(roomId), 3800);
-      } else {
-        startDealerCut(room);
-      }
-    }
-    broadcastRoomList();
-  });
-
-  socket.on('proposeEndGame', (roomId) => {
-    const room = rooms[roomId];
-    if (!room || !room.gameStarted) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player || player.isSpectator) return;
-
-    if (!room.endGameVote) {
-      room.endGameVote = {
-        proposer: player.name,
-        agreedIds: []
-      };
-    }
-
-    if (!room.endGameVote.agreedIds.includes(player.id)) {
-      room.endGameVote.agreedIds.push(player.id);
-    }
-
-    room.players.forEach(p => {
-      if (p.isBot && !room.endGameVote.agreedIds.includes(p.id)) {
-        room.endGameVote.agreedIds.push(p.id);
-      }
-    });
-
-    const eligible = room.players.filter(p => !p.isSpectator && p.lives > 0);
-    const agreedCount = room.endGameVote.agreedIds.length;
-
-    if (agreedCount >= eligible.length) {
-      io.to(roomId).emit('bigAnnouncement', {
-        title: '🏳️ GAME ENDED',
-        message: 'MATCH CONCLUDED BY VOTE',
-        subtext: 'Returning everyone to the lobby...',
-        duration: 4000
-      });
-
-      room.gameStarted = false;
-      room.currentMatchParticipants = [];
-      room.peerSideBets = [];
-      room.endGameVote = null;
-
-      room.players.forEach(p => {
-        p.isSpectator = false;
-        p.lives = room.configuredLives || 2;
-        p.isReady = false;
-      });
-
-      broadcastState(roomId, 'Game ended by unanimous vote.');
-      broadcastRoomList();
-    } else {
-      io.to(roomId).emit('bannerAnnouncement', {
-        text: `🏳️ ${player.name} requested to end the game (${agreedCount}/${eligible.length} agreed)`,
-        duration: 4000
-      });
-      broadcastState(roomId);
-    }
-  });
-
-  socket.on('respondEndGame', ({ roomId, agree }) => {
-    const room = rooms[roomId];
-    if (!room || !room.endGameVote) return;
-    const player = room.players.find(p => p.id === socket.id);
+    if (!room || !room.joinGameVote) return;
+    const player = room.players.find(p => p.id === socket.id && !p.isSpectator && p.lives > 0);
     if (!player) return;
 
     if (agree) {
-      if (!room.endGameVote.agreedIds.includes(player.id)) {
-        room.endGameVote.agreedIds.push(player.id);
+      if (!room.joinGameVote.agreedIds.includes(player.id)) {
+        room.joinGameVote.agreedIds.push(player.id);
       }
       room.players.forEach(p => {
-        if (p.isBot && !room.endGameVote.agreedIds.includes(p.id)) {
-          room.endGameVote.agreedIds.push(p.id);
+        if (p.isBot && !room.joinGameVote.agreedIds.includes(p.id)) {
+          room.joinGameVote.agreedIds.push(p.id);
         }
       });
 
       const eligible = room.players.filter(p => !p.isSpectator && p.lives > 0);
-      const agreedCount = room.endGameVote.agreedIds.length;
+      const agreedCount = room.joinGameVote.agreedIds.length;
 
-      if (agreedCount >= eligible.length) {
-        io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️ GAME ENDED',
-          message: 'MATCH CONCLUDED BY VOTE',
-          subtext: 'Returning everyone to the lobby...',
-          duration: 4000
-        });
+      if (agreedCount >= Math.ceil(eligible.length / 2)) {
+        const spec = room.players.find(p => p.id === room.joinGameVote.spectatorId);
+        if (spec) {
+          spec.isSpectator = false;
+          spec.lives = 1; // Costs 1 life to join mid-game
+          spec.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+          spec.fedCardsTracker = {};
+          spec.discardPickedCards = [];
+          spec.lastDrawnSource = 'deal';
 
-        room.gameStarted = false;
-        room.currentMatchParticipants = [];
-        room.peerSideBets = [];
-        room.endGameVote = null;
+          const joinerWager = room.joinGameVote.wager;
+          if (room.currentMatchParticipants) {
+            room.currentMatchParticipants.forEach(participant => {
+              if (participant.wager < joinerWager) {
+                const diff = joinerWager - participant.wager;
+                recordDebt(room, participant.name, spec.name, diff, 'match');
+              }
+            });
+            room.currentMatchParticipants.push({
+              id: spec.id,
+              name: spec.name,
+              wager: joinerWager
+            });
+          }
 
-        room.players.forEach(p => {
-          p.isSpectator = false;
-          p.lives = room.configuredLives || 2;
-          p.isReady = false;
-        });
-
-        broadcastState(roomId, 'Game ended by unanimous vote.');
+          io.to(roomId).emit('bigAnnouncement', {
+            title: '🎮 NEW PLAYER JOINED!',
+            message: `${spec.name.toUpperCase()} JOINED THE TABLE!`,
+            subtext: `Paid 1 life and $${joinerWager} wager!`,
+            duration: 4500
+          });
+        }
+        room.joinGameVote = null;
+        broadcastState(roomId, 'Spectator successfully joined the game.');
         broadcastRoomList();
       } else {
-        broadcastState(roomId, `${player.name} agreed to end the game (${agreedCount}/${eligible.length}).`);
+        broadcastState(roomId);
       }
     } else {
-      const proposer = room.endGameVote.proposer;
-      room.endGameVote = null;
+      const specName = room.joinGameVote.spectatorName;
+      room.joinGameVote = null;
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❌ ${player.name} declined to end the game.`,
+        text: `❌ Table declined ${specName}'s request to join mid-game.`,
         duration: 3500
       });
-      broadcastState(roomId, `${player.name} declined to end the game proposed by ${proposer}.`);
+      broadcastState(roomId, `${player.name} declined join request from ${specName}.`);
     }
-  });
-
-  socket.on('leaveRoom', (roomId) => {
-    socket.leave(roomId);
-    const room = rooms[roomId];
-    const player = room?.players.find(p => p.id === socket.id);
-    if (room && player) {
-      finalizePlayerExit(roomId, player.name);
-    }
-  });
-
-  socket.on('sendChatMessage', ({ roomId, message }) => {
-    const room = rooms[roomId];
-    if (!room || !message || !message.trim()) return;
-
-    const sender = room.players.find(p => p.id === socket.id);
-    const senderName = sender ? sender.name : 'Unknown';
-    const isSpectator = sender ? sender.isSpectator : false;
-
-    io.to(roomId).emit('newChatMessage', {
-      sender: senderName,
-      text: message.trim().slice(0, 150),
-      isSpectator: isSpectator,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    });
-  });
-
-  socket.on('addBot', (roomId) => {
-    const room = rooms[roomId];
-    if (!room || room.gameStarted) return;
-    if (getNonSpectatorCount(room) >= MAX_ACTIVE_PLAYERS) {
-      return socket.emit('errorMsg', 'Max 6 active players allowed in the game.');
-    }
-
-    playerJoinCounter++;
-    const botCount = room.players.filter(p => p.isBot).length + 1;
-    const botName = `Bot ${botCount}`;
-    if (!room.knownMembers.includes(botName)) {
-      room.knownMembers.push(botName);
-    }
-
-    room.players.push({
-      id: `bot_${Date.now()}_${Math.random()}`,
-      name: botName,
-      lives: room.configuredLives || 2,
-      hand: [],
-      fedCardsTracker: {},
-      lastDrawnSource: null,
-      isBot: true,
-      isSpectator: false,
-      manualSpectator: false,
-      isReady: true,
-      isInVoice: false,
-      disconnected: false,
-      matchWager: 5,
-      joinOrder: playerJoinCounter
-    });
-
-    broadcastState(roomId, `Bot ${botCount} joined.`);
-    if (checkAllPlayersReady(room)) {
-      room.gameStarted = true;
-      room.isFirstRoundOfMatch = true;
-      room.currentMatchParticipants = getActivePlayers(room).map(p => ({
-        id: p.id,
-        name: p.name,
-        wager: p.matchWager || 0
-      }));
-
-      const previousWinner = room.lastGameWinnerId ? room.players.find(p => p.id === room.lastGameWinnerId && !p.isSpectator) : null;
-      if (previousWinner) {
-        room.dealerIdx = room.players.findIndex(p => p.id === previousWinner.id);
-        startNewRound(roomId);
-      } else {
-        startDealerCut(room);
-      }
-    }
-    broadcastRoomList();
-  });
-
-  socket.on('removeBot', (roomId) => {
-    const room = rooms[roomId];
-    if (!room || room.gameStarted) return;
-
-    const lastBotIdx = room.players.map(p => p.isBot).lastIndexOf(true);
-    if (lastBotIdx === -1) {
-      return socket.emit('errorMsg', 'No bots in room to remove.');
-    }
-
-    const [removedBot] = room.players.splice(lastBotIdx, 1);
-    broadcastState(roomId, `${removedBot.name} was removed from the lobby.`);
-
-    if (checkAllPlayersReady(room)) {
-      room.gameStarted = true;
-      room.isFirstRoundOfMatch = true;
-      room.currentMatchParticipants = getActivePlayers(room).map(p => ({
-        id: p.id,
-        name: p.name,
-        wager: p.matchWager || 0
-      }));
-      startDealerCut(room);
-    }
-    broadcastRoomList();
-  });
-
-  socket.on('knock', (roomId) => {
-    const room = rooms[roomId];
-    const player = room?.players[room.currentTurnIdx];
-    if (!room || !player || player.id !== socket.id || room.knockerId || room.isResolvingRound || player.isSpectator) return;
-
-    const activeCount = getActivePlayers(room).length;
-    const minKnockScore = activeCount === 2 ? 25 : 21;
-    const roundHasPassed = room.turnsTakenInRound >= activeCount;
-    const score = calculateScore(player.hand);
-
-    if (!roundHasPassed) {
-      return socket.emit('errorMsg', 'Must wait 1 full round before knocking!');
-    }
-
-    if (score >= minKnockScore && !room.drawnCard) {
-      room.knockerId = player.id;
-      room.turnsLeftAfterKnock = activeCount - 1;
-      room.currentDiscardFeederId = player.id;
-
-      io.to(roomId).emit('bigAnnouncement', {
-        title: '🔔 KNOCK! 🔔',
-        message: `${player.name.toUpperCase()} KNOCKED!`,
-        subtext: 'Everyone gets 1 final turn!',
-        sound: 'knock',
-        duration: 3500
-      });
-
-      advanceTurnIndex(room);
-      broadcastState(roomId, `🔔 ${player.name} has KNOCKED! Final turn for all other players.`);
-      triggerBotTurnIfNeeded(roomId);
-    }
-  });
-
-  socket.on('drawCard', ({ roomId, source }) => {
-    const room = rooms[roomId];
-    const player = room?.players[room.currentTurnIdx];
-    if (!room || !player || player.id !== socket.id || room.drawnCard || room.isResolvingRound || player.isSpectator) return;
-
-    if (player.hand.length !== 3) {
-      while (player.hand.length < 3 && room.deck.length > 0) {
-        player.hand.push(room.deck.pop());
-      }
-      broadcastState(roomId, `Re-synchronized hand.`);
-      return;
-    }
-
-    let drawn;
-    if (source === 'discard') {
-      if (room.discardPile.length === 0) return;
-      const topDiscardCheck = room.discardPile[room.discardPile.length - 1];
-
-      if (room.initialDiscardCard && topDiscardCheck.rank === room.initialDiscardCard.rank && topDiscardCheck.suit === room.initialDiscardCard.suit) {
-        room.firstCardPickupTracker = { player: player.name, card: topDiscardCheck };
-        room.initialDiscardCard = null;
-      }
-
-      drawn = room.discardPile.pop();
-      player.lastDrawnSource = 'discard';
-      if (!player.discardPickedCards) player.discardPickedCards = [];
-      player.discardPickedCards.push(drawn);
-
-      const feederId = room.currentDiscardFeederId || getPrevActivePlayer(room, room.currentTurnIdx)?.id;
-      if (feederId) {
-        if (!player.fedCardsTracker) player.fedCardsTracker = {};
-        if (!player.fedCardsTracker[feederId]) player.fedCardsTracker[feederId] = [];
-        player.fedCardsTracker[feederId].push(drawn);
-      }
-      
-      io.to(roomId).emit('bannerAnnouncement', {
-        text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
-        duration: 3200
-      });
-      broadcastState(roomId, `⚠️ ${player.name} picked up ${drawn.rank}${drawn.suit} from the discard pile!`);
-      io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: 'discard', card: drawn });
-    } else {
-      if (room.deck.length === 0) {
-        const top = room.discardPile.pop();
-        room.deck = room.discardPile.concat(room.discardPile.sort(() => Math.random() - 0.5));
-        room.discardPile = [top];
-        io.to(roomId).emit('bannerAnnouncement', {
-          text: `🔄 The draw deck has run out and been reshuffled!`,
-          duration: 4000
-        });
-      }
-      drawn = room.deck.pop();
-      player.lastDrawnSource = 'deck';
-      broadcastState(roomId, `${player.name} drew a card from the deck.`);
-      io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: 'deck', card: null });
-    }
-
-    room.drawnCard = drawn;
-    player.hand.push(drawn);
-    broadcastState(roomId);
-  });
-
-  socket.on('discardCard', ({ roomId, cardIndex }) => {
-    const room = rooms[roomId];
-    const player = room?.players[room.currentTurnIdx];
-    if (!room || !player || player.id !== socket.id || !room.drawnCard || room.isResolvingRound || player.isSpectator) return;
-
-    if (player.hand.length !== 4) {
-      room.drawnCard = null;
-      while (player.hand.length < 3 && room.deck.length > 0) {
-        player.hand.push(room.deck.pop());
-      }
-      broadcastState(roomId, `Hand corrected.`);
-      return;
-    }
-
-    if (cardIndex < 0 || cardIndex >= player.hand.length) return;
-
-    const [discarded] = player.hand.splice(cardIndex, 1);
-    room.discardPile.push(discarded);
-    room.currentDiscardFeederId = player.id;
-    room.drawnCard = null;
-    room.turnsTakenInRound += 1;
-
-    if (checkAndHandle31(room, player)) return;
-
-    if (room.knockerId) {
-      room.turnsLeftAfterKnock -= 1;
-      if (room.turnsLeftAfterKnock <= 0) {
-        resolveShowdown(roomId);
-        return;
-      }
-    }
-
-    advanceTurnIndex(room);
-    broadcastState(roomId, `${player.name} discarded ${discarded.rank}${discarded.suit}.`);
-    triggerBotTurnIfNeeded(roomId);
-  });
-
-  socket.on('disconnect', () => {
-    handlePlayerDisconnect(socket.id);
   });
 });
 
