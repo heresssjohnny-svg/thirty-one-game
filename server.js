@@ -815,7 +815,6 @@ function broadcastState(roomId, message = '') {
     .filter(b => b.accepted)
     .reduce((sum, b) => sum + (b.amount * 2), 0);
 
-  // Check if first card pickup tracker card is still in the player's hand
   if (room.firstCardPickupTracker) {
     const targetPlayer = room.players.find(p => p.name === room.firstCardPickupTracker.player);
     if (!targetPlayer || !targetPlayer.hand || !targetPlayer.hand.some(c => c.rank === room.firstCardPickupTracker.card.rank && c.suit === room.firstCardPickupTracker.card.suit)) {
@@ -1388,7 +1387,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -2026,6 +2025,8 @@ io.on('connection', (socket) => {
 
     room.drawnCard = drawn;
     player.hand.push(drawn);
+    // Broadcast draw animation event to all clients in room
+    io.to(roomId).emit('animateDraw', { playerName: player.name, playerId: player.id, source: source, card: source === 'discard' ? drawn : null });
     broadcastState(roomId);
   });
 
