@@ -56,7 +56,7 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Fixed Table Ring Container */
+    /* Fixed Table Ring Container with high z-index */
     .table-ring {
       position: absolute;
       width: 100%;
@@ -64,7 +64,7 @@
       top: 0;
       left: 0;
       pointer-events: none;
-      z-index: 50;
+      z-index: 100;
     }
 
     /* Individual Player Seat Positioning */
@@ -79,7 +79,7 @@
       pointer-events: auto;
       transform: translate(-50%, -50%);
       transition: all 0.3s ease;
-      z-index: 60;
+      z-index: 110;
     }
 
     .player-seat-tag {
@@ -539,7 +539,7 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️️ Request Hand View</span>
         <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="togglePeekSelectorModal()">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
@@ -718,8 +718,8 @@
         </select>
       </div>
 
-      <!-- Match Bet Section -->
-      <div id="wagerSection" class="wager-bar" style="display:none; margin-bottom: 2px;">
+      <!-- Match Bet Section Placed Right Underneath Life Selector -->
+      <div id="wagerSection" class="wager-bar" style="display:flex; margin-bottom: 2px;">
         <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip wager-chip-btn" data-wager="0" onclick="setWager(0)">$0</div>
         <div class="wager-chip wager-chip-btn" data-wager="1" onclick="setWager(1)">$1</div>
@@ -1510,6 +1510,16 @@
       document.getElementById('endGameModal').style.display = 'none';
     }
 
+    function toggleChat() {
+      isChatOpen = !isChatOpen;
+      document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
+      if (isChatOpen) {
+        unreadCount = 0;
+        const badge = document.getElementById('chatBadge');
+        if (badge) badge.style.display = 'none';
+      }
+    }
+
     function sendChat() {
       const input = document.getElementById('chatInput');
       if (input.value.trim()) {
@@ -1789,7 +1799,7 @@
             seat.style.top = `calc(50% + ${y}px)`;
 
             const voiceBadge = p.isInVoice ? ' 🎙️' : '';
-            const dcBadge = p.disconnected ? ' ⚠️️' : '';
+            const dcBadge = p.disconnected ? ' ⚠️' : '';
             const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
             const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
 
