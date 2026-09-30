@@ -233,7 +233,7 @@
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 2200; padding: 16px; pointer-events: none;
+      z-index: 2200; pointer-events: none;
     }
     .custom-modal[style*="display: flex"] {
       pointer-events: auto;
@@ -1121,7 +1121,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
