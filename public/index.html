@@ -365,7 +365,7 @@
   <!-- END GAME VOTE MODAL -->
   <div id="endGameModal" class="custom-modal">
     <div class="modal-card" style="border-color:#e53935; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️ End Game Vote</div>
+      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️ End Game Vote (Requires 100%)</div>
       <div id="endGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         A player wants to end the current game and return to the lobby. Agree?
       </div>
@@ -400,6 +400,20 @@
       <div style="font-size:11px; opacity:0.9; margin: 4px 0;">Joining mid-game costs <strong>1 life</strong>. Enter starting wager (must be at least $5 above maximum table wager):</div>
       <input id="spectatorWagerInput" type="number" min="15" value="15" style="text-align:center;" />
       <button type="button" id="submitSpectatorJoinBtn" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold; margin-top:6px;">Request to Join</button>
+    </div>
+  </div>
+
+  <!-- PEEK PERMISSION REQUEST PROMPT FOR ACTIVE PLAYERS -->
+  <div id="peekRequestModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
+      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Spectator Peek Request</div>
+      <div id="peekRequestText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Spectator wants to view your hand. Allow them?
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" id="denyPeekBtn" style="padding:8px 12px;">Deny</button>
+        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" id="allowPeekBtn">Allow Peek</button>
+      </div>
     </div>
   </div>
 
@@ -474,20 +488,6 @@
       <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
         <button type="button" class="secondary" id="declineSideBetBtn" style="padding:8px 12px;">Decline</button>
         <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" id="acceptSideBetBtn">Accept & Verify</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- INCOMING SPECTATOR PEEK REQUEST PROMPT FOR ACTIVE PLAYERS -->
-  <div id="peekRequestModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Spectator Peek Request</div>
-      <div id="peekRequestText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Spectator wants to view your hand. Allow them?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="denyPeekBtn" style="padding:8px 12px;">Deny</button>
-        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" id="allowPeekBtn">Allow Peek</button>
       </div>
     </div>
   </div>
@@ -628,7 +628,7 @@
       <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;">🏳️ End Game</button>
       <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
       <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
       <button type="button" class="danger" id="leaveRoomBtn">Leave</button>
     </div>
   </div>
@@ -1046,6 +1046,54 @@
       const modal = document.getElementById('ledgerModal');
       const isVisible = modal.style.display === 'flex';
       modal.style.display = isVisible ? 'none' : 'flex';
+      
+      if (!isVisible) {
+        // Render ledger balance list
+        const ledgerList = document.getElementById('ledgerList');
+        ledgerList.innerHTML = '';
+        if (latestPersonalLedger.length === 0) {
+          ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
+          document.getElementById('ledgerOverallTotal').innerText = '$0';
+          document.getElementById('ledgerSideBetTotal').innerText = '$0';
+        } else {
+          let totalNetSum = 0;
+          let totalSideBetSum = 0;
+          latestPersonalLedger.forEach(b => {
+            totalNetSum += b.netBalance;
+            totalSideBetSum += b.sideBetBalance;
+            const div = document.createElement('div');
+            div.style.display = 'flex';
+            div.style.justifyContent = 'space-between';
+            div.style.alignItems = 'center';
+            div.style.padding = '4px 6px';
+            div.style.background = 'rgba(255,255,255,0.05)';
+            div.style.borderRadius = '6px';
+
+            const netClass = b.netBalance > 0 ? 'balance-positive' : (b.netBalance < 0 ? 'balance-negative' : 'balance-neutral');
+            const netText = b.netBalance > 0 ? `+$${b.netBalance}` : (b.netBalance < 0 ? `-$${Math.abs(b.netBalance)}` : `$0`);
+
+            div.innerHTML = `
+              <div>
+                <strong>${b.player}</strong>${b.hasLeft ? '<span class="player-left-tag">(Left)</span>' : ''}
+                <div style="font-size:10px; opacity:0.7;">Side Bets: $${b.sideBetBalance}</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="${netClass}">${netText}</span>
+                ${b.netBalance < 0 ? `<button type="button" class="secondary" style="padding:2px 6px; font-size:10px;" onclick="promptClearDebt('${b.player}', ${Math.abs(b.netBalance)})">Clear</button>` : ''}
+              </div>
+            `;
+            ledgerList.appendChild(div);
+          });
+
+          const overallEl = document.getElementById('ledgerOverallTotal');
+          overallEl.className = totalNetSum > 0 ? 'balance-positive' : (totalNetSum < 0 ? 'balance-negative' : 'balance-neutral');
+          overallEl.innerText = totalNetSum > 0 ? `+$${totalNetSum}` : (totalNetSum < 0 ? `-$${Math.abs(totalNetSum)}` : `$0`);
+
+          const sideEl = document.getElementById('ledgerSideBetTotal');
+          sideEl.className = totalSideBetSum > 0 ? 'balance-positive' : (totalSideBetSum < 0 ? 'balance-negative' : 'balance-neutral');
+          sideEl.innerText = totalSideBetSum > 0 ? `+$${totalSideBetSum}` : (totalSideBetSum < 0 ? `-$${Math.abs(totalSideBetSum)}` : `$0`);
+        }
+      }
     }
 
     function toggleTutorialModal() {
@@ -1079,6 +1127,39 @@
       });
       togglePeekSelectorModal();
     }
+
+    socket.on('peekingPermissionRequested', (data) => {
+      pendingPeekRequesterId = data.spectatorId;
+      document.getElementById('peekRequestText').innerHTML = `
+        <strong>${data.spectatorName}</strong> wants to view your hand. Allow them?
+      `;
+      document.getElementById('peekRequestModal').style.display = 'flex';
+    });
+
+    function respondPeekPermission(allow) {
+      document.getElementById('peekRequestModal').style.display = 'none';
+      if (!pendingPeekRequesterId) return;
+
+      socket.emit('respondPeekingPermission', {
+        roomId: currentRoom,
+        spectatorId: pendingPeekRequesterId,
+        allow: allow
+      });
+      pendingPeekRequesterId = null;
+    }
+
+    socket.on('spectatorHandUpdate', (data) => {
+      currentlyViewingPlayerName = data.targetPlayerName;
+      currentlyViewingHand = data.hand;
+      const peekBar = document.getElementById('peekBar');
+      peekBar.style.display = 'flex';
+      document.getElementById('peekBarText').innerText = `👁️ Viewing ${data.targetPlayerName}'s Hand (${data.score} pts)`;
+      forceRenderHand();
+    });
+
+    socket.on('spectatorHandRevoked', () => {
+      stopPeekingHand();
+    });
 
     function stopPeekingHand() {
       currentlyViewingPlayerName = null;
@@ -1448,7 +1529,7 @@
         return alert('Please check off at least one opponent to challenge.');
       }
 
-      const targetName = currentSideBetType === 'firstLoser' ? document.getElementById('betMyTargetSelect').value : document.getElementById('betMyTargetSelect').value;
+      const targetName = document.getElementById('betMyTargetSelect').value;
       if (!targetName) return alert('Select your pick.');
 
       socket.emit('proposeMultiSideBets', {
@@ -1636,7 +1717,7 @@
 
         if (state.endGameVote) {
           document.getElementById('endGameVoteText').innerHTML = `
-            <strong>${state.endGameVote.proposer}</strong> proposed ending the game.<br>
+            <strong>${state.endGameVote.proposer}</strong> proposed ending the game (Requires 100%).<br>
             Votes agreed: ${state.endGameVote.agreedIds.length}
           `;
           document.getElementById('endGameModal').style.display = 'flex';
@@ -1775,7 +1856,7 @@
           firstLoserBetBtn.style.display = 'none';
           endGameBtn.style.display = 'none';
           spectateBtn.style.display = 'inline-block';
-          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️️ Spectate';
+          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
           if (isSpectator) {
             readyBtn.style.display = 'none';
             addBotBtn.style.display = 'none';
