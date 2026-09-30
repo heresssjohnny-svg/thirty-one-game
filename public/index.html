@@ -57,9 +57,9 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Higher & Reduced Vertical Limit Oval Table Ring */
+    /* Tall Vertical Arch Oval Table Ring for Players */
     .table-ring {
-      position: absolute; inset: -35px 2px 2px 2px;
+      position: absolute; inset: -45px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 6;
     }
     .player-seat {
@@ -579,15 +579,7 @@
     <input id="playerName" placeholder="Your Player Name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     
-    <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
-      <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
-      <div class="wager-chip lives-chip" data-lives="1">1</div>
-      <div class="wager-chip selected lives-chip" id="defaultLivesChip" data-lives="2">2</div>
-      <div class="wager-chip lives-chip" data-lives="3">3</div>
-      <div class="wager-chip lives-chip" data-lives="5">5</div>
-    </div>
-
-    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111;">Enter Game Room</button>
+    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111; margin-top: 6px;">Enter Game Room</button>
 
     <div style="width:100%; max-width:280px; margin-top:10px;">
       <div style="font-size:12px; font-weight:bold; color:#ffd700; margin-bottom:4px; display:flex; justify-content:space-between;">
@@ -629,7 +621,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Raised & Reduced Vertical Limit Oval Table Ring -->
+    <!-- Outer Perimeter Oval Table Ring for Players -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -643,7 +635,18 @@
         <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
-      <!-- Raised Match Bet Section -->
+      <!-- Life Selector Dropdown Menu in Game Room -->
+      <div id="livesSelectorSection" class="wager-bar" style="display:flex; margin-bottom: 2px;">
+        <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
+        <select id="livesDropdown" onchange="proposeLifeChange(this.value)" style="width: auto; padding: 3px 8px; font-size: 11px; font-weight: bold; background: #ffd700; color: #111; border-radius: 12px; cursor: pointer;">
+          <option value="1">1 Life</option>
+          <option value="2" selected>2 Lives</option>
+          <option value="3">3 Lives</option>
+          <option value="5">5 Lives</option>
+        </select>
+      </div>
+
+      <!-- Match Bet Section -->
       <div id="wagerSection" class="wager-bar" style="display:none; margin-bottom: 2px;">
         <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip wager-chip-btn" data-wager="0" onclick="setWager(0)">$0</div>
@@ -694,7 +697,6 @@
     let unreadCount = 0;
     let isChatOpen = false;
     let currentWager = 0;
-    let selectedInitialLives = 2;
     let selectedSideBetAmt = 5;
     let currentSideBetType = 'round';
     let latestActivePlayers = [];
@@ -858,7 +860,7 @@
       }
 
       if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId, initialLives: selectedInitialLives });
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
         socket.emit('requestStateSync', currentRoom);
       }
     }
@@ -872,7 +874,7 @@
     socket.on('connect', () => {
       document.getElementById('connectionBanner').style.display = 'none';
       if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId, initialLives: selectedInitialLives });
+        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
         socket.emit('requestStateSync', currentRoom);
       }
     });
@@ -887,12 +889,9 @@
       }
     }
 
-    function setInitialLives(lives) {
-      selectedInitialLives = lives;
-      document.querySelectorAll('.lives-chip').forEach(c => {
-        const l = parseInt(c.getAttribute('data-lives'));
-        c.classList.toggle('selected', l === lives);
-      });
+    function proposeLifeChange(lives) {
+      if (!currentRoom) return;
+      socket.emit('proposeLifeChange', { roomId: currentRoom, lives: parseInt(lives) });
     }
 
     socket.on('roomListUpdate', (rooms) => {
@@ -949,8 +948,7 @@
       socket.emit('joinRoom', {
         roomId: room,
         playerName: myPlayerName,
-        deviceId: deviceId,
-        initialLives: selectedInitialLives
+        deviceId: deviceId
       });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('roomLabel').innerText = `Room: ${room}`;
@@ -1064,7 +1062,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
@@ -1504,7 +1502,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in an oval ring shifted higher with reduced vertical limit
+        // Render players in an oval ring
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1520,10 +1518,10 @@
           orderedPlayers.forEach((p, idx) => {
             const baseAngle = 0.5 * Math.PI; // Bottom-middle anchor angle
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 140; // balanced width
-            const radiusY = 170; // reduced vertical limit
+            const radiusX = 145; 
+            const radiusY = 175; 
             const x = Math.cos(angle) * radiusX;
-            const y = Math.sin(angle) * radiusY - 25; // shifted toward the top
+            const y = Math.sin(angle) * radiusY - 30;
 
             const seat = document.createElement('div');
             seat.id = `seat-${p.name}`;
@@ -1554,15 +1552,28 @@
 
         document.getElementById('scoreLabel').innerText = isSpectator ? 'Spectating' : `Score: ${currentScore}`;
         
+        // Manage Lives Dropdown and Match Wager visibility
+        const livesSelectorSec = document.getElementById('livesSelectorSection');
         const wagerSec = document.getElementById('wagerSection');
-        if (!state.gameStarted && !isSpectator) {
-          wagerSec.style.display = 'flex';
-          document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
-            const val = parseInt(chip.getAttribute('data-wager')) || 0;
-            chip.classList.toggle('selected', val === currentWager);
-          });
+        const dropdown = document.getElementById('livesDropdown');
+
+        if (state.gameStarted) {
+          if (livesSelectorSec) livesSelectorSec.style.display = 'none';
+          if (wagerSec) wagerSec.style.display = 'none';
         } else {
-          wagerSec.style.display = 'none';
+          if (livesSelectorSec) livesSelectorSec.style.display = 'flex';
+          if (dropdown && state.configuredLives) {
+            dropdown.value = state.configuredLives.toString();
+          }
+          if (!isSpectator && wagerSec) {
+            wagerSec.style.display = 'flex';
+            document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
+              const val = parseInt(chip.getAttribute('data-wager')) || 0;
+              chip.classList.toggle('selected', val === currentWager);
+            });
+          } else if (wagerSec) {
+            wagerSec.style.display = 'none';
+          }
         }
 
         const readyBtn = document.getElementById('readyBtn');
@@ -1737,12 +1748,6 @@
             actionMap[id]();
           });
         }
-      });
-
-      document.querySelectorAll('.lives-chip').forEach(el => {
-        el.addEventListener('click', (e) => {
-          setInitialLives(parseInt(el.getAttribute('data-lives')));
-        });
       });
     });
 
