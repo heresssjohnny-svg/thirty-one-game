@@ -376,6 +376,33 @@
     </div>
   </div>
 
+  <!-- MID-GAME JOIN VOTE MODAL -->
+  <div id="joinGameVoteModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#4caf50; text-align:center;">
+      <div style="font-weight:900; font-size:15px; color:#4caf50;">🎮 Mid-Game Join Request</div>
+      <div id="joinGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
+        Spectator wants to join the game. Allow them?
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
+        <button type="button" class="secondary" id="declineJoinVoteBtn" style="padding:8px 12px;">Decline</button>
+        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptJoinVoteBtn">Allow Join</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MID-GAME JOIN REQUEST MODAL FOR SPECTATORS -->
+  <div id="spectatorJoinModal" class="custom-modal">
+    <div class="modal-card" style="border-color:#0288d1; max-width:320px; text-align:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:900; font-size:14px; color:#0288d1;">🎮 Join Active Game</span>
+        <span id="closeSpectatorJoinBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
+      </div>
+      <div style="font-size:11px; opacity:0.9; margin: 4px 0;">Joining mid-game costs <strong>1 life</strong>. Enter starting wager (must be at least $5 above maximum table wager):</div>
+      <input id="spectatorWagerInput" type="number" min="15" value="15" style="text-align:center;" />
+      <button type="button" id="submitSpectatorJoinBtn" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold; margin-top:6px;">Request to Join</button>
+    </div>
+  </div>
+
   <!-- CLEAR DEBT CONFIRMATION MODAL -->
   <div id="clearDebtConfirmModal" class="custom-modal">
     <div class="modal-card" style="border-color:#4caf50; text-align:center;">
@@ -454,7 +481,7 @@
   <!-- INCOMING SPECTATOR PEEK REQUEST PROMPT FOR ACTIVE PLAYERS -->
   <div id="peekRequestModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Spectator Peek Request</div>
+      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️️ Spectator Peek Request</div>
       <div id="peekRequestText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Spectator wants to view your hand. Allow them?
       </div>
@@ -469,7 +496,7 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️️ Request Hand View</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
         <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
@@ -666,6 +693,7 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn">👁️ Spectate</button>
+    <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;">🎮 Join Game</button>
     <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;">👁️ Peek at Hand</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;">💀 First to Lose</button>
@@ -892,6 +920,37 @@
     function proposeLifeChange(lives) {
       if (!currentRoom) return;
       socket.emit('proposeLifeChange', { roomId: currentRoom, lives: parseInt(lives) });
+    }
+
+    function openSpectatorJoinModal() {
+      let maxWager = 0;
+      latestActivePlayers.forEach(p => {
+        if ((p.matchWager || 0) > maxWager) maxWager = p.matchWager || 0;
+      });
+      const minReq = maxWager + 5;
+      const input = document.getElementById('spectatorWagerInput');
+      input.min = minReq;
+      input.value = minReq;
+      document.getElementById('spectatorJoinModal').style.display = 'flex';
+    }
+
+    function submitSpectatorJoinRequest() {
+      let maxWager = 0;
+      latestActivePlayers.forEach(p => {
+        if ((p.matchWager || 0) > maxWager) maxWager = p.matchWager || 0;
+      });
+      const minReq = maxWager + 5;
+
+      const wagerVal = parseInt(document.getElementById('spectatorWagerInput').value) || minReq;
+      if (wagerVal < minReq) return alert(`Minimum wager to join is $${minReq} ($5 above max table wager of $${maxWager}).`);
+      
+      socket.emit('proposeJoinGame', { roomId: currentRoom, wager: wagerVal });
+      document.getElementById('spectatorJoinModal').style.display = 'none';
+    }
+
+    function respondJoinVote(agree) {
+      socket.emit('respondJoinGame', { roomId: currentRoom, agree: agree });
+      document.getElementById('joinGameVoteModal').style.display = 'none';
     }
 
     socket.on('roomListUpdate', (rooms) => {
@@ -1145,7 +1204,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1489,6 +1548,16 @@
           document.getElementById('endGameModal').style.display = 'none';
         }
 
+        if (state.joinGameVote) {
+          document.getElementById('joinGameVoteText').innerHTML = `
+            <strong>${state.joinGameVote.spectatorName}</strong> wants to join mid-game ($${state.joinGameVote.wager} wager, 1 life cost).<br>
+            Votes agreed: ${state.joinGameVote.agreedIds.length}
+          `;
+          document.getElementById('joinGameVoteModal').style.display = 'flex';
+        } else {
+          document.getElementById('joinGameVoteModal').style.display = 'none';
+        }
+
         // Top-left first card pickup window (80% opacity, active as long as card is held)
         const firstCardBanner = document.getElementById('firstCardBanner');
         const firstCardMiniBox = document.getElementById('firstCardMiniBox');
@@ -1580,6 +1649,8 @@
         const addBotBtn = document.getElementById('addBotBtn');
         const removeBotBtn = document.getElementById('removeBotBtn');
         const spectateBtn = document.getElementById('spectateBtn');
+        const spectatorJoinBtn = document.getElementById('spectatorJoinBtn');
+        const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
         const roundBetBtn = document.getElementById('roundBetBtn');
         const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
         const endGameBtn = document.getElementById('endGameBtn');
@@ -1590,9 +1661,21 @@
           removeBotBtn.style.display = 'none';
           spectateBtn.style.display = 'none';
           endGameBtn.style.display = isSpectator ? 'none' : 'inline-block';
+          
+          if (isSpectator) {
+            // Disabled if any player has already lost a life
+            spectatorJoinBtn.style.display = state.anyPlayerEliminated ? 'none' : 'inline-block';
+            spectatorPeekBtn.style.display = 'inline-block';
+          } else {
+            spectatorJoinBtn.style.display = 'none';
+            spectatorPeekBtn.style.display = 'none';
+          }
+
           roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
           firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
         } else {
+          spectatorJoinBtn.style.display = 'none';
+          spectatorPeekBtn.style.display = 'none';
           roundBetBtn.style.display = 'none';
           firstLoserBetBtn.style.display = 'none';
           endGameBtn.style.display = 'none';
@@ -1680,7 +1763,7 @@
         });
       }
 
-      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect'].forEach(id => {
+      ['playerName', 'roomId', 'chatInput', 'betMyTargetSelect', 'offerMyTargetSelect', 'peekPlayerSelect', 'voiceInviteSelect', 'spectatorWagerInput'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
           el.addEventListener('touchstart', (e) => {
@@ -1701,6 +1784,7 @@
         'muteBtn': toggleMute,
         'leaveRoomBtn': leaveLobby,
         'spectateBtn': toggleSpectate,
+        'spectatorJoinBtn': openSpectatorJoinModal,
         'spectatorPeekBtn': togglePeekSelectorModal,
         'roundBetBtn': openRoundSideBetModal,
         'firstLoserBetBtn': openFirstLoserSideBetModal,
@@ -1727,6 +1811,10 @@
         'executeDebtBtn': executeClearDebt,
         'acceptEndGameBtn': () => respondEndGame(true),
         'declineEndGameBtn': () => respondEndGame(false),
+        'closeSpectatorJoinBtn': () => document.getElementById('spectatorJoinModal').style.display = 'none',
+        'submitSpectatorJoinBtn': submitSpectatorJoinRequest,
+        'acceptJoinVoteBtn': () => respondJoinVote(true),
+        'declineJoinVoteBtn': () => respondJoinVote(false),
         'closeVoiceModalBtn': toggleVoiceInviteModal,
         'declineVoiceBtn': () => respondVoiceInvite(false),
         'acceptVoiceBtn': () => respondVoiceInvite(true),
