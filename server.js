@@ -1266,7 +1266,7 @@ socket.on('respondJoinGame', ({ roomId, agree }) => {
         if (room.currentMatchParticipants) {
           room.currentMatchParticipants.forEach(participant => {
             if (participant.wager < joinerWager) {
-              const diff = (joinerWager - participant.wager) + 5; // Difference plus $5 added to pot
+              const diff = (joinerWager - participant.wager) + 5;
               recordDebt(room, participant.name, spec.name, diff, 'match');
             }
           });
