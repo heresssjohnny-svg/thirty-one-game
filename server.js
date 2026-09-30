@@ -532,7 +532,7 @@ function checkDealerCutComplete(room) {
             if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
             const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
             const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
-            room.dealerCutPicks[l.player.id] = { player: l, card: card };
+            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
             checkDealerCutComplete(room);
           }, 1000 + Math.random() * 800);
         }
@@ -1399,7 +1399,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1572,7 +1572,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -2315,12 +2315,12 @@ io.on('connection', (socket) => {
       room.configuredLives = winningLives;
       activeEligible.forEach(pl => { pl.lives = winningLives; });
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️️ Room starting lives updated to ${winningLives} by majority vote!`,
+        text: `❤️ Room starting lives updated to ${winningLives} by majority vote!`,
         duration: 4000
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
+        text: `❤️️ ${player.name} proposed ${lives} lives. Vote in progress...`,
         duration: 3000
       });
     }
