@@ -365,7 +365,7 @@
   <!-- END GAME VOTE MODAL -->
   <div id="endGameModal" class="custom-modal">
     <div class="modal-card" style="border-color:#e53935; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️ End Game Vote</div>
+      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️️ End Game Vote</div>
       <div id="endGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         A player wants to end the current game and return to the lobby. Agree?
       </div>
@@ -648,7 +648,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Outer Perimeter Oval Table Ring for Players -->
+    <!-- Outer Perimeter Oval Table Ring for Players (Strict Layering) -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -1663,7 +1663,6 @@
           endGameBtn.style.display = isSpectator ? 'none' : 'inline-block';
           
           if (isSpectator) {
-            // Disabled if any player has already lost a life
             spectatorJoinBtn.style.display = state.anyPlayerEliminated ? 'none' : 'inline-block';
             spectatorPeekBtn.style.display = 'inline-block';
           } else {
