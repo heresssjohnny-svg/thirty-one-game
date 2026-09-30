@@ -112,7 +112,7 @@ function startTurnTimer(roomId) {
 
   clearTurnTimer(room);
 
-  const durationMs = 45000; // 45 seconds
+  const durationMs = 45000;
   room.turnExpiresAt = Date.now() + durationMs;
 
   room.turnTimer = setTimeout(() => {
@@ -650,7 +650,29 @@ function checkTiebreakerComplete(room) {
         text: `Tie for lowest cut! Re-drawing lowest players...`,
         duration: 2500
       });
-      startInteractiveTiebreaker(room, cutLosers.map(l => l.player));
+      room.tiebreakerActive = true;
+      room.tiebreakerPicks = {};
+      room.tiebreakerPlayerIds = cutLosers.map(l => l.player.id);
+      room.tiebreakerDeck = createDeck();
+
+      cutLosers.forEach(l => {
+        io.to(l.player.id).emit('startTiebreakerCut', {
+          deckCount: Math.min(room.tiebreakerDeck.length, 30),
+          tiedPlayers: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
+        });
+      });
+
+      cutLosers.forEach(l => {
+        if (l.player.isBot) {
+          setTimeout(() => {
+            if (!room.tiebreakerActive || room.tiebreakerPicks[l.player.id]) return;
+            const chosenCardIdx = Math.floor(Math.random() * room.tiebreakerDeck.length);
+            const card = room.tiebreakerDeck.splice(chosenCardIdx, 1)[0];
+            room.tiebreakerPicks[l.player.id] = { player: l.player, card: card };
+            checkTiebreakerComplete(room);
+          }, 1000 + Math.random() * 800);
+        }
+      });
     }, 2800);
     return;
   }
@@ -939,6 +961,14 @@ function broadcastState(roomId, message = '') {
     }
   }
 
+  // Calculate remaining deck count accurately: 52 - total dealt cards (3 per active player) - 1 initial discard - cards drawn/discarded
+  let dealtCardsCount = active.length * 3;
+  let discardedCount = room.discardPile ? room.discardPile.length : 0;
+  let deckCount = Math.max(0, 52 - dealtCardsCount - discardedCount);
+  if (room.deck && room.deck.length > 0) {
+    deckCount = room.deck.length; // Fallback to direct deck length if available
+  }
+
   const anyPlayerEliminated = room.players.some(p => !p.isSpectator && p.lives < (room.configuredLives || 2));
 
   room.players.forEach(p => {
@@ -989,7 +1019,7 @@ function broadcastState(roomId, message = '') {
       roundHasPassed: roundHasPassed,
       topDiscard: room.discardPile[room.discardPile.length - 1] || null,
       firstCardPickedUp: room.firstCardPickupTracker || null,
-      deckCount: room.deck ? room.deck.length : 0,
+      deckCount: deckCount,
       isMyTurn: isCurrent,
       hasDrawn: Boolean(room.drawnCard),
       canKnock: canKnock,
@@ -1369,7 +1399,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1955,7 +1985,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️ GAME ENDED',
+          title: '🏳️️ GAME ENDED',
           message: 'MATCH CONCLUDED BY VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
