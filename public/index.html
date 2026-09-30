@@ -322,10 +322,6 @@
           • <strong>Cards 2-9:</strong> Face value<br>
           • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
         </div>
-        <div>
-          <h4>🎵 Music & Voice</h4>
-          Join voice chat to unlock the shared YouTube/audio music playlist and invite friends!
-        </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" ontouchend="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
     </div>
@@ -568,7 +564,7 @@
     <div id="showdownHandsContainer" class="showdown-hands-grid"></div>
   </div>
 
-  <!-- LOBBY SCREEN -->
+  <!-- LOBBY SCREEN (Photo upload removed) -->
   <div id="lobby" class="lobby-modal">
     <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
     <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
@@ -576,8 +572,8 @@
     <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     
     <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
-      <span style="font-size:11px; font-weight:bold; color:#ffd700;">Avatar:</span>
-      <select id="avatarSelect" style="max-width:140px; padding:6px; font-size:16px;">
+      <span style="font-size:11px; font-weight:bold; color:#ffd700;">Avatar Emoji:</span>
+      <select id="avatarSelect" style="max-width:180px; padding:8px; font-size:16px;">
         <option value="👑">👑 Crown</option>
         <option value="🏎️" selected>🏎️ Racing</option>
         <option value="🔥">🔥 Fire</option>
@@ -587,8 +583,6 @@
         <option value="🚀">🚀 Rocket</option>
         <option value="💎">💎 Diamond</option>
       </select>
-      <input type="file" id="avatarUpload" accept="image/*" style="display:none;" onchange="handleAvatarUpload(event)" />
-      <button type="button" onclick="document.getElementById('avatarUpload').click()" ontouchend="document.getElementById('avatarUpload').click()" style="padding:6px 10px; font-size:11px; background:#0288d1; color:#fff;">📁 Photo</button>
     </div>
 
     <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
@@ -720,7 +714,6 @@
     let pendingPeekRequesterId = null;
     let pendingClearDebtName = null;
 
-    // Music playlist state
     let musicPlaylist = [];
     let currentSongIndex = 0;
     let musicAudioEl = null;
@@ -835,31 +828,6 @@
       });
     }
 
-    function handleAvatarUpload(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 120;
-          canvas.height = 120;
-          const ctx = canvas.getContext('2d');
-          let size = Math.min(img.width, img.height);
-          let startX = (img.width - size) / 2;
-          let startY = (img.height - size) / 2;
-          ctx.drawImage(img, startX, startY, size, size, 0, 0, 120, 120);
-          myAvatar = canvas.toDataURL('image/jpeg', 0.85);
-          try {
-            localStorage.setItem('thirtyOne_avatar', myAvatar);
-          } catch (err) {}
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-
     function saveLedgerScreenshot() {
       const toggle = document.getElementById('saveLedgerToggle');
       if (!toggle || !toggle.checked) return;
@@ -878,7 +846,7 @@
 
         ctx.fillStyle = '#ffffff';
         ctx.font = '14px sans-serif';
-        ctx.fillText(`Player: ${myPlayerName} ${myAvatar.length <= 4 ? myAvatar : ''}`, canvas.width / 2, 68);
+        ctx.fillText(`Player: ${myPlayerName} ${myAvatar}`, canvas.width / 2, 68);
 
         let startY = 110;
         ctx.textAlign = 'left';
@@ -1353,16 +1321,15 @@
         const voiceBadge = p.isInVoice ? ' 🎙️' : '';
         const dcBadge = p.disconnected ? ' ⚠️' : '';
         const av = p.avatar || '👑';
-        const avHtml = av.startsWith('data:') ? `<img src="${av}" style="width:16px; height:16px; border-radius:50%; object-fit:cover;" />` : av;
 
         if (p.isSpectator) {
           div.className = 'player-tag spectator';
-          div.innerHTML = `${avHtml} 👁️ ${p.name}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} 👁️ ${p.name}${voiceBadge}${dcBadge}`;
         } else {
           div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
           const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
           const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-          div.innerHTML = `${avHtml} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+          div.innerHTML = `${av} ${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
         }
         pArea.appendChild(div);
       });
@@ -1445,7 +1412,6 @@
       setTimeout(() => location.reload(), 4500);
     });
 
-    // Music Player functions
     function toggleMusicModal() {
       const modal = document.getElementById('musicModal');
       const isVisible = modal.style.display === 'flex';
@@ -1497,12 +1463,10 @@
         document.getElementById('audioContainer').appendChild(musicAudioEl);
       }
 
-      // Convert YouTube links or play direct audio
       let streamUrl = songUrl;
       if (songUrl.includes('youtube.com') || songUrl.includes('youtu.be')) {
-        // Fallback demo audio if raw YouTube link (since direct YT streaming requires server proxy)
         streamUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-        alert('YouTube direct playback uses audio stream stream fallback. Playing sample track!');
+        alert('YouTube direct playback uses audio stream sample fallback.');
       }
 
       musicAudioEl.src = streamUrl;
@@ -1522,7 +1486,6 @@
       playNextSong();
     }
 
-    // Fixed joinVoice to show music button
     const oldToggleVoice = toggleVoice;
     async function toggleVoice() {
       await oldToggleVoice();
