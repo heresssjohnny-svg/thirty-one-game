@@ -628,7 +628,7 @@
       <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;">🏳️ End Game</button>
       <button type="button" id="voiceBtn" class="voice-btn">🎤 Voice</button>
       <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;">👥 Invite</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️</button>
+      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;">🎙️️</button>
       <button type="button" class="danger" id="leaveRoomBtn">Leave</button>
     </div>
   </div>
@@ -1204,7 +1204,7 @@
       if (!localStream) return;
       isMuted = !isMuted;
       localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️️ Mute';
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
     }
 
     function createPeerConnection(targetSocketId, isInitiator) {
@@ -1331,7 +1331,13 @@
     function toggleChat() {
       isChatOpen = !isChatOpen;
       document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
+      if (isChatOpen) {
+        unreadCount = 0;
+        const badge = document.getElementById('chatBadge');
+        if (badge) badge.style.display = 'none';
+      }
     }
+
     function sendChat() {
       const input = document.getElementById('chatInput');
       if (input.value.trim()) {
@@ -1339,6 +1345,32 @@
         input.value = '';
       }
     }
+
+    socket.on('newChatMessage', (data) => {
+      const chatBody = document.getElementById('chatBody');
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `chat-msg ${data.isSpectator ? 'spec' : ''}`;
+      msgDiv.innerHTML = `
+        <div class="sender">${data.sender}${data.isSpectator ? ' [👁️]' : ''} <span class="time">${data.time}</span></div>
+        <div>${escapeHtml(data.text)}</div>
+      `;
+      chatBody.appendChild(msgDiv);
+      chatBody.scrollTop = chatBody.scrollHeight;
+
+      if (!isChatOpen) {
+        unreadCount++;
+        const badge = document.getElementById('chatBadge');
+        if (badge) {
+          badge.innerText = unreadCount;
+          badge.style.display = 'inline-block';
+        }
+      }
+    });
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
     function draw(src) { socket.emit('drawCard', { roomId: currentRoom, source: src }); }
     function discard(idx) { socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx }); }
 
@@ -1386,18 +1418,20 @@
           checklist.innerHTML = '<div style="font-size:11px; opacity:0.6; padding:4px;">No other players online.</div>';
         }
 
-        latestActivePlayers.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.name;
-          opt.innerText = p.name;
-          myTargetSelect.appendChild(opt);
+        latestAllTableMembers.forEach(m => {
+          if (m.isOnline) {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            myTargetSelect.appendChild(opt);
+          }
         });
       }
       modal.style.display = isVisible ? 'none' : 'flex';
     }
 
     function selectAllOpponents(chk) {
-      document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => cb.checked = chk);
+      document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => cb.checked = cb.disabled ? false : chk);
     }
     function selectRoundBetAmt(amt) {
       selectedSideBetAmt = amt;
@@ -1414,18 +1448,63 @@
         return alert('Please check off at least one opponent to challenge.');
       }
 
-      const targetName = currentSideBetType === 'firstLoser' ? '' : document.getElementById('betMyTargetSelect').value;
-      if (currentSideBetType === 'round' && !targetName) return alert('Select your pick.');
+      const targetName = currentSideBetType === 'firstLoser' ? document.getElementById('betMyTargetSelect').value : document.getElementById('betMyTargetSelect').value;
+      if (!targetName) return alert('Select your pick.');
 
       socket.emit('proposeMultiSideBets', {
         roomId: currentRoom,
         betType: currentSideBetType,
         opponentNames: opponentNames,
-        targetPlayerName: currentSideBetType === 'firstLoser' ? latestActivePlayers[0]?.name : targetName,
+        targetPlayerName: targetName,
         amount: selectedSideBetAmt
       });
 
       toggleRoundBetModal();
+    }
+
+    socket.on('sideBetOfferReceived', (data) => {
+      pendingOfferBetId = data.betId;
+      pendingOfferChallengerTarget = data.bettorTarget;
+
+      document.getElementById('sideBetModalHeader').innerText = `🎲 Side Bet from ${data.fromPlayer}`;
+      document.getElementById('sideBetOfferText').innerHTML = `
+        <strong>${data.fromPlayer}</strong> challenged you to a <strong>$${data.amount}</strong> ${data.betType === 'firstLoser' ? 'First-to-Lose' : 'Round'} bet!<br>
+        Their pick: <span style="color:#ffd700;">${data.bettorTarget}</span>
+      `;
+
+      const targetSec = document.getElementById('offerTargetSection');
+      if (data.betType === 'firstLoser') {
+        targetSec.style.display = 'none';
+      } else {
+        targetSec.style.display = 'flex';
+        const sel = document.getElementById('offerMyTargetSelect');
+        sel.innerHTML = '';
+        latestAllTableMembers.forEach(m => {
+          if (m.isOnline && m.name !== data.bettorTarget) {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            sel.appendChild(opt);
+          }
+        });
+      }
+
+      document.getElementById('sideBetOfferModal').style.display = 'flex';
+    });
+
+    function respondSideBet(accept) {
+      const modal = document.getElementById('sideBetOfferModal');
+      modal.style.display = 'none';
+      if (!pendingOfferBetId) return;
+
+      const myTarget = document.getElementById('offerMyTargetSelect').value;
+      socket.emit('respondSideBet', {
+        roomId: currentRoom,
+        betId: pendingOfferBetId,
+        accept: accept,
+        myTargetName: myTarget
+      });
+      pendingOfferBetId = null;
     }
 
     function renderCard(card, onClick, highlight = false, isMini = false, isFlip = false) {
@@ -1548,6 +1627,11 @@
         if (roundPotBanner) {
           roundPotBanner.style.display = state.sideBetActionTotal > 0 ? 'flex' : 'none';
           roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal || 0}`;
+        }
+
+        const deckCountLabel = document.getElementById('deckCountLabel');
+        if (deckCountLabel) {
+          deckCountLabel.innerText = `(${state.deckCount})`;
         }
 
         if (state.endGameVote) {
@@ -1691,7 +1775,7 @@
           firstLoserBetBtn.style.display = 'none';
           endGameBtn.style.display = 'none';
           spectateBtn.style.display = 'inline-block';
-          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️️ Spectate';
           if (isSpectator) {
             readyBtn.style.display = 'none';
             addBotBtn.style.display = 'none';
