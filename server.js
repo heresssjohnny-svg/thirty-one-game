@@ -601,14 +601,12 @@ function checkAndHandle31(room, player) {
   scores[player.id] = 31;
   const roundBetReport = settlePeerRoundBets(room, scores);
 
-  // Updated Rule: Both the Ace and the Face card must come from the discard pile tracking
   if (player.lastDrawnSource === 'discard' && player.fedCardsTracker && player.discardPickedCards) {
     for (const [giverId, cards] of Object.entries(player.fedCardsTracker)) {
       const cardsInHandFromGiver = cards.filter(c => 
         player.hand.some(hCard => hCard.rank === c.rank && hCard.suit === c.suit)
       );
 
-      // Verify they were picked up from discard pile
       const pickedFromDiscard = cardsInHandFromGiver.every(c => 
         player.discardPickedCards.some(dCard => dCard.rank === c.rank && dCard.suit === c.suit)
       );
@@ -741,7 +739,7 @@ function startNewRound(roomId) {
   room.currentDiscardFeederId = null;
   room.peerSideBets = (room.peerSideBets || []).filter(b => b.type === 'firstLoser');
   room.tiebreakerActive = false;
-  room.firstCardPickedUp = null; // Reset first card pickup tracker
+  room.firstCardPickedUp = null;
 
   if (!room.isFirstRoundOfMatch) {
     for (let i = 1; i <= room.players.length; i++) {
@@ -1760,7 +1758,6 @@ io.on('connection', (socket) => {
       lives: room.configuredLives || 2,
       hand: [],
       fedCardsTracker: {},
-      discardPickedCards: [],
       lastDrawnSource: null,
       isBot: true,
       isSpectator: false,
