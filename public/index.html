@@ -35,7 +35,6 @@
       position: relative; min-height: 0; z-index: 1; pointer-events: auto;
     }
     
-    /* Shifted Initial Wager / Pots Table Up */
     .pots-header {
       display: flex; gap: 6px; align-items: center; justify-content: center; width: 100%; flex-shrink: 0; z-index: 5; margin-top: 2px;
     }
@@ -58,7 +57,7 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Tall Vertical Arch Oval Table Ring for Players */
+    /* Much Higher & Slightly Wider Vertical Arch Oval Table Ring */
     .table-ring {
       position: absolute; inset: 15px 2px 2px 2px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 6;
@@ -630,7 +629,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Tall Vertical Arch Oval Table Ring for Players -->
+    <!-- Tall Vertical Arch Perimeter Oval Table Ring for Players -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -640,11 +639,12 @@
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
         <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
-      <div id="wagerSection" class="wager-bar" style="display:none;">
+      <!-- Raised Match Bet Section -->
+      <div id="wagerSection" class="wager-bar" style="display:none; margin-bottom: 2px;">
         <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip wager-chip-btn" data-wager="0" onclick="setWager(0)">$0</div>
         <div class="wager-chip wager-chip-btn" data-wager="1" onclick="setWager(1)">$1</div>
@@ -1503,7 +1503,7 @@
           firstCardBanner.style.display = 'none';
         }
 
-        // Render players in a higher, slightly wider oval arch perimeter ring
+        // Render players in a much higher vertical oval arch perimeter ring
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1519,8 +1519,8 @@
           orderedPlayers.forEach((p, idx) => {
             const baseAngle = 0.5 * Math.PI; // Bottom-middle anchor angle
             const angle = baseAngle + (idx / Math.max(1, totalP)) * 2 * Math.PI;
-            const radiusX = 155; // slightly wider
-            const radiusY = 205; // higher vertical limit
+            const radiusX = 145; // balanced width
+            const radiusY = 225; // much higher vertical limit
             const x = Math.cos(angle) * radiusX;
             const y = Math.sin(angle) * radiusY;
 
