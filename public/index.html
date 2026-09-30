@@ -56,10 +56,10 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Shifted Left Table Ring Container */
+    /* Table Ring Container perfectly centered and aligned with player name badge */
     .table-ring {
       position: absolute;
-      inset: -115px 55px 50px 0px;
+      inset: -115px 15px 50px 15px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -156,7 +156,7 @@
       background: #d32f2f; color: white; border-radius: 50%;
       padding: 2px 5px; font-size: 10px; font-weight: bold; display: none;
     }
-    /* Fixed Chat Panel with full pointer events */
+    /* Constrained Chat Panel above table cloth and bottom action buttons */
     .chat-panel {
       position: fixed; top: 38px; right: -100%; width: 85%; max-width: 300px; height: calc(100vh - 110px);
       background: #0f2d24; z-index: 2400; display: flex; flex-direction: column;
@@ -320,7 +320,7 @@
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
-    <span>⚠️️ Disconnected from server</span>
+    <span>⚠️ Disconnected from server</span>
     <button type="button" id="retryConnBtn" onclick="manualReconnect()">Retry Connection</button>
   </div>
 
@@ -1785,7 +1785,7 @@
           }
         }
 
-        // Render Opponents in Oval Ring ordered by dealing turn relative to you (Bottom-Left = next turn, Bottom-Right = previous turn)
+        // Dynamically Render Opponents in Oval Ring (Relative Dealing Order Seating)
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
@@ -1794,7 +1794,6 @@
           let orderedOthers = [];
           const myIdx = rawPlayers.findIndex(p => p.name === myPlayerName);
           if (myIdx !== -1) {
-            // Reorder starting from player after you (index + 1) around clockwise
             for (let i = 1; i < rawPlayers.length; i++) {
               const p = rawPlayers[(myIdx + i) % rawPlayers.length];
               if (p.name !== myPlayerName) {
@@ -1805,13 +1804,12 @@
             orderedOthers = rawPlayers.filter(p => p.name !== myPlayerName);
           }
 
-          // Slot coordinates: [0] = Bottom Left (Next Turn), [1] = Top Left, [2] = Top Center, [3] = Top Right, [4] = Bottom Right (Previous Turn)
           const slotCoordinates = [
-            { x: -125, y: 70 },  // Bottom Left (Next turn after you)
+            { x: -125, y: 70 },  // Bottom Left (Next Turn)
             { x: -125, y: -25 }, // Top Left
-            { x: 0,    y: -145 }, // Top Center
+            { x: 0,    y: -145 }, // Top Center (Aligned with center name badge)
             { x: 125,  y: -25 }, // Top Right
-            { x: 125,  y: 70 }   // Bottom Right (Turn before you)
+            { x: 125,  y: 70 }   // Bottom Right (Previous Turn)
           ];
 
           orderedOthers.forEach((p, idx) => {
@@ -1904,7 +1902,7 @@
           firstLoserBetBtn.style.display = 'none';
           endGameBtn.style.display = 'none';
           spectateBtn.style.display = 'inline-block';
-          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️️ Spectate';
           if (isSpectator) {
             readyBtn.style.display = 'none';
             addBotBtn.style.display = 'none';
