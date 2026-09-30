@@ -445,7 +445,7 @@ function checkDealerCutComplete(room) {
             if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
             const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
             const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
-            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
+            room.dealerCutPicks[l.player.id] = { player: l, card: card };
             checkDealerCutComplete(room);
           }, 1000 + Math.random() * 800);
         }
