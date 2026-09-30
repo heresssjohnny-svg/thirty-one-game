@@ -98,7 +98,94 @@ function getNonSpectatorCount(room) {
   return room.players.filter(p => !p.isSpectator).length;
 }
 
+function clearTurnTimer(room) {
+  if (room.turnTimer) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+  }
+  room.turnExpiresAt = null;
+}
+
+function startTurnTimer(roomId) {
+  const room = rooms[roomId];
+  if (!room || !room.gameStarted || room.isResolvingRound) return;
+
+  clearTurnTimer(room);
+
+  const durationMs = 45000; // 45 seconds
+  room.turnExpiresAt = Date.now() + durationMs;
+
+  room.turnTimer = setTimeout(() => {
+    handleTurnTimeout(roomId);
+  }, durationMs);
+}
+
+function handleTurnTimeout(roomId) {
+  const room = rooms[roomId];
+  if (!room || !room.gameStarted || room.isResolvingRound) return;
+
+  const current = room.players[room.currentTurnIdx];
+  if (!current || current.isSpectator || current.lives <= 0) return;
+
+  io.to(roomId).emit('bannerAnnouncement', {
+    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
+    duration: 3500
+  });
+
+  // Execute AI action automatically
+  while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
+    current.hand.push(room.deck.pop());
+  }
+
+  // Draw from deck if hasn't drawn
+  if (!room.drawnCard) {
+    if (room.deck.length === 0) {
+      const top = room.discardPile.pop();
+      room.deck = room.discardPile.concat(room.discardPile.sort(() => Math.random() - 0.5));
+      room.discardPile = [top];
+    }
+    const drawn = room.deck.pop();
+    current.lastDrawnSource = 'deck';
+    current.hand.push(drawn);
+    room.drawnCard = drawn;
+  }
+
+  // Pick worst card to discard
+  let bestIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < current.hand.length; i++) {
+    const remaining = current.hand.slice(0, i).concat(current.hand.slice(i + 1));
+    const s = calculateScore(remaining);
+    if (s > bestScore) {
+      bestScore = s;
+      bestIdx = i;
+    }
+  }
+
+  const [discarded] = current.hand.splice(bestIdx, 1);
+  room.discardPile.push(discarded);
+  room.currentDiscardFeederId = current.id;
+  room.drawnCard = null;
+  room.turnsTakenInRound += 1;
+
+  if (checkAndHandle31(room, current)) return;
+
+  if (room.knockerId) {
+    room.turnsLeftAfterKnock -= 1;
+    if (room.turnsLeftAfterKnock <= 0) {
+      resolveShowdown(roomId);
+      return;
+    }
+  }
+
+  advanceTurnIndex(room);
+  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  startTurnTimer(roomId);
+  triggerBotTurnIfNeeded(roomId);
+}
+
 function advanceTurnIndex(room) {
+  clearTurnTimer(room);
   const total = room.players.length;
   if (total === 0) return;
 
@@ -110,6 +197,7 @@ function advanceTurnIndex(room) {
       while (candidate.hand && candidate.hand.length < 3 && room.deck && room.deck.length > 0) {
         candidate.hand.push(room.deck.pop());
       }
+      startTurnTimer(room.id);
       return;
     }
   }
@@ -1306,7 +1394,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1389,7 +1477,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
