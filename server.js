@@ -658,7 +658,7 @@ function checkTiebreakerComplete(room) {
       cutLosers.forEach(l => {
         io.to(l.player.id).emit('startTiebreakerCut', {
           deckCount: Math.min(room.tiebreakerDeck.length, 30),
-          tiedPlayers: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
+          players: cutLosers.map(cl => ({ id: cl.player.id, name: cl.player.name }))
         });
       });
 
@@ -1571,7 +1571,7 @@ io.on('connection', (socket) => {
         hand: targetPlayer.hand,
         score: calculateScore(targetPlayer.hand)
       });
-      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
+      io.to(spectatorId).emit('bannerAnnouncement', { text: `👁️ ${targetPlayer.name} granted you view permission!`, duration: 3000 });
     } else {
       io.to(spectatorId).emit('bannerAnnouncement', { text: `❌ ${targetPlayer.name} declined view permission.`, duration: 3000 });
     }
@@ -1597,7 +1597,6 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
-  // Bidirectional Debt Clearance with Creditor Permission Workflow
   socket.on('requestClearDebt', ({ roomId, targetPlayerName }) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -1606,13 +1605,10 @@ io.on('connection', (socket) => {
 
     const targetPlayer = room.players.find(p => p.name === targetPlayerName);
     
-    // Check if requester is debtor wanting target (creditor) to clear
     const debtorOwesCreditor = (room.debts && room.debts[requester.name] && room.debts[requester.name][targetPlayerName]) || 0;
-    // Check if requester is creditor wanting target (debtor) debt cleared
     const creditorOwesDebtor = (room.debts && room.debts[targetPlayerName] && room.debts[targetPlayerName][requester.name]) || 0;
 
     if (debtorOwesCreditor > 0) {
-      // Requester owes target. Ask target (creditor) permission!
       if (targetPlayer && !targetPlayer.isBot) {
         io.to(targetPlayer.id).emit('debtClearPermissionRequested', {
           debtorName: requester.name,
@@ -1620,14 +1616,12 @@ io.on('connection', (socket) => {
         });
         socket.emit('bannerAnnouncement', { text: `Requested ${targetPlayerName}'s permission to forgive your debt of $${debtorOwesCreditor}...`, duration: 3500 });
       } else {
-        // Bot or offline creditor auto-approves
         clearDebtAction(room, roomId, targetPlayerName, requester.name);
       }
     } else if (creditorOwesDebtor > 0) {
-      // Requester is creditor forgiving debtor instantly
       clearDebtAction(room, roomId, requester.name, targetPlayerName);
     } else {
-      socket.emit('errorMsg', `No active debt found between you and ${targetPlayerName}.`);
+      socket.emit('errorMsg', `No active debt found from ${targetPlayerName}.`);
     }
   });
 
