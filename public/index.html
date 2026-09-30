@@ -1202,6 +1202,38 @@
       pendingDebtDebtorName = null;
     }
 
+    function toggleTutorialModal() {
+      const modal = document.getElementById('tutorialModal');
+      const isVisible = modal.style.display === 'flex';
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function togglePeekSelectorModal() {
+      const modal = document.getElementById('spectatorPeekSelectorModal');
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const select = document.getElementById('peekPlayerSelect');
+        select.innerHTML = '';
+        latestActivePlayers.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.innerText = `${p.name} (${p.lives} ❤️)`;
+          select.appendChild(opt);
+        });
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function submitPeekRequest() {
+      const targetId = document.getElementById('peekPlayerSelect').value;
+      if (!targetId) return alert('Select an active player to view.');
+      socket.emit('requestPeekingPermission', {
+        roomId: currentRoom,
+        targetPlayerId: targetId
+      });
+      togglePeekSelectorModal();
+    }
+
     socket.on('peekingPermissionRequested', (data) => {
       pendingPeekRequesterId = data.spectatorId;
       document.getElementById('peekRequestText').innerHTML = `
@@ -1241,6 +1273,405 @@
       document.getElementById('peekBar').style.display = 'none';
       socket.emit('stopPeekingHand', currentRoom);
       forceRenderHand();
+    }
+
+    async function toggleVoice() {
+      if (!isInVoice) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          isInVoice = true;
+          isMuted = false;
+          document.getElementById('voiceBtn').className = 'voice-on';
+          document.getElementById('voiceBtn').innerText = '🔴 Leave';
+          document.getElementById('voiceInviteBtn').style.display = 'inline-block';
+          document.getElementById('muteBtn').style.display = 'inline-block';
+          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          socket.emit('joinVoice', currentRoom);
+        } catch (err) {
+          alert('Microphone access denied: ' + err.message);
+        }
+      } else {
+        leaveVoice();
+      }
+    }
+
+    function leaveVoice() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      Object.keys(peerConnections).forEach(id => {
+        if (peerConnections[id]) peerConnections[id].close();
+      });
+      peerConnections = {};
+      document.getElementById('audioContainer').innerHTML = '';
+      isInVoice = false;
+      document.getElementById('voiceBtn').className = 'voice-btn';
+      document.getElementById('voiceBtn').innerText = '🎤 Voice';
+      document.getElementById('voiceInviteBtn').style.display = 'none';
+      document.getElementById('muteBtn').style.display = 'none';
+      socket.emit('leaveVoice', currentRoom);
+    }
+
+    function toggleVoiceInviteModal() {
+      const modal = document.getElementById('voiceInviteModal');
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const select = document.getElementById('voiceInviteSelect');
+        select.innerHTML = '';
+        let count = 0;
+        latestAllTableMembers.forEach(m => {
+          if (m.name !== myPlayerName && m.isOnline) {
+            count++;
+            const opt = document.createElement('option');
+            opt.value = m.id || m.name;
+            opt.innerText = m.name;
+            select.appendChild(opt);
+          }
+        });
+        if (count === 0) {
+          select.innerHTML = '<option value="">No other players online</option>';
+        }
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function sendVoiceInvite() {
+      const targetIdOrName = document.getElementById('voiceInviteSelect').value;
+      if (!targetIdOrName) return alert('No player selected.');
+      const targetMember = latestAllTableMembers.find(m => m.id === targetIdOrName || m.name === targetIdOrName);
+      const targetName = targetMember ? targetMember.name : targetIdOrName;
+
+      socket.emit('inviteToVoice', {
+        roomId: currentRoom,
+        targetSocketId: targetIdOrName
+      });
+      toggleVoiceInviteModal();
+      alert(`Invitation sent to ${targetName}!`);
+    }
+
+    socket.on('voiceInviteReceived', (data) => {
+      document.getElementById('incomingVoiceText').innerHTML = `
+        <strong>${data.inviterName}</strong> invited you to join voice chat!
+      `;
+      document.getElementById('incomingVoiceInviteModal').style.display = 'flex';
+    });
+
+    function respondVoiceInvite(accept) {
+      document.getElementById('incomingVoiceInviteModal').style.display = 'none';
+      if (accept) {
+        if (!isInVoice) toggleVoice();
+      }
+    }
+
+    function toggleMute() {
+      if (!localStream) return;
+      isMuted = !isMuted;
+      localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
+      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
+    }
+
+    function createPeerConnection(targetSocketId, isInitiator) {
+      const pc = new RTCPeerConnection(rtcConfig);
+      peerConnections[targetSocketId] = pc;
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('voiceSignal', {
+            target: targetSocketId,
+            signal: { candidate: event.candidate }
+          });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        let audioEl = document.getElementById(`audio_${targetSocketId}`);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = `audio_${targetSocketId}`;
+          audioEl.autoplay = true;
+          audioEl.playsInline = true;
+          document.getElementById('audioContainer').appendChild(audioEl);
+        }
+        audioEl.srcObject = event.streams[0];
+      };
+
+      if (isInitiator) {
+        pc.onnegotiationneeded = async () => {
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('voiceSignal', {
+              target: targetSocketId,
+              signal: { description: pc.localDescription }
+            });
+          } catch (err) {}
+        };
+      }
+
+      return pc;
+    }
+
+    socket.on('currentVoiceUsers', (users) => {
+      users.forEach(userId => createPeerConnection(userId, true));
+    });
+
+    socket.on('voiceUserJoined', ({ socketId }) => {
+      createPeerConnection(socketId, false);
+    });
+
+    socket.on('voiceUserLeft', ({ socketId }) => {
+      if (peerConnections[socketId]) {
+        peerConnections[socketId].close();
+        delete peerConnections[socketId];
+      }
+      const audioEl = document.getElementById(`audio_${socketId}`);
+      if (audioEl) audioEl.remove();
+    });
+
+    socket.on('voiceSignal', async ({ sender, signal }) => {
+      let pc = peerConnections[sender];
+      if (!pc) pc = createPeerConnection(sender, false);
+
+      try {
+        if (signal.description) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.description));
+          if (signal.description.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('voiceSignal', {
+              target: sender,
+              signal: { description: pc.localDescription }
+            });
+          }
+        } else if (signal.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+      } catch (err) {}
+    });
+
+    function toggleReady() { socket.emit('toggleReady', currentRoom); }
+    function addBot() { socket.emit('addBot', currentRoom); }
+    function removeBot() { socket.emit('removeBot', currentRoom); }
+
+    function attemptKnock() {
+      if (isSpectator) return;
+      if (!isTurn) return alert("You can only knock on your turn!");
+      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
+      if (!roundHasPassed) return alert("1 full round must go by before anyone can knock!");
+      if (currentScore < minKnockScore) return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
+
+      if (latestTopDiscard && (latestTopDiscard.rank === 'A' || latestTopDiscard.value === 10)) {
+        document.getElementById('knockConfirmCard').innerText = `${latestTopDiscard.rank}${latestTopDiscard.suit}`;
+        document.getElementById('knockConfirmModal').style.display = 'flex';
+        return;
+      }
+      confirmKnock();
+    }
+
+    function confirmKnock() {
+      cancelKnockConfirm();
+      socket.emit('knock', currentRoom);
+    }
+
+    function cancelKnockConfirm() {
+      document.getElementById('knockConfirmModal').style.display = 'none';
+    }
+
+    function requestEndGame() {
+      if (!currentRoom || isSpectator) return;
+      socket.emit('proposeEndGame', currentRoom);
+    }
+
+    function respondEndGame(agree) {
+      socket.emit('respondEndGame', { roomId: currentRoom, agree: agree });
+      document.getElementById('endGameModal').style.display = 'none';
+    }
+
+    function sendChat() {
+      const input = document.getElementById('chatInput');
+      if (input.value.trim()) {
+        socket.emit('sendChatMessage', { roomId: currentRoom, message: input.value.trim() });
+        input.value = '';
+      }
+    }
+
+    socket.on('newChatMessage', (data) => {
+      const chatBody = document.getElementById('chatBody');
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `chat-msg ${data.isSpectator ? 'spec' : ''}`;
+      msgDiv.innerHTML = `
+        <div class="sender">${data.sender}${data.isSpectator ? ' [👁️]' : ''} <span class="time">${data.time}</span></div>
+        <div>${escapeHtml(data.text)}</div>
+      `;
+      chatBody.appendChild(msgDiv);
+      chatBody.scrollTop = chatBody.scrollHeight;
+
+      if (!isChatOpen) {
+        unreadCount++;
+        const badge = document.getElementById('chatBadge');
+        if (badge) {
+          badge.innerText = unreadCount;
+          badge.style.display = 'inline-block';
+        }
+      }
+    });
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function draw(src) { socket.emit('drawCard', { roomId: currentRoom, source: src }); }
+    function discard(idx) { socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx }); }
+
+    function openRoundSideBetModal() {
+      currentSideBetType = 'round';
+      document.getElementById('sideBetModalTitle').innerText = '🎲 Round Side Bet';
+      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender against multiple opponents:';
+      document.getElementById('roundContenderSection').style.display = 'flex';
+      toggleRoundBetModal();
+    }
+
+    function openFirstLoserSideBetModal() {
+      currentSideBetType = 'firstLoser';
+      document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Both Lives';
+      document.getElementById('sideBetModalDesc').innerText = 'This bet is for the first person to lose both lives (out of the game).';
+      document.getElementById('roundContenderSection').style.display = 'none';
+      toggleRoundBetModal();
+    }
+
+    function toggleRoundBetModal() {
+      const modal = document.getElementById('roundBetModal');
+      const isVisible = modal.style.display === 'flex';
+      if (!isVisible) {
+        const checklist = document.getElementById('opponentsChecklist');
+        const myTargetSelect = document.getElementById('betMyTargetSelect');
+
+        checklist.innerHTML = '';
+        myTargetSelect.innerHTML = '';
+
+        let selectableOpponents = 0;
+        latestAllTableMembers.forEach(m => {
+          if (m.name !== myPlayerName && m.isOnline) {
+            selectableOpponents++;
+            const label = document.createElement('div');
+            label.className = 'opp-checkbox-item';
+            label.innerHTML = `
+              <input type="checkbox" value="${m.name}" checked />
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
+            `;
+            checklist.appendChild(label);
+          }
+        });
+
+        if (selectableOpponents === 0) {
+          checklist.innerHTML = '<div style="font-size:11px; opacity:0.6; padding:4px;">No other players online.</div>';
+        }
+
+        latestAllTableMembers.forEach(m => {
+          if (m.isOnline) {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            myTargetSelect.appendChild(opt);
+          }
+        });
+      }
+      modal.style.display = isVisible ? 'none' : 'flex';
+    }
+
+    function selectAllOpponents(chk) {
+      document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => cb.checked = cb.disabled ? false : chk);
+    }
+    function selectRoundBetAmt(amt) {
+      selectedSideBetAmt = amt;
+      document.querySelectorAll('.bet-amt-chip').forEach(c => {
+        c.classList.toggle('selected', parseInt(c.getAttribute('data-amt')) === amt);
+      });
+    }
+
+    function submitMultiPeerSideBet() {
+      const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
+      const opponentNames = Array.from(checkedBoxes).map(cb => cb.value);
+
+      if (opponentNames.length === 0) {
+        return alert('Please check off at least one opponent to challenge.');
+      }
+
+      const targetName = document.getElementById('betMyTargetSelect').value;
+      if (!targetName) return alert('Select your pick.');
+
+      socket.emit('proposeMultiSideBets', {
+        roomId: currentRoom,
+        betType: currentSideBetType,
+        opponentNames: opponentNames,
+        targetPlayerName: targetName,
+        amount: selectedSideBetAmt
+      });
+
+      toggleRoundBetModal();
+    }
+
+    socket.on('sideBetOfferReceived', (data) => {
+      pendingOfferBetId = data.betId;
+      pendingOfferChallengerTarget = data.bettorTarget;
+
+      document.getElementById('sideBetModalHeader').innerText = `🎲 Side Bet from ${data.fromPlayer}`;
+      document.getElementById('sideBetOfferText').innerHTML = `
+        <strong>${data.fromPlayer}</strong> challenged you to a <strong>$${data.amount}</strong> ${data.betType === 'firstLoser' ? 'First-to-Lose' : 'Round'} bet!<br>
+        Their pick: <span style="color:#ffd700;">${data.bettorTarget}</span>
+      `;
+
+      const targetSec = document.getElementById('offerTargetSection');
+      if (data.betType === 'firstLoser') {
+        targetSec.style.display = 'none';
+      } else {
+        targetSec.style.display = 'flex';
+        const sel = document.getElementById('offerMyTargetSelect');
+        sel.innerHTML = '';
+        latestAllTableMembers.forEach(m => {
+          if (m.isOnline && m.name !== data.bettorTarget) {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            sel.appendChild(opt);
+          }
+        });
+      }
+
+      document.getElementById('sideBetOfferModal').style.display = 'flex';
+    });
+
+    function respondSideBet(accept) {
+      const modal = document.getElementById('sideBetOfferModal');
+      modal.style.display = 'none';
+      if (!pendingOfferBetId) return;
+
+      const myTarget = document.getElementById('offerMyTargetSelect').value;
+      socket.emit('respondSideBet', {
+        roomId: currentRoom,
+        betId: pendingOfferBetId,
+        accept: accept,
+        myTargetName: myTarget
+      });
+      pendingOfferBetId = null;
+    }
+
+    function renderCard(card, onClick, highlight = false, isMini = false, isFlip = false) {
+      const el = document.createElement('div');
+      const isRed = card.suit === '♥' || card.suit === '♦';
+      el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''} ${isMini ? 'mini' : ''} ${isFlip ? 'card-flip-reveal' : ''}`;
+      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '11px' : '20px'};">${card.suit}</span>`;
+      if (onClick) el.onclick = onClick;
+      return el;
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
     }
   </script>
 </body>
