@@ -2320,7 +2320,7 @@ io.on('connection', (socket) => {
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
+        text: `❤️️ ${player.name} proposed ${lives} lives. Vote in progress...`,
         duration: 3000
       });
     }
