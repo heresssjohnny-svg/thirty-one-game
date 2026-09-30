@@ -1399,7 +1399,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -2320,7 +2320,7 @@ io.on('connection', (socket) => {
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️️ ${player.name} proposed ${lives} lives. Vote in progress...`,
+        text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
         duration: 3000
       });
     }
