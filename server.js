@@ -318,8 +318,7 @@ function broadcastRoomList() {
       gameStarted: r.gameStarted,
       activeCount: activeCount,
       spectatorCount: specCount,
-      totalPot: totalPot,
-      players: r.players.map(p => ({ name: p.name, isSpectator: p.isSpectator, lives: p.lives }))
+      totalPot: totalPot
     };
   });
   io.emit('roomListUpdate', roomList);
