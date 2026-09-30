@@ -118,6 +118,8 @@ function startTurnTimer(roomId) {
   room.turnTimer = setTimeout(() => {
     handleTurnTimeout(roomId);
   }, durationMs);
+
+  broadcastState(roomId);
 }
 
 function handleTurnTimeout(roomId) {
@@ -132,12 +134,10 @@ function handleTurnTimeout(roomId) {
     duration: 3500
   });
 
-  // Execute AI action automatically
   while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
     current.hand.push(room.deck.pop());
   }
 
-  // Draw from deck if hasn't drawn
   if (!room.drawnCard) {
     if (room.deck.length === 0) {
       const top = room.discardPile.pop();
@@ -150,7 +150,6 @@ function handleTurnTimeout(roomId) {
     room.drawnCard = drawn;
   }
 
-  // Pick worst card to discard
   let bestIdx = 0;
   let bestScore = -1;
   for (let i = 0; i < current.hand.length; i++) {
