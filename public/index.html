@@ -25,9 +25,9 @@
       position: relative;
       user-select: none; -webkit-user-select: none;
     }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; z-index: 10; pointer-events: auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; font-size: 13px; z-index: 100; pointer-events: auto; }
     .header-controls { display: flex; align-items: center; gap: 4px; pointer-events: auto; }
-    .status-box { background: rgba(0,0,0,0.35); padding: 6px; border-radius: 8px; font-size: 13px; text-align: center; min-height: 32px; display: flex; align-items: center; justify-content: center; }
+    .status-box { background: rgba(0,0,0,0.35); padding: 6px; border-radius: 8px; font-size: 13px; text-align: center; min-height: 32px; display: flex; align-items: center; justify-content: center; z-index: 50; }
     
     .table {
       flex: 1; display: flex; flex-direction: column; justify-content: space-between;
@@ -36,7 +36,7 @@
     }
     
     .pots-header {
-      display: flex; gap: 6px; align-items: center; justify-content: center; width: 100%; flex-shrink: 0; z-index: 5; margin-top: 2px;
+      display: flex; gap: 6px; align-items: center; justify-content: center; width: 100%; flex-shrink: 0; z-index: 50; margin-top: 2px;
     }
     .pot-banner {
       background: #ffd700; color: #111; font-weight: 900; font-size: 11px;
@@ -57,14 +57,14 @@
       z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
     }
 
-    /* Tall Vertical Arch Oval Table Ring for Players */
+    /* Tall Vertical Arch Oval Table Ring for Players (Strict Layering) */
     .table-ring {
       position: absolute; inset: -45px 2px 2px 2px;
-      display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 6;
+      display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 2;
     }
     .player-seat {
       position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px;
-      pointer-events: auto; transition: all 0.3s ease; z-index: 6;
+      pointer-events: auto; transition: all 0.3s ease; z-index: 2;
     }
     .player-seat-tag {
       background: rgba(0,0,0,0.75); padding: 3px 7px; border-radius: 12px; font-size: 10px; font-weight: bold;
@@ -82,7 +82,7 @@
     }
 
     /* Center piles layered beneath the perimeter seats */
-    .middle-piles { display: flex; gap: 20px; align-items: center; z-index: 2; position: relative; }
+    .middle-piles { display: flex; gap: 20px; align-items: center; z-index: 3; position: relative; }
     
     .card {
       width: 66px; height: 96px; min-width: 66px; min-height: 96px;
@@ -113,13 +113,13 @@
     .flying-card.red { background: #ffffff; color: #d32f2f; }
     .flying-card.black { background: #ffffff; color: #111111; }
 
-    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 5; }
+    .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 50; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
     
-    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 20; pointer-events: auto; }
+    .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 100; pointer-events: auto; }
     button {
       padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
-      background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto;
+      background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto; z-index: 100;
     }
     button.secondary { background: #e0e0e0; color: #222; }
     button.danger { background: #d32f2f; color: #fff; padding: 5px 8px; font-size: 11px; }
@@ -252,11 +252,11 @@
     .player-left-tag { font-size: 10px; opacity: 0.65; margin-left: 4px; }
 
     .wager-bar {
-      display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0;
+      display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0; z-index: 50; pointer-events: auto;
     }
     .wager-chip {
       padding: 3px 7px; border-radius: 12px; font-size: 11px; font-weight: bold;
-      background: rgba(255,255,255,0.15); cursor: pointer; border: 1px solid #ccc; pointer-events: auto;
+      background: rgba(255,255,255,0.15); cursor: pointer; border: 1px solid #ccc; pointer-events: auto; z-index: 50;
     }
     .wager-chip.selected {
       background: #ffd700; color: #111; border-color: #ffd700;
@@ -311,7 +311,7 @@
     input, select {
       padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
       font-size: 13px; width: 100%; max-width: 280px; background: #fff; color: #111;
-      user-select: text; -webkit-user-select: text; pointer-events: auto;
+      user-select: text; -webkit-user-select: text; pointer-events: auto; z-index: 50;
     }
   </style>
 </head>
@@ -365,7 +365,7 @@
   <!-- END GAME VOTE MODAL -->
   <div id="endGameModal" class="custom-modal">
     <div class="modal-card" style="border-color:#e53935; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️️ End Game Vote</div>
+      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️ End Game Vote</div>
       <div id="endGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         A player wants to end the current game and return to the lobby. Agree?
       </div>
@@ -648,7 +648,7 @@
       <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
     </div>
 
-    <!-- Outer Perimeter Oval Table Ring for Players (Strict Layering) -->
+    <!-- Outer Perimeter Oval Table Ring for Players -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
@@ -665,7 +665,7 @@
       <!-- Life Selector Dropdown Menu in Game Room -->
       <div id="livesSelectorSection" class="wager-bar" style="display:flex; margin-bottom: 2px;">
         <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
-        <select id="livesDropdown" onchange="proposeLifeChange(this.value)" style="width: auto; padding: 3px 8px; font-size: 11px; font-weight: bold; background: #ffd700; color: #111; border-radius: 12px; cursor: pointer;">
+        <select id="livesDropdown" onchange="proposeLifeChange(this.value)" style="width: auto; padding: 3px 8px; font-size: 11px; font-weight: bold; background: #ffd700; color: #111; border-radius: 12px; cursor: pointer; z-index: 50; pointer-events: auto;">
           <option value="1">1 Life</option>
           <option value="2" selected>2 Lives</option>
           <option value="3">3 Lives</option>
@@ -1121,7 +1121,7 @@
           document.getElementById('voiceBtn').innerText = '🔴 Leave';
           document.getElementById('voiceInviteBtn').style.display = 'inline-block';
           document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️ Mute';
+          document.getElementById('muteBtn').innerText = '🎙️️ Mute';
           socket.emit('joinVoice', currentRoom);
         } catch (err) {
           alert('Microphone access denied: ' + err.message);
