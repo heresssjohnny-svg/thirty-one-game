@@ -1039,12 +1039,333 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
         container.appendChild(item);
       });
+    });
+
+    socket.on('gameState', (state) => {
+      const turnJustBegan = state.isMyTurn && !wasMyTurn;
+      isTurn = state.isMyTurn;
+      wasMyTurn = state.isMyTurn;
+
+      if (turnJustBegan && state.gameStarted && !state.isSpectator) {
+        playTurnBellSound();
+        triggerTurnVibration();
+      }
+
+      hasDrawn = state.hasDrawn;
+      isDiscarding = false;
+      const previousHandLength = myHand.length;
+      myHand = state.hand || [];
+      minKnockScore = state.minKnockScore || 21;
+      roundHasPassed = state.roundHasPassed;
+      currentScore = state.score || 0;
+      isSpectator = Boolean(state.isSpectator);
+      manualSpectator = Boolean(state.manualSpectator);
+      isReady = Boolean(state.isReady);
+      currentWager = state.myWager || 0;
+      latestTopDiscard = state.topDiscard || null;
+
+      latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
+      latestAllTableMembers = state.allTableMembers || [];
+      latestPersonalLedger = state.personalLedger || [];
+
+      const deckCountLbl = document.getElementById('deckCountLabel');
+      if (deckCountLbl) deckCountLbl.innerText = `(${state.deckCount ?? 0})`;
+
+      if (isSpectator) {
+        document.getElementById('scoreLabel').innerHTML = `<span class="spectator-badge">👁️ Spectating</span>`;
+      } else {
+        const scoreDisplay = (currentScore === 30.5) ? '30.5 (3 of a Kind!)' : currentScore;
+        document.getElementById('scoreLabel').innerText = `Score: ${scoreDisplay}`;
+      }
+
+      if (state.message) document.getElementById('statusBar').innerText = state.message;
+
+      const potBanner = document.getElementById('potBanner');
+      if (state.totalPot > 0) {
+        potBanner.style.display = 'flex';
+        potBanner.innerText = `🏆 MATCH POT: $${state.totalPot}`;
+      } else {
+        potBanner.style.display = 'none';
+      }
+
+      const roundPotBanner = document.getElementById('roundPotBanner');
+      if (state.sideBetActionTotal > 0) {
+        roundPotBanner.style.display = 'flex';
+        roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal}`;
+      } else {
+        roundPotBanner.style.display = 'none';
+      }
+
+      const wagerSec = document.getElementById('wagerSection');
+      if (!state.gameStarted && !isSpectator) {
+        wagerSec.style.display = 'flex';
+        document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
+          const val = parseInt(chip.innerText.replace('$', '')) || 0;
+          chip.classList.toggle('selected', val === currentWager);
+        });
+      } else {
+        wagerSec.style.display = 'none';
+      }
+
+      const overallEl = document.getElementById('ledgerOverallTotal');
+      const sideBetEl = document.getElementById('ledgerSideBetTotal');
+
+      const netTotal = state.netOverallBalance || 0;
+      if (netTotal > 0) {
+        overallEl.className = 'balance-positive';
+        overallEl.innerText = `+$${netTotal}`;
+      } else if (netTotal < 0) {
+        overallEl.className = 'balance-negative';
+        overallEl.innerText = `-$${Math.abs(netTotal)}`;
+      } else {
+        overallEl.className = 'balance-neutral';
+        overallEl.innerText = `$0`;
+      }
+
+      const netSideBet = state.netSideBetBalance || 0;
+      if (netSideBet > 0) {
+        sideBetEl.className = 'balance-positive';
+        sideBetEl.innerText = `+$${netSideBet}`;
+      } else if (netSideBet < 0) {
+        sideBetEl.className = 'balance-negative';
+        sideBetEl.innerText = `-$${Math.abs(netSideBet)}`;
+      } else {
+        sideBetEl.className = 'balance-neutral';
+        sideBetEl.innerText = `$0`;
+      }
+
+      const ledgerList = document.getElementById('ledgerList');
+      if (state.personalLedger && state.personalLedger.length > 0) {
+        ledgerList.innerHTML = '';
+        state.personalLedger.forEach(item => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.alignItems = 'center';
+          row.style.padding = '5px 8px';
+          row.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+
+          let balClass = 'balance-neutral';
+          let balText = '$0';
+          let clearBtnHtml = '';
+
+          if (item.netBalance > 0) {
+            balClass = 'balance-positive';
+            balText = `+$${item.netBalance} (Owes You)`;
+            clearBtnHtml = `<button type="button" onclick="promptClearDebt('${item.player}', ${item.netBalance})" style="background:#4caf50; color:#fff; padding:2px 6px; font-size:10px; margin-left:6px; border-radius:4px;">Clear</button>`;
+          } else if (item.netBalance < 0) {
+            balClass = 'balance-negative';
+            balText = `-$${Math.abs(item.netBalance)} (You Owe)`;
+          } else {
+            balText = `$0 (Even)`;
+          }
+
+          let sideBetTag = '';
+          if (item.sideBetBalance !== 0) {
+            const sbSign = item.sideBetBalance > 0 ? `+$${item.sideBetBalance}` : `-$${Math.abs(item.sideBetBalance)}`;
+            sideBetTag = `<span style="font-size:10px; opacity:0.8; display:block;">Side Bets: ${sbSign}</span>`;
+          }
+
+          const leftBadge = item.hasLeft ? `<span class="player-left-tag">(Left Room)</span>` : '';
+
+          row.innerHTML = `
+            <div>
+              <span><strong>${item.player}</strong>${leftBadge}</span>
+              ${sideBetTag}
+            </div>
+            <div style="display:flex; align-items:center;">
+              <span class="${balClass}">${balText}</span>
+              ${clearBtnHtml}
+            </div>
+          `;
+          ledgerList.appendChild(row);
+        });
+      } else {
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
+      }
+
+      const readyBtn = document.getElementById('readyBtn');
+      const addBotBtn = document.getElementById('addBotBtn');
+      const removeBotBtn = document.getElementById('removeBotBtn');
+      const spectateBtn = document.getElementById('spectateBtn');
+      const roundBetBtn = document.getElementById('roundBetBtn');
+      const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
+      const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
+
+      if (state.gameStarted) {
+        readyBtn.style.display = 'none';
+        addBotBtn.style.display = 'none';
+        removeBotBtn.style.display = 'none';
+        spectateBtn.style.display = 'none';
+        roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        spectatorPeekBtn.style.display = isSpectator ? 'inline-block' : 'none';
+      } else {
+        roundBetBtn.style.display = 'none';
+        firstLoserBetBtn.style.display = 'none';
+        spectatorPeekBtn.style.display = 'none';
+        spectateBtn.style.display = 'inline-block';
+        spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+
+        if (isSpectator) {
+          readyBtn.style.display = 'none';
+          addBotBtn.style.display = 'none';
+          removeBotBtn.style.display = 'none';
+        } else {
+          readyBtn.style.display = 'inline-block';
+          addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
+          removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
+
+          if (isReady) {
+            readyBtn.className = 'ready-on';
+            readyBtn.innerText = '✅ You are Ready';
+          } else {
+            readyBtn.className = '';
+            readyBtn.innerText = '⏳ Tap to Ready';
+          }
+        }
+      }
+
+      const knockBtn = document.getElementById('knockBtn');
+      if (isSpectator || !state.gameStarted) {
+        knockBtn.style.display = 'none';
+      } else {
+        knockBtn.style.display = 'inline-block';
+        if (state.knocker) {
+          knockBtn.disabled = true;
+          knockBtn.innerText = `Knocked by ${state.knocker}`;
+        } else {
+          knockBtn.disabled = !state.canKnock;
+          if (!roundHasPassed) {
+            knockBtn.innerText = `Knock (Round 1 active)`;
+          } else if (state.canKnock) {
+            knockBtn.innerText = `⚡ Knock Now!`;
+          } else {
+            knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+          }
+        }
+      }
+
+      const handInstr = document.getElementById('handInstruction');
+      if (isSpectator) {
+        if (currentlyViewingPlayerName) {
+          handInstr.innerText = `Peeking at ${currentlyViewingPlayerName}'s Hand`;
+        } else {
+          handInstr.innerText = "Spectating Match (Tap '👁️ Peek at Hand' to request view)";
+        }
+      } else if (state.gameStarted) {
+        if (isTurn) {
+          handInstr.innerText = hasDrawn ? "Tap a card below to DISCARD it" : "Your turn! Tap Draw Deck or Discard Pile";
+        } else {
+          handInstr.innerText = "Waiting for other players... (Tap '🎲 Side Bet' to wager)";
+        }
+      } else {
+        const eligible = state.players.filter(p => !p.isSpectator);
+        const readyCount = eligible.filter(p => p.isReady || p.isBot).length;
+        handInstr.innerText = `Lobby (${eligible.length}/6 Players) — Ready: ${readyCount}/${eligible.length}`;
+      }
+
+      const pArea = document.getElementById('playersArea');
+      pArea.innerHTML = '';
+      state.players.forEach(p => {
+        const div = document.createElement('div');
+        const voiceBadge = p.isInVoice ? ' 🎙️️' : '';
+        const dcBadge = p.disconnected ? ' ⚠️' : '';
+
+        if (p.isSpectator) {
+          div.className = 'player-tag spectator';
+          div.innerHTML = `👁️ ${p.name}${voiceBadge}${dcBadge}`;
+        } else {
+          div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
+          const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
+          const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
+          div.innerHTML = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+        }
+        pArea.appendChild(div);
+      });
+
+      const disc = document.getElementById('discardPile');
+      if (state.topDiscard) {
+        const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
+        disc.className = `card ${isRed ? 'red' : 'black'}`;
+        disc.innerHTML = `<span>${state.topDiscard.rank}</span><span style="font-size: 20px;">${state.topDiscard.suit}</span>`;
+      } else {
+        disc.className = 'card';
+        disc.innerText = '--';
+      }
+
+      const hArea = document.getElementById('handArea');
+      if (isSpectator) {
+        if (currentlyViewingHand && currentlyViewingHand.length > 0) {
+          hArea.innerHTML = '';
+          currentlyViewingHand.forEach(card => {
+            hArea.appendChild(renderCard(card, null, false, false));
+          });
+        } else {
+          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 30px; font-size: 14px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
+        }
+      } else if (myHand.length > 0) {
+        if (document.visibilityState === 'visible' && previousHandLength === 0 && myHand.length === 3) {
+          animateCardDeal(myHand);
+        } else if (!isAnimatingDeal) {
+          forceRenderHand();
+        }
+      } else {
+        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
+      }
+    });
+
+    socket.on('bigAnnouncement', (data) => {
+      dismissAnnouncement();
+      const overlay = document.getElementById('announcementOverlay');
+      document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
+      document.getElementById('annMessage').innerText = data.message || '';
+      document.getElementById('annSubtext').innerText = data.subtext || '';
+
+      const handsContainer = document.getElementById('showdownHandsContainer');
+      handsContainer.innerHTML = '';
+
+      if (data.hands && data.hands.length > 0) {
+        data.hands.forEach(ph => {
+          const box = document.createElement('div');
+          box.className = 'showdown-player-box';
+
+          const info = document.createElement('div');
+          info.className = 'showdown-player-info';
+          info.innerText = `${ph.name}: ${ph.score} pts ${ph.isKnocker ? '🔔' : ''}`;
+          box.appendChild(info);
+
+          const cardRow = document.createElement('div');
+          cardRow.className = 'showdown-cards-row';
+          ph.hand.forEach(c => {
+            cardRow.appendChild(renderCard(c, null, false, true));
+          });
+          box.appendChild(cardRow);
+
+          handsContainer.appendChild(box);
+        });
+      }
+
+      overlay.classList.add('show');
+
+      if (data.sound === 'knock') {
+        playKnockSound();
+      }
+
+      announcementTimer = setTimeout(() => {
+        dismissAnnouncement();
+      }, data.duration || 5500);
+    });
+
+    socket.on('errorMsg', (msg) => alert(msg));
+    socket.on('gameOver', ({ winner }) => {
+      setTimeout(() => location.reload(), 4500);
     });
 
     document.addEventListener('DOMContentLoaded', () => {
