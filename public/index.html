@@ -321,8 +321,26 @@
           • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
         </div>
         <div>
-          <h4>📸 Ledger Screenshots</h4>
-          When you leave the game room, the app automatically generates and downloads a screenshot of your final ledger standings to your device!
+          <h4>👑 Initial Dealer Selection & New Players</h4>
+          • In a brand-new match, everyone cuts a face-down card. The <strong>lowest card deals</strong>!<br>
+          • The <strong>winner of the game deals</strong> the new game.<br>
+          • <strong>New players get dealt last.</strong>
+        </div>
+        <div>
+          <h4>🔄 Turn Play</h4>
+          On your turn, draw 1 card from the deck or discard pile, then choose 1 card from your 4 cards to discard.
+        </div>
+        <div>
+          <h4>🔔 Knocking</h4>
+          If you believe your hand is strong (at least 21 pts in 3+ player games, or 25 pts in heads-up), you can <strong>Knock</strong> before drawing. Everyone else gets <strong>one final turn</strong> before the showdown. Lowest hand loses 1 life!
+        </div>
+        <div>
+          <h4>⚡ The 21-out-of-31 Rule</h4>
+          If you make 31 by picking an Ace or Face card from the <strong>discard pile</strong>, and the same player fed you both the Ace and Face card, that player loses <strong>BOTH lives</strong> immediately! If you hit 31 from the deck, everyone else loses 1 life.
+        </div>
+        <div>
+          <h4>🎴 Deck Counter & Reshuffle</h4>
+          The draw pile shows remaining cards and automatically reshuffles the discard pile when empty, announcing it to everyone!
         </div>
       </div>
       <button type="button" onclick="toggleTutorialModal()" style="background:#00acc1; color:#fff; padding:8px;">Got It!</button>
@@ -543,10 +561,10 @@
   <!-- LOBBY SCREEN -->
   <div id="lobby" class="lobby-modal">
     <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
-    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" onclick="toggleTutorialModal()" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
+    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;">📖 How to Play & Rules</button>
     <input id="playerName" placeholder="Your Player Name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-
+    
     <div style="display:flex; gap:6px; align-items:center; justify-content:center; margin: 4px 0; width:100%; max-width:280px;">
       <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
       <div class="wager-chip" onclick="setInitialLives(1)">1</div>
@@ -555,12 +573,7 @@
       <div class="wager-chip" onclick="setInitialLives(5)">5</div>
     </div>
 
-    <div style="display:flex; gap:8px; align-items:center; justify-content:center; margin: 2px 0; font-size:11px;">
-      <input type="checkbox" id="saveLedgerToggle" checked style="width:16px; height:16px; cursor:pointer;" />
-      <label for="saveLedgerToggle" style="cursor:pointer; color:#ffd700; font-weight:bold;">Save Ledger Screenshot on Exit</label>
-    </div>
-
-    <button type="button" onclick="joinGame()" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111;">Enter Game Room</button>
+    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111;">Enter Game Room</button>
 
     <div style="width:100%; max-width:280px; margin-top:10px;">
       <div style="font-size:12px; font-weight:bold; color:#ffd700; margin-bottom:4px; display:flex; justify-content:space-between;">
@@ -597,13 +610,14 @@
     <div class="players-list" id="playersArea"></div>
 
     <div class="middle-piles">
+      <!-- NEW: Deck count display -->
       <div id="drawPile" class="card back" onclick="draw('deck')">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(32)</span></div>
       <div id="discardPile" class="card" onclick="draw('discard')">--</div>
     </div>
 
     <div class="hand-area">
       <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️️ Viewing Player's Hand</span>
+        <span id="peekBarText">👁️ Viewing Player's Hand</span>
         <span onclick="stopPeekingHand()" style="cursor:pointer; text-decoration:underline; font-size:11px;">Stop Viewing</span>
       </div>
 
@@ -635,7 +649,6 @@
   </div>
 
   <div id="audioContainer"></div>
-  <canvas id="ledgerCanvas" width="600" height="400" style="display:none;"></canvas>
 
   <script>
     const socket = io();
@@ -662,7 +675,6 @@
     let latestActivePlayers = [];
     let latestAllTableMembers = [];
     let latestTopDiscard = null;
-    let latestPersonalLedger = [];
     let isAnimatingDeal = false;
     let dealAnimationTimers = [];
     let announcementTimer = null;
@@ -779,81 +791,9 @@
 
     function setInitialLives(lives) {
       selectedInitialLives = lives;
-      const chips = document.querySelectorAll('#lobby div[style*="Starting Lives"] ~ .wager-chip');
-      chips.forEach(c => {
-        const l = parseInt(c.innerText);
-        c.classList.toggle('selected', l === lives);
+      document.querySelectorAll('#lobby div[style*="Starting Lives"] ~ .wager-chip').forEach(c => {
+        c.classList.toggle('selected', parseInt(c.innerText) === lives);
       });
-    }
-
-    function saveLedgerScreenshot() {
-      const toggle = document.getElementById('saveLedgerToggle');
-      if (!toggle || !toggle.checked) return;
-
-      try {
-        const canvas = document.getElementById('ledgerCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        ctx.fillStyle = '#164033';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 22px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`31! Final Ledger - Room: ${currentRoom}`, canvas.width / 2, 40);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '14px sans-serif';
-        ctx.fillText(`Player: ${myPlayerName}`, canvas.width / 2, 68);
-
-        let startY = 110;
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillStyle = '#ffd700';
-        ctx.fillText('Opponent', 50, startY);
-        ctx.fillText('Net Standing', 350, startY);
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(50, startY + 8);
-        ctx.lineTo(550, startY + 8);
-        ctx.stroke();
-
-        startY += 30;
-        ctx.font = '14px sans-serif';
-
-        if (latestPersonalLedger.length === 0) {
-          ctx.fillStyle = '#aaaaaa';
-          ctx.fillText('No ledger activity recorded.', 50, startY);
-        } else {
-          latestPersonalLedger.forEach((item) => {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(item.player, 50, startY);
-
-            if (item.netBalance > 0) {
-              ctx.fillStyle = '#4caf50';
-              ctx.fillText(`+$${item.netBalance} (Owes You)`, 350, startY);
-            } else if (item.netBalance < 0) {
-              ctx.fillStyle = '#f44336';
-              ctx.fillText(`-$${Math.abs(item.netBalance)} (You Owe)`, 350, startY);
-            } else {
-              ctx.fillStyle = '#e0e0e0';
-              ctx.fillText(`$0 (Even)`, 350, startY);
-            }
-            startY += 35;
-          });
-        }
-
-        const dataUrl = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = `31-ledger-${currentRoom}-${Date.now()}.png`;
-        link.href = dataUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (e) {
-        console.error('Could not generate ledger screenshot:', e);
-      }
     }
 
     function playCardSlideSound() {
@@ -1040,7 +980,7 @@
         item.innerHTML = `
           <div>
             <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️️ • ${wagerBadge}</div>
           </div>
           <div>${statusBadge}</div>
         `;
@@ -1052,7 +992,6 @@
       getAudioContext();
       const nameInput = document.getElementById('playerName');
       myPlayerName = nameInput.value.trim() || 'Player';
-
       try {
         localStorage.setItem('thirtyOne_playerName', myPlayerName);
       } catch (e) {}
@@ -1073,8 +1012,7 @@
 
     function leaveLobby() {
       if (!currentRoom) return;
-      if (confirm('Leave this game room? (A screenshot of your final ledger will be saved)')) {
-        saveLedgerScreenshot();
+      if (confirm('Leave this game room?')) {
         if (isInVoice) leaveVoice();
         cancelDealAnimation();
         dismissAnnouncement();
@@ -1858,6 +1796,330 @@
       }, data.duration || 3200);
     });
 
+    socket.on('gameState', (state) => {
+      const turnJustBegan = state.isMyTurn && !wasMyTurn;
+      isTurn = state.isMyTurn;
+      wasMyTurn = state.isMyTurn;
+
+      if (turnJustBegan && state.gameStarted && !state.isSpectator) {
+        playTurnBellSound();
+        triggerTurnVibration();
+      }
+
+      hasDrawn = state.hasDrawn;
+      isDiscarding = false;
+      const previousHandLength = myHand.length;
+      myHand = state.hand || [];
+      minKnockScore = state.minKnockScore || 21;
+      roundHasPassed = state.roundHasPassed;
+      currentScore = state.score || 0;
+      isSpectator = Boolean(state.isSpectator);
+      manualSpectator = Boolean(state.manualSpectator);
+      isReady = Boolean(state.isReady);
+      currentWager = state.myWager || 0;
+      latestTopDiscard = state.topDiscard || null;
+
+      latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
+      latestAllTableMembers = state.allTableMembers || [];
+
+      // Update Deck Count Label
+      const deckCountLbl = document.getElementById('deckCountLabel');
+      if (deckCountLbl) deckCountLbl.innerText = `(${state.deckCount ?? 0})`;
+
+      if (isSpectator) {
+        document.getElementById('scoreLabel').innerHTML = `<span class="spectator-badge">👁️ Spectating</span>`;
+      } else {
+        const scoreDisplay = (currentScore === 30.5) ? '30.5 (3 of a Kind!)' : currentScore;
+        document.getElementById('scoreLabel').innerText = `Score: ${scoreDisplay}`;
+      }
+
+      if (state.message) document.getElementById('statusBar').innerText = state.message;
+
+      // Pots Display
+      const potBanner = document.getElementById('potBanner');
+      if (state.totalPot > 0) {
+        potBanner.style.display = 'flex';
+        potBanner.innerText = `🏆 MATCH POT: $${state.totalPot}`;
+      } else {
+        potBanner.style.display = 'none';
+      }
+
+      const roundPotBanner = document.getElementById('roundPotBanner');
+      if (state.sideBetActionTotal > 0) {
+        roundPotBanner.style.display = 'flex';
+        roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal}`;
+      } else {
+        roundPotBanner.style.display = 'none';
+      }
+
+      // My Match Bet chips selector
+      const wagerSec = document.getElementById('wagerSection');
+      if (!state.gameStarted && !isSpectator) {
+        wagerSec.style.display = 'flex';
+        document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
+          const val = parseInt(chip.innerText.replace('$', '')) || 0;
+          chip.classList.toggle('selected', val === currentWager);
+        });
+      } else {
+        wagerSec.style.display = 'none';
+      }
+
+      // Ledger Personal Net Balances Render with "Clear" button for debts owed to me
+      const overallEl = document.getElementById('ledgerOverallTotal');
+      const sideBetEl = document.getElementById('ledgerSideBetTotal');
+
+      const netTotal = state.netOverallBalance || 0;
+      if (netTotal > 0) {
+        overallEl.className = 'balance-positive';
+        overallEl.innerText = `+$${netTotal}`;
+      } else if (netTotal < 0) {
+        overallEl.className = 'balance-negative';
+        overallEl.innerText = `-$${Math.abs(netTotal)}`;
+      } else {
+        overallEl.className = 'balance-neutral';
+        overallEl.innerText = `$0`;
+      }
+
+      const netSideBet = state.netSideBetBalance || 0;
+      if (netSideBet > 0) {
+        sideBetEl.className = 'balance-positive';
+        sideBetEl.innerText = `+$${netSideBet}`;
+      } else if (netSideBet < 0) {
+        sideBetEl.className = 'balance-negative';
+        sideBetEl.innerText = `-$${Math.abs(netSideBet)}`;
+      } else {
+        sideBetEl.className = 'balance-neutral';
+        sideBetEl.innerText = `$0`;
+      }
+
+      const ledgerList = document.getElementById('ledgerList');
+      if (state.personalLedger && state.personalLedger.length > 0) {
+        ledgerList.innerHTML = '';
+        state.personalLedger.forEach(item => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.justifyContent = 'space-between';
+          row.style.alignItems = 'center';
+          row.style.padding = '5px 8px';
+          row.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+
+          let balClass = 'balance-neutral';
+          let balText = '$0';
+          let clearBtnHtml = '';
+
+          if (item.netBalance > 0) {
+            balClass = 'balance-positive';
+            balText = `+$${item.netBalance} (Owes You)`;
+            clearBtnHtml = `<button type="button" onclick="promptClearDebt('${item.player}', ${item.netBalance})" style="background:#4caf50; color:#fff; padding:2px 6px; font-size:10px; margin-left:6px; border-radius:4px;">Clear</button>`;
+          } else if (item.netBalance < 0) {
+            balClass = 'balance-negative';
+            balText = `-$${Math.abs(item.netBalance)} (You Owe)`;
+          } else {
+            balText = `$0 (Even)`;
+          }
+
+          let sideBetTag = '';
+          if (item.sideBetBalance !== 0) {
+            const sbSign = item.sideBetBalance > 0 ? `+$${item.sideBetBalance}` : `-$${Math.abs(item.sideBetBalance)}`;
+            sideBetTag = `<span style="font-size:10px; opacity:0.8; display:block;">Side Bets: ${sbSign}</span>`;
+          }
+
+          const leftBadge = item.hasLeft ? `<span class="player-left-tag">(Left Room)</span>` : '';
+
+          row.innerHTML = `
+            <div>
+              <span><strong>${item.player}</strong>${leftBadge}</span>
+              ${sideBetTag}
+            </div>
+            <div style="display:flex; align-items:center;">
+              <span class="${balClass}">${balText}</span>
+              ${clearBtnHtml}
+            </div>
+          `;
+          ledgerList.appendChild(row);
+        });
+      } else {
+        ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
+      }
+
+      // Action Buttons
+      const readyBtn = document.getElementById('readyBtn');
+      const addBotBtn = document.getElementById('addBotBtn');
+      const removeBotBtn = document.getElementById('removeBotBtn');
+      const spectateBtn = document.getElementById('spectateBtn');
+      const roundBetBtn = document.getElementById('roundBetBtn');
+      const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
+      const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
+
+      if (state.gameStarted) {
+        readyBtn.style.display = 'none';
+        addBotBtn.style.display = 'none';
+        removeBotBtn.style.display = 'none';
+        spectateBtn.style.display = 'none';
+        roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
+        spectatorPeekBtn.style.display = isSpectator ? 'inline-block' : 'none';
+      } else {
+        roundBetBtn.style.display = 'none';
+        firstLoserBetBtn.style.display = 'none';
+        spectatorPeekBtn.style.display = 'none';
+        spectateBtn.style.display = 'inline-block';
+        spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+
+        if (isSpectator) {
+          readyBtn.style.display = 'none';
+          addBotBtn.style.display = 'none';
+          removeBotBtn.style.display = 'none';
+        } else {
+          readyBtn.style.display = 'inline-block';
+          addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
+          removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
+
+          if (isReady) {
+            readyBtn.className = 'ready-on';
+            readyBtn.innerText = '✅ You are Ready';
+          } else {
+            readyBtn.className = '';
+            readyBtn.innerText = '⏳ Tap to Ready';
+          }
+        }
+      }
+
+      const knockBtn = document.getElementById('knockBtn');
+      if (isSpectator || !state.gameStarted) {
+        knockBtn.style.display = 'none';
+      } else {
+        knockBtn.style.display = 'inline-block';
+        if (state.knocker) {
+          knockBtn.disabled = true;
+          knockBtn.innerText = `Knocked by ${state.knocker}`;
+        } else {
+          knockBtn.disabled = !state.canKnock;
+          if (!roundHasPassed) {
+            knockBtn.innerText = `Knock (Round 1 active)`;
+          } else if (state.canKnock) {
+            knockBtn.innerText = `⚡ Knock Now!`;
+          } else {
+            knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
+          }
+        }
+      }
+
+      const handInstr = document.getElementById('handInstruction');
+      if (isSpectator) {
+        if (currentlyViewingPlayerName) {
+          handInstr.innerText = `Peeking at ${currentlyViewingPlayerName}'s Hand`;
+        } else {
+          handInstr.innerText = "Spectating Match (Tap '👁️ Peek at Hand' to request view)";
+        }
+      } else if (state.gameStarted) {
+        if (isTurn) {
+          handInstr.innerText = hasDrawn ? "Tap a card below to DISCARD it" : "Your turn! Tap Draw Deck or Discard Pile";
+        } else {
+          handInstr.innerText = "Waiting for other players... (Tap '🎲 Side Bet' to wager)";
+        }
+      } else {
+        const eligible = state.players.filter(p => !p.isSpectator);
+        const readyCount = eligible.filter(p => p.isReady || p.isBot).length;
+        handInstr.innerText = `Lobby (${eligible.length}/6 Players) — Ready: ${readyCount}/${eligible.length}`;
+      }
+
+      const pArea = document.getElementById('playersArea');
+      pArea.innerHTML = '';
+      state.players.forEach(p => {
+        const div = document.createElement('div');
+        const voiceBadge = p.isInVoice ? ' 🎙️' : '';
+        const dcBadge = p.disconnected ? ' ⚠️' : '';
+        if (p.isSpectator) {
+          div.className = 'player-tag spectator';
+          div.innerText = `👁️ ${p.name}${voiceBadge}${dcBadge}`;
+        } else {
+          div.className = `player-tag ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''} ${p.disconnected ? 'disconnected' : ''}`;
+          const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
+          const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
+          div.innerText = `${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}`;
+        }
+        pArea.appendChild(div);
+      });
+
+      const disc = document.getElementById('discardPile');
+      if (state.topDiscard) {
+        const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
+        disc.className = `card ${isRed ? 'red' : 'black'}`;
+        disc.innerHTML = `<span>${state.topDiscard.rank}</span><span style="font-size: 20px;">${state.topDiscard.suit}</span>`;
+      } else {
+        disc.className = 'card';
+        disc.innerText = '--';
+      }
+
+      const hArea = document.getElementById('handArea');
+      if (isSpectator) {
+        if (currentlyViewingHand && currentlyViewingHand.length > 0) {
+          hArea.innerHTML = '';
+          currentlyViewingHand.forEach(card => {
+            hArea.appendChild(renderCard(card, null, false, false));
+          });
+        } else {
+          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 30px; font-size: 14px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
+        }
+      } else if (myHand.length > 0) {
+        if (document.visibilityState === 'visible' && previousHandLength === 0 && myHand.length === 3) {
+          animateCardDeal(myHand);
+        } else if (!isAnimatingDeal) {
+          forceRenderHand();
+        }
+      } else {
+        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
+      }
+    });
+
+    socket.on('bigAnnouncement', (data) => {
+      dismissAnnouncement();
+      const overlay = document.getElementById('announcementOverlay');
+      document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
+      document.getElementById('annMessage').innerText = data.message || '';
+      document.getElementById('annSubtext').innerText = data.subtext || '';
+
+      const handsContainer = document.getElementById('showdownHandsContainer');
+      handsContainer.innerHTML = '';
+
+      if (data.hands && data.hands.length > 0) {
+        data.hands.forEach(ph => {
+          const box = document.createElement('div');
+          box.className = 'showdown-player-box';
+
+          const info = document.createElement('div');
+          info.className = 'showdown-player-info';
+          info.innerText = `${ph.name}: ${ph.score} pts ${ph.isKnocker ? '🔔' : ''}`;
+          box.appendChild(info);
+
+          const cardRow = document.createElement('div');
+          cardRow.className = 'showdown-cards-row';
+          ph.hand.forEach(c => {
+            cardRow.appendChild(renderCard(c, null, false, true));
+          });
+          box.appendChild(cardRow);
+
+          handsContainer.appendChild(box);
+        });
+      }
+
+      overlay.classList.add('show');
+
+      if (data.sound === 'knock') {
+        playKnockSound();
+      }
+
+      announcementTimer = setTimeout(() => {
+        dismissAnnouncement();
+      }, data.duration || 5500);
+    });
+
+    socket.on('errorMsg', (msg) => alert(msg));
+    socket.on('gameOver', ({ winner }) => {
+      setTimeout(() => location.reload(), 4500);
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
       try {
         const saved = localStorage.getItem('thirtyOne_playerName');
@@ -1888,6 +2150,24 @@
           }, { passive: true });
         }
       });
+
+      const enterBtn = document.getElementById('enterGameBtn');
+      if (enterBtn) {
+        enterBtn.addEventListener('click', joinGame);
+        enterBtn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          joinGame();
+        });
+      }
+
+      const tutBtn = document.getElementById('lobbyTutorialBtn');
+      if (tutBtn) {
+        tutBtn.addEventListener('click', toggleTutorialModal);
+        tutBtn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          toggleTutorialModal();
+        });
+      }
     });
 
     if ('serviceWorker' in navigator) {
