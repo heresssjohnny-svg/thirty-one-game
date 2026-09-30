@@ -104,7 +104,7 @@
     .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding-top: 2px; z-index: 20; pointer-events: auto; }
     button {
       padding: 8px 10px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold;
-      background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto; touch-action: manipulation;
+      background: #ffcc00; color: #111; cursor: pointer; pointer-events: auto;
     }
     button.secondary { background: #e0e0e0; color: #222; }
     button.danger { background: #d32f2f; color: #fff; padding: 5px 8px; font-size: 11px; }
@@ -674,6 +674,14 @@
     let pendingPeekRequesterId = null;
     let pendingClearDebtName = null;
 
+    // Sound and vibration stub helpers
+    function playTurnBellSound() {}
+    function triggerTurnVibration() { if (navigator.vibrate) navigator.vibrate(200); }
+    function playKnockSound() {}
+    function playCardSlideSound() {}
+    function playAcceptSound() {}
+    function playDeclineSound() {}
+
     try {
       deviceId = localStorage.getItem('thirtyOne_deviceId');
       if (!deviceId) {
@@ -801,7 +809,7 @@
       rooms.forEach(r => {
         const item = document.createElement('div');
         item.className = 'room-dir-item';
-        item.addEventListener('pointerup', (e) => {
+        item.addEventListener('click', (e) => {
           e.preventDefault();
           document.getElementById('roomId').value = r.roomId;
           joinGame();
@@ -997,7 +1005,7 @@
           });
 
           document.querySelectorAll('.clear-debt-btn').forEach(btn => {
-            btn.addEventListener('pointerup', (e) => {
+            btn.addEventListener('click', (e) => {
               e.preventDefault();
               promptClearDebt(btn.getAttribute('data-player'), parseInt(btn.getAttribute('data-amt')));
             });
@@ -1027,7 +1035,7 @@
           firstLoserBetBtn.style.display = 'none';
           spectatorPeekBtn.style.display = 'none';
           spectateBtn.style.display = 'inline-block';
-          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️️ Spectate';
 
           if (isSpectator) {
             readyBtn.style.display = 'none';
@@ -1168,7 +1176,7 @@
       setTimeout(() => location.reload(), 4500);
     });
 
-    // Centralized Event Binding to guarantee all buttons and controls are properly linked
+    // Centralized Event Binding using native 'click' events for flawless Android/iOS touch responsiveness
     document.addEventListener('DOMContentLoaded', () => {
       try {
         const saved = localStorage.getItem('thirtyOne_playerName');
@@ -1250,23 +1258,20 @@
       Object.keys(actionMap).forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-          el.addEventListener('pointerup', (e) => {
-            e.preventDefault();
+          el.addEventListener('click', (e) => {
             actionMap[id]();
           });
         }
       });
 
       document.querySelectorAll('.lives-chip').forEach(el => {
-        el.addEventListener('pointerup', (e) => {
-          e.preventDefault();
+        el.addEventListener('click', (e) => {
           setInitialLives(parseInt(el.getAttribute('data-lives')));
         });
       });
 
       document.querySelectorAll('.bet-amt-chip').forEach(el => {
-        el.addEventListener('pointerup', (e) => {
-          e.preventDefault();
+        el.addEventListener('click', (e) => {
           selectRoundBetAmt(parseInt(el.getAttribute('data-amt')));
         });
       });
