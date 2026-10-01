@@ -76,7 +76,7 @@ wss.on('connection', (ws) => {
                         turnIndex: 0,
                         dealerIndex: 0,
                         ledger: {},
-                        pendingBets: [], // { id, proposer, target, pickUser, targetSurvivor, wagerAmt, type }
+                        pendingBets: [],
                         activeBets: [],
                         knockedBy: null,
                         finalTurnsRemaining: 0,
@@ -460,10 +460,20 @@ function getSanitizedLobby(lobby, wsId) {
     }
     sortedParticipants.forEach((p, idx) => { p.seat = idx; });
 
-    // Filter pending bets intended specifically for this user that haven't been responded to yet
-    let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.responded);
-    if (myUnrespondedBets.length > 0) {
-        myUnrespondedBets.forEach(b => b.responded = true); // Mark as delivered so it doesn't loop
+    let myPendingBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.responded);
+    if (myPendingBets.length > 0) {
+        myPendingBets.forEach(b => b.responded = true);
+    }
+
+    // Attach active side bets for seat rendering
+    let seatBets = {};
+    if (myUsername) {
+        (lobby.activeBets || []).forEach(bet => {
+            if (bet.proposer === myUsername || bet.target === myUsername) {
+                let otherUser = bet.proposer === myUsername ? bet.target : bet.proposer;
+                seatBets[otherUser] = (seatBets[otherUser] || 0) + bet.wagerAmt;
+            }
+        });
     }
 
     return {
@@ -478,7 +488,8 @@ function getSanitizedLobby(lobby, wsId) {
         canKnock: canKnock,
         potTotal: potTotal,
         ledger: lobby.ledger || {},
-        pendingBetsForMe: myUnrespondedBets,
+        pendingBetsForMe: myPendingBets,
+        seatBets: seatBets,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
