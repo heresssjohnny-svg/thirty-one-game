@@ -216,7 +216,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap seat names to open betting buttons. Mute microphone option available in top menu!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Voice chat stays active even when looking at other windows using the Page Visibility API!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -261,6 +261,16 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
             refreshLobbies();
+
+            // Page Visibility API listener to prevent voice chat dropouts when app is in background
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden && localAudioStream) {
+                    // Keep audio tracks active and prevent suspension
+                    localAudioStream.getAudioTracks().forEach(track => {
+                        if (!isMicMuted) track.enabled = true;
+                    });
+                }
+            });
         });
 
         function saveInputs() {
@@ -798,8 +808,9 @@
 
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
+            let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver' && !isSpectatorOnly && !lobby.phaseMessage.includes('TOURNAMENT WINNER')) {
+            if (lobby.gameState === 'roundOver' && !isSpectatorOnly && !lobby.phaseMessage.includes('TOURNAMENT WINNER') && activePartsCount > 1) {
                 nextHandOverlay.style.display = 'block';
                 let nextBtn = document.getElementById('next-hand-btn');
                 if (me && me.nextHandReady) {
