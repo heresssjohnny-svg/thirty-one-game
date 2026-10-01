@@ -31,6 +31,8 @@
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.85rem; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         #chat-toggle-btn:hover { background: #334155; }
+        #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         
         #chat-window { position: absolute; top: 40px; right: 0; width: 240px; height: 160px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 2500; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
@@ -94,7 +96,8 @@
         <div class="top-menu-btns">
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
-            <button class="secondary" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
+            <button class="secondary" id="vc-btn" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
+            <button class="secondary" id="mute-btn" onclick="toggleMuteMic()" style="display:none;">Mute Mic</button>
             <button class="secondary" onclick="openSpectatorListModal()">Spectators (<span id="spec-count">0</span>)</button>
             
             <div id="chat-container">
@@ -209,14 +212,16 @@
         </div>
     </div>
 
+    <!-- Rules Modal -->
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap any player's seat name to open interactive betting proposal buttons!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap seat names to open betting buttons. Mute microphone option available in top menu!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
 
+    <!-- Ledger Modal -->
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Ledger & Balances</h3>
@@ -226,6 +231,7 @@
         </div>
     </div>
 
+    <!-- Spectator List Modal -->
     <div id="spectators-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Spectator List</h3>
@@ -243,6 +249,7 @@
         let lastPhaseMessage = '';
         
         let localAudioStream = null;
+        let isMicMuted = false;
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -263,7 +270,13 @@
 
         function toggleChatWindow() {
             let win = document.getElementById('chat-window');
-            win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
+            let isVisible = win.style.display === 'flex';
+            win.style.display = isVisible ? 'none' : 'flex';
+            if (!isVisible) {
+                let chatBtn = document.getElementById('chat-toggle-btn');
+                chatBtn.classList.remove('unread');
+                chatBtn.innerText = '💬 Chat';
+            }
         }
 
         function openLedgerModal() {
@@ -399,6 +412,8 @@
                     try {
                         localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                         document.getElementById('vc-status').innerText = 'On';
+                        document.getElementById('mute-btn').style.display = 'inline-block';
+                        sendVCStatusUpdate();
                     } catch(e) {}
                 };
                 ws.onmessage = (event) => {
@@ -407,8 +422,15 @@
                     else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
                         updateUIFromLobby(data.lobby);
                         handleWebRTCConnections(data.lobby);
-                    } else if (data.type === 'CHAT_MESSAGE') appendChatMessage(data.username, data.message);
-                    else if (data.type === 'WEBRTC_SIGNAL') handleWebRTCSignal(data.sender, data.signal);
+                    } else if (data.type === 'CHAT_MESSAGE') {
+                        appendChatMessage(data.username, data.message);
+                        let win = document.getElementById('chat-window');
+                        if (win.style.display !== 'flex') {
+                            let chatBtn = document.getElementById('chat-toggle-btn');
+                            chatBtn.classList.add('unread');
+                            chatBtn.innerText = '💬 Chat❗';
+                        }
+                    } else if (data.type === 'WEBRTC_SIGNAL') handleWebRTCSignal(data.sender, data.signal);
                     else if (data.type === 'LEFT_LOBBY') resetToMainMenu();
                     else if (data.type === 'ERROR') alert(data.message);
                 };
@@ -510,11 +532,14 @@
 
         async function toggleVoiceChat() {
             let status = document.getElementById('vc-status');
+            let muteBtn = document.getElementById('mute-btn');
             if (status.innerText === 'Off') {
                 try {
                     localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     status.innerText = 'On';
+                    muteBtn.style.display = 'inline-block';
                     peerConnections = {};
+                    sendVCStatusUpdate();
                     if (ws && ws.readyState === WebSocket.OPEN) {
                         refreshLobbies();
                     }
@@ -531,6 +556,32 @@
                     delete peerConnections[user];
                 }
                 status.innerText = 'Off';
+                muteBtn.style.display = 'none';
+                isMicMuted = false;
+                muteBtn.innerText = 'Mute Mic';
+                sendVCStatusUpdate();
+            }
+        }
+
+        function toggleMuteMic() {
+            if (!localAudioStream) return;
+            isMicMuted = !isMicMuted;
+            localAudioStream.getAudioTracks().forEach(track => {
+                track.enabled = !isMicMuted;
+            });
+            let muteBtn = document.getElementById('mute-btn');
+            muteBtn.innerText = isMicMuted ? 'Unmute Mic' : 'Mute Mic';
+            sendVCStatusUpdate();
+        }
+
+        function sendVCStatusUpdate() {
+            let status = document.getElementById('vc-status').innerText === 'On';
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'UPDATE_VC_STATUS',
+                    inVC: status,
+                    isMuted: isMicMuted
+                }));
             }
         }
 
@@ -633,7 +684,7 @@
         }
 
         function tapSeat(targetUsername) {
-            if (targetUsername === clientState.username) return; // Can't bet with yourself
+            if (targetUsername === clientState.username) return;
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
             modalTitle.innerText = `Propose Bet with ${targetUsername}`;
@@ -648,34 +699,46 @@
         function openBetTypeModal(targetUsername, betType) {
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
-            let label = (betType === 'win') ? 'Select player to win round:' : 'Select player to be eliminated first:';
-            modalTitle.innerText = label;
+            modalTitle.innerText = (betType === 'win') ? 'Select player to win round:' : 'Select player to be eliminated first:';
 
             let html = '';
             clientState.playersList.forEach(p => {
-                html += `<button onclick="openWagerModal('${targetUsername}', '${betType}', '${p}')">${p}</button>`;
+                html += `<button onclick="openSurvivorModal('${targetUsername}', '${betType}', '${p}')">${p}</button>`;
             });
             modalBody.innerHTML = html;
         }
 
-        function openWagerModal(targetUsername, betType, pickUser) {
+        function openSurvivorModal(targetUsername, betType, pickUser) {
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = 'Select player who survives longer:';
+
+            let html = '';
+            clientState.playersList.filter(p => p !== pickUser).forEach(p => {
+                html += `<button onclick="openWagerModal('${targetUsername}', '${betType}', '${pickUser}', '${p}')">${p}</button>`;
+            });
+            modalBody.innerHTML = html;
+        }
+
+        function openWagerModal(targetUsername, betType, pickUser, targetSurvivor) {
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
             modalTitle.innerText = 'Select Wager Amount';
 
             modalBody.innerHTML = `
-                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', 5)">$5 Wager</button>
-                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', 10)">$10 Wager</button>
-                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', 20)">$20 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', '${targetSurvivor}', 5)">$5 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', '${targetSurvivor}', 10)">$10 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', '${targetSurvivor}', 20)">$20 Wager</button>
             `;
         }
 
-        function submitProposal(target, betType, pickUser, wagerAmt) {
+        function submitProposal(target, betType, pickUser, targetSurvivor, wagerAmt) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'PROPOSE_BET',
                     target: target,
                     pickUser: pickUser,
+                    targetSurvivor: targetSurvivor,
                     wagerAmt: wagerAmt,
                     betType: betType
                 }));
@@ -700,7 +763,7 @@
 
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
                 lobby.pendingBetsForMe.forEach(bet => {
-                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated first.`;
+                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
                     if (confirm(`Incoming Bet Proposal from ${bet.proposer}!\n\n${label}\n\nAccept this bet?`)) {
                         respondToBet(bet.id, true);
                     } else {
@@ -833,7 +896,11 @@
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
+                let micIcon = '';
+                if (p.inVC) {
+                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
+                }
+                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
@@ -903,12 +970,12 @@
             document.getElementById('spectators-modal').style.display = 'none';
             document.getElementById('next-hand-overlay').style.display = 'none';
             document.getElementById('chat-window').style.display = 'none';
+            document.getElementById('mute-btn').style.display = 'none';
             clientState.isReady = false;
             hasChosenPoolCard = false;
+            isMicMuted = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
             document.getElementById('ready-btn').style.display = 'inline-block';
-            document.getElementById('knock-btn').style.display = 'inline-block';
-            document.getElementById('knock-btn').disabled = true;
             document.getElementById('vc-status').innerText = 'Off';
             refreshLobbies();
         }
