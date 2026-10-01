@@ -59,7 +59,9 @@ wss.on('connection', (ws) => {
                     phaseMessage: null,
                     turnIndex: 0,
                     wager: 5,
-                    ledger: {}
+                    ledger: {},
+                    knockedBy: null,
+                    finalTurnsRemaining: 0
                 };
                 ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode]) }));
                 broadcastLobbyList();
@@ -220,7 +222,7 @@ function broadcastLobbyUpdate(code) {
     lobby.players.forEach(p => { if (p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized })); });
     lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized })); });
 
-    if (lobby.gameState === 'playing') {
+    if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
         checkAndRunBotTurn(lobby);
     }
 }
@@ -228,6 +230,8 @@ function broadcastLobbyUpdate(code) {
 function getSanitizedLobby(lobby) {
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentTurnUser = allParticipants[lobby.turnIndex] ? allParticipants[lobby.turnIndex].username : '';
+    let isRoundOver = lobby.gameState === 'roundOver';
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -241,8 +245,21 @@ function getSanitizedLobby(lobby) {
         drawResults: lobby.drawResults,
         wager: lobby.wager,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
-        players: lobby.players.map(p => ({ username: p.username, lives: p.lives, cardCount: p.cards.length, ready: p.ready, seat: p.seat, cards: p.cards })),
-        bots: lobby.bots.map(b => ({ username: b.username, lives: b.lives, cardCount: b.cards.length, seat: b.seat })),
+        players: lobby.players.map(p => ({
+            username: p.username,
+            lives: p.lives,
+            cardCount: p.cards.length,
+            ready: p.ready,
+            seat: p.seat,
+            cards: (isRoundOver || p.id === lobby.players.find(x => x.username === p.username)?.id) ? p.cards : []
+        })),
+        bots: lobby.bots.map(b => ({
+            username: b.username,
+            lives: b.lives,
+            cardCount: b.cards.length,
+            seat: b.seat,
+            cards: isRoundOver ? b.cards : []
+        })),
         spectators: lobby.spectators.map(s => ({ username: s.username }))
     };
 }
@@ -253,6 +270,8 @@ function startDealerDrawPhase(lobby) {
     lobby.drawResults = {};
     lobby.phaseMessage = "Picking for Dealer (Lowest card deals, Ace highest)";
     lobby.gameState = 'dealerDraw';
+    lobby.knockedBy = null;
+    lobby.finalTurnsRemaining = 0;
 
     autoPickForBots(lobby);
     broadcastLobbyUpdate(lobby.code);
@@ -316,6 +335,8 @@ function startRound(lobby) {
     lobby.discardPile.push(lobby.deck.pop());
     lobby.gameState = 'playing';
     lobby.phaseMessage = null;
+    lobby.knockedBy = null;
+    lobby.finalTurnsRemaining = 0;
     lobby.turnIndex = Math.floor(Math.random() * allParticipants.length);
     broadcastLobbyUpdate(lobby.code);
 }
@@ -325,7 +346,7 @@ function checkAndRunBotTurn(lobby) {
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (currentPlayer && lobby.bots.some(b => b.username === currentPlayer.username)) {
         setTimeout(() => {
-            if (lobby.gameState !== 'playing') return;
+            if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
             let currentTurnCheck = [...lobby.players, ...lobby.bots][lobby.turnIndex];
             if (currentTurnCheck && currentTurnCheck.username === currentPlayer.username) {
                 if (lobby.deck.length === 0) lobby.deck = createDeck();
@@ -337,18 +358,19 @@ function checkAndRunBotTurn(lobby) {
                 if (calculateScore(currentPlayer.cards) === 31) {
                     allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
                     lobby.gameState = 'roundOver';
-                    lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points!`;
-                } else {
-                    lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
+                    lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`;
+                    broadcastLobbyUpdate(lobby.code);
+                    return;
                 }
-                broadcastLobbyUpdate(lobby.code);
+
+                advanceTurnOrResolve(lobby);
             }
         }, 1500);
     }
 }
 
 function handleTurnAction(lobby, ws, actionType) {
-    if (lobby.gameState !== 'playing') return;
+    if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
@@ -360,14 +382,16 @@ function handleTurnAction(lobby, ws, actionType) {
         broadcastLobbyUpdate(lobby.code);
     } else if (actionType === 'DRAW_DISCARD') {
         if (lobby.discardPile.length > 0) {
-            currentPlayer.cards.push(lobby.discardPile.pop());
+            let card = lobby.discardPile.pop();
+            currentPlayer.cards.push(card);
+            lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
             broadcastLobbyUpdate(lobby.code);
         }
     }
 }
 
 function handleDiscardAction(lobby, ws, cardIndex) {
-    if (lobby.gameState !== 'playing') return;
+    if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
@@ -378,13 +402,25 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         if (calculateScore(currentPlayer.cards) === 31) {
             allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
             lobby.gameState = 'roundOver';
-            lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points!`;
+            lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`;
             broadcastLobbyUpdate(lobby.code);
         } else {
-            lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
-            broadcastLobbyUpdate(lobby.code);
+            advanceTurnOrResolve(lobby);
         }
     }
+}
+
+function advanceTurnOrResolve(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    if (lobby.gameState === 'finalTurn') {
+        lobby.finalTurnsRemaining--;
+        if (lobby.finalTurnsRemaining <= 0) {
+            resolveRoundEnd(lobby);
+            return;
+        }
+    }
+    lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
+    broadcastLobbyUpdate(lobby.code);
 }
 
 function handleKnock(lobby, ws) {
@@ -396,7 +432,12 @@ function handleKnock(lobby, ws) {
     let score = calculateScore(currentPlayer.cards);
     let threshold = allParticipants.length > 2 ? 21 : 25;
     if (score >= threshold) {
-        resolveRoundEnd(lobby);
+        lobby.gameState = 'finalTurn';
+        lobby.knockedBy = currentPlayer.username;
+        lobby.finalTurnsRemaining = allParticipants.length - 1; // Everyone else gets 1 turn
+        lobby.phaseMessage = `🔔 ${currentPlayer.username} knocked with ${score} points! Every other player gets 1 final turn.`;
+        lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
+        broadcastLobbyUpdate(lobby.code);
     }
 }
 
@@ -411,7 +452,7 @@ function resolveRoundEnd(lobby) {
     if (tiedPlayers.length > 1 && allParticipants.length >= 3) {
         lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
         lobby.drawResults = {};
-        lobby.phaseMessage = `⚠️️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck.`;
+        lobby.phaseMessage = `⚠️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck. All hands revealed.`;
         lobby.gameState = 'tieBreaker';
 
         autoPickForBots(lobby);
@@ -419,7 +460,7 @@ function resolveRoundEnd(lobby) {
     } else {
         scores[0].player.lives--;
         lobby.gameState = 'roundOver';
-        lobby.phaseMessage = `Round Over! ${scores[0].player.username} had the lowest score and lost a life.`;
+        lobby.phaseMessage = `Round Over! ${scores[0].player.username} had the lowest score (${lowestScore} pts) and lost a life. All hands revealed.`;
         broadcastLobbyUpdate(lobby.code);
     }
 }
@@ -441,7 +482,7 @@ function checkTieBreakerComplete(lobby) {
         if (targetParticipant) targetParticipant.lives--;
 
         lobby.gameState = 'roundOver';
-        lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest card (${loser.card.val}${loser.card.suit}) and lost a life!`;
+        lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest card (${loser.card.val}${loser.card.suit}) and lost a life! All hands revealed.`;
         broadcastLobbyUpdate(lobby.code);
     }
 }
