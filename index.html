@@ -20,7 +20,6 @@
         
         main { flex: 1; display: flex; flex-direction: column; padding: 20px; align-items: center; justify-content: center; position: relative; }
         
-        /* Main Menu View */
         #main-menu { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 450px; background: #1e293b; padding: 30px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
         .input-group { display: flex; flex-direction: column; gap: 6px; }
         label { font-size: 0.85rem; color: #94a3b8; font-weight: 500; }
@@ -29,7 +28,6 @@
         .lobby-item { display: flex; justify-content: space-between; align-items: center; padding: 6px; border-bottom: 1px solid #1e293b; cursor: pointer; }
         .lobby-item:hover { background: #1e293b; }
 
-        /* Game Table Oval View */
         #game-view { display: none; width: 100%; height: 100%; flex: 1; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         .table-oval { position: relative; width: 850px; max-width: 95vw; height: 480px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 12px solid #78350f; border-radius: 240px; margin: auto; box-shadow: inset 0 0 50px rgba(0,0,0,0.6), 0 10px 30px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
         
@@ -37,29 +35,22 @@
         .card-slot { width: 70px; height: 100px; background: #fff; color: #000; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; box-shadow: 0 4px 8px rgba(0,0,0,0.3); cursor: pointer; border: 2px solid #cbd5e1; }
         .card-slot.back { background: #1e3a8a; color: #fff; }
 
-        /* Seats Positions around Oval */
         .seat { position: absolute; background: rgba(15, 23, 42, 0.85); border: 2px solid #475569; padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; text-align: center; width: 130px; }
-        .seat-0 { bottom: -20px; left: calc(50% - 65px); border-color: #38bdf8; } /* Bottom Center (My Seat) */
-        .seat-1 { bottom: 60px; left: 30px; } /* Bottom Center Left */
-        .seat-2 { top: 70px; left: 40px; } /* Top Left */
-        .seat-3 { top: -25px; left: calc(50% - 65px); } /* Top Center */
-        .seat-4 { top: 70px; right: 40px; } /* Top Right */
-        .seat-5 { bottom: 60px; right: 30px; } /* Bottom Right (Before Me) */
+        .seat-0 { bottom: -20px; left: calc(50% - 65px); border-color: #38bdf8; }
+        .seat-1 { bottom: 60px; left: 30px; }
+        .seat-2 { top: 70px; left: 40px; }
+        .seat-3 { top: -25px; left: calc(50% - 65px); }
+        .seat-4 { top: 70px; right: 40px; }
+        .seat-5 { bottom: 60px; right: 30px; }
 
-        /* My Hand Controls */
         .my-hand-area { background: #1e293b; padding: 15px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 600px; border: 1px solid #334155; }
         .cards-flex { display: flex; gap: 10px; }
         .my-card { width: 65px; height: 95px; background: #fff; color: #0f172a; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: transform 0.2s; border: 2px solid #cbd5e1; }
         .my-card:hover { transform: translateY(-8px); border-color: #38bdf8; }
 
-        /* Bottom Action Menu */
         .bottom-action-bar { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; justify-content: center; }
-
-        /* Floating Notifications */
-        #notification-banner { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 10px 20px; border-radius: 8px; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 1000; display: none; }
-        #first-card-tracker { position: absolute; top: 15px; left: 15px; background: rgba(30,41,59,0.9); border: 1px solid #475569; padding: 10px; border-radius: 8px; font-size: 0.8rem; display: none; }
-
-        /* Modal Overlays */
+        #notification-banner { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 10px 20px; border-radius: 8px; font-weight: bold; z-index: 1000; display: none; }
+        
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 2000; }
         .modal-content { background: #1e293b; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 15px; border: 1px solid #334155; }
     </style>
@@ -68,16 +59,17 @@
 
     <header>
         <div class="logo">31! CARD GAME</div>
-        <div class="top-menu-btns">
+        <div class="top-menu-btns" id="header-menu-buttons">
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Ledger</button>
             <button class="secondary" onclick="toggleVoiceChat()">Voice Chat: <span id="vc-status">Off</span></button>
-            <button class="danger" onclick="endGameRequest()">End Game</button>
-            <button class="danger" onclick="leaveLobby()">Leave Lobby</button>
+            <!-- In-Lobby Only Buttons -->
+            <button class="danger" id="end-game-btn" style="display:none;" onclick="endGameRequest()">End Game</button>
+            <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave Lobby</button>
         </div>
     </header>
 
-    <div id="notification-banner">Notification text</div>
+    <div id="notification-banner">Notification</div>
 
     <main>
         <!-- Main Menu -->
@@ -87,28 +79,13 @@
                 <label>Your Username</label>
                 <input type="text" id="username-input" placeholder="Enter username..." value="Player1">
             </div>
-            
+
             <div class="input-group">
-                <label>Game Setup Options</label>
-                <div style="display: flex; gap: 10px;">
-                    <select id="wager-select" style="flex:1;">
-                        <option value="5">Wager: $5 (Default)</option>
-                        <option value="10">Wager: $10</option>
-                        <option value="20">Wager: $20</option>
-                    </select>
-                    <select id="lives-select" style="flex:1;">
-                        <option value="2">Lives: 2 (Default)</option>
-                        <option value="3">Lives: 3</option>
-                        <option value="5">Lives: 5</option>
-                    </select>
-                </div>
+                <label>Lobby Name</label>
+                <input type="text" id="lobby-name-input" placeholder="My Awesome Lobby">
             </div>
 
-            <div style="display: flex; gap: 10px;">
-                <button style="flex:1;" onclick="createLobby()">Create Lobby</button>
-                <button class="secondary" onclick="addBot()">Add Bot</button>
-                <button class="secondary" onclick="removeBot()">Remove Bot</button>
-            </div>
+            <button onclick="createLobby()">Create Custom Lobby</button>
 
             <div class="input-group">
                 <label>Join Private Lobby Code</label>
@@ -128,27 +105,35 @@
 
         <!-- Game Table View -->
         <div id="game-view">
-            <div id="first-card-tracker">First Discard Tracker: <span id="tracker-card-val">None</span></div>
-            
-            <div class="table-oval" id="table-oval-container">
-                <!-- Dynamic Seats Inserted via JS -->
+            <div id="lobby-settings-panel" style="background:#1e293b; padding:12px; border-radius:8px; display:flex; gap:15px; align-items:center; border:1px solid #334155; margin-bottom:10px;">
+                <span id="room-title-display" style="font-weight:bold; color:#38bdf8;">Lobby</span>
+                <select id="config-wager" onchange="updateSettings()">
+                    <option value="5">Wager: $5</option>
+                    <option value="10">Wager: $10</option>
+                    <option value="20">Wager: $20</option>
+                </select>
+                <select id="config-lives" onchange="updateSettings()">
+                    <option value="2">Lives: 2</option>
+                    <option value="3">Lives: 3</option>
+                    <option value="5">Lives: 5</option>
+                </select>
+                <button class="secondary" onclick="addBot()">Add Bot</button>
+                <button class="secondary" onclick="removeBot()">Remove Bot</button>
             </div>
+            
+            <div class="table-oval" id="table-oval-container"></div>
 
-            <!-- My Hand & Bottom Controls -->
             <div class="my-hand-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.9rem; color: #94a3b8;">
                     <span>My Hand (Score: <span id="my-score-display">0</span>)</span>
                     <span id="turn-indicator-text" style="color:#38bdf8; font-weight:bold;">Waiting for game start...</span>
                 </div>
-                <div class="cards-flex" id="my-cards-container">
-                    <!-- Cards populated here -->
-                </div>
+                <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar">
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary">Knock</button>
                     <button onclick="openSideBetModal()" class="secondary">Side Bets</button>
                     <button onclick="openFirstToLoseModal()" class="secondary">First to Lose</button>
-                    <button onclick="toggleSpectatorMode()" class="secondary" id="spec-toggle-btn">Spectate</button>
                 </div>
             </div>
         </div>
@@ -160,8 +145,7 @@
             <h3>Game Rules - 31!</h3>
             <p style="font-size:0.9rem; color:#cbd5e1; line-height:1.4;">
                 Collect 31 points in a suit or 3 of a kind (30.5 pts). Ace = 11, 10-King = 10. 
-                Pick from deck or discard pile, then discard. Knocking requires 21+ pts (or 25+ in heads-up). 
-                Hitting exact 31 immediately ends the round and costs everyone else a life!
+                Pick from deck or discard pile, then discard. Knocking requires 21+ pts (or 25+ in heads-up).
             </p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
@@ -170,10 +154,8 @@
     <div id="ledger-modal" class="modal">
         <div class="modal-content">
             <h3>Ledger & Balances</h3>
-            <div id="ledger-content" style="font-size: 0.9rem; color:#cbd5e1; max-height:150px; overflow-y:auto;">
-                No wagers recorded yet.
-            </div>
-            <button onclick="saveLedgerScreenshot()">Save Ledger Screenshot</button>
+            <div id="ledger-content" style="font-size: 0.9rem; color:#cbd5e1; max-height:150px; overflow-y:auto;">No wagers recorded.</div>
+            <button onclick="alert('Ledger saved.')">Save Screenshot</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
     </div>
@@ -181,17 +163,10 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = {
-            username: 'Player1',
-            lobbyCode: null,
-            isReady: false,
-            isSpectator: false,
-            cards: [],
-            lives: 2,
-            ledger: {}
-        };
+        let clientState = { username: 'Player1', lobbyCode: null, isReady: false, playersList: [] };
+        let mediaRecorder = null;
+        let audioStream = null;
 
-        // Web Audio API Synthesizer for Sound Effects
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playSound(type) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -201,13 +176,7 @@
             osc.connect(gain);
             gain.connect(audioCtx.destination);
 
-            if (type === 'ding') {
-                osc.frequency.setValueAtTime(587.33, now); // D5
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                osc.start(now);
-                osc.stop(now + 0.4);
-            } else if (type === 'doorOpen') {
+            if (type === 'doorOpen') {
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(150, now);
                 osc.frequency.linearRampToValueAtTime(300, now + 0.2);
@@ -215,52 +184,30 @@
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
                 osc.start(now);
                 osc.stop(now + 0.2);
-            } else if (type === 'knock') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(90, now);
-                gain.gain.setValueAtTime(0.3, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-                osc.start(now);
-                osc.stop(now + 0.1);
             }
         }
 
-        function triggerVibration() {
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-        }
-
-        function showNotification(msg) {
-            let banner = document.getElementById('notification-banner');
-            banner.innerText = msg;
-            banner.style.display = 'block';
-            setTimeout(() => { banner.style.display = 'none'; }, 4000);
-        }
-
-        // Connection Setup
         function connectSocket() {
-            if (isConnected) return;
+            if (isConnected && ws && ws.readyState === WebSocket.OPEN) return;
             const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
             ws = new WebSocket(protocol + location.host);
 
             ws.onopen = () => { isConnected = true; };
             ws.onmessage = (event) => {
                 let data = JSON.parse(event.data);
-                handleServerMessage(data);
+                if (data.type === 'LOBBY_LIST') {
+                    renderLobbyList(data.lobbies);
+                } else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                    updateUIFromLobby(data.lobby);
+                } else if (data.type === 'LEFT_LOBBY') {
+                    resetToMainMenu();
+                } else if (data.type === 'VOICE_DATA') {
+                    playRemoteAudio(data.audioData);
+                } else if (data.type === 'ERROR') {
+                    alert(data.message);
+                }
             };
-            ws.onerror = () => {
-                // Fallback local client simulation mode if server offline
-                console.log("WebSocket offline, running in local standalone mode.");
-            };
-        }
-
-        function handleServerMessage(data) {
-            if (data.type === 'LOBBY_LIST') {
-                renderLobbyList(data.lobbies);
-            } else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
-                updateUIFromLobby(data.lobby);
-            } else if (data.type === 'ERROR') {
-                alert(data.message);
-            }
+            ws.onclose = () => { isConnected = false; };
         }
 
         function renderLobbyList(lobbies) {
@@ -271,8 +218,8 @@
             }
             container.innerHTML = lobbies.map(l => `
                 <div class="lobby-item" onclick="joinLobbyCode('${l.code}')">
-                    <span>Host: ${l.host} (${l.count}/6)</span>
-                    <span style="color:#38bdf8;">Join [${l.code}]</span>
+                    <span>${l.name} (${l.count}/6)</span>
+                    <span style="color:#38bdf8;">Join</span>
                 </div>
             `).join('');
         }
@@ -280,12 +227,11 @@
         function createLobby() {
             connectSocket();
             clientState.username = document.getElementById('username-input').value || 'Player1';
-            let wager = document.getElementById('wager-select').value;
-            let lives = document.getElementById('lives-select').value;
+            let lobbyName = document.getElementById('lobby-name-input').value || `${clientState.username}'s Room`;
             
             setTimeout(() => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'CREATE_LOBBY', username: clientState.username, wager, lives }));
+                    ws.send(JSON.stringify({ type: 'CREATE_LOBBY', username: clientState.username, lobbyName }));
                 }
             }, 300);
             playSound('doorOpen');
@@ -308,6 +254,14 @@
             playSound('doorOpen');
         }
 
+        function updateSettings() {
+            let wager = document.getElementById('config-wager').value;
+            let lives = document.getElementById('config-lives').value;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'UPDATE_SETTINGS', wager, lives }));
+            }
+        }
+
         function addBot() {
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ADD_BOT' }));
         }
@@ -324,15 +278,50 @@
             }
         }
 
+        async function toggleVoiceChat() {
+            let status = document.getElementById('vc-status');
+            if (status.innerText === 'Off') {
+                try {
+                    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(audioStream);
+                    mediaRecorder.ondataavailable = async (e) => {
+                        if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+                            let buffer = await e.data.arrayBuffer();
+                            ws.send(JSON.stringify({ type: 'VOICE_DATA', audioData: Array.from(new Uint8Array(buffer)) }));
+                        }
+                    };
+                    mediaRecorder.start(300);
+                    status.innerText = 'Active';
+                } catch (err) {
+                    alert('Microphone access denied or unsupported.');
+                }
+            } else {
+                if (mediaRecorder) mediaRecorder.stop();
+                if (audioStream) audioStream.getTracks().forEach(t => t.stop());
+                status.innerText = 'Off';
+            }
+        }
+
+        function playRemoteAudio(arrayData) {
+            let uint8 = new Uint8Array(arrayData);
+            let blob = new Blob([uint8], { type: 'audio/webm' });
+            let url = URL.createObjectURL(blob);
+            let audio = new Audio(url);
+            audio.play().catch(e => {});
+        }
+
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('game-view').style.display = 'flex';
+            document.getElementById('end-game-btn').style.display = 'inline-block';
+            document.getElementById('leave-lobby-btn').style.display = 'inline-block';
+            document.getElementById('room-title-display').innerText = `${lobby.name} [Code: ${lobby.code}]`;
 
-            // Render oval seats
+            clientState.playersList = lobby.players.map(p => p.username);
+
             let container = document.getElementById('table-oval-container');
             let allSeats = [...lobby.players, ...lobby.bots];
             
-            // Render central deck & discard
             let html = `
                 <div class="deck-center">
                     <div class="card-slot back" onclick="drawCard('deck')">DECK</div>
@@ -340,15 +329,13 @@
                 </div>
             `;
 
-            allSeats.forEach((p, idx) => {
+            allSeats.forEach((p) => {
                 html += `<div class="seat seat-${p.seat}"><b>${p.username}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}</div>`;
             });
             container.innerHTML = html;
 
-            // Find my hand data if available
             let me = lobby.players.find(p => p.username === clientState.username);
             if (me && me.cards) {
-                clientState.cards = me.cards;
                 let cardsHtml = me.cards.map((c, i) => `
                     <div class="my-card" onclick="discardCard(${i})">
                         <span>${c.val}</span>
@@ -356,8 +343,6 @@
                     </div>
                 `).join('');
                 document.getElementById('my-cards-container').innerHTML = cardsHtml || '<div style="color:#94a3b8;">No cards dealt</div>';
-                
-                // Calculate score
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
             }
         }
@@ -385,17 +370,25 @@
         function knockRound() {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'KNOCK' }));
-                playSound('knock');
             }
         }
 
         function leaveLobby() {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
+            } else {
+                resetToMainMenu();
             }
+            playSound('doorOpen');
+        }
+
+        function resetToMainMenu() {
             document.getElementById('game-view').style.display = 'none';
             document.getElementById('main-menu').style.display = 'flex';
-            playSound('doorOpen');
+            document.getElementById('end-game-btn').style.display = 'none';
+            document.getElementById('leave-lobby-btn').style.display = 'none';
+            clientState.isReady = false;
+            document.getElementById('ready-btn').innerText = 'Ready Up';
         }
 
         function toggleModal(id) {
@@ -403,34 +396,26 @@
             m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
 
-        function toggleVoiceChat() {
-            let status = document.getElementById('vc-status');
-            status.innerText = status.innerText === 'Off' ? 'Active' : 'Off';
-        }
-
         function endGameRequest() {
-            alert('End game requested. All players must agree.');
-        }
-
-        function toggleSpectatorMode() {
-            clientState.isSpectator = !clientState.isSpectator;
-            document.getElementById('spec-toggle-btn').innerText = clientState.isSpectator ? 'Playing' : 'Spectating';
-        }
-
-        function saveLedgerScreenshot() {
-            alert('Ledger screenshot saved to device.');
+            alert('End game requested. Requires unanimous agreement.');
         }
 
         function openSideBetModal() {
-            let target = prompt("Enter player name to side bet with:");
+            let others = clientState.playersList.filter(u => u !== clientState.username);
+            if (others.length === 0) return alert('No other players available to bet with.');
+            let target = prompt(`Choose player to bet with:\n- ${others.join('\n- ')}`);
+            if (!target || !others.includes(target)) return;
             let amt = prompt("Enter wager amount ($):");
-            if (target && amt) alert(`Side bet of $${amt} proposed to ${target}.`);
+            if (amt) alert(`Side bet proposal of $${amt} sent to ${target}!`);
         }
 
         function openFirstToLoseModal() {
-            let target = prompt("Enter player name for 'First to Lose' bet:");
+            let others = clientState.playersList.filter(u => u !== clientState.username);
+            if (others.length === 0) return alert('No other players available.');
+            let target = prompt(`Choose player who will lose all lives first:\n- ${others.join('\n- ')}`);
+            if (!target || !others.includes(target)) return;
             let amt = prompt("Enter wager amount ($):");
-            if (target && amt) alert(`First to lose bet of $${amt} proposed to ${target}.`);
+            if (amt) alert(`First to lose bet of $${amt} proposed against ${target}!`);
         }
     </script>
 </body>
