@@ -8,7 +8,7 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body { background: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        header { background: #1e293b; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; flex-shrink: 0; z-index: 1000; }
+        header { background: #1e293b; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; flex-shrink: 0; z-index: 1000; position: relative; }
         .logo { font-size: 1.25rem; font-weight: 800; color: #38bdf8; }
         .top-menu-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         button { background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
@@ -34,7 +34,8 @@
         #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         
-        #chat-window { position: absolute; top: 40px; right: 0; width: 240px; height: 160px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 2500; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
+        /* Top-center dropping chat window */
+        #chat-window { position: absolute; top: 50px; left: calc(50% - 130px); width: 260px; height: 180px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 3000; font-size: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
         .chat-input-row { display: flex; gap: 4px; }
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
@@ -42,11 +43,11 @@
 
         .table-oval { position: relative; width: 700px; max-width: 95vw; height: 300px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
         
-        .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
+        .pots-container { position: absolute; top: 10px; display: flex; gap: 10px; align-items: center; z-index: 10; }
+        .pot-total-display { font-size: 0.9rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); background: rgba(15,23,42,0.8); padding: 3px 8px; border-radius: 6px; border: 1px solid #334155; }
+        .side-pot-total-display { font-size: 0.9rem; font-weight: bold; color: #eab308; text-shadow: 0 2px 4px rgba(0,0,0,0.8); background: rgba(15,23,42,0.8); padding: 3px 8px; border-radius: 6px; border: 1px solid #334155; }
 
-        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; }
-
-        .side-bet-pot-badge { position: absolute; background: rgba(234, 179, 8, 0.9); color: #0f172a; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: bold; z-index: 15; box-shadow: 0 2px 5px rgba(0,0,0,0.5); pointer-events: none; }
+        .discard-pickup-indicator { position: absolute; top: 45px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; }
 
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
@@ -104,17 +105,18 @@
             
             <div id="chat-container">
                 <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
-                <div id="chat-window">
-                    <div id="chat-messages"></div>
-                    <div class="chat-input-row">
-                        <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                        <button onclick="sendChatMessage()">Send</button>
-                    </div>
-                </div>
             </div>
 
             <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End Game</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
+        </div>
+        <!-- Top-center dropping chat window -->
+        <div id="chat-window">
+            <div id="chat-messages"></div>
+            <div class="chat-input-row">
+                <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+                <button onclick="sendChatMessage()">Send</button>
+            </div>
         </div>
     </header>
 
@@ -175,7 +177,10 @@
             </div>
             
             <div class="table-oval" id="table-oval-container">
-                <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
+                <div class="pots-container">
+                    <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
+                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:none;">Side Pots: $0</div>
+                </div>
                 <div class="discard-pickup-indicator" id="discard-pickup-banner"></div>
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
@@ -218,7 +223,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bet pots appear directly between you and your betting opponents!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side pot totals now display right next to the main pot in the center!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -245,7 +250,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], seatBets: {} };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [] };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -782,7 +787,6 @@
 
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
-            clientState.seatBets = lobby.seatBets || {};
 
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
                 lobby.pendingBetsForMe.forEach(bet => {
@@ -800,6 +804,14 @@
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
+            
+            let sidePotBanner = document.getElementById('side-pot-total-banner');
+            if (lobby.sidePotTotal && lobby.sidePotTotal > 0) {
+                sidePotBanner.innerText = `Side Pots: $${lobby.sidePotTotal}`;
+                sidePotBanner.style.display = 'block';
+            } else {
+                sidePotBanner.style.display = 'none';
+            }
 
             let pickupBanner = document.getElementById('discard-pickup-banner');
             if (lobby.lastDiscardPickup) {
@@ -816,7 +828,7 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('knock-btn').style.display = 'none';
+                document.getElementById('turn-banner').style.display = 'none';
             }
 
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
@@ -864,6 +876,7 @@
                             </div>
                         `;
                     } else {
+                        // Allow tied participants or any participant if not tie-breaker
                         let clickable = !isTieBreaker || lobby.tiedParticipantsList.includes(clientState.username);
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable && isTieBreaker ? 'opacity:0.5; cursor:not-allowed;' : ''}">
@@ -898,7 +911,10 @@
             let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
 
             let html = `
-                <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                <div class="pots-container">
+                    <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
+                </div>
                 <div class="discard-pickup-indicator" id="discard-pickup-banner" style="display:${lobby.lastDiscardPickup ? 'flex' : 'none'};">
                     <span>${lobby.lastDiscardPickup ? lobby.lastDiscardPickup.username + ' picked up:' : ''}</span>
                     ${lobby.lastDiscardPickup ? formatCardHtml(lobby.lastDiscardPickup.card, true) : ''}
@@ -924,15 +940,7 @@
                 if (p.inVC) {
                     micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
-
-                // Render side bet pot badge between me and this player if a bet exists
-                let sidePotBadge = '';
-                if (clientState.seatBets && clientState.seatBets[p.username]) {
-                    let betAmt = clientState.seatBets[p.username];
-                    sidePotBadge = `<div class="side-bet-pot-badge" style="${getBadgePosition(p.seat)}">Side Pot: $${betAmt}</div>`;
-                }
-
-                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>${sidePotBadge}`;
+                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
@@ -945,18 +953,6 @@
                 `).join('');
                 document.getElementById('my-cards-container').innerHTML = cardsHtml;
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
-            }
-        }
-
-        function getBadgePosition(seatIdx) {
-            // Position badge between bottom seat (0) and respective opponent seat
-            switch(seatIdx) {
-                case 1: return 'bottom: 90px; left: 160px;';
-                case 2: return 'top: 90px; left: 160px;';
-                case 3: return 'top: 25px; left: calc(50% - 40px);';
-                case 4: return 'top: 90px; right: 160px;';
-                case 5: return 'bottom: 90px; right: 160px;';
-                default: return 'display:none;';
             }
         }
 
