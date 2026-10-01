@@ -87,11 +87,11 @@
             <h2>Lobby Menu</h2>
             <div class="input-group">
                 <label>Username</label>
-                <input type="text" id="username-input" value="Player1">
+                <input type="text" id="username-input" oninput="saveInputs()">
             </div>
             <div class="input-group">
                 <label>Lobby Name</label>
-                <input type="text" id="lobby-name-input" value="My Table">
+                <input type="text" id="lobby-name-input" oninput="saveInputs()">
             </div>
             <button onclick="createLobby()">Create Lobby</button>
 
@@ -135,12 +135,12 @@
                 </div>
             </div>
 
-            <div class="my-hand-area">
+            <div class="my-hand-area" id="my-hand-control-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: #94a3b8;">
-                    <span>My Hand (Score: <span id="my-score-display">0</span>) - Draw from deck/discard, then click card to discard</span>
+                    <span id="my-hand-title">My Hand (Score: <span id="my-score-display">0</span>) - Draw from deck/discard, then click card to discard</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
-                <div class="bottom-action-bar">
+                <div class="bottom-action-bar" id="my-action-buttons">
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
                     <button onclick="openSideBetModal()" class="secondary">Side Bet</button>
@@ -163,7 +163,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knocking requires 21+ pts (or 25+ heads-up) after everyone has had 1 turn. Knocking gives everyone 1 final turn. All hands revealed at round end!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Players with 0 lives are eliminated and can spectate/request to peek at active hands!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -184,6 +184,21 @@
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
+
+        // Load remembered inputs on startup
+        window.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('saved_username')) {
+                document.getElementById('username-input').value = localStorage.getItem('saved_username');
+            }
+            if (localStorage.getItem('saved_lobby_name')) {
+                document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
+            }
+        });
+
+        function saveInputs() {
+            localStorage.setItem('saved_username', document.getElementById('username-input').value);
+            localStorage.setItem('saved_lobby_name', document.getElementById('lobby-name-input').value);
+        }
 
         function playSound(type) {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -225,6 +240,7 @@
         }
 
         function initSocketAndSend(payload) {
+            saveInputs();
             clientState.username = document.getElementById('username-input').value || 'Player1';
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(payload));
@@ -292,6 +308,19 @@
             }
         }
 
+        function requestPeek(targetUsername) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'REQUEST_PEEK', targetUsername }));
+                alert(`Peek request sent to ${targetUsername}.`);
+            }
+        }
+
+        function respondPeek(spectatorUsername, allow) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'RESPOND_PEEK', spectatorUsername, allow }));
+            }
+        }
+
         async function toggleVoiceChat() {
             let status = document.getElementById('vc-status');
             if (status.innerText === 'Off') {
@@ -326,12 +355,20 @@
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
+            let me = lobby.players.find(p => p.username === clientState.username);
+            let isEliminated = me && me.eliminated;
+            let isSpectatorOnly = !me || isEliminated;
+
+            if (isEliminated) {
+                document.getElementById('ready-btn').style.display = 'none';
+                document.getElementById('knock-btn').style.display = 'none';
+            }
+
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
             let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver') {
+            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
                 nextHandOverlay.style.display = 'block';
-                let me = lobby.players.find(p => p.username === clientState.username);
                 let nextBtn = document.getElementById('next-hand-btn');
                 if (me && me.nextHandReady) {
                     nextBtn.innerText = 'Waiting...';
@@ -388,7 +425,7 @@
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
                     let isMyTurn = (lobby.currentTurnUser === clientState.username);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                    if (isMyTurn && lastTurnUser !== clientState.username) {
+                    if (isMyTurn && lastTurnUser !== clientState.username && !isSpectatorOnly) {
                         showNotification("YOUR TURN!");
                     }
                     lastTurnUser = lobby.currentTurnUser;
@@ -415,13 +452,28 @@
                 let revealedCardsHtml = '';
                 if (p.cards && p.cards.length > 0) {
                     revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => `<div class="mini-card"><span>${c.val}</span><span>${c.suit}</span></div>`).join('') + `</div>`;
+                } else if (isSpectatorOnly && p.username !== clientState.username) {
+                    revealedCardsHtml = `<div style="margin-top:2px;"><button style="font-size:0.6rem; padding:2px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
                 }
-                html += `<div class="seat seat-${p.seat}"><b>${p.username}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
+                let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
+                html += `<div class="seat seat-${p.seat}"><b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
 
-            let me = lobby.players.find(p => p.username === clientState.username);
+            // Handle incoming peek requests for me
+            let meSpec = lobby.spectators.find(s => s.username === clientState.username);
+            let myPlayerObj = lobby.players.find(p => p.username === clientState.username);
+            if (myPlayerObj && myPlayerObj.peekIncoming) {
+                for (let specName in myPlayerObj.peekIncoming) {
+                    if (confirm(`Spectator ${specName} requested to see your hand. Allow?`)) {
+                        respondPeek(specName, true);
+                    } else {
+                        respondPeek(specName, false);
+                    }
+                }
+            }
+
             if (me && me.cards) {
                 let cardsHtml = me.cards.map((c, i) => `
                     <div class="my-card" onclick="discardCard(${i})">
@@ -430,6 +482,9 @@
                 `).join('');
                 document.getElementById('my-cards-container').innerHTML = cardsHtml || '<div style="color:#94a3b8; font-size:0.8rem;">No cards</div>';
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
+            } else if (isSpectatorOnly) {
+                document.getElementById('my-cards-container').innerHTML = '<div style="color:#38bdf8; font-size:0.85rem;">You are spectating. Click "Peek Hand" on any seat to request viewing cards.</div>';
+                document.getElementById('my-score-display').innerText = '0';
             }
         }
 
@@ -476,6 +531,7 @@
             hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
             document.getElementById('ready-btn').style.display = 'inline-block';
+            document.getElementById('knock-btn').style.display = 'inline-block';
             document.getElementById('knock-btn').disabled = true;
         }
 
