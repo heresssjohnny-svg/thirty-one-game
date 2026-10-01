@@ -28,7 +28,7 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
-        /* Floating Toggle Chat Button & Window (Moved under -Bot button in game-config bar) */
+        /* Chat Button & Window under -Bot button */
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 1rem; padding: 6px 10px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; height: 32px; }
         #chat-toggle-btn:hover { background: #334155; }
@@ -41,7 +41,6 @@
 
         .table-oval { position: relative; width: 700px; max-width: 95vw; height: 320px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
         
-        /* Pot Total Display above Deck */
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
@@ -198,7 +197,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Watch the yellow pot total above the deck!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Voice channel audio is active upon entering rooms!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -297,9 +296,14 @@
             } else {
                 const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
                 ws = new WebSocket(protocol + location.host);
-                ws.onopen = () => {
+                ws.onopen = async () => {
                     isConnected = true;
                     ws.send(JSON.stringify(payload));
+                    // Auto initialize audio receiver channel
+                    try {
+                        localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                        document.getElementById('vc-status').innerText = 'On';
+                    } catch(e) {}
                 };
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
@@ -538,7 +542,6 @@
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
-            // Update Pot total display
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
 
             let me = lobby.players.find(p => p.username === clientState.username);
