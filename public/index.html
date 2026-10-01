@@ -101,6 +101,16 @@
     }
     .card.mini span:last-child { font-size: 11px !important; }
 
+    .flying-card {
+      position: fixed; width: 50px; height: 72px;
+      background: #0d47a1; border: 2px solid #ffffff; border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5); pointer-events: none; z-index: 900;
+      transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+      display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 14px; font-weight: bold; color: #fff;
+    }
+    .flying-card.red { background: #ffffff; color: #d32f2f; }
+    .flying-card.black { background: #ffffff; color: #111111; }
+
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 50; pointer-events: auto; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; pointer-events: auto; }
     
@@ -304,7 +314,7 @@
 
   <div id="bannerAnnouncement" class="banner-announcement"></div>
   <div id="connectionBanner" class="connection-banner">
-    <span>⚠️ Disconnected from server</span>
+    <span>⚠️️ Disconnected from server</span>
     <button type="button" id="retryConnBtn" onclick="manualReconnect()">Retry Connection</button>
   </div>
 
@@ -1570,7 +1580,7 @@
             label.className = 'opp-checkbox-item';
             label.innerHTML = `
               <input type="checkbox" value="${m.name}" checked />
-              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️️]' : ''}</span>
+              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
             `;
             checklist.appendChild(label);
           }
