@@ -302,7 +302,7 @@ function handlePlayerDisconnect(socketId) {
 function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
-    const specCount = r.players.filter(p => p.isSpectator).length;
+    const spectatorCount = r.players.filter(p => p.isSpectator).length;
     
     let totalPot = 0;
     if (r.gameStarted && r.currentMatchParticipants) {
@@ -315,7 +315,7 @@ function broadcastRoomList() {
       roomId: id,
       gameStarted: r.gameStarted,
       activeCount: activeCount,
-      spectatorCount: specCount,
+      spectatorCount: spectatorCount,
       totalPot: totalPot
     };
   });
@@ -1780,7 +1780,7 @@ io.on('connection', (socket) => {
 
     if (player) {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `🎙️ ${player.name} joined the voice channel!`,
+        text: `🎙️️ ${player.name} joined the voice channel!`,
         duration: 3500
       });
       io.to(roomId).emit('playVoiceBell');
