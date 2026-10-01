@@ -1321,7 +1321,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁 ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1941,7 +1941,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️️ GAME ENDED',
+          title: '🏳️ GAME ENDED',
           message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
@@ -2238,12 +2238,12 @@ io.on('connection', (socket) => {
       room.configuredLives = winningLives;
       activeEligible.forEach(pl => { pl.lives = winningLives; });
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ Room starting lives updated to ${winningLives} by majority vote!`,
+        text: `❤️️ Room starting lives updated to ${winningLives} by majority vote!`,
         duration: 4000
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️️ ${player.name} proposed ${lives} lives. Vote in progress...`,
+        text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
         duration: 4000
       });
     }
