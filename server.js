@@ -85,7 +85,7 @@ function getNonSpectatorCount(room) {
 
 function checkAllPlayersReady(room) {
   const eligible = room.players.filter(p => !p.isSpectator);
-  if (eligible.length < 2) return false; // Require at least 2 players/bots to start
+  if (eligible.length < 2) return false;
   return eligible.every(p => p.isReady || p.isBot);
 }
 
