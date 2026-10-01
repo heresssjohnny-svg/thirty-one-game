@@ -81,7 +81,7 @@
       font-size: 7px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
     }
 
-    .middle-piles { display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 3; position: relative; }
+    .middle-piles { display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 3; position: relative; pointer-events: auto; }
     
     .card {
       width: 66px; height: 96px; min-width: 66px; min-height: 96px;
@@ -113,7 +113,7 @@
     .flying-card.black { background: #ffffff; color: #111111; }
 
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 50; pointer-events: auto; }
-    .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; }
+    .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; pointer-events: auto; }
     
     .action-bar { display: flex; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; flex-shrink: 0; padding: 8px 4px; z-index: 2100; pointer-events: auto; }
     button {
@@ -209,7 +209,7 @@
     }
     .showdown-cards-row { display: flex; gap: 3px; }
 
-    /* Fixed Card Cut Overlay: pointer-events none by default so it never blocks background buttons */
+    /* Card cut overlay is pointer-events none by default */
     .card-cut-overlay {
       position: fixed; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -231,7 +231,6 @@
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; pointer-events: auto; }
 
-    /* Fixed Custom Modals: pointer-events none by default */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
