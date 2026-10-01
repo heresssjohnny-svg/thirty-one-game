@@ -55,7 +55,6 @@
         #turn-banner { background: #1e293b; border: 1px solid #38bdf8; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #38bdf8; font-weight: bold; flex-shrink: 0; }
         #notification-banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; z-index: 3000; display: none; }
         
-        /* Next Hand Overlay Button in Middle */
         #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
         #next-hand-btn { background: #10b981; color: #fff; font-size: 1.2rem; padding: 12px 24px; border-radius: 8px; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.5); border: 2px solid #34d399; }
         #next-hand-btn:hover { background: #059669; }
@@ -131,7 +130,6 @@
             </div>
             
             <div class="table-oval" id="table-oval-container">
-                <!-- Next Hand Button Overlay in Middle -->
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
                 </div>
@@ -187,8 +185,8 @@
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
 
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playSound(type) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') audioCtx.resume();
             let osc = audioCtx.createOscillator();
             let gain = audioCtx.createGain();
@@ -204,12 +202,12 @@
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(100, now);
-                osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
-                gain.gain.setValueAtTime(0.4, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc.frequency.setValueAtTime(120, now);
+                osc.frequency.exponentialRampToValueAtTime(45, now + 0.2);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
                 osc.start(now);
-                osc.stop(now + 0.15);
+                osc.stop(now + 0.2);
             }
         }
 
@@ -328,10 +326,8 @@
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
-            // Knock button state
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
-            // Next hand overlay state
             let nextHandOverlay = document.getElementById('next-hand-overlay');
             if (lobby.gameState === 'roundOver') {
                 nextHandOverlay.style.display = 'block';
@@ -423,7 +419,6 @@
                 html += `<div class="seat seat-${p.seat}"><b>${p.username}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
-            // Re-append the next-hand overlay so it stays in the center
             container.appendChild(nextHandOverlay);
 
             let me = lobby.players.find(p => p.username === clientState.username);
