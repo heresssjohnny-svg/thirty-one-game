@@ -163,7 +163,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Feeding an Ace & 10-val card via discard makes the feeder lose all lives (21 out of 31 rule)!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Tie-breakers restrict card drawing only to tied players. Heads-up ties result in no life loss!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -414,11 +414,13 @@
             if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
                 poolModal.style.display = 'flex';
                 
-                document.getElementById('pool-modal-title').innerText = lobby.gameState === 'dealerDraw' ? 'Picking for Dealer' : 'Tie-Breaker Draw';
+                let isTieBreaker = lobby.gameState === 'tieBreaker';
+                document.getElementById('pool-modal-title').innerText = isTieBreaker ? 'Tie-Breaker Draw' : 'Picking for Dealer';
                 document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
 
                 let gridHtml = '';
                 lobby.drawPool.forEach((slot) => {
+                    let isTiedUser = !isTieBreaker || lobby.tiedParticipantsList.includes(slot.chosenBy);
                     if (slot.chosenBy) {
                         let revealedCard = lobby.drawResults[slot.chosenBy];
                         gridHtml += `
@@ -428,8 +430,10 @@
                             </div>
                         `;
                     } else {
+                        // In tie breaker, only allow clicking if user is part of tied list
+                        let clickable = !isTieBreaker || lobby.tiedParticipantsList.includes(clientState.username);
                         gridHtml += `
-                            <div class="pool-card-item" onclick="choosePoolCard(${slot.index})">
+                            <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable && isTieBreaker ? 'opacity:0.5; cursor:not-allowed;' : ''}">
                                 ?
                             </div>
                         `;
@@ -438,7 +442,7 @@
 
                 document.getElementById('pool-cards-container').innerHTML = gridHtml;
                 document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
-                turnBanner.innerText = lobby.gameState === 'dealerDraw' ? 'Dealer Draw Phase' : 'Tie-Breaker Phase';
+                turnBanner.innerText = isTieBreaker ? 'Tie-Breaker Phase' : 'Dealer Draw Phase';
             } else {
                 poolModal.style.display = 'none';
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
