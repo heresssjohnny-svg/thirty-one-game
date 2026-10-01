@@ -28,12 +28,12 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
-        /* Top-Right Toggleable Chat Window & Button */
-        #chat-container { position: absolute; top: 10px; right: 10px; z-index: 100; display: flex; flex-direction: column; align-items: flex-end; }
-        #chat-toggle-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 1.1rem; padding: 8px 12px; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; }
+        /* Floating Toggle Chat Button & Window (Moved under -Bot button in game-config bar) */
+        #chat-container { position: relative; display: inline-block; }
+        #chat-toggle-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 1rem; padding: 6px 10px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; height: 32px; }
         #chat-toggle-btn:hover { background: #334155; }
         
-        #chat-window { width: 240px; height: 160px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; margin-top: 6px; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
+        #chat-window { position: absolute; top: 38px; left: 0; width: 240px; height: 150px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 200; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
         .chat-input-row { display: flex; gap: 4px; }
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
@@ -41,6 +41,9 @@
 
         .table-oval { position: relative; width: 700px; max-width: 95vw; height: 320px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
         
+        /* Pot Total Display above Deck */
+        .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
+
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
         .card-slot.back { background: #1e3a8a; color: #fff; }
@@ -132,18 +135,6 @@
 
         <!-- Game View -->
         <div id="game-view">
-            <!-- Top-Right Toggleable Chat Button & Window -->
-            <div id="chat-container">
-                <button id="chat-toggle-btn" onclick="toggleChatWindow()" title="Toggle Chat">💬</button>
-                <div id="chat-window">
-                    <div id="chat-messages"></div>
-                    <div class="chat-input-row">
-                        <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                        <button onclick="sendChatMessage()">Send</button>
-                    </div>
-                </div>
-            </div>
-
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.85rem; font-weight:bold; color:#38bdf8;">Lobby</span>
                 <div id="turn-banner">Turn: Waiting...</div>
@@ -158,9 +149,22 @@
                 </select>
                 <button class="secondary" style="padding:4px 8px;" onclick="addBot()">+Bot</button>
                 <button class="secondary" style="padding:4px 8px;" onclick="removeBot()">-Bot</button>
+                
+                <!-- Chat Button under -Bot button -->
+                <div id="chat-container">
+                    <button id="chat-toggle-btn" onclick="toggleChatWindow()" title="Toggle Chat">💬</button>
+                    <div id="chat-window">
+                        <div id="chat-messages"></div>
+                        <div class="chat-input-row">
+                            <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+                            <button onclick="sendChatMessage()">Send</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="table-oval" id="table-oval-container">
+                <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
                 </div>
@@ -194,7 +198,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Use the top-right message button to open/close chat!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Watch the yellow pot total above the deck!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -534,6 +538,9 @@
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
+            // Update Pot total display
+            document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
+
             let me = lobby.players.find(p => p.username === clientState.username);
             let isEliminated = me && me.eliminated;
             let isSpectatorOnly = !me || isEliminated;
@@ -621,6 +628,7 @@
             let allSeats = [...lobby.players, ...lobby.bots];
             
             let html = `
+                <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
                 <div class="deck-center">
                     <div class="card-slot back" onclick="drawCard('deck')">
                         DECK
