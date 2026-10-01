@@ -533,7 +533,14 @@ function startRound(lobby) {
         if (b.lives <= 0) b.eliminated = true;
     });
 
+    // Check if only 1 active participant is left (Tournament Winner)
     let activeParts = getActiveParticipants(lobby);
+    if (activeParts.length === 1) {
+        let winner = activeParts[0];
+        awardTournamentWinner(lobby, winner);
+        return;
+    }
+
     activeParts.forEach(p => { 
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()]; 
         p.nextHandReady = false;
@@ -557,6 +564,53 @@ function startRound(lobby) {
     }
 
     broadcastLobbyUpdate(lobby.code);
+}
+
+function awardTournamentWinner(lobby, winner) {
+    let allParts = [...lobby.players, ...lobby.bots];
+    let potAmt = allParts.length * (lobby.wager || 5);
+
+    if (!lobby.ledger[winner.username]) lobby.ledger[winner.username] = { total: 0 };
+    lobby.ledger[winner.username]['total'] += potAmt;
+
+    lobby.gameState = 'roundOver';
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} is the last player standing and collects the entire pot of $${potAmt}!`;
+    broadcastLobbyUpdate(lobby.code);
+
+    // After 5 seconds, reset lobby back to ready lobby state
+    setTimeout(() => {
+        if (lobbies[lobby.code]) {
+            let l = lobbies[lobby.code];
+            l.gameState = 'lobby';
+            l.phaseMessage = null;
+            let dealerObj = allParts[l.dealerIndex];
+            
+            // Reset lives and elimination status for fresh game
+            l.players.forEach(p => {
+                p.lives = 2;
+                p.eliminated = false;
+                p.cards = [];
+                p.ready = false;
+                p.nextHandReady = false;
+            });
+            l.bots.forEach(b => {
+                b.lives = 2;
+                b.eliminated = false;
+                b.cards = [];
+                b.ready = true;
+                b.nextHandReady = true;
+            });
+            l.spectators = []; // Move spectators back as active players
+
+            // Winner deals first in new game
+            if (dealerObj) {
+                let newDealerIdx = allParts.findIndex(p => p.username === dealerObj.username);
+                l.dealerIndex = newDealerIdx !== -1 ? newDealerIdx : 0;
+            }
+            broadcastLobbyUpdate(l.code);
+            broadcastLobbyList();
+        }
+    }, 5000);
 }
 
 function checkNextHandReady(lobby) {
@@ -589,11 +643,9 @@ function checkAndRunBotTurn(lobby) {
                     return;
                 }
 
-                // Bot decision: evaluate drawing from discard pile vs deck
                 let topDiscard = lobby.discardPile[lobby.discardPile.length - 1];
                 let shouldTakeDiscard = false;
                 if (topDiscard) {
-                    // Test score if bot takes discard and discards worst card
                     let testCards = [...currentPlayer.cards, topDiscard];
                     let bestScoreSoFar = calculateScore(currentPlayer.cards);
                     for (let i = 0; i < testCards.length; i++) {
@@ -615,7 +667,6 @@ function checkAndRunBotTurn(lobby) {
                     lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
                 }
 
-                // Bot discards worst card
                 let worstIndex = 0;
                 let lowestVal = 999;
                 currentPlayer.cards.forEach((c, idx) => {
