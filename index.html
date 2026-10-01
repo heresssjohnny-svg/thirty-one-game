@@ -10,7 +10,7 @@
         body { background: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         header { background: #1e293b; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; flex-shrink: 0; z-index: 1000; }
         .logo { font-size: 1.25rem; font-weight: 800; color: #38bdf8; }
-        .top-menu-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+        .top-menu-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         button { background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
         button:hover { background: #2563eb; }
         button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
@@ -28,11 +28,12 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
-        #chat-container { position: relative; display: inline-block; z-index: 100; }
-        #chat-toggle-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 1rem; padding: 6px 10px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; height: 32px; }
+        /* Chat Button in Top Menu */
+        #chat-container { position: relative; display: inline-block; }
+        #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.85rem; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         #chat-toggle-btn:hover { background: #334155; }
         
-        #chat-window { position: absolute; top: 38px; left: 0; width: 240px; height: 150px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 500; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
+        #chat-window { position: absolute; top: 40px; right: 0; width: 240px; height: 160px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 2500; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
         .chat-input-row { display: flex; gap: 4px; }
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
@@ -91,6 +92,19 @@
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             <button class="secondary" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
+            
+            <!-- Chat Button in Top Menu -->
+            <div id="chat-container">
+                <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
+                <div id="chat-window">
+                    <div id="chat-messages"></div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+                        <button onclick="sendChatMessage()">Send</button>
+                    </div>
+                </div>
+            </div>
+
             <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End Game</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
         </div>
@@ -141,26 +155,15 @@
                 <div id="turn-banner">Turn: Waiting...</div>
             </div>
 
-            <div id="lobby-config-bar" style="display:flex; gap:6px; align-items:center;">
-                <select id="config-wager" onchange="updateSettings()" style="padding:4px; font-size:0.8rem;">
-                    <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option>
+            <div id="lobby-config-bar" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <select id="config-wager" onchange="updateWager()" style="padding:4px; font-size:0.8rem;">
+                    <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
                 </select>
                 <select id="config-lives" onchange="updateSettings()" style="padding:4px; font-size:0.8rem;">
                     <option value="2">2 Lives</option><option value="3">3 Lives</option><option value="5">5 Lives</option>
                 </select>
                 <button class="secondary" style="padding:4px 8px;" onclick="addBot()">+Bot</button>
                 <button class="secondary" style="padding:4px 8px;" onclick="removeBot()">-Bot</button>
-                
-                <div id="chat-container">
-                    <button id="chat-toggle-btn" onclick="toggleChatWindow()" title="Toggle Chat">💬</button>
-                    <div id="chat-window">
-                        <div id="chat-messages"></div>
-                        <div class="chat-input-row">
-                            <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                            <button onclick="sendChatMessage()">Send</button>
-                        </div>
-                    </div>
-                </div>
             </div>
             
             <div class="table-oval" id="table-oval-container">
@@ -198,7 +201,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Last player standing wins the pot and deals first in the new ready lobby!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Wagers are individual. Winner takes all proportional payouts and deals first in the new lobby!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -256,7 +259,8 @@
                 for (let [user, data] of entries) {
                     let total = data.total || 0;
                     let color = total >= 0 ? '#34d399' : '#f87171';
-                    html += `<li style="margin-bottom:4px;"><b>${user}:</b> <span style="color:${color};">$${total.toFixed(2)}</span></li>`;
+                    let relationText = total >= 0 ? `is owed` : `owes`;
+                    html += `<li style="margin-bottom:6px;"><b>${user}:</b> <span style="color:${color};">$${Math.abs(total).toFixed(2)} (${relationText})</span></li>`;
                 }
                 html += '</ul>';
                 ledgerDiv.innerHTML = html;
@@ -393,10 +397,16 @@
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value || 'Player1' });
         }
 
-        function updateSettings() {
+        function updateWager() {
             let wager = document.getElementById('config-wager').value;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'UPDATE_WAGER', wager }));
+            }
+        }
+
+        function updateSettings() {
             let lives = document.getElementById('config-lives').value;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_SETTINGS', wager, lives }));
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_SETTINGS', lives }));
         }
 
         function addBot() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ADD_BOT' })); }
@@ -447,6 +457,7 @@
                 try {
                     localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     status.innerText = 'On';
+                    peerConnections = {}; // Reset connection map for clean handshake restart
                     if (ws && ws.readyState === WebSocket.OPEN) {
                         refreshLobbies();
                     }
@@ -685,7 +696,8 @@
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                html += `<div class="seat seat-${p.seat}"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
+                let wagerBadge = ` [$${p.wager || 5}]`;
+                html += `<div class="seat seat-${p.seat}"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
