@@ -44,7 +44,7 @@
         
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
-        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; }
+        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.9rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 8px; align-items: center; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; }
 
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
@@ -216,7 +216,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Your dealt hand displays clearly in your bottom control area!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. First to Lose options are unified on a single screen without self-selection!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -699,7 +699,7 @@
             
             modalBody.innerHTML = `
                 <button onclick="openBetTypeModal('${targetUsername}', 'win')">Side Bet (Win Round)</button>
-                <button onclick="openBetTypeModal('${targetUsername}', 'eliminate')">First to Lose (Elimination)</button>
+                <button onclick="openEliminationModal('${targetUsername}')">First to Lose (Elimination)</button>
             `;
             toggleModal('bet-modal');
         }
@@ -707,23 +707,36 @@
         function openBetTypeModal(targetUsername, betType) {
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
-            modalTitle.innerText = (betType === 'win') ? 'Select player to win round:' : 'Select player to be eliminated first:';
+            modalTitle.innerText = 'Select player to win round:';
 
             let html = '';
             clientState.playersList.forEach(p => {
-                html += `<button onclick="openSurvivorModal('${targetUsername}', '${betType}', '${p}')">${p}</button>`;
+                html += `<button onclick="openWagerModal('${targetUsername}', 'win', '${p}', '')">${p}</button>`;
             });
             modalBody.innerHTML = html;
         }
 
-        function openSurvivorModal(targetUsername, betType, pickUser) {
+        function openEliminationModal(targetUsername) {
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
-            modalTitle.innerText = 'Select player who survives longer:';
+            modalTitle.innerText = 'First to Lose: Select player to be eliminated first (Cannot pick yourself):';
+
+            let html = '';
+            // Prevent picking yourself
+            clientState.playersList.filter(p => p !== clientState.username).forEach(p => {
+                html += `<button onclick="openEliminationSurvivorModal('${targetUsername}', '${p}')">${p}</button>`;
+            });
+            modalBody.innerHTML = html;
+        }
+
+        function openEliminationSurvivorModal(targetUsername, pickUser) {
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `First to Lose: Select player ${pickUser} will be eliminated before:`;
 
             let html = '';
             clientState.playersList.filter(p => p !== pickUser).forEach(p => {
-                html += `<button onclick="openWagerModal('${targetUsername}', '${betType}', '${pickUser}', '${p}')">${p}</button>`;
+                html += `<button onclick="openWagerModal('${targetUsername}', 'eliminate', '${pickUser}', '${p}')">${p}</button>`;
             });
             modalBody.innerHTML = html;
         }
@@ -801,10 +814,8 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('knock-btn').style.display = 'none';
+                document.getElementById('turn-banner').style.display = 'none';
             }
-
-            document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let nextHandOverlay = document.getElementById('next-hand-overlay');
