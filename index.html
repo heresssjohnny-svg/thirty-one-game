@@ -26,7 +26,7 @@
         .lobby-list-container { max-height: 120px; overflow-y: auto; background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 6px; }
         .lobby-item { display: flex; justify-content: space-between; padding: 4px; border-bottom: 1px solid #1e293b; cursor: pointer; font-size: 0.85rem; }
 
-        #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
+        #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; padding-bottom: 10px; }
         
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.85rem; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
@@ -40,7 +40,7 @@
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
         .chat-input-row button { padding: 4px 8px; font-size: 0.75rem; }
 
-        .table-oval { position: relative; width: 700px; max-width: 95vw; height: 320px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
+        .table-oval { position: relative; width: 700px; max-width: 95vw; height: 300px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
         
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
@@ -51,22 +51,22 @@
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -18px; font-size: 0.75rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; cursor: pointer; }
+        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; cursor: pointer; z-index: 5; }
         .seat:hover { border-color: #38bdf8; }
         .seat-0 { bottom: -10px; left: calc(50% - 65px); border-color: #38bdf8; }
-        .seat-1 { bottom: 45px; left: 15px; }
-        .seat-2 { top: 45px; left: 20px; }
+        .seat-1 { bottom: 35px; left: 10px; }
+        .seat-2 { top: 35px; left: 15px; }
         .seat-3 { top: -15px; left: calc(50% - 65px); }
-        .seat-4 { top: 45px; right: 20px; }
-        .seat-5 { bottom: 45px; right: 15px; }
+        .seat-4 { top: 35px; right: 15px; }
+        .seat-5 { bottom: 35px; right: 10px; }
         .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
         .mini-card { width: 22px; height: 32px; background: #fff; font-size: 0.55rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
         .black-suit { color: #0f172a; }
 
-        .my-hand-area { background: #1e293b; padding: 10px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 500px; border: 1px solid #334155; flex-shrink: 0; }
-        .cards-flex { display: flex; gap: 8px; }
-        .my-card { width: 55px; height: 80px; background: #fff; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; }
+        .my-hand-area { background: #1e293b; padding: 10px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 500px; border: 1px solid #334155; flex-shrink: 0; z-index: 100; }
+        .cards-flex { display: flex !important; gap: 8px; min-height: 80px; align-items: center; justify-content: center; }
+        .my-card { width: 60px; height: 85px; background: #fff; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; cursor: pointer; border: 2px solid #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .my-card:hover { transform: translateY(-4px); border-color: #38bdf8; }
 
         .bottom-action-bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
@@ -216,7 +216,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Voice chat stays active even when looking at other windows using the Page Visibility API!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Your dealt hand displays clearly in your bottom control area!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -262,10 +262,8 @@
             }
             refreshLobbies();
 
-            // Page Visibility API listener to prevent voice chat dropouts when app is in background
             document.addEventListener("visibilitychange", () => {
                 if (document.hidden && localAudioStream) {
-                    // Keep audio tracks active and prevent suspension
                     localAudioStream.getAudioTracks().forEach(track => {
                         if (!isMicMuted) track.enabled = true;
                     });
@@ -915,11 +913,15 @@
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
-        }
 
-        function respondToBet(betId, accept) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'RESPOND_BET', betId, accept }));
+            if (me && me.cards) {
+                let cardsHtml = me.cards.map((c, i) => `
+                    <div class="my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}" onclick="discardCard(${i})">
+                        <span>${c.val}</span><span style="font-size:1.2rem;">${c.suit}</span>
+                    </div>
+                `).join('');
+                document.getElementById('my-cards-container').innerHTML = cardsHtml;
+                document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
             }
         }
 
