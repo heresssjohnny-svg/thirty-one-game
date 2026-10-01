@@ -261,6 +261,7 @@
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
+    <button type="button" id="knockBtn" style="display:none;" onclick="attemptKnock()">Knock</button>
   </div>
 
   <script>
@@ -272,6 +273,8 @@
     }
     let deviceId = 'dev_' + Math.random().toString(36).substring(2, 10);
     let hasPickedDealerCard = false;
+    let isTurn = false;
+    let hasDrawn = false;
 
     function joinGame() {
       const nameInput = document.getElementById('playerName');
@@ -327,12 +330,35 @@
 
     function draw(source) {
       if (!currentRoom) return;
+      if (!isTurn) {
+        alert("It is not your turn!");
+        return;
+      }
+      if (hasDrawn) {
+        alert("You have already drawn a card this turn! Discard one.");
+        return;
+      }
       socket.emit('drawCard', { roomId: currentRoom, source: source });
     }
 
     function discard(cardIndex) {
       if (!currentRoom) return;
+      if (!isTurn) {
+        alert("It is not your turn!");
+        return;
+      }
+      if (!hasDrawn) {
+        alert("You must draw a card before discarding!");
+        return;
+      }
       socket.emit('discardCard', { roomId: currentRoom, cardIndex: cardIndex });
+    }
+
+    function attemptKnock() {
+      if (!currentRoom) return;
+      if (!isTurn) return alert("You can only knock on your turn!");
+      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
+      socket.emit('knock', currentRoom);
     }
 
     socket.on('roomListUpdate', (rooms) => {
@@ -434,9 +460,13 @@
 
     socket.on('gameState', (state) => {
       try {
+        isTurn = state.isMyTurn;
+        hasDrawn = state.hasDrawn;
+
         document.getElementById('potBanner').innerText = `🏆 MATCH POT: $${state.totalPot || 0}`;
         document.getElementById('deckCountLabel').innerText = `(${state.deckCount || 52})`;
-        document.getElementById('statusBar').innerText = state.message || 'Waiting for players or bots...';
+        document.getElementById('statusBar').innerText = state.message || (isTurn ? '⭐ Your Turn! Draw a card.' : 'Waiting for opponent...');
+        document.getElementById('scoreLabel').innerText = state.score || 0;
 
         document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
           const val = parseInt(chip.getAttribute('data-wager')) || 0;
@@ -448,6 +478,7 @@
         const wagerSec = document.getElementById('wagerSection');
         const addBotBtn = document.getElementById('addBotBtn');
         const removeBotBtn = document.getElementById('removeBotBtn');
+        const knockBtn = document.getElementById('knockBtn');
 
         if (state.gameStarted) {
           readyBtn.style.display = 'none';
@@ -455,11 +486,14 @@
           wagerSec.style.display = 'none';
           addBotBtn.style.display = 'none';
           removeBotBtn.style.display = 'none';
+          knockBtn.style.display = 'inline-block';
+          knockBtn.disabled = !state.canKnock;
         } else {
           readyBtn.style.display = 'inline-block';
           livesSec.style.display = 'flex';
           wagerSec.style.display = 'flex';
           addBotBtn.style.display = 'inline-block';
+          knockBtn.style.display = 'none';
           readyBtn.className = state.isReady ? 'ready-on' : '';
           readyBtn.innerText = state.isReady ? '✅ You are Ready' : '⏳ Tap to Ready';
         }
@@ -524,7 +558,15 @@
             const cardEl = document.createElement('div');
             cardEl.className = `card ${isRed ? 'red' : 'black'}`;
             cardEl.innerHTML = `<span>${c.rank}</span><span style="font-size:20px;">${c.suit}</span>`;
-            cardEl.onclick = () => discard(idx);
+            if (isTurn && hasDrawn) {
+              cardEl.style.cursor = 'pointer';
+              cardEl.style.outline = '3px solid #ffcc00';
+              cardEl.onclick = () => discard(idx);
+            } else {
+              cardEl.style.cursor = 'default';
+              cardEl.style.outline = 'none';
+              cardEl.onclick = null;
+            }
             hArea.appendChild(cardEl);
           });
         } else if (!state.gameStarted) {
