@@ -280,6 +280,7 @@ function getSanitizedLobby(lobby) {
             lives: b.lives,
             cardCount: b.cards.length,
             seat: b.seat,
+            nextHandReady: b.nextHandReady,
             cards: isRoundOver ? b.cards : []
         })),
         spectators: lobby.spectators.map(s => ({ username: s.username }))
@@ -368,6 +369,8 @@ function startRound(lobby) {
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()]; 
         p.nextHandReady = false;
     });
+    lobby.bots.forEach(b => b.nextHandReady = true);
+
     lobby.discardPile.push(lobby.deck.pop());
     lobby.gameState = 'playing';
     lobby.phaseMessage = null;
@@ -385,7 +388,6 @@ function checkNextHandReady(lobby) {
     if (allReady) {
         startRound(lobby);
     } else if (!lobby.nextHandTimer) {
-        // 10 second fallback timer
         lobby.nextHandTimer = setTimeout(() => {
             if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'roundOver') {
                 startRound(lobbies[lobby.code]);
@@ -402,6 +404,14 @@ function checkAndRunBotTurn(lobby) {
             if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
             let currentTurnCheck = [...lobby.players, ...lobby.bots][lobby.turnIndex];
             if (currentTurnCheck && currentTurnCheck.username === currentPlayer.username) {
+                
+                // Bot checks if it can knock first when eligible
+                let threshold = allParticipants.length > 2 ? 21 : 25;
+                if (lobby.turnsTakenThisRound >= allParticipants.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing') {
+                    executeKnock(lobby, currentPlayer);
+                    return;
+                }
+
                 if (lobby.deck.length === 0) lobby.deck = createDeck();
                 currentPlayer.cards.push(lobby.deck.pop());
                 
@@ -413,6 +423,12 @@ function checkAndRunBotTurn(lobby) {
                 if (calculateScore(currentPlayer.cards) === 31) {
                     allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
                     triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
+                    return;
+                }
+
+                // Bot checks knock after drawing/discarding
+                if (lobby.turnsTakenThisRound >= allParticipants.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing') {
+                    executeKnock(lobby, currentPlayer);
                     return;
                 }
 
@@ -488,10 +504,15 @@ function handleKnock(lobby, ws) {
     let threshold = allParticipants.length > 2 ? 21 : 25;
     if (score < threshold) return;
 
+    executeKnock(lobby, currentPlayer);
+}
+
+function executeKnock(lobby, player) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
     lobby.gameState = 'finalTurn';
-    lobby.knockedBy = currentPlayer.username;
+    lobby.knockedBy = player.username;
     lobby.finalTurnsRemaining = allParticipants.length - 1;
-    lobby.phaseMessage = `🔔 KNOCK! ${currentPlayer.username} knocked with ${score} points! Every other player gets 1 final turn.`;
+    lobby.phaseMessage = `🔔 KNOCK! ${player.username} knocked! Every other player gets 1 final turn.`;
     lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
     broadcastLobbyUpdate(lobby.code);
 }
@@ -514,7 +535,7 @@ function resolveRoundEnd(lobby) {
         broadcastLobbyUpdate(lobby.code);
     } else {
         scores[0].player.lives--;
-        triggerRoundOver(lobby, `Round Over! ${scores[0].player.username} had the lowest score (${lowestScore} pts) and lost a life. All hands revealed.`);
+        triggerRoundOver(lobby, `Round Over! ${scores[0].player.username} had the lowest score and lost a life. All hands revealed.`);
     }
 }
 
