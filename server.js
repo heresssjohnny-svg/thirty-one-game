@@ -53,10 +53,10 @@ wss.on('connection', (ws) => {
                     spectators: [],
                     deck: [],
                     discardPile: [],
-                    gameState: 'lobby',
-                    dealerDrawPool: [],
-                    dealerDrawResults: {}, // username -> card chosen
-                    dealerName: null,
+                    gameState: 'lobby', // lobby, dealerDraw, playing, tieBreaker, roundOver
+                    drawPool: [], // Used for dealer draw or tie breaker
+                    drawResults: {},
+                    phaseMessage: null,
                     turnIndex: 0,
                     wager: 5,
                     ledger: {}
@@ -136,11 +136,11 @@ wss.on('connection', (ws) => {
                 }
                 break;
 
-            case 'CHOOSE_DEALER_CARD':
+            case 'CHOOSE_POOL_CARD':
                 if (currentLobbyCode && lobbies[currentLobbyCode]) {
                     let lobby = lobbies[currentLobbyCode];
-                    if (lobby.gameState === 'dealerDraw') {
-                        handleDealerCardSelection(lobby, currentUsername, data.cardIndex);
+                    if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+                        handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
                     }
                 }
                 break;
@@ -228,9 +228,9 @@ function getSanitizedLobby(lobby) {
         deckCount: lobby.deck.length,
         turnIndex: lobby.turnIndex,
         currentTurnUser: currentTurnUser,
-        dealerName: lobby.dealerName,
-        dealerDrawPool: lobby.dealerDrawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
-        dealerDrawResults: lobby.dealerDrawResults,
+        phaseMessage: lobby.phaseMessage,
+        drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
+        drawResults: lobby.drawResults,
         wager: lobby.wager,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         players: lobby.players.map(p => ({ username: p.username, lives: p.lives, cardCount: p.cards.length, ready: p.ready, seat: p.seat, cards: p.cards })),
@@ -241,54 +241,57 @@ function getSanitizedLobby(lobby) {
 
 function startDealerDrawPhase(lobby) {
     let deck = createDeck();
-    let allParticipants = [...lobby.players, ...lobby.bots];
-    
-    // Create face-down pool equal to number of participants
-    lobby.dealerDrawPool = allParticipants.map(() => ({ card: deck.pop(), chosenBy: null }));
-    lobby.dealerDrawResults = {};
-    lobby.dealerName = null;
+    lobby.drawPool = deck.map(card => ({ card: card, chosenBy: null }));
+    lobby.drawResults = {};
+    lobby.phaseMessage = "Picking for Dealer (Lowest card deals, Ace highest)";
     lobby.gameState = 'dealerDraw';
 
-    // Bots automatically pick a card right away
+    autoPickForBots(lobby);
+    broadcastLobbyUpdate(lobby.code);
+}
+
+function handlePoolCardSelection(lobby, username, cardIndex) {
+    if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
+        lobby.drawPool[cardIndex].chosenBy = username;
+        let card = lobby.drawPool[cardIndex].card;
+        lobby.drawResults[username] = card;
+        
+        broadcastLobbyUpdate(lobby.code);
+
+        if (lobby.gameState === 'dealerDraw') {
+            checkDealerDrawComplete(lobby);
+        } else if (lobby.gameState === 'tieBreaker') {
+            checkTieBreakerComplete(lobby);
+        }
+    }
+}
+
+function autoPickForBots(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
     allParticipants.forEach(p => {
         if (lobby.bots.some(b => b.username === p.username)) {
-            let availableIndices = lobby.dealerDrawPool.map((slot, i) => slot.chosenBy === null ? i : null).filter(i => i !== null);
-            if (availableIndices.length > 0) {
-                let randIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-                lobby.dealerDrawPool[randIdx].chosenBy = p.username;
-                lobby.dealerDrawResults[p.username] = lobby.dealerDrawPool[randIdx].card;
+            let available = lobby.drawPool.map((slot, i) => slot.chosenBy === null ? i : null).filter(i => i !== null);
+            if (available.length > 0) {
+                let randIdx = available[Math.floor(Math.random() * available.length)];
+                lobby.drawPool[randIdx].chosenBy = p.username;
+                lobby.drawResults[p.username] = lobby.drawPool[randIdx].card;
             }
         }
     });
-
-    checkDealerDrawComplete(lobby);
-}
-
-function handleDealerCardSelection(lobby, username, cardIndex) {
-    if (lobby.dealerDrawPool[cardIndex] && lobby.dealerDrawPool[cardIndex].chosenBy === null) {
-        lobby.dealerDrawPool[cardIndex].chosenBy = username;
-        let card = lobby.dealerDrawPool[cardIndex].card;
-        lobby.dealerDrawResults[username] = card;
-        
-        broadcastLobbyUpdate(lobby.code);
-        checkDealerDrawComplete(lobby);
-    }
 }
 
 function checkDealerDrawComplete(lobby) {
     let allParticipants = [...lobby.players, ...lobby.bots];
-    let allPicked = allParticipants.every(p => lobby.dealerDrawResults[p.username]);
+    let allPicked = allParticipants.every(p => lobby.drawResults[p.username]);
 
     if (allPicked) {
-        // Find lowest card (Ace is highest, 2-10, J=11, Q=12, K=13)
-        let entries = Object.entries(lobby.dealerDrawResults).map(([user, card]) => ({ username: user, card: card }));
+        let entries = Object.entries(lobby.drawResults).map(([user, card]) => ({ username: user, card: card }));
         entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
         let dealerWinner = entries[0];
-        lobby.dealerName = dealerWinner.username;
+        lobby.phaseMessage = `🎉 ${dealerWinner.username} drew the lowest card (${dealerWinner.card.val}${dealerWinner.card.suit}) and is the Dealer!`;
 
         broadcastLobbyUpdate(lobby.code);
 
-        // Transition to playing round after 5 seconds
         setTimeout(() => {
             if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'dealerDraw') {
                 startRound(lobbies[lobby.code]);
@@ -304,6 +307,7 @@ function startRound(lobby) {
     allParticipants.forEach(p => { p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()]; });
     lobby.discardPile.push(lobby.deck.pop());
     lobby.gameState = 'playing';
+    lobby.phaseMessage = null;
     lobby.turnIndex = Math.floor(Math.random() * allParticipants.length);
     broadcastLobbyUpdate(lobby.code);
 }
@@ -338,11 +342,11 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         lobby.discardPile.push(currentPlayer.cards.splice(cardIndex, 1)[0]);
         if (calculateScore(currentPlayer.cards) === 31) {
             allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
-            lobby.gameState = 'roundOver';
+            checkRoundEndOrContinue(lobby);
         } else {
             lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
+            broadcastLobbyUpdate(lobby.code);
         }
-        broadcastLobbyUpdate(lobby.code);
     }
 }
 
@@ -355,9 +359,55 @@ function handleKnock(lobby, ws) {
     let score = calculateScore(currentPlayer.cards);
     let threshold = allParticipants.length > 2 ? 21 : 25;
     if (score >= threshold) {
-        let scores = allParticipants.map(p => ({ player: p, score: calculateScore(p.cards) })).sort((a, b) => a.score - b.score);
+        resolveRoundEnd(lobby);
+    }
+}
+
+function resolveRoundEnd(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    let scores = allParticipants.map(p => ({ player: p, score: calculateScore(p.cards) }));
+    scores.sort((a, b) => a.score - b.score);
+
+    let lowestScore = scores[0].score;
+    let tiedPlayers = scores.filter(s => s.score === lowestScore);
+
+    if (tiedPlayers.length > 1 && allParticipants.length >= 3) {
+        // Tie breaker for 3 or more players using remaining deck cards
+        lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
+        lobby.drawResults = {};
+        lobby.phaseMessage = `⚠️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from the remaining deck.`;
+        lobby.gameState = 'tieBreaker';
+
+        // Bots tied pick automatically
+        autoPickForBots(lobby);
+        broadcastLobbyUpdate(lobby.code);
+    } else {
         scores[0].player.lives--;
         lobby.gameState = 'roundOver';
+        lobby.phaseMessage = `Round Over! ${scores[0].player.username} had the lowest score and lost a life.`;
+        broadcastLobbyUpdate(lobby.code);
+    }
+}
+
+function checkTieBreakerComplete(lobby) {
+    // Only tied players need to pick from pool
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    let scores = allParticipants.map(p => ({ player: p, score: calculateScore(p.cards) })).sort((a, b) => a.score - b.score);
+    let lowestScore = scores[0].score;
+    let tiedParticipants = scores.filter(s => s.score === lowestScore).map(s => s.player.username);
+
+    let allTiedPicked = tiedParticipants.every(username => lobby.drawResults[username]);
+
+    if (allTiedPicked) {
+        let entries = tiedParticipants.map(username => ({ username: username, card: lobby.drawResults[username] }));
+        entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
+        let loser = entries[0];
+        
+        let targetParticipant = allParticipants.find(p => p.username === loser.username);
+        if (targetParticipant) targetParticipant.lives--;
+
+        lobby.gameState = 'roundOver';
+        lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest tie card (${loser.card.val}${loser.card.suit}) and lost a life!`;
         broadcastLobbyUpdate(lobby.code);
     }
 }
