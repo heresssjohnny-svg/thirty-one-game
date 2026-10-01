@@ -4,12 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>31 Card Game</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='black'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='900' font-size='220'>31!</text></svg>">
-  <meta name="theme-color" content="#1b4d3e">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { 
@@ -43,19 +37,8 @@
       padding: 2px 8px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       display: flex; align-items: center; gap: 4px;
     }
-    .round-pot-banner {
-      background: #ff9800; color: #111; font-weight: 900; font-size: 11px;
-      padding: 2px 8px; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      display: flex; align-items: center; gap: 4px;
-    }
 
-    .first-card-banner {
-      position: absolute; left: 8px; top: 6px;
-      background: rgba(0, 0, 0, 0.8); border: 1px solid #ffd700; color: #ffd700; font-weight: bold; font-size: 10px;
-      padding: 6px; border-radius: 8px; display: none; flex-direction: column; align-items: center; gap: 4px;
-      z-index: 200; opacity: 0.8; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; max-width: 85px;
-    }
-
+    /* Table Ring Container for Seating Players & Bots */
     .table-ring {
       position: absolute;
       inset: -115px 75px 50px -10px;
@@ -88,28 +71,8 @@
       display: flex; flex-direction: column; justify-content: center; align-items: center;
       font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.35);
       border: 1px solid #ccc; pointer-events: auto;
-      transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-    .card.red { color: #d32f2f; }
-    .card.black { color: #111111; }
     .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 11px; text-align: center; }
-    .card.discard-highlight { outline: 3px solid #ffcc00; transform: translateY(-4px); }
-
-    .card.mini {
-      width: 36px; height: 50px; min-width: 36px; min-height: 50px;
-      font-size: 11px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    }
-    .card.mini span:last-child { font-size: 11px !important; }
-
-    .flying-card {
-      position: fixed; width: 50px; height: 72px;
-      background: #0d47a1; border: 2px solid #ffffff; border-radius: 6px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.5); pointer-events: none; z-index: 900;
-      transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1);
-      display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 14px; font-weight: bold; color: #fff;
-    }
-    .flying-card.red { background: #ffffff; color: #d32f2f; }
-    .flying-card.black { background: #ffffff; color: #111111; }
 
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 50; pointer-events: auto; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; pointer-events: auto; }
@@ -121,130 +84,7 @@
     }
     button.secondary { background: #e0e0e0; color: #222; }
     button.danger { background: #d32f2f; color: #fff; padding: 5px 8px; font-size: 11px; }
-    button.voice-btn { background: #00897b; color: #fff; padding: 5px 8px; font-size: 11px; }
-    button.voice-on { background: #e53935; color: #fff; padding: 5px 8px; font-size: 11px; }
     button.ready-on { background: #4caf50; color: #fff; }
-    button.spectate-btn { background: #455a64; color: #fff; }
-    button.ledger-btn { background: #ffd700; color: #111; padding: 5px 8px; font-size: 11px; }
-    button.side-bet-btn { background: #ff9800; color: #111; }
-    button.first-loser-btn { background: #e91e63; color: #fff; }
-    button.peek-btn { background: #7b1fa2; color: #fff; }
-    button.tutorial-btn { background: #00acc1; color: #fff; padding: 5px 8px; font-size: 11px; }
-    button:disabled { background: #555; color: #888; }
-
-    .banner-announcement {
-      position: fixed; top: 10px; left: 50%; transform: translateX(-50%) translateY(-100px);
-      background: #ff9800; color: #111; font-weight: 800; font-size: 13px;
-      padding: 8px 14px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-      z-index: 3000; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      pointer-events: none; text-align: center; border: 2px solid #fff;
-    }
-    .banner-announcement.show { transform: translateX(-50%) translateY(0); }
-
-    .chat-btn {
-      position: fixed; right: 10px; bottom: 65px;
-      background: #0288d1; color: white; border-radius: 24px;
-      padding: 6px 12px; font-size: 13px; display: flex; align-items: center;
-      gap: 4px; z-index: 50; box-shadow: 0 4px 10px rgba(0,0,0,0.4); pointer-events: auto;
-    }
-    .chat-badge {
-      background: #d32f2f; color: white; border-radius: 50%;
-      padding: 2px 5px; font-size: 10px; font-weight: bold; display: none;
-    }
-    .chat-panel {
-      position: fixed; top: 38px; right: -100%; width: 85%; max-width: 300px; height: calc(100vh - 110px);
-      background: #0f2d24; z-index: 2400; display: flex; flex-direction: column;
-      box-shadow: -4px 0 15px rgba(0,0,0,0.6); transition: right 0.25s ease-in-out;
-      border-top-left-radius: 12px; border-bottom-left-radius: 12px;
-      pointer-events: none;
-    }
-    .chat-panel.open { right: 0; pointer-events: auto; }
-    .chat-header {
-      padding: 8px 10px; background: rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center;
-      font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    .chat-body {
-      flex: 1; padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
-    }
-    .chat-msg {
-      background: rgba(255,255,255,0.08); padding: 5px 8px; border-radius: 8px; font-size: 12px; line-height: 1.3;
-    }
-    .chat-msg .sender { font-weight: bold; color: #ffcc00; font-size: 11px; margin-bottom: 2px; }
-    .chat-msg .time { font-size: 9px; opacity: 0.6; float: right; margin-left: 6px; }
-    .chat-msg.spec .sender { color: #81d4fa; }
-    .chat-footer {
-      padding: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.3); pointer-events: auto;
-    }
-    .chat-input {
-      flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; background: #fff; color: #111;
-      user-select: text; -webkit-user-select: text; pointer-events: auto;
-    }
-
-    .big-announcement-overlay {
-      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
-      display: flex; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 3500; opacity: 0; pointer-events: none;
-      transition: opacity 0.3s ease; text-align: center; padding: 16px; overflow-y: auto;
-    }
-    .big-announcement-overlay.show { opacity: 1; pointer-events: auto; }
-    .ann-title { font-size: 22px; color: #ffcc00; letter-spacing: 2px; margin-bottom: 6px; font-weight: 800; }
-    .ann-message { font-size: 24px; font-weight: 900; color: #ff3344; text-transform: uppercase; line-height: 1.2; text-shadow: 0 2px 12px rgba(255, 51, 68, 0.6); margin-bottom: 4px; }
-    .ann-subtext { font-size: 14px; color: #ffffff; opacity: 0.9; max-width: 90%; margin-bottom: 10px; }
-
-    .showdown-hands-grid {
-      display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 480px; width: 100%; margin-top: 4px;
-    }
-    .showdown-player-box {
-      background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 6px 8px;
-      display: flex; flex-direction: column; align-items: center; gap: 3px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .showdown-player-info {
-      font-size: 12px; font-weight: bold; color: #ffcc00; display: flex; gap: 4px;
-    }
-    .showdown-cards-row { display: flex; gap: 3px; }
-
-    .card-cut-overlay {
-      position: fixed; inset: 0; background: rgba(10, 25, 20, 0.96);
-      display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 2500; padding: 14px; text-align: center; pointer-events: none;
-    }
-    .card-cut-overlay.active {
-      display: flex !important; pointer-events: auto !important;
-    }
-    .card-cut-spread {
-      display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; max-height: 240px;
-      overflow-y: auto; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.25); border-radius: 12px; pointer-events: auto;
-    }
-    .card-cut-slot {
-      width: 44px; height: 64px; background: #0d47a1; border: 2px solid #fff; border-radius: 6px;
-      cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center;
-      justify-content: center; font-size: 11px; font-weight: bold; color: #fff; pointer-events: auto;
-      transition: transform 0.15s ease, border-color 0.15s ease;
-    }
-    .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
-    .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; pointer-events: auto; }
-
-    .custom-modal {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 2200; pointer-events: none;
-    }
-    .custom-modal[style*="display: flex"] {
-      pointer-events: auto !important;
-    }
-    .modal-card {
-      background: #164033; border: 2px solid #ffd700; border-radius: 12px;
-      padding: 14px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 8px; pointer-events: auto;
-    }
-    .ledger-summary-banner {
-      background: rgba(0,0,0,0.4); border-radius: 8px; padding: 6px; text-align: center;
-      font-size: 12px; font-weight: bold; display: flex; flex-direction: column; gap: 3px;
-    }
-    .balance-positive { color: #4caf50; font-weight: 900; }
-    .balance-negative { color: #f44336; font-weight: 900; }
-    .balance-neutral { color: #e0e0e0; }
-    .player-left-tag { font-size: 10px; opacity: 0.65; margin-left: 4px; }
 
     .wager-bar {
       display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0; z-index: 50; pointer-events: auto;
@@ -274,35 +114,6 @@
     .badge-in-play { background: #e53935; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
     .badge-lobby { background: #4caf50; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
 
-    .tutorial-section {
-      text-align: left; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px;
-      font-size: 11px; line-height: 1.35; display: flex; flex-direction: column; gap: 5px; max-height: 280px; overflow-y: auto;
-    }
-    .tutorial-section h4 { margin: 3px 0 2px 0; color: #ffd700; font-size: 12px; }
-
-    .opponents-checklist {
-      display: flex; flex-direction: column; gap: 3px; max-height: 100px; overflow-y: auto;
-      background: rgba(0,0,0,0.25); padding: 5px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
-    }
-    .opp-checkbox-item {
-      display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px; cursor: pointer; pointer-events: auto;
-    }
-    .opp-checkbox-item input {
-      width: 15px; height: 15px; margin: 0; cursor: pointer; pointer-events: auto;
-    }
-
-    .peek-status-bar {
-      background: #7b1fa2; color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 11px;
-      font-weight: bold; display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 300px;
-    }
-
-    .connection-banner {
-      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
-      background: #d32f2f; color: #fff; padding: 6px 14px; border-radius: 16px;
-      font-size: 11px; font-weight: bold; z-index: 1400; display: none; align-items: center; gap: 8px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: auto;
-    }
-
     input, select {
       padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3);
       font-size: 13px; width: 100%; max-width: 280px; background: #fff; color: #111;
@@ -312,324 +123,12 @@
 </head>
 <body>
 
-  <div id="bannerAnnouncement" class="banner-announcement"></div>
-  <div id="connectionBanner" class="connection-banner">
-    <span>⚠️ Disconnected from server</span>
-    <button type="button" id="retryConnBtn" onclick="manualReconnect()">Retry Connection</button>
-  </div>
-
-  <!-- TUTORIAL MODAL -->
-  <div id="tutorialModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#00acc1; max-width:420px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:15px; color:#00acc1;">📖 How to Play 31</span>
-        <span id="closeTutorialBtn1" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleTutorialModal()">✕</span>
-      </div>
-      <div class="tutorial-section">
-        <div>
-          <h4>🎯 Objective</h4>
-          Collect a 3-card hand of the <strong>same suit</strong> totaling as close to <strong>31 points</strong> as possible, or get 3-of-a-kind.
-        </div>
-        <div>
-          <h4>🔢 Card Values</h4>
-          • <strong>Aces:</strong> 11 points<br>
-          • <strong>Face Cards (K, Q, J) & 10:</strong> 10 points<br>
-          • <strong>Cards 2-9:</strong> Face value<br>
-          • <strong>3 of a Kind (e.g. 7-7-7):</strong> Worth <strong>30.5 points</strong> in any suits!
-        </div>
-      </div>
-      <button type="button" id="closeTutorialBtn2" style="background:#00acc1; color:#fff; padding:8px;" onclick="toggleTutorialModal()">Got It!</button>
-    </div>
-  </div>
-
-  <!-- KNOCK WARNING CONFIRMATION MODAL -->
-  <div id="knockConfirmModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#f44336; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#f44336;">⚠️ High Card in Discard!</div>
-      <div style="font-size:12px; line-height:1.4; opacity:0.9;">
-        There is an <strong id="knockConfirmCard" style="color:#ffd700;">Ace/Face card</strong> on top of the discard pile.<br><br>
-        Knocking counts as <strong>offering this card</strong> to the next player. If they take it and make 31, you could lose <strong>both lives</strong>!
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="cancelKnockBtn" style="padding:8px 12px;" onclick="cancelKnockConfirm()">Cancel</button>
-        <button type="button" class="danger" id="confirmKnockBtn" style="padding:8px 12px;" onclick="confirmKnock()">Yes, Knock Anyway</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- END GAME VOTE MODAL -->
-  <div id="endGameModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#e53935; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#e53935;">🏳️ End Game Vote (Requires 100%)</div>
-      <div id="endGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        A player wants to end the current game and return to the lobby. Agree?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineEndGameBtn" style="padding:8px 12px;" onclick="respondEndGame(false)">Decline</button>
-        <button type="button" class="danger" id="acceptEndGameBtn" style="padding:8px 12px; font-weight:bold;" onclick="respondEndGame(true)">Yes, End Game</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MID-GAME JOIN VOTE MODAL -->
-  <div id="joinGameVoteModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#4caf50; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#4caf50;">🎮 Mid-Game Join Request</div>
-      <div id="joinGameVoteText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Spectator wants to join the game. Allow them?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineJoinVoteBtn" style="padding:8px 12px;" onclick="respondJoinVote(false)">Decline</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptJoinVoteBtn" onclick="respondJoinVote(true)">Allow Join</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MID-GAME JOIN REQUEST MODAL FOR SPECTATORS -->
-  <div id="spectatorJoinModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#0288d1; max-width:320px; text-align:center;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#0288d1;">🎮 Join Active Game</span>
-        <span id="closeSpectatorJoinBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="document.getElementById('spectatorJoinModal').style.display='none'">✕</span>
-      </div>
-      <div style="font-size:11px; opacity:0.9; margin: 4px 0;">Joining mid-game costs <strong>1 life</strong>. Enter starting wager (must be at least $5 above maximum table wager):</div>
-      <input id="spectatorWagerInput" type="number" min="15" value="15" style="text-align:center;" />
-      <button type="button" id="submitSpectatorJoinBtn" style="background:#0288d1; color:#fff; padding:8px; font-weight:bold; margin-top:6px;" onclick="submitSpectatorJoinRequest()">Request to Join</button>
-    </div>
-  </div>
-
-  <!-- SCREENSHOT LEDGER CONFIRMATION MODAL (ON LEAVE) -->
-  <div id="screenshotModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#ffd700; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ffd700;">📸 Save Ledger Screenshot?</div>
-      <div style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Would you like to download a screenshot of your ledger balances before leaving?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineScreenshotBtn" style="padding:8px 12px;" onclick="executeLeave(false)">No, Just Leave</button>
-        <button type="button" style="background:#ffd700; color:#111; padding:8px 12px; font-weight:bold;" id="acceptScreenshotBtn" onclick="executeLeave(true)">Yes, Save Screenshot</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- PEEK PERMISSION REQUEST PROMPT FOR ACTIVE PLAYERS -->
-  <div id="peekRequestModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#7b1fa2; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ba68c8;">👁️ Spectator Peek Request</div>
-      <div id="peekRequestText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Spectator wants to view your hand. Allow them?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="denyPeekBtn" style="padding:8px 12px;" onclick="respondPeekPermission(false)">Deny</button>
-        <button type="button" style="background:#7b1fa2; color:#fff; padding:8px 12px;" id="allowPeekBtn" onclick="respondPeekPermission(true)">Allow Peek</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- DEBT CLEARANCE PERMISSION PROMPT FOR CREDITORS -->
-  <div id="debtPermissionModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#4caf50; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#4caf50;">🤝 Debt Clearance Request</div>
-      <div id="debtPermissionText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Player wants to clear their debt to you. Do you forgive and grant permission?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="denyDebtPermBtn" style="padding:8px 12px;" onclick="respondDebtPermission(false)">Decline</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="allowDebtPermBtn" onclick="respondDebtPermission(true)">Forgive Debt</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- CLEAR DEBT CONFIRMATION MODAL -->
-  <div id="clearDebtConfirmModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#4caf50; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#4caf50;">🤝 Forgive & Clear Debt?</div>
-      <div id="clearDebtConfirmText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Are you sure you want to clear this player's debt to you?
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="cancelDebtBtn" style="padding:8px 12px;" onclick="cancelClearDebt()">Cancel</button>
-        <button type="button" style="background:#4caf50; color:#fff; padding:8px 12px; font-weight:bold;" id="executeDebtBtn" onclick="executeClearDebt()">Yes, Clear Debt</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- VOICE INVITATION MODAL -->
-  <div id="voiceInviteModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#00897b; max-width:340px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#00897b;">👥 Invite to Voice Chat</span>
-        <span id="closeVoiceModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleVoiceInviteModal()">✕</span>
-      </div>
-      <div style="font-size:11px; opacity:0.9;">Select an online player to invite to the voice channel:</div>
-      <select id="voiceInviteSelect"></select>
-      <button type="button" id="sendVoiceInviteBtn" style="background:#00897b; color:#fff; padding:8px; font-weight:bold;" onclick="sendVoiceInvite()">Send Invitation</button>
-    </div>
-  </div>
-
-  <!-- INCOMING VOICE INVITE ALERT MODAL -->
-  <div id="incomingVoiceInviteModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#00897b; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️ Voice Invitation</div>
-      <div id="incomingVoiceText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Player invited you to join voice chat.
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:6px;">
-        <button type="button" class="secondary" id="declineVoiceBtn" style="padding:8px 12px;" onclick="respondVoiceInvite(false)">Decline</button>
-        <button type="button" style="background:#00897b; color:#fff; padding:8px 12px; font-weight:bold;" id="acceptVoiceBtn" onclick="respondVoiceInvite(true)">Accept & Join</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- INITIAL DEALER CUT OVERLAY -->
-  <div id="dealerCutOverlay" class="card-cut-overlay">
-    <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">👑 INITIAL DEALER CUT 👑</h2>
-    <div id="dealerCutInstruction" style="font-size:13px; font-weight:bold; margin-bottom:6px;">Tap any face-down card! Lowest card becomes Dealer.</div>
-    <div id="dealerCutSpread" class="card-cut-spread"></div>
-    <div id="dealerCutPicksContainer" class="card-cut-picks-row"></div>
-  </div>
-
-  <!-- INTERACTIVE TIEBREAKER OVERLAY -->
-  <div id="tiebreakerOverlay" class="card-cut-overlay">
-    <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">⚡ SUDDEN DEATH TIEBREAKER ⚡</h2>
-    <div id="tiebreakerInstruction" style="font-size:13px; font-weight:bold; margin-bottom:6px;">Choose your face-down card!</div>
-    <div id="tiebreakerSpread" class="card-cut-spread"></div>
-    <div id="tiebreakerPicksContainer" class="card-cut-picks-row"></div>
-  </div>
-
-  <!-- INCOMING SIDE BET PROPOSAL PROMPT -->
-  <div id="sideBetOfferModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#ff9800; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#ff9800;" id="sideBetModalHeader">🎲 Side Bet Challenge!</div>
-      <div id="sideBetOfferText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
-        Player challenged you to a side bet.
-      </div>
-      <div id="offerTargetSection" style="display:flex; flex-direction:column; gap:4px; text-align:left; margin: 4px 0;">
-        <label style="font-size:11px; font-weight:bold; color:#ffd700;">Choose Your Pick For The Highest Score:</label>
-        <select id="offerMyTargetSelect"></select>
-      </div>
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
-        <button type="button" class="secondary" id="declineSideBetBtn" style="padding:8px 12px;" onclick="respondSideBet(false)">Decline</button>
-        <button type="button" style="background:#ff9800; color:#111; padding:8px 12px; font-weight:bold;" id="acceptSideBetBtn" onclick="respondSideBet(true)">Accept & Verify</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- SPECTATOR SELECT WHO TO PEEK MODAL -->
-  <div id="spectatorPeekSelectorModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
-        <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="togglePeekSelectorModal()">✕</span>
-      </div>
-      <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
-      <select id="peekPlayerSelect"></select>
-      <div style="font-size:10px; opacity:0.75;">(Note: If you switch views or the round ends, permission expires!)</div>
-      <button type="button" id="submitPeekBtn" style="background:#7b1fa2; color:#fff; padding:8px; font-weight:bold;" onclick="submitPeekRequest()">Send Request</button>
-    </div>
-  </div>
-
-  <!-- LEDGER MODAL -->
-  <div id="ledgerModal" class="custom-modal">
-    <div class="modal-card">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:15px; color:#ffd700;">💰 Table Ledger & Side Bets</span>
-        <span id="closeLedgerBtn1" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleLedgerModal()">✕</span>
-      </div>
-
-      <div class="ledger-summary-banner">
-        <div>
-          <span>Overall Standing: </span>
-          <span id="ledgerOverallTotal" class="balance-neutral">$0</span>
-        </div>
-        <div style="font-size:11px; opacity:0.85;">
-          <span>Side Bet Net: </span>
-          <span id="ledgerSideBetTotal" class="balance-neutral">$0</span>
-        </div>
-      </div>
-
-      <div style="font-size:10px; opacity:0.75; text-align:center;">(+ = they owe you, - = you owe them)</div>
-
-      <div id="ledgerList" style="display:flex; flex-direction:column; gap:5px; font-size:12px; max-height:200px; overflow-y:auto; padding:5px; background:rgba(0,0,0,0.3); border-radius:8px;">
-        <div style="opacity:0.6; text-align:center;">No settled debts yet.</div>
-      </div>
-      <button type="button" id="closeLedgerBtn2" class="secondary" style="padding:6px;" onclick="toggleLedgerModal()">Close</button>
-    </div>
-  </div>
-
-  <!-- ROUND SIDE BET MODAL -->
-  <div id="roundBetModal" class="custom-modal">
-    <div class="modal-card" style="border-color:#ff9800; max-width:410px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ff9800;" id="sideBetModalTitle">🎲 Round Side Bet</span>
-        <span id="closeRoundRoundBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="toggleRoundBetModal()">✕</span>
-      </div>
-      
-      <div id="sideBetModalDesc" style="font-size:11px; opacity:0.85;">Back your favorite contender against multiple opponents:</div>
-
-      <div style="display:flex; flex-direction:column; gap:3px; text-align:left;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <label style="font-size:11px; font-weight:bold; color:#ffd700;">1. Choose Opponents To Challenge:</label>
-          <div style="font-size:10px; display:flex; gap:6px;">
-            <a href="javascript:void(0)" id="selectAllOppBtn" style="color:#00acc1; text-decoration:none;" onclick="selectAllOpponents(true)">All</a> | 
-            <a href="javascript:void(0)" id="clearAllOppBtn" style="color:#aaa; text-decoration:none;" onclick="selectAllOpponents(false)">Clear</a>
-          </div>
-        </div>
-        <div id="opponentsChecklist" class="opponents-checklist"></div>
-      </div>
-
-      <div id="roundContenderSection" style="display:flex; flex-direction:column; gap:3px; width:100%; text-align:left;">
-        <label style="font-size:11px; font-weight:bold; color:#ffd700;">2. Your Pick (Highest Score)</label>
-        <select id="betMyTargetSelect"></select>
-      </div>
-
-      <div style="display:flex; gap:6px; justify-content:center; align-items:center; margin: 2px 0;">
-        <span style="font-size:11px; font-weight:bold;">Per-Opponent Bet:</span>
-        <div class="wager-chip bet-amt-chip" data-amt="1" onclick="selectRoundBetAmt(1)">$1</div>
-        <div class="wager-chip selected bet-amt-chip" id="defaultBetChip" data-amt="5" onclick="selectRoundBetAmt(5)">$5</div>
-        <div class="wager-chip bet-amt-chip" data-amt="10" onclick="selectRoundBetAmt(10)">$10</div>
-        <div class="wager-chip bet-amt-chip" data-amt="20" onclick="selectRoundBetAmt(20)">$20</div>
-      </div>
-
-      <div id="multiBetSummary" style="font-size:11px; font-weight:bold; color:#ffd700; text-align:center;">
-        0 opponents selected (Total stake: $0)
-      </div>
-
-      <button type="button" id="submitMultiBetBtn" style="background:#ff9800; color:#111; padding:8px; font-weight:bold;" onclick="submitMultiPeerSideBet()">Send Challenges</button>
-    </div>
-  </div>
-
-  <button type="button" class="chat-btn" id="chatToggleBtn" onclick="toggleChat()">
-    💬 Chat <span id="chatBadge" class="chat-badge">0</span>
-  </button>
-
-  <div id="chatPanel" class="chat-panel">
-    <div class="chat-header">
-      <span>Table Chat</span>
-      <span id="chatCloseBtn" style="cursor:pointer; font-size: 20px;" onclick="toggleChat()">✕</span>
-    </div>
-    <div class="chat-body" id="chatBody"></div>
-    <div class="chat-footer">
-      <input id="chatInput" class="chat-input" placeholder="Say something..." maxlength="140" onkeydown="if(event.key==='Enter') sendChat()" />
-      <button type="button" id="sendChatBtn" style="padding: 6px 10px; font-size: 12px;" onclick="sendChat()">Send</button>
-    </div>
-  </div>
-
-  <div id="announcementOverlay" class="big-announcement-overlay">
-    <div id="annTitle" class="ann-title">💀 ROUND OVER 💀</div>
-    <div id="annMessage" class="ann-message">LOSER: BOT 1</div>
-    <div id="annSubtext" class="ann-subtext">Lowest score: 14</div>
-    <div id="showdownHandsContainer" class="showdown-hands-grid"></div>
-  </div>
-
   <!-- LOBBY SCREEN -->
   <div id="lobby" class="lobby-modal">
     <h2 style="margin:6px 0 2px 0; font-size: 24px; color:#ffd700;">31 Card Game</h2>
-    <button type="button" id="lobbyTutorialBtn" class="tutorial-btn" style="margin-bottom:6px; padding: 8px 14px; font-size: 13px;" onclick="toggleTutorialModal()">📖 How to Play & Rules</button>
-    <input id="playerName" placeholder="Your Player Name" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-    <input id="roomId" placeholder="Enter or Select Room Code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-    
-    <button type="button" id="enterGameBtn" style="width:100%; max-width:280px; padding:12px; font-size: 15px; background:#ffd700; color:#111; margin-top: 6px;" onclick="joinGame()">Enter Game Room</button>
+    <input id="playerName" placeholder="Your Player Name" autocomplete="off" />
+    <input id="roomId" placeholder="Enter Room Code (e.g., test)" autocomplete="off" />
+    <button type="button" id="enterGameBtn" onclick="joinGame()">Enter Game Room</button>
 
     <div style="width:100%; max-width:280px; margin-top:10px;">
       <div style="font-size:12px; font-weight:bold; color:#ffd700; margin-bottom:4px; display:flex; justify-content:space-between;">
@@ -645,13 +144,7 @@
   <div class="header">
     <div id="roomLabel">Room: -</div>
     <div class="header-controls">
-      <button type="button" class="tutorial-btn" id="rulesHeaderBtn" onclick="toggleTutorialModal()">📖 Rules</button>
-      <button type="button" class="ledger-btn" id="ledgerHeaderBtn" onclick="toggleLedgerModal()">💰 Ledger</button>
-      <button type="button" class="danger" id="endGameBtn" style="display:none; padding:5px 8px; font-size:11px;" onclick="requestEndGame()">🏳️ End Game</button>
-      <button type="button" id="voiceBtn" class="voice-btn" onclick="toggleVoice()">🎤 Voice</button>
-      <button type="button" id="voiceInviteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px; background:#00897b; color:#fff;" onclick="toggleVoiceInviteModal()">👥 Invite</button>
-      <button type="button" id="muteBtn" class="secondary" style="display:none; padding:5px 8px; font-size:11px;" onclick="toggleMute()">🎙️</button>
-      <button type="button" class="danger" id="leaveRoomBtn" onclick="leaveLobby()">Leave</button>
+      <button type="button" class="danger" onclick="leaveLobby()">Leave</button>
     </div>
   </div>
 
@@ -660,45 +153,29 @@
   <div class="table">
     <div class="pots-header">
       <div id="potBanner" class="pot-banner" style="display:flex;">🏆 MATCH POT: $0</div>
-      <div id="roundPotBanner" class="round-pot-banner" style="display:flex;">🎲 SIDE BETS: $0</div>
     </div>
 
-    <!-- Top-Left First Card Picked Window (80% Opacity, Persistent while card is held) -->
-    <div id="firstCardBanner" class="first-card-banner">
-      <div style="font-size:8px; color:#fff; opacity:0.8;">FIRST CARD</div>
-      <div id="firstCardMiniBox" style="margin:1px 0;"></div>
-      <span id="firstCardText" style="font-size:8px; line-height:1.1;">-</span>
-    </div>
-
-    <!-- Outer Perimeter Oval Table Ring for Opponents/Bots (Dealing order relative seating) -->
+    <!-- Outer Perimeter Oval Table Ring for Opponents/Bots -->
     <div class="table-ring" id="tableRing"></div>
 
     <div class="middle-piles">
       <div style="font-size: 11px; font-weight: bold; color: #ffd700; text-align: center; margin-bottom: -2px;">Your Score: <span id="scoreLabel">0</span></div>
       <div style="display: flex; gap: 20px; align-items: center;">
-        <div id="drawPile" class="card back" onclick="draw('deck')">DECK<br><span id="deckCountLabel" style="font-size:11px; font-weight:normal;">(52)</span></div>
-        <div id="discardPile" class="card" onclick="draw('discard')">--</div>
+        <div id="drawPile" class="card back">DECK<br><span id="deckCountLabel" style="font-size:11px;">(52)</span></div>
+        <div id="discardPile" class="card">--</div>
       </div>
     </div>
 
     <div class="hand-area">
-      <div id="peekBar" class="peek-status-bar" style="display:none;">
-        <span id="peekBarText">👁️ Viewing Player's Hand</span>
-        <span id="stopPeekBtn" style="cursor:pointer; text-decoration:underline; font-size:11px;" onclick="stopPeekingHand()">Stop Viewing</span>
-      </div>
-
-      <!-- Life Selector Dropdown Menu in Game Room -->
       <div id="livesSelectorSection" class="wager-bar" style="display:flex; margin-bottom: 2px;">
         <span style="font-size:11px; font-weight:bold; color:#ffd700;">Starting Lives:</span>
-        <select id="livesDropdown" onchange="proposeLifeChange(this.value)" style="width: auto; padding: 3px 8px; font-size: 11px; font-weight: bold; background: #ffd700; color: #111; border-radius: 12px; cursor: pointer; z-index: 50; pointer-events: auto;">
+        <select id="livesDropdown" onchange="proposeLifeChange(this.value)" style="width: auto; padding: 3px 8px; font-size: 11px; font-weight: bold; background: #ffd700; color: #111; border-radius: 12px; cursor: pointer;">
           <option value="1">1 Life</option>
           <option value="2" selected>2 Lives</option>
           <option value="3">3 Lives</option>
-          <option value="5">5 Lives</option>
         </select>
       </div>
 
-      <!-- Match Bet Section Placed Right Underneath Life Selector -->
       <div id="wagerSection" class="wager-bar" style="display:flex; margin-bottom: 2px;">
         <span style="font-size:11px; font-weight:bold;">My Match Bet:</span>
         <div class="wager-chip wager-chip-btn" data-wager="0" onclick="setWager(0)">$0</div>
@@ -708,13 +185,10 @@
         <div class="wager-chip wager-chip-btn" data-wager="20" onclick="setWager(20)">$20</div>
       </div>
 
-      <!-- Locked Central Player Name Badge Right Above Cards (No Duplicate Status) -->
-      <div id="myCenterPlayerBadge" style="background: rgba(0,0,0,0.85); border: 2px solid #ffd700; padding: 4px 12px; border-radius: 14px; font-size: 11px; font-weight: bold; color: #ffd700; margin-bottom: 2px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.6); display: inline-block;">
+      <div id="myCenterPlayerBadge" style="background: rgba(0,0,0,0.85); border: 2px solid #ffd700; padding: 4px 12px; border-radius: 14px; font-size: 11px; font-weight: bold; color: #ffd700; margin-bottom: 2px; text-align: center;">
         👤 <span id="centerPlayerNameLabel">Player</span>
       </div>
 
-      <!-- Invisible Hand Instruction Label -->
-      <div id="handInstruction" style="font-size: 12px; opacity: 0; display: none;">Your Hand</div>
       <div class="hand-cards" id="handArea">
         <div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>
       </div>
@@ -722,19 +196,10 @@
   </div>
 
   <div class="action-bar" id="actionBar">
-    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
-    <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;" onclick="openSpectatorJoinModal()">🎮 Join Game</button>
-    <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()">🎲 Side Bet</button>
-    <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()">💀 First to Lose</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
-    <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
-    <button type="button" id="knockBtn" disabled onclick="attemptKnock()">Knock</button>
+    <button type="button" id="removeBotBtn" class="secondary" onclick="removeBot()">- Remove Bot</button>
   </div>
-
-  <div id="audioContainer"></div>
-  <canvas id="ledgerCanvas" width="600" height="400" style="display:none;"></canvas>
 
   <script>
     const socket = io();
@@ -743,292 +208,12 @@
     if (myPlayerName) {
       document.getElementById('playerName').value = myPlayerName;
     }
-    let deviceId = '';
-    let myHand = [];
-    let isTurn = false;
-    let wasMyTurn = false;
-    let hasDrawn = false;
-    let isDiscarding = false;
-    let minKnockScore = 21;
-    let currentScore = 0;
-    let roundHasPassed = false;
-    let isSpectator = false;
-    let manualSpectator = false;
-    let isReady = false;
-    let unreadCount = 0;
-    let isChatOpen = false;
-    let currentWager = 0;
-    let selectedSideBetAmt = 5;
-    let currentSideBetType = 'round';
-    let latestActivePlayers = [];
-    let latestAllTableMembers = [];
-    let latestTopDiscard = null;
-    let latestPersonalLedger = [];
-    let isAnimatingDeal = false;
-    let dealAnimationTimers = [];
-    let announcementTimer = null;
-    let bannerTimer = null;
-    let pendingOfferBetId = null;
-    let pendingOfferChallengerTarget = '';
-
-    let currentlyViewingPlayerName = null;
-    let currentlyViewingHand = null;
-    let pendingPeekRequesterId = null;
-    let pendingClearDebtName = null;
-    let pendingDebtDebtorName = null;
-
-    let isInVoice = false;
-    let isMuted = false;
-    let localStream = null;
-    let peerConnections = {};
-    const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
-    let hasPickedDealerCard = false;
-    let hasPickedTiebreakerCard = false;
-    let amTiedForTiebreaker = false;
-
-    function playTurnBellSound() {
-      try {
-        getAudioContext();
-        if (audioCtx) {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-          gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start();
-          osc.stop(audioCtx.currentTime + 0.4);
-        }
-      } catch (e) {}
-    }
-
-    function triggerTurnVibration() { 
-      if (navigator.vibrate) {
-        try { navigator.vibrate([200, 100, 200]); } catch (e) {}
-      } 
-    }
-
-    try {
-      deviceId = localStorage.getItem('thirtyOne_deviceId');
-      if (!deviceId) {
-        deviceId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
-        localStorage.setItem('thirtyOne_deviceId', deviceId);
-      }
-    } catch (e) {
-      deviceId = 'dev_' + Date.now();
-    }
-
-    let audioCtx = null;
-    function getAudioContext() {
-      if (!audioCtx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext) audioCtx = new AudioContext();
-      }
-      if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(() => {});
-      }
-      return audioCtx;
-    }
-
-    function cancelDealAnimation() {
-      dealAnimationTimers.forEach(t => clearTimeout(t));
-      dealAnimationTimers = [];
-      document.querySelectorAll('.flying-card').forEach(el => el.remove());
-      isAnimatingDeal = false;
-    }
-
-    function dismissAnnouncement() {
-      if (announcementTimer) {
-        clearTimeout(announcementTimer);
-        announcementTimer = null;
-      }
-      const overlay = document.getElementById('announcementOverlay');
-      if (overlay) overlay.classList.remove('show');
-      const hands = document.getElementById('showdownHandsContainer');
-      if (hands) hands.innerHTML = '';
-    }
-
-    function forceRenderHand() {
-      const hArea = document.getElementById('handArea');
-      if (!hArea) return;
-
-      if (isSpectator) {
-        if (currentlyViewingHand && currentlyViewingHand.length > 0) {
-          hArea.innerHTML = '';
-          currentlyViewingHand.forEach(card => {
-            hArea.appendChild(renderCard(card, null, false, false));
-          });
-        } else {
-          hArea.innerHTML = '<div style="opacity: 0.7; margin-top: 30px; font-size: 14px;">Watching match as a spectator (Use "Peek at Hand" to request view)</div>';
-        }
-      } else if (myHand.length > 0) {
-        hArea.innerHTML = '';
-        myHand.forEach((card, idx) => {
-          hArea.appendChild(renderCard(card, () => discard(idx), isTurn && hasDrawn));
-        });
-      } else {
-        hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
-      }
-    }
-
-    function animateDrawCard(playerName, source, card) {
-      const seatEl = document.getElementById(`seat-${playerName}`);
-      const sourceEl = document.getElementById(source === 'discard' ? 'discardPile' : 'drawPile');
-      if (!seatEl || !sourceEl) return;
-
-      const srcRect = sourceEl.getBoundingClientRect();
-      const targetRect = seatEl.getBoundingClientRect();
-
-      const fly = document.createElement('div');
-      fly.className = `flying-card ${source === 'discard' && card ? ((card.suit === '♥' || card.suit === '♦') ? 'red' : 'black') : ''}`;
-      fly.style.left = `${srcRect.left}px`;
-      fly.style.top = `${srcRect.top}px`;
-      
-      if (source === 'discard' && card) {
-        fly.innerHTML = `<span>${card.rank}</span><span>${card.suit}</span>`;
-      } else {
-        fly.innerText = '🂠';
-      }
-
-      document.body.appendChild(fly);
-
-      requestAnimationFrame(() => {
-        fly.style.transform = `translate3d(${targetRect.left - srcRect.left}px, ${targetRect.top - srcRect.top}px, 0) scale(0.4)`;
-        fly.style.opacity = '0.2';
-      });
-
-      setTimeout(() => fly.remove(), 470);
-    }
-
-    socket.on('animateDraw', (data) => {
-      animateDrawCard(data.playerName, data.source, data.card);
-    });
-
-    function recoverFromBackground() {
-      cancelDealAnimation();
-      isDiscarding = false;
-      forceRenderHand();
-      getAudioContext();
-
-      if (!socket.connected) {
-        socket.connect();
-      }
-
-      if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
-        socket.emit('requestStateSync', currentRoom);
-      }
-    }
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') recoverFromBackground();
-    });
-    window.addEventListener('focus', () => recoverFromBackground());
-    window.addEventListener('pageshow', () => recoverFromBackground());
-
-    socket.on('connect', () => {
-      document.getElementById('connectionBanner').style.display = 'none';
-      if (currentRoom && myPlayerName) {
-        socket.emit('joinRoom', { roomId: currentRoom, playerName: myPlayerName, deviceId: deviceId });
-        socket.emit('requestStateSync', currentRoom);
-      }
-    });
-
-    socket.on('disconnect', () => {
-      document.getElementById('connectionBanner').style.display = 'flex';
-    });
-
-    function manualReconnect() {
-      if (!socket.connected) {
-        socket.connect();
-      }
-    }
-
-    function proposeLifeChange(lives) {
-      if (!currentRoom) return;
-      socket.emit('proposeLifeChange', { roomId: currentRoom, lives: parseInt(lives) });
-    }
-
-    function openSpectatorJoinModal() {
-      let maxWager = 0;
-      latestActivePlayers.forEach(p => {
-        if ((p.matchWager || 0) > maxWager) maxWager = p.matchWager || 0;
-      });
-      const minReq = maxWager + 5;
-      const input = document.getElementById('spectatorWagerInput');
-      input.min = minReq;
-      input.value = minReq;
-      document.getElementById('spectatorJoinModal').style.display = 'flex';
-    }
-
-    function submitSpectatorJoinRequest() {
-      let maxWager = 0;
-      latestActivePlayers.forEach(p => {
-        if ((p.matchWager || 0) > maxWager) maxWager = p.matchWager || 0;
-      });
-      const minReq = maxWager + 5;
-
-      const wagerVal = parseInt(document.getElementById('spectatorWagerInput').value) || minReq;
-      if (wagerVal < minReq) return alert(`Minimum wager to join is $${minReq} ($5 above max table wager of $${maxWager}).`);
-      
-      socket.emit('proposeJoinGame', { roomId: currentRoom, wager: wagerVal });
-      document.getElementById('spectatorJoinModal').style.display = 'none';
-    }
-
-    function respondJoinVote(agree) {
-      socket.emit('respondJoinGame', { roomId: currentRoom, agree: agree });
-      document.getElementById('joinGameVoteModal').style.display = 'none';
-    }
-
-    socket.on('roomListUpdate', (rooms) => {
-      const container = document.getElementById('roomsContainer');
-      const countLabel = document.getElementById('lobbyCountLabel');
-      if (!container) return;
-
-      countLabel.innerText = `${rooms.length} active`;
-
-      if (rooms.length === 0) {
-        container.innerHTML = '<div style="opacity:0.5; font-size:11px; text-align:center;">No active lobbies yet. Create one above!</div>';
-        return;
-      }
-
-      container.innerHTML = '';
-      rooms.forEach(r => {
-        const item = document.createElement('div');
-        item.className = 'room-dir-item';
-        item.addEventListener('click', (e) => {
-          e.preventDefault();
-          document.getElementById('roomId').value = r.roomId;
-          joinGame();
-        });
-
-        const statusBadge = r.gameStarted 
-          ? `<span class="badge-in-play">🎮 In Game</span>` 
-          : `<span class="badge-lobby">⏳ In Lobby</span>`;
-
-        const wagerBadge = r.totalPot > 0 ? `<span style="color:#ffd700; font-weight:bold;">Pot: $${r.totalPot}</span>` : `Free`;
-
-        item.innerHTML = `
-          <div>
-            <strong>Room ${r.roomId}</strong>
-            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • ${r.spectatorCount} 👁️ • ${wagerBadge}</div>
-          </div>
-          <div>${statusBadge}</div>
-        `;
-        container.appendChild(item);
-      });
-    });
+    let deviceId = 'dev_' + Math.random().toString(36).substring(2, 10);
 
     function joinGame() {
-      getAudioContext();
       const nameInput = document.getElementById('playerName');
       myPlayerName = nameInput.value.trim() || 'Player';
-      try {
-        localStorage.setItem('thirtyOne_playerName', myPlayerName);
-      } catch (e) {}
+      localStorage.setItem('thirtyOne_playerName', myPlayerName);
 
       const room = document.getElementById('roomId').value.trim();
       if (!room) return alert('Enter a room code');
@@ -1045,76 +230,11 @@
     }
 
     function leaveLobby() {
-      if (!currentRoom) return;
-      document.getElementById('screenshotModal').style.display = 'flex';
-    }
-
-    function executeLeave(takeScreenshot) {
-      document.getElementById('screenshotModal').style.display = 'none';
-      if (takeScreenshot) {
-        const canvas = document.getElementById('ledgerCanvas');
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#164033';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`31 Card Game - Ledger Summary (${myPlayerName})`, canvas.width / 2, 35);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Date & Time: ${new Date().toLocaleString()}`, 30, 65);
-
-        let y = 100;
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillText('Player / Member', 30, y);
-        ctx.fillText('Net Balance', 300, y);
-        ctx.fillText('Side Bets', 450, y);
-
-        y += 25;
-        ctx.font = '13px sans-serif';
-        if (latestPersonalLedger.length === 0) {
-          ctx.fillStyle = '#aaaaaa';
-          ctx.fillText('No active balances recorded.', 30, y);
-        } else {
-          latestPersonalLedger.forEach(b => {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(b.player + (b.hasLeft ? ' (Left)' : ''), 30, y);
-            ctx.fillStyle = b.netBalance > 0 ? '#4caf50' : (b.netBalance < 0 ? '#f44336' : '#ffffff');
-            ctx.fillText((b.netBalance > 0 ? '+' : '') + '$' + b.netBalance, 300, y);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText('$' + b.sideBetBalance, 450, y);
-            y += 24;
-          });
-        }
-
-        const link = document.createElement('a');
-        link.download = `31_Ledger_${myPlayerName}_${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      }
-
-      if (isInVoice) leaveVoice();
-      cancelDealAnimation();
-      dismissAnnouncement();
-      stopPeekingHand();
-      socket.emit('leaveRoom', currentRoom);
+      socket.emit('disconnect');
       currentRoom = '';
-      myHand = [];
-      wasMyTurn = false;
       document.getElementById('lobby').style.display = 'flex';
       document.getElementById('roomLabel').innerText = 'Room: -';
-      document.getElementById('scoreLabel').innerText = '0';
-      document.getElementById('handArea').innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
       document.getElementById('tableRing').innerHTML = '';
-    }
-
-    function toggleSpectate() {
-      if (!currentRoom) return;
-      socket.emit('toggleSpectate', currentRoom);
     }
 
     function setWager(amt) {
@@ -1122,1015 +242,124 @@
       socket.emit('setWager', { roomId: currentRoom, wager: amt });
     }
 
-    function toggleLedgerModal() {
-      const modal = document.getElementById('ledgerModal');
-      const isVisible = modal.style.display === 'flex';
-      modal.style.display = isVisible ? 'none' : 'flex';
-      
-      if (!isVisible) {
-        const ledgerList = document.getElementById('ledgerList');
-        ledgerList.innerHTML = '';
-        if (latestPersonalLedger.length === 0) {
-          ledgerList.innerHTML = '<div style="opacity:0.6; text-align:center;">No settled debts yet.</div>';
-          document.getElementById('ledgerOverallTotal').innerText = '$0';
-          document.getElementById('ledgerSideBetTotal').innerText = '$0';
-        } else {
-          let totalNetSum = 0;
-          let totalSideBetSum = 0;
-          latestPersonalLedger.forEach(b => {
-            totalNetSum += b.netBalance;
-            totalSideBetSum += b.sideBetBalance;
-            const div = document.createElement('div');
-            div.style.display = 'flex';
-            div.style.justifyContent = 'space-between';
-            div.style.alignItems = 'center';
-            div.style.padding = '4px 6px';
-            div.style.background = 'rgba(255,255,255,0.05)';
-            div.style.borderRadius = '6px';
-
-            const netClass = b.netBalance > 0 ? 'balance-positive' : (b.netBalance < 0 ? 'balance-negative' : 'balance-neutral');
-            const netText = b.netBalance > 0 ? `+$${b.netBalance}` : (b.netBalance < 0 ? `-$${Math.abs(b.netBalance)}` : `$0`);
-
-            div.innerHTML = `
-              <div>
-                <strong>${b.player}</strong>${b.hasLeft ? '<span class="player-left-tag">(Left)</span>' : ''}
-                <div style="font-size:10px; opacity:0.7;">Side Bets: $${b.sideBetBalance}</div>
-              </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span class="${netClass}">${netText}</span>
-                <button type="button" class="secondary clear-debt-item-btn" data-player="${b.player}" style="padding:2px 6px; font-size:10px;">Clear</button>
-              </div>
-            `;
-            ledgerList.appendChild(div);
-          });
-
-          document.querySelectorAll('.clear-debt-item-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-              e.preventDefault();
-              requestClearDebt(btn.getAttribute('data-player'));
-            });
-          });
-
-          const overallEl = document.getElementById('ledgerOverallTotal');
-          overallEl.className = totalNetSum > 0 ? 'balance-positive' : (totalNetSum < 0 ? 'balance-negative' : 'balance-neutral');
-          overallEl.innerText = totalNetSum > 0 ? `+$${totalNetSum}` : (totalNetSum < 0 ? `-$${Math.abs(totalNetSum)}` : `$0`);
-
-          const sideEl = document.getElementById('ledgerSideBetTotal');
-          sideEl.className = totalSideBetSum > 0 ? 'balance-positive' : (totalSideBetSum < 0 ? 'balance-negative' : 'balance-neutral');
-          sideEl.innerText = totalSideBetSum > 0 ? `+$${totalSideBetSum}` : (totalSideBetSum < 0 ? `-$${Math.abs(totalSideBetSum)}` : `$0`);
-        }
-      }
+    function toggleReady() {
+      if (!currentRoom) return;
+      socket.emit('toggleReady', currentRoom);
     }
 
-    function requestClearDebt(targetPlayerName) {
-      socket.emit('requestClearDebt', {
-        roomId: currentRoom,
-        targetPlayerName: targetPlayerName
-      });
-      toggleLedgerModal();
+    function addBot() {
+      if (!currentRoom) return;
+      socket.emit('addBot', currentRoom);
     }
 
-    socket.on('debtClearPermissionRequested', (data) => {
-      pendingDebtDebtorName = data.debtorName;
-      document.getElementById('debtPermissionText').innerHTML = `
-        <strong>${data.debtorName}</strong> requested to clear their debt of <strong>$${data.amount}</strong> to you. Do you forgive and grant permission?
-      `;
-      document.getElementById('debtPermissionModal').style.display = 'flex';
-    });
-
-    function respondDebtPermission(allow) {
-      document.getElementById('debtPermissionModal').style.display = 'none';
-      if (!pendingDebtDebtorName) return;
-
-      socket.emit('respondDebtPermission', {
-        roomId: currentRoom,
-        debtorName: pendingDebtDebtorName,
-        allow: allow
-      });
-      pendingDebtDebtorName = null;
+    function removeBot() {
+      if (!currentRoom) return;
+      socket.emit('removeBot', currentRoom);
     }
 
-    function toggleTutorialModal() {
-      const modal = document.getElementById('tutorialModal');
-      const isVisible = modal.style.display === 'flex';
-      modal.style.display = isVisible ? 'none' : 'flex';
-    }
-
-    function togglePeekSelectorModal() {
-      const modal = document.getElementById('spectatorPeekSelectorModal');
-      const isVisible = modal.style.display === 'flex';
-      if (!isVisible) {
-        const select = document.getElementById('peekPlayerSelect');
-        select.innerHTML = '';
-        latestActivePlayers.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.id;
-          opt.innerText = `${p.name} (${p.lives} ❤️)`;
-          select.appendChild(opt);
-        });
-      }
-      modal.style.display = isVisible ? 'none' : 'flex';
-    }
-
-    function submitPeekRequest() {
-      const targetId = document.getElementById('peekPlayerSelect').value;
-      if (!targetId) return alert('Select an active player to view.');
-      socket.emit('requestPeekingPermission', {
-        roomId: currentRoom,
-        targetPlayerId: targetId
-      });
-      togglePeekSelectorModal();
-    }
-
-    socket.on('peekingPermissionRequested', (data) => {
-      pendingPeekRequesterId = data.spectatorId;
-      document.getElementById('peekRequestText').innerHTML = `
-        <strong>${data.spectatorName}</strong> wants to view your hand. Allow them?
-      `;
-      document.getElementById('peekRequestModal').style.display = 'flex';
-    });
-
-    function respondPeekPermission(allow) {
-      document.getElementById('peekRequestModal').style.display = 'none';
-      if (!pendingPeekRequesterId) return;
-
-      socket.emit('respondPeekingPermission', {
-        roomId: currentRoom,
-        spectatorId: pendingPeekRequesterId,
-        allow: allow
-      });
-      pendingPeekRequesterId = null;
-    }
-
-    socket.on('spectatorHandUpdate', (data) => {
-      currentlyViewingPlayerName = data.targetPlayerName;
-      currentlyViewingHand = data.hand;
-      const peekBar = document.getElementById('peekBar');
-      peekBar.style.display = 'flex';
-      document.getElementById('peekBarText').innerText = `👁️ Viewing ${data.targetPlayerName}'s Hand (${data.score} pts)`;
-      forceRenderHand();
-    });
-
-    socket.on('spectatorHandRevoked', () => {
-      stopPeekingHand();
-    });
-
-    function stopPeekingHand() {
-      currentlyViewingPlayerName = null;
-      currentlyViewingHand = null;
-      document.getElementById('peekBar').style.display = 'none';
-      socket.emit('stopPeekingHand', currentRoom);
-      forceRenderHand();
-    }
-
-    async function toggleVoice() {
-      if (!isInVoice) {
-        try {
-          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          isInVoice = true;
-          isMuted = false;
-          document.getElementById('voiceBtn').className = 'voice-on';
-          document.getElementById('voiceBtn').innerText = '🔴 Leave';
-          document.getElementById('voiceInviteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').style.display = 'inline-block';
-          document.getElementById('muteBtn').innerText = '🎙️ Mute';
-          socket.emit('joinVoice', currentRoom);
-        } catch (err) {
-          alert('Microphone access denied: ' + err.message);
-        }
-      } else {
-        leaveVoice();
-      }
-    }
-
-    function leaveVoice() {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-      }
-      Object.keys(peerConnections).forEach(id => {
-        if (peerConnections[id]) peerConnections[id].close();
-      });
-      peerConnections = {};
-      document.getElementById('audioContainer').innerHTML = '';
-      isInVoice = false;
-      document.getElementById('voiceBtn').className = 'voice-btn';
-      document.getElementById('voiceBtn').innerText = '🎤 Voice';
-      document.getElementById('voiceInviteBtn').style.display = 'none';
-      document.getElementById('muteBtn').style.display = 'none';
-      socket.emit('leaveVoice', currentRoom);
-    }
-
-    function toggleVoiceInviteModal() {
-      const modal = document.getElementById('voiceInviteModal');
-      const isVisible = modal.style.display === 'flex';
-      if (!isVisible) {
-        const select = document.getElementById('voiceInviteSelect');
-        select.innerHTML = '';
-        let count = 0;
-        latestAllTableMembers.forEach(m => {
-          if (m.name !== myPlayerName && m.isOnline) {
-            count++;
-            const opt = document.createElement('option');
-            opt.value = m.id || m.name;
-            opt.innerText = m.name;
-            select.appendChild(opt);
-          }
-        });
-        if (count === 0) {
-          select.innerHTML = '<option value="">No other players online</option>';
-        }
-      }
-      modal.style.display = isVisible ? 'none' : 'flex';
-    }
-
-    function sendVoiceInvite() {
-      const targetIdOrName = document.getElementById('voiceInviteSelect').value;
-      if (!targetIdOrName) return alert('No player selected.');
-      const targetMember = latestAllTableMembers.find(m => m.id === targetIdOrName || m.name === targetIdOrName);
-      const targetName = targetMember ? targetMember.name : targetIdOrName;
-
-      socket.emit('inviteToVoice', {
-        roomId: currentRoom,
-        targetSocketId: targetIdOrName
-      });
-      toggleVoiceInviteModal();
-      alert(`Invitation sent to ${targetName}!`);
-    }
-
-    socket.on('voiceInviteReceived', (data) => {
-      document.getElementById('incomingVoiceText').innerHTML = `
-        <strong>${data.inviterName}</strong> invited you to join voice chat!
-      `;
-      document.getElementById('incomingVoiceInviteModal').style.display = 'flex';
-    });
-
-    function respondVoiceInvite(accept) {
-      document.getElementById('incomingVoiceInviteModal').style.display = 'none';
-      if (accept) {
-        if (!isInVoice) toggleVoice();
-      }
-    }
-
-    function toggleMute() {
-      if (!localStream) return;
-      isMuted = !isMuted;
-      localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
-      document.getElementById('muteBtn').innerText = isMuted ? '🔇 Unmute' : '🎙️ Mute';
-    }
-
-    function createPeerConnection(targetSocketId, isInitiator) {
-      const pc = new RTCPeerConnection(rtcConfig);
-      peerConnections[targetSocketId] = pc;
-
-      if (localStream) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      }
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('voiceSignal', {
-            target: targetSocketId,
-            signal: { candidate: event.candidate }
-          });
-        }
-      };
-
-      pc.ontrack = (event) => {
-        let audioEl = document.getElementById(`audio_${targetSocketId}`);
-        if (!audioEl) {
-          audioEl = document.createElement('audio');
-          audioEl.id = `audio_${targetSocketId}`;
-          audioEl.autoplay = true;
-          audioEl.playsInline = true;
-          document.getElementById('audioContainer').appendChild(audioEl);
-        }
-        audioEl.srcObject = event.streams[0];
-      };
-
-      if (isInitiator) {
-        pc.onnegotiationneeded = async () => {
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('voiceSignal', {
-              target: targetSocketId,
-              signal: { description: pc.localDescription }
-            });
-          } catch (err) {}
-        };
-      }
-
-      return pc;
-    }
-
-    socket.on('currentVoiceUsers', (users) => {
-      users.forEach(userId => createPeerConnection(userId, true));
-    });
-
-    socket.on('voiceUserJoined', ({ socketId }) => {
-      createPeerConnection(socketId, false);
-    });
-
-    socket.on('voiceUserLeft', ({ socketId }) => {
-      if (peerConnections[socketId]) {
-        peerConnections[socketId].close();
-        delete peerConnections[socketId];
-      }
-      const audioEl = document.getElementById(`audio_${socketId}`);
-      if (audioEl) audioEl.remove();
-    });
-
-    socket.on('voiceSignal', async ({ sender, signal }) => {
-      let pc = peerConnections[sender];
-      if (!pc) pc = createPeerConnection(sender, false);
-
-      try {
-        if (signal.description) {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.description));
-          if (signal.description.type === 'offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('voiceSignal', {
-              target: sender,
-              signal: { description: pc.localDescription }
-            });
-          }
-        } else if (signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-        }
-      } catch (err) {}
-    });
-
-    function toggleReady() { socket.emit('toggleReady', currentRoom); }
-    function addBot() { socket.emit('addBot', currentRoom); }
-    function removeBot() { socket.emit('removeBot', currentRoom); }
-
-    function attemptKnock() {
-      if (isSpectator) return;
-      if (!isTurn) return alert("You can only knock on your turn!");
-      if (hasDrawn) return alert("You must knock BEFORE drawing a card!");
-      if (!roundHasPassed) return alert("1 full round must go by before anyone can knock!");
-      if (currentScore < minKnockScore) return alert(`You need at least ${minKnockScore} points to knock (you have ${currentScore}).`);
-
-      if (latestTopDiscard && (latestTopDiscard.rank === 'A' || latestTopDiscard.value === 10)) {
-        document.getElementById('knockConfirmCard').innerText = `${latestTopDiscard.rank}${latestTopDiscard.suit}`;
-        document.getElementById('knockConfirmModal').style.display = 'flex';
+    socket.on('roomListUpdate', (rooms) => {
+      const container = document.getElementById('roomsContainer');
+      const countLabel = document.getElementById('lobbyCountLabel');
+      if (!container) return;
+      countLabel.innerText = `${rooms.length} active`;
+      if (rooms.length === 0) {
+        container.innerHTML = '<div style="opacity:0.5; font-size:11px; text-align:center;">No active lobbies yet.</div>';
         return;
       }
-      confirmKnock();
-    }
-
-    function confirmKnock() {
-      cancelKnockConfirm();
-      socket.emit('knock', currentRoom);
-    }
-
-    function cancelKnockConfirm() {
-      document.getElementById('knockConfirmModal').style.display = 'none';
-    }
-
-    function requestEndGame() {
-      if (!currentRoom || isSpectator) return;
-      socket.emit('proposeEndGame', currentRoom);
-    }
-
-    function respondEndGame(agree) {
-      socket.emit('respondEndGame', { roomId: currentRoom, agree: agree });
-      document.getElementById('endGameModal').style.display = 'none';
-    }
-
-    function toggleChat() {
-      isChatOpen = !isChatOpen;
-      document.getElementById('chatPanel').classList.toggle('open', isChatOpen);
-      if (isChatOpen) {
-        unreadCount = 0;
-        const badge = document.getElementById('chatBadge');
-        if (badge) badge.style.display = 'none';
-      }
-    }
-
-    function sendChat() {
-      const input = document.getElementById('chatInput');
-      if (input && input.value.trim()) {
-        socket.emit('sendChatMessage', { roomId: currentRoom, message: input.value.trim() });
-        input.value = '';
-      }
-    }
-
-    socket.on('newChatMessage', (data) => {
-      const chatBody = document.getElementById('chatBody');
-      const msgDiv = document.createElement('div');
-      msgDiv.className = `chat-msg ${data.isSpectator ? 'spec' : ''}`;
-      msgDiv.innerHTML = `
-        <div class="sender">${data.sender}${data.isSpectator ? ' [👁️]' : ''} <span class="time">${data.time}</span></div>
-        <div>${escapeHtml(data.text)}</div>
-      `;
-      chatBody.appendChild(msgDiv);
-      chatBody.scrollTop = chatBody.scrollHeight;
-
-      if (!isChatOpen) {
-        unreadCount++;
-        const badge = document.getElementById('chatBadge');
-        if (badge) {
-          badge.innerText = unreadCount;
-          badge.style.display = 'inline-block';
-        }
-      }
-    });
-
-    function escapeHtml(text) {
-      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-
-    function draw(src) { socket.emit('drawCard', { roomId: currentRoom, source: src }); }
-    function discard(idx) { socket.emit('discardCard', { roomId: currentRoom, cardIndex: idx }); }
-
-    function openRoundSideBetModal() {
-      currentSideBetType = 'round';
-      document.getElementById('sideBetModalTitle').innerText = '🎲 Round Side Bet';
-      document.getElementById('sideBetModalDesc').innerText = 'Back your favorite contender against multiple opponents:';
-      document.getElementById('roundContenderSection').style.display = 'flex';
-      toggleRoundBetModal();
-    }
-
-    function openFirstLoserSideBetModal() {
-      currentSideBetType = 'firstLoser';
-      document.getElementById('sideBetModalTitle').innerText = '💀 First to Lose Both Lives';
-      document.getElementById('sideBetModalDesc').innerText = 'This bet is for the first person to lose both lives (out of the game).';
-      document.getElementById('roundContenderSection').style.display = 'none';
-      toggleRoundBetModal();
-    }
-
-    function toggleRoundBetModal() {
-      const modal = document.getElementById('roundBetModal');
-      const isVisible = modal.style.display === 'flex';
-      if (!isVisible) {
-        const checklist = document.getElementById('opponentsChecklist');
-        const myTargetSelect = document.getElementById('betMyTargetSelect');
-
-        checklist.innerHTML = '';
-        myTargetSelect.innerHTML = '';
-
-        let selectableOpponents = 0;
-        latestAllTableMembers.forEach(m => {
-          if (m.name !== myPlayerName && m.isOnline) {
-            selectableOpponents++;
-            const label = document.createElement('div');
-            label.className = 'opp-checkbox-item';
-            label.innerHTML = `
-              <input type="checkbox" value="${m.name}" checked />
-              <span><strong>${m.name}</strong>${m.isSpectator ? ' [👁️]' : ''}</span>
-            `;
-            checklist.appendChild(label);
-          }
-        });
-
-        if (selectableOpponents === 0) {
-          checklist.innerHTML = '<div style="font-size:11px; opacity:0.6; padding:4px;">No other players online.</div>';
-        }
-
-        latestAllTableMembers.forEach(m => {
-          if (m.isOnline) {
-            const opt = document.createElement('option');
-            opt.value = m.name;
-            opt.innerText = m.name;
-            myTargetSelect.appendChild(opt);
-          }
-        });
-      }
-      modal.style.display = isVisible ? 'none' : 'flex';
-    }
-
-    function selectAllOpponents(chk) {
-      document.querySelectorAll('#opponentsChecklist input[type="checkbox"]').forEach(cb => cb.checked = cb.disabled ? false : chk);
-    }
-    function selectRoundBetAmt(amt) {
-      selectedSideBetAmt = amt;
-      document.querySelectorAll('.bet-amt-chip').forEach(c => {
-        c.classList.toggle('selected', parseInt(c.getAttribute('data-amt')) === amt);
-      });
-    }
-
-    function submitMultiPeerSideBet() {
-      const checkedBoxes = document.querySelectorAll('#opponentsChecklist input[type="checkbox"]:checked');
-      const opponentNames = Array.from(checkedBoxes).map(cb => cb.value);
-
-      if (opponentNames.length === 0) {
-        return alert('Please check off at least one opponent to challenge.');
-      }
-
-      const targetName = document.getElementById('betMyTargetSelect').value;
-      if (!targetName) return alert('Select your pick.');
-
-      socket.emit('proposeMultiSideBets', {
-        roomId: currentRoom,
-        betType: currentSideBetType,
-        opponentNames: opponentNames,
-        targetPlayerName: targetName,
-        amount: selectedSideBetAmt
-      });
-
-      toggleRoundBetModal();
-    }
-
-    socket.on('sideBetOfferReceived', (data) => {
-      pendingOfferBetId = data.betId;
-      pendingOfferChallengerTarget = data.bettorTarget;
-
-      document.getElementById('sideBetModalHeader').innerText = `🎲 Side Bet from ${data.fromPlayer}`;
-      document.getElementById('sideBetOfferText').innerHTML = `
-        <strong>${data.fromPlayer}</strong> challenged you to a <strong>$${data.amount}</strong> ${data.betType === 'firstLoser' ? 'First-to-Lose' : 'Round'} bet!<br>
-        Their pick: <span style="color:#ffd700;">${data.bettorTarget}</span>
-      `;
-
-      const targetSec = document.getElementById('offerTargetSection');
-      if (data.betType === 'firstLoser') {
-        targetSec.style.display = 'none';
-      } else {
-        targetSec.style.display = 'flex';
-        const sel = document.getElementById('offerMyTargetSelect');
-        sel.innerHTML = '';
-        latestAllTableMembers.forEach(m => {
-          if (m.isOnline && m.name !== data.bettorTarget) {
-            const opt = document.createElement('option');
-            opt.value = m.name;
-            opt.innerText = m.name;
-            sel.appendChild(opt);
-          }
-        });
-      }
-
-      document.getElementById('sideBetOfferModal').style.display = 'flex';
-    });
-
-    function respondSideBet(accept) {
-      const modal = document.getElementById('sideBetOfferModal');
-      modal.style.display = 'none';
-      if (!pendingOfferBetId) return;
-
-      const myTarget = document.getElementById('offerMyTargetSelect').value;
-      socket.emit('respondSideBet', {
-        roomId: currentRoom,
-        betId: pendingOfferBetId,
-        accept: accept,
-        myTargetName: myTarget
-      });
-      pendingOfferBetId = null;
-    }
-
-    function renderCard(card, onClick, highlight = false, isMini = false, isFlip = false) {
-      const el = document.createElement('div');
-      const isRed = card.suit === '♥' || card.suit === '♦';
-      el.className = `card ${isRed ? 'red' : 'black'} ${highlight ? 'discard-highlight' : ''} ${isMini ? 'mini' : ''} ${isFlip ? 'card-flip-reveal' : ''}`;
-      el.innerHTML = `<span>${card.rank}</span><span style="font-size: ${isMini ? '11px' : '20px'};">${card.suit}</span>`;
-      if (onClick) el.onclick = onClick;
-      return el;
-    }
-
-    socket.on('startDealerSelectionCut', (data) => {
-      if (isSpectator) return;
-      const overlay = document.getElementById('dealerCutOverlay');
-      const spread = document.getElementById('dealerCutSpread');
-      const container = document.getElementById('dealerCutPicksContainer');
-
-      spread.innerHTML = '';
       container.innerHTML = '';
-      hasPickedDealerCard = false;
-
-      const isEligible = data.players.some(p => p.id === socket.id);
-      const instr = document.getElementById('dealerCutInstruction');
-      instr.innerText = isEligible 
-        ? "👉 Tap any face-down card! Lowest card becomes Dealer." 
-        : `Watching dealer cut: ${data.players.map(p => p.name).join(', ')}`;
-
-      for (let i = 0; i < data.deckCount; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'card-cut-slot';
-        slot.innerText = '🂠';
-        slot.onclick = () => {
-          if (!isEligible || hasPickedDealerCard) return;
-          hasPickedDealerCard = true;
-          slot.style.opacity = '0.3';
-          slot.style.pointerEvents = 'none';
-          playTurnBellSound();
-          socket.emit('pickDealerCutCard', { roomId: currentRoom, cardIndex: i });
+      rooms.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'room-dir-item';
+        item.onclick = () => {
+          document.getElementById('roomId').value = r.roomId;
+          joinGame();
         };
-        spread.appendChild(slot);
-      }
-
-      overlay.classList.add('active');
-    });
-
-    socket.on('dealerCutCardPicked', (data) => {
-      const container = document.getElementById('dealerCutPicksContainer');
-      if (!container) return;
-      const div = document.createElement('div');
-      div.id = `dc_pick_${data.playerId}`;
-      div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
-      container.appendChild(div);
-    });
-
-    socket.on('dealerCutResultsReveal', (data) => {
-      const container = document.getElementById('dealerCutPicksContainer');
-      if (!container) return;
-      container.innerHTML = '';
-
-      data.results.forEach(res => {
-        const box = document.createElement('div');
-        box.className = 'showdown-player-box';
-        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
-        box.innerHTML = `
-          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'} card-flip-reveal" style="margin-top:3px;">
-            <span>${res.card.rank}</span><span>${res.card.suit}</span>
+        item.innerHTML = `
+          <div>
+            <strong>Room ${r.roomId}</strong>
+            <div style="font-size:10px; opacity:0.75;">${r.activeCount}/6 players • Pot: $${r.totalPot}</div>
           </div>
+          <div><span class="badge-lobby">Active</span></div>
         `;
-        container.appendChild(box);
+        container.appendChild(item);
       });
-
-      setTimeout(() => {
-        document.getElementById('dealerCutOverlay').classList.remove('active');
-      }, 3500);
-    });
-
-    socket.on('startTiebreakerCut', (data) => {
-      if (isSpectator) return;
-      const overlay = document.getElementById('tiebreakerOverlay');
-      const spread = document.getElementById('tiebreakerSpread');
-      const container = document.getElementById('tiebreakerPicksContainer');
-
-      spread.innerHTML = '';
-      container.innerHTML = '';
-      hasPickedTiebreakerCard = false;
-
-      const instr = document.getElementById('tiebreakerInstruction');
-      instr.innerText = "⚡ Choose a tiebreaker card from the deck!";
-
-      for (let i = 0; i < data.deckCount; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'card-cut-slot';
-        slot.innerText = '🂠';
-        slot.onclick = () => {
-          if (hasPickedTiebreakerCard) return;
-          hasPickedTiebreakerCard = true;
-          slot.style.opacity = '0.3';
-          slot.style.pointerEvents = 'none';
-          playTurnBellSound();
-          socket.emit('pickTiebreakerCard', { roomId: currentRoom, cardIndex: i });
-        };
-        spread.appendChild(slot);
-      }
-
-      overlay.classList.add('active');
-    });
-
-    socket.on('tiebreakerCardPicked', (data) => {
-      const container = document.getElementById('tiebreakerPicksContainer');
-      if (!container) return;
-      const div = document.createElement('div');
-      div.className = 'showdown-player-box';
-      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
-      container.appendChild(div);
-    });
-
-    socket.on('tiebreakerResultsReveal', (data) => {
-      const container = document.getElementById('tiebreakerPicksContainer');
-      if (!container) return;
-      container.innerHTML = '';
-
-      data.results.forEach(res => {
-        const box = document.createElement('div');
-        box.className = 'showdown-player-box';
-        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
-        box.innerHTML = `
-          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
-          <div class="card mini ${isRed ? 'red' : 'black'}" style="margin-top:3px;">
-            <span>${res.card.rank}</span><span>${res.card.suit}</span>
-          </div>
-        `;
-        container.appendChild(box);
-      });
-
-      setTimeout(() => {
-        document.getElementById('tiebreakerOverlay').classList.remove('active');
-      }, 3500);
     });
 
     socket.on('gameState', (state) => {
       try {
-        const turnJustBegan = state.isMyTurn && !wasMyTurn;
-        isTurn = state.isMyTurn;
-        wasMyTurn = state.isMyTurn;
+        document.getElementById('potBanner').innerText = `🏆 MATCH POT: $${state.totalPot || 0}`;
+        document.getElementById('deckCountLabel').innerText = `(${state.deckCount || 52})`;
+        document.getElementById('statusBar').innerText = state.message || 'Waiting for players or bots...';
 
-        if (turnJustBegan && state.gameStarted && !state.isSpectator) {
-          playTurnBellSound();
-          triggerTurnVibration();
-        }
+        // Update Wager Chips selection highlight
+        document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
+          const val = parseInt(chip.getAttribute('data-wager')) || 0;
+          chip.classList.toggle('selected', val === state.myWager);
+        });
 
-        hasDrawn = state.hasDrawn;
-        myHand = state.hand || [];
-        minKnockScore = state.minKnockScore || 21;
-        roundHasPassed = state.roundHasPassed;
-        currentScore = state.score || 0;
-        isSpectator = Boolean(state.isSpectator);
-        manualSpectator = Boolean(state.manualSpectator);
-        isReady = Boolean(state.isReady);
-        currentWager = state.myWager || 0;
-        latestTopDiscard = state.topDiscard || null;
-        latestActivePlayers = (state.players || []).filter(p => !p.isSpectator && p.lives > 0);
-        latestAllTableMembers = state.allTableMembers || [];
-        latestPersonalLedger = state.personalLedger || [];
-
-        const potBanner = document.getElementById('potBanner');
-        const roundPotBanner = document.getElementById('roundPotBanner');
-        if (potBanner) {
-          potBanner.style.display = 'flex';
-          potBanner.innerText = `🏆 MATCH POT: $${state.totalPot || 0}`;
-        }
-        if (roundPotBanner) {
-          roundPotBanner.style.display = state.sideBetActionTotal > 0 ? 'flex' : 'none';
-          roundPotBanner.innerText = `🎲 SIDE BETS: $${state.sideBetActionTotal || 0}`;
-        }
-
-        const deckCountLabel = document.getElementById('deckCountLabel');
-        if (deckCountLabel) {
-          deckCountLabel.innerText = `(${state.deckCount})`;
-        }
-
-        if (state.endGameVote) {
-          document.getElementById('endGameVoteText').innerHTML = `
-            <strong>${state.endGameVote.proposer}</strong> proposed ending the game (Requires 100%).<br>
-            Votes agreed: ${state.endGameVote.agreedIds.length}
-          `;
-          document.getElementById('endGameModal').style.display = 'flex';
+        // Update Ready Button State
+        const readyBtn = document.getElementById('readyBtn');
+        if (state.isReady) {
+          readyBtn.className = 'ready-on';
+          readyBtn.innerText = '✅ You are Ready';
         } else {
-          document.getElementById('endGameModal').style.display = 'none';
+          readyBtn.className = '';
+          readyBtn.innerText = '⏳ Tap to Ready';
         }
 
-        if (state.joinGameVote) {
-          document.getElementById('joinGameVoteText').innerHTML = `
-            <strong>${state.joinGameVote.spectatorName}</strong> wants to join mid-game ($${state.joinGameVote.wager} wager, 1 life cost).<br>
-            Votes agreed: ${state.joinGameVote.agreedIds.length}
-          `;
-          document.getElementById('joinGameVoteModal').style.display = 'flex';
-        } else {
-          document.getElementById('joinGameVoteModal').style.display = 'none';
-        }
-
-        const firstCardBanner = document.getElementById('firstCardBanner');
-        const firstCardMiniBox = document.getElementById('firstCardMiniBox');
-        const firstCardText = document.getElementById('firstCardText');
-        if (state.firstCardPickedUp) {
-          firstCardBanner.style.display = 'flex';
-          firstCardMiniBox.innerHTML = '';
-          firstCardMiniBox.appendChild(renderCard(state.firstCardPickedUp.card, null, false, true));
-          firstCardText.innerText = `${state.firstCardPickedUp.player} holds`;
-        } else {
-          firstCardBanner.style.display = 'none';
-        }
-
-        // Update Center Name Badge for You (Locked Bottom Middle)
-        const mePlayer = (state.players || []).find(p => p.name === myPlayerName);
-        const centerBadge = document.getElementById('myCenterPlayerBadge');
-        if (centerBadge) {
-          if (myPlayerName) {
-            centerBadge.style.display = 'inline-block';
-            const readyMark = (!state.gameStarted && mePlayer && mePlayer.isReady) ? '✓ ' : '';
-            const dealerMark = (mePlayer && mePlayer.isDealer) ? ' [D]' : '';
-            const myLives = mePlayer ? mePlayer.lives : 2;
-            const turnMark = (mePlayer && mePlayer.isTurn) ? ' ⭐' : '';
-            document.getElementById('centerPlayerNameLabel').innerText = `${readyMark}${myPlayerName}${dealerMark}${turnMark} (${myLives} ❤️)`;
-            centerBadge.style.borderColor = (mePlayer && mePlayer.isTurn) ? '#ffcc00' : '#ffd700';
-            centerBadge.style.background = (mePlayer && mePlayer.isTurn) ? 'rgba(255,204,0,0.3)' : 'rgba(0,0,0,0.85)';
-          } else {
-            centerBadge.style.display = 'none';
-          }
-        }
-
-        // Dynamically Render Opponents in Oval Ring (Dealing Order Seating & Left Aligned Top)
+        // Render Opponents / Bots in the Table Ring
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
           const rawPlayers = state.players || [];
-          
           let orderedOthers = [];
           const myIdx = rawPlayers.findIndex(p => p.name === myPlayerName);
           if (myIdx !== -1) {
             for (let i = 1; i < rawPlayers.length; i++) {
-              const p = rawPlayers[(myIdx + i) % rawPlayers.length];
-              if (p.name !== myPlayerName) {
-                orderedOthers.push(p);
-              }
+              orderedOthers.push(rawPlayers[(myIdx + i) % rawPlayers.length]);
             }
           } else {
             orderedOthers = rawPlayers.filter(p => p.name !== myPlayerName);
           }
 
           const slotCoordinates = [
-            { x: -125, y: 70 },  // Bottom Left (Next Turn)
-            { x: -125, y: -25 }, // Top Left
-            { x: -20,  y: -145 }, // Top Center (Aligned with center name badge)
-            { x: 125,  y: -25 }, // Top Right
-            { x: 125,  y: 70 }   // Bottom Right (Previous Turn)
+            { x: -125, y: 70 },
+            { x: -125, y: -25 },
+            { x: -20,  y: -145 },
+            { x: 125,  y: -25 },
+            { x: 125,  y: 70 }
           ];
 
           orderedOthers.forEach((p, idx) => {
             const pos = slotCoordinates[idx % slotCoordinates.length];
-
             const seat = document.createElement('div');
-            seat.id = `seat-${p.name}`;
             seat.className = `player-seat ${p.isTurn ? 'active' : ''} ${p.isReady ? 'is-ready' : ''}`;
             seat.style.left = `calc(50% + ${pos.x}px)`;
             seat.style.top = `calc(50% + ${pos.y}px)`;
 
-            const voiceBadge = p.isInVoice ? ' 🎙️' : '';
-            const dcBadge = p.disconnected ? ' ⚠️' : '';
-            const readyMarker = (!state.gameStarted && (p.isReady || p.isBot)) ? '✓ ' : '';
-            const wagerText = (!state.gameStarted && p.matchWager > 0) ? ` [$${p.matchWager}]` : '';
-
-            let miniCardsHtml = '';
-            if (state.gameStarted && !p.isSpectator) {
-              miniCardsHtml = `<div class="seat-mini-cards">
-                <div class="mini-card-back">🂠</div>
-                <div class="mini-card-back">🂠</div>
-                <div class="mini-card-back">🂠</div>
-              </div>`;
-            }
+            const readyMarker = p.isReady ? '✓ ' : '';
+            const wagerText = p.matchWager > 0 ? ` [$${p.matchWager}]` : '';
 
             seat.innerHTML = `
-              <div class="player-seat-tag">${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)${p.isDealer ? ' [D]' : ''}${voiceBadge}${dcBadge}</div>
-              ${miniCardsHtml}
+              <div class="player-seat-tag">${readyMarker}${p.name}${wagerText} (${p.lives} ❤️)</div>
             `;
             tableRing.appendChild(seat);
           });
         }
-
-        document.getElementById('scoreLabel').innerText = isSpectator ? '-' : `${currentScore}`;
-        
-        const livesSelectorSec = document.getElementById('livesSelectorSection');
-        const wagerSec = document.getElementById('wagerSection');
-        const dropdown = document.getElementById('livesDropdown');
-
-        if (state.gameStarted) {
-          if (livesSelectorSec) livesSelectorSec.style.display = 'none';
-          if (wagerSec) wagerSec.style.display = 'none';
-        } else {
-          if (livesSelectorSec) livesSelectorSec.style.display = 'flex';
-          if (dropdown && state.configuredLives) {
-            dropdown.value = state.configuredLives.toString();
-          }
-          if (!isSpectator && wagerSec) {
-            wagerSec.style.display = 'flex';
-            document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
-              const val = parseInt(chip.getAttribute('data-wager')) || 0;
-              chip.classList.toggle('selected', val === currentWager);
-            });
-          } else if (wagerSec) {
-            wagerSec.style.display = 'none';
-          }
-        }
-
-        const readyBtn = document.getElementById('readyBtn');
-        const addBotBtn = document.getElementById('addBotBtn');
-        const removeBotBtn = document.getElementById('removeBotBtn');
-        const spectateBtn = document.getElementById('spectateBtn');
-        const spectatorJoinBtn = document.getElementById('spectatorJoinBtn');
-        const spectatorPeekBtn = document.getElementById('spectatorPeekBtn');
-        const roundBetBtn = document.getElementById('roundBetBtn');
-        const firstLoserBetBtn = document.getElementById('firstLoserBetBtn');
-        const endGameBtn = document.getElementById('endGameBtn');
-
-        if (state.gameStarted) {
-          readyBtn.style.display = 'none';
-          addBotBtn.style.display = 'none';
-          removeBotBtn.style.display = 'none';
-          spectateBtn.style.display = 'none';
-          endGameBtn.style.display = isSpectator ? 'none' : 'inline-block';
-          
-          if (isSpectator) {
-            spectatorJoinBtn.style.display = state.anyPlayerEliminated ? 'none' : 'inline-block';
-            spectatorPeekBtn.style.display = 'inline-block';
-          } else {
-            spectatorJoinBtn.style.display = 'none';
-            spectatorPeekBtn.style.display = 'none';
-          }
-
-          roundBetBtn.style.display = (!state.knocker && latestActivePlayers.length > 1) ? 'inline-block' : 'none';
-          firstLoserBetBtn.style.display = (latestActivePlayers.length > 1) ? 'inline-block' : 'none';
-        } else {
-          spectatorJoinBtn.style.display = 'none';
-          spectatorPeekBtn.style.display = 'none';
-          roundBetBtn.style.display = 'none';
-          firstLoserBetBtn.style.display = 'none';
-          endGameBtn.style.display = 'none';
-          spectateBtn.style.display = 'inline-block';
-          spectateBtn.innerText = manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
-          if (isSpectator) {
-            readyBtn.style.display = 'none';
-            addBotBtn.style.display = 'none';
-            removeBotBtn.style.display = 'none';
-          } else {
-            readyBtn.style.display = 'inline-block';
-            addBotBtn.style.display = (state.activePlayersCount >= 6) ? 'none' : 'inline-block';
-            removeBotBtn.style.display = (state.botCount && state.botCount > 0) ? 'inline-block' : 'none';
-            readyBtn.className = isReady ? 'ready-on' : '';
-            readyBtn.innerText = isReady ? '✅ You are Ready' : '⏳ Tap to Ready';
-          }
-        }
-
-        const knockBtn = document.getElementById('knockBtn');
-        if (isSpectator || !state.gameStarted) {
-          knockBtn.style.display = 'none';
-        } else {
-          knockBtn.style.display = 'inline-block';
-          if (state.knocker) {
-            knockBtn.disabled = true;
-            knockBtn.innerText = `Knocked by ${state.knocker}`;
-          } else {
-            knockBtn.disabled = !state.canKnock;
-            if (!roundHasPassed) {
-              knockBtn.innerText = `Knock (Round 1 active)`;
-            } else if (state.canKnock) {
-              knockBtn.innerText = `⚡ Knock Now!`;
-            } else {
-              knockBtn.innerText = `Knock (Need ${minKnockScore}+)`;
-            }
-          }
-        }
-
-        const disc = document.getElementById('discardPile');
-        if (state.topDiscard) {
-          const isRed = state.topDiscard.suit === '♥' || state.topDiscard.suit === '♦';
-          disc.className = `card ${isRed ? 'red' : 'black'}`;
-          disc.innerHTML = `<span>${state.topDiscard.rank}</span><span style="font-size: 20px;">${state.topDiscard.suit}</span>`;
-        } else {
-          disc.className = 'card';
-          disc.innerText = '--';
-        }
-
-        forceRenderHand();
       } catch (err) {
-        console.error('Error in gameState handler:', err);
+        console.error('Error updating gameState felt:', err);
       }
-    });
-
-    socket.on('bigAnnouncement', (data) => {
-      dismissAnnouncement();
-      const overlay = document.getElementById('announcementOverlay');
-      document.getElementById('annTitle').innerText = data.title || 'ROUND OVER';
-      document.getElementById('annMessage').innerText = data.message || '';
-      document.getElementById('annSubtext').innerText = data.subtext || '';
-
-      const handsContainer = document.getElementById('showdownHandsContainer');
-      if (handsContainer && data.hands && data.hands.length > 0) {
-        handsContainer.innerHTML = '';
-        data.hands.forEach(h => {
-          const pBox = document.createElement('div');
-          pBox.className = 'showdown-player-box';
-          
-          let cardsHtml = '';
-          (h.hand || []).forEach(c => {
-            const isRed = c.suit === '♥' || c.suit === '♦';
-            cardsHtml += `
-              <div class="card mini ${isRed ? 'red' : 'black'}">
-                <span>${c.rank}</span><span style="font-size:11px;">${c.suit}</span>
-              </div>
-            `;
-          });
-
-          pBox.innerHTML = `
-            <div class="showdown-player-info">
-              <span>${h.name}</span>
-              <span style="color:#ffd700;">(${h.score} pts)</span>
-              ${h.isKnocker ? '<span style="color:#ff3344;">[Knocker]</span>' : ''}
-            </div>
-            <div class="showdown-cards-row">${cardsHtml}</div>
-          `;
-          handsContainer.appendChild(pBox);
-        });
-      }
-
-      overlay.classList.add('show');
-      announcementTimer = setTimeout(() => dismissAnnouncement(), data.duration || 7500);
     });
 
     socket.on('bannerAnnouncement', (data) => {
       const banner = document.getElementById('bannerAnnouncement');
+      if (!banner) return;
       banner.innerText = data.text;
       banner.classList.add('show');
-      if (bannerTimer) clearTimeout(bannerTimer);
-      bannerTimer = setTimeout(() => {
-        banner.classList.remove('show');
-      }, data.duration || 4000);
+      setTimeout(() => banner.classList.remove('show'), data.duration || 3500);
     });
 
     socket.on('errorMsg', (msg) => alert(msg));
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js');
-    }
   </script>
 </body>
 </html>
