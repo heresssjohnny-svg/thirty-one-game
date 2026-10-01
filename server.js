@@ -61,7 +61,7 @@ wss.on('connection', (ws) => {
                         name: data.lobbyName || `${currentUsername}'s Lobby`,
                         host: currentUsername,
                         isPrivate: !!data.isPrivate,
-                        players: [{ id: ws, username: currentUsername, lives: 2, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false }],
+                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false }],
                         bots: [],
                         spectators: [],
                         deck: [],
@@ -73,7 +73,6 @@ wss.on('connection', (ws) => {
                         phaseMessage: null,
                         turnIndex: 0,
                         dealerIndex: 0,
-                        wager: 5,
                         ledger: {},
                         knockedBy: null,
                         finalTurnsRemaining: 0,
@@ -97,7 +96,7 @@ wss.on('connection', (ws) => {
                         let totalOccupants = lobby.players.length + lobby.bots.length;
                         if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                             let availableSeat = findOpenSeat(lobby);
-                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false });
+                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -115,11 +114,21 @@ wss.on('connection', (ws) => {
                     ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
                     break;
 
+                case 'UPDATE_WAGER':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let player = lobby.players.find(p => p.id === ws);
+                        if (player && lobby.gameState === 'lobby') {
+                            player.wager = parseInt(data.wager) || 5;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
                 case 'UPDATE_SETTINGS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.host === currentUsername && lobby.gameState === 'lobby') {
-                            if (data.wager) lobby.wager = parseInt(data.wager);
                             if (data.lives) {
                                 let l = parseInt(data.lives);
                                 lobby.players.forEach(p => p.lives = l);
@@ -135,7 +144,7 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.players.length + lobby.bots.length < 6 && lobby.gameState === 'lobby') {
                             let botName = 'Bot_' + Math.floor(Math.random() * 900 + 100);
-                            lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true, eliminated: false });
+                            lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true, eliminated: false });
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         }
@@ -372,7 +381,8 @@ function getSanitizedLobby(lobby, wsId) {
     let currentTurnUser = allParticipants[lobby.turnIndex] ? allParticipants[lobby.turnIndex].username : '';
     let isRoundOver = lobby.gameState === 'roundOver';
     let canKnock = lobby.turnsTakenThisRound >= activeParts.length;
-    let potTotal = allParticipants.length * (lobby.wager || 5);
+    
+    let potTotal = allParticipants.reduce((sum, p) => sum + (p.wager || 5), 0);
 
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
     let requestingSpectator = lobby.spectators.find(s => s.id === wsId);
@@ -393,7 +403,6 @@ function getSanitizedLobby(lobby, wsId) {
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
-        wager: lobby.wager,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
@@ -406,6 +415,7 @@ function getSanitizedLobby(lobby, wsId) {
             return {
                 username: p.username,
                 lives: p.lives,
+                wager: p.wager || 5,
                 cardCount: p.cards.length,
                 ready: p.ready,
                 seat: p.seat,
@@ -418,6 +428,7 @@ function getSanitizedLobby(lobby, wsId) {
         bots: lobby.bots.map(b => ({
             username: b.username,
             lives: b.lives,
+            wager: b.wager || 5,
             cardCount: b.cards.length,
             seat: b.seat,
             ready: true,
@@ -533,7 +544,6 @@ function startRound(lobby) {
         if (b.lives <= 0) b.eliminated = true;
     });
 
-    // Check if only 1 active participant is left (Tournament Winner)
     let activeParts = getActiveParticipants(lobby);
     if (activeParts.length === 1) {
         let winner = activeParts[0];
@@ -568,24 +578,35 @@ function startRound(lobby) {
 
 function awardTournamentWinner(lobby, winner) {
     let allParts = [...lobby.players, ...lobby.bots];
-    let potAmt = allParts.length * (lobby.wager || 5);
+    
+    // Proportional individual wager payout settlement
+    let ledgerMap = lobby.ledger || {};
+    allParts.forEach(loser => {
+        if (loser.username !== winner.username) {
+            let loserWager = loser.wager || 5;
+            let winnerWager = winner.wager || 5;
+            let paidAmount = Math.min(loserWager, winnerWager);
 
-    if (!lobby.ledger[winner.username]) lobby.ledger[winner.username] = { total: 0 };
-    lobby.ledger[winner.username]['total'] += potAmt;
+            if (!ledgerMap[winner.username]) ledgerMap[winner.username] = { total: 0 };
+            if (!ledgerMap[loser.username]) ledgerMap[loser.username] = { total: 0 };
+
+            ledgerMap[winner.username]['total'] += paidAmount;
+            ledgerMap[loser.username]['total'] -= paidAmount;
+        }
+    });
+    lobby.ledger = ledgerMap;
 
     lobby.gameState = 'roundOver';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} is the last player standing and collects the entire pot of $${potAmt}!`;
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} is the last player standing and wins the match!`;
     broadcastLobbyUpdate(lobby.code);
 
-    // After 5 seconds, reset lobby back to ready lobby state
+    // After 5 seconds, reset lobby back to ready lobby state with winner as dealer
     setTimeout(() => {
         if (lobbies[lobby.code]) {
             let l = lobbies[lobby.code];
             l.gameState = 'lobby';
             l.phaseMessage = null;
-            let dealerObj = allParts[l.dealerIndex];
             
-            // Reset lives and elimination status for fresh game
             l.players.forEach(p => {
                 p.lives = 2;
                 p.eliminated = false;
@@ -600,13 +621,11 @@ function awardTournamentWinner(lobby, winner) {
                 b.ready = true;
                 b.nextHandReady = true;
             });
-            l.spectators = []; // Move spectators back as active players
+            l.spectators = [];
 
-            // Winner deals first in new game
-            if (dealerObj) {
-                let newDealerIdx = allParts.findIndex(p => p.username === dealerObj.username);
-                l.dealerIndex = newDealerIdx !== -1 ? newDealerIdx : 0;
-            }
+            let winnerIdx = allParts.findIndex(p => p.username === winner.username);
+            l.dealerIndex = winnerIdx !== -1 ? winnerIdx : 0;
+
             broadcastLobbyUpdate(l.code);
             broadcastLobbyList();
         }
@@ -687,7 +706,6 @@ function checkAndRunBotTurn(lobby) {
 
                 if (calculateScore(currentPlayer.cards) === 31) {
                     allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
-                    recordLedgerLoss(lobby, currentPlayer.username);
                     triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
                     return;
                 }
@@ -761,7 +779,6 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         if (calculateScore(currentPlayer.cards) === 31) {
             allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
-            recordLedgerLoss(lobby, currentPlayer.username);
             triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
         } else {
             advanceTurnOrResolve(lobby);
@@ -840,7 +857,6 @@ function resolveRoundEnd(lobby) {
         }
     } else {
         scores[0].player.lives--;
-        recordLedgerLoss(lobby, scores[0].player.username);
         triggerRoundOver(lobby, `Round Over! ${scores[0].player.username} had the lowest score and lost a life. All hands revealed.`);
     }
 }
@@ -858,7 +874,6 @@ function checkTieBreakerComplete(lobby) {
         let targetParticipant = activeParts.find(p => p.username === loser.username);
         if (targetParticipant) {
             targetParticipant.lives--;
-            recordLedgerLoss(lobby, targetParticipant.username);
         }
 
         lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loser.username} drew the lowest card and lost a life!`;
@@ -870,25 +885,6 @@ function checkTieBreakerComplete(lobby) {
             }
         }, 4000);
     }
-}
-
-function recordLedgerLoss(lobby, loserUsername) {
-    let wagerAmt = lobby.wager || 5;
-    let activeParts = getActiveParticipants(lobby);
-    let winnerCount = activeParts.length - 1;
-    if (winnerCount <= 0) winnerCount = 1;
-    let splitWin = wagerAmt / winnerCount;
-
-    activeParts.forEach(p => {
-        if (!lobby.ledger[p.username]) lobby.ledger[p.username] = {};
-        if (p.username === loserUsername) {
-            if (!lobby.ledger[p.username]['total']) lobby.ledger[p.username]['total'] = 0;
-            lobby.ledger[p.username]['total'] -= wagerAmt;
-        } else {
-            if (!lobby.ledger[p.username]['total']) lobby.ledger[p.username]['total'] = 0;
-            lobby.ledger[p.username]['total'] += splitWin;
-        }
-    });
 }
 
 function triggerRoundOver(lobby, msg) {
