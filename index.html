@@ -202,7 +202,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Your player seat is locked to the bottom, with left/right seats corresponding to turn order!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets and First to Lose (game elimination) settle peer-to-peer debts in your ledger!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -264,8 +264,9 @@
                 let amount = data.total || 0;
                 if (amount !== 0) {
                     hasEntries = true;
-                    let relationText = amount < 0 ? `<span style="color:#34d399;">owes you $${Math.abs(amount).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(amount).toFixed(2)}</span>`;
-                    let clearBtn = amount < 0 ? ` <button style="font-size:0.6rem; padding:2px 6px; background:#10b981;" onclick="clearUserDebt('${user}')">Clear Debt</button>` : '';
+                    let displayAmt = -amount;
+                    let relationText = displayAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(displayAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(displayAmt).toFixed(2)}</span>`;
+                    let clearBtn = displayAmt > 0 ? ` <button style="font-size:0.6rem; padding:2px 6px; background:#10b981;" onclick="clearUserDebt('${user}')">Clear Debt</button>` : '';
                     listHtml += `<li style="margin-bottom:6px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
                 }
             }
@@ -840,21 +841,37 @@
 
         function openSideBetModal() {
             let others = clientState.playersList.filter(u => u !== clientState.username);
-            if (!others.length) return alert('No players');
-            let target = prompt(`Select player to bet with:\n- ${others.join('\n- ')}`);
+            if (!others.length) return alert('No other players available to bet with.');
+            let target = prompt(`Select player to propose a side bet with:\n- ${others.join('\n- ')}`);
             if (target && others.includes(target)) {
-                let amt = prompt("Wager amount ($):");
-                if (amt) alert(`Bet proposal sent to ${target}`);
+                let pickUser = prompt(`Which player do you think will win this round?\n- ${clientState.playersList.join('\n- ')}`);
+                if (pickUser && clientState.playersList.includes(pickUser)) {
+                    let wagerAmt = prompt("Side bet wager amount ($):");
+                    if (wagerAmt && !isNaN(wagerAmt)) {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'ADD_SIDE_BET', target, pickUser, wagerAmt, betType: 'win' }));
+                            alert(`Side bet proposed to ${target}!`);
+                        }
+                    }
+                }
             }
         }
 
         function openFirstToLoseModal() {
             let others = clientState.playersList.filter(u => u !== clientState.username);
-            if (!others.length) return alert('No players');
-            let target = prompt(`Select player who loses first:\n- ${others.join('\n- ')}`);
+            if (!others.length) return alert('No other players available to bet with.');
+            let target = prompt(`Select player to propose a First to Lose bet with:\n- ${others.join('\n- ')}`);
             if (target && others.includes(target)) {
-                let amt = prompt("Wager amount ($):");
-                if (amt) alert(`First to lose bet sent to ${target}`);
+                let pickUser = prompt(`Which player do you think will be the FIRST ELIMINATED from the game (reach 0 lives)?\n- ${clientState.playersList.join('\n- ')}`);
+                if (pickUser && clientState.playersList.includes(pickUser)) {
+                    let wagerAmt = prompt("Wager amount ($):");
+                    if (wagerAmt && !isNaN(wagerAmt)) {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'ADD_SIDE_BET', target, pickUser, wagerAmt, betType: 'eliminate' }));
+                            alert(`First to Lose (elimination) bet proposed to ${target}!`);
+                        }
+                    }
+                }
             }
         }
     </script>
