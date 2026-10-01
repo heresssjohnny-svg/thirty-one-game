@@ -111,7 +111,6 @@ function startTurnTimer(roomId) {
   if (!room || !room.gameStarted || room.isResolvingRound) return;
 
   clearTurnTimer(room);
-
   const durationMs = 45000;
   room.turnExpiresAt = Date.now() + durationMs;
 
@@ -920,7 +919,7 @@ function startNewRound(roomId) {
 
   broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}.`);
   broadcastRoomList();
-  triggerBotTurnIfNeeded(room.id);
+  triggerBotTurnIfNeeded(roomId);
 }
 
 function broadcastState(roomId, message = '') {
@@ -1303,6 +1302,10 @@ io.on('connection', (socket) => {
     if (source === 'discard') {
       if (room.discardPile.length === 0) return;
       drawn = room.discardPile.pop();
+      io.to(roomId).emit('bannerAnnouncement', {
+        text: `👀 ${player.name} picked up ${drawn.rank}${drawn.suit} from the DISCARD pile!`,
+        duration: 4000
+      });
     } else {
       if (room.deck.length === 0) {
         const top = room.discardPile.pop();
