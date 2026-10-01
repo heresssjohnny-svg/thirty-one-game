@@ -240,14 +240,28 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
-                case 'VOICE_DATA':
+                case 'CHAT_MESSAGE':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        lobby.players.forEach(p => {
-                            if (p.id !== ws && p.id.readyState === WebSocket.OPEN) {
-                                p.id.send(JSON.stringify({ type: 'VOICE_DATA', audioData: data.audioData }));
-                            }
-                        });
+                        let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
+                        lobby.players.forEach(p => { if (p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify(chatPayload)); });
+                        lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
+                    }
+                    break;
+
+                case 'WEBRTC_SIGNAL':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let targetUser = data.target;
+                        let allRecipients = [...lobby.players, ...lobby.spectators];
+                        let targetRec = allRecipients.find(r => r.username === targetUser);
+                        if (targetRec && targetRec.id.readyState === WebSocket.OPEN) {
+                            targetRec.id.send(JSON.stringify({
+                                type: 'WEBRTC_SIGNAL',
+                                sender: currentUsername,
+                                signal: data.signal
+                            }));
+                        }
                     }
                     break;
 
@@ -397,6 +411,7 @@ function getSanitizedLobby(lobby, wsId) {
             lives: b.lives,
             cardCount: b.cards.length,
             seat: b.seat,
+            ready: true,
             nextHandReady: b.nextHandReady,
             eliminated: b.eliminated,
             cards: isRoundOver ? b.cards : []
