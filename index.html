@@ -27,7 +27,6 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; }
         
-        /* Compact Oval Table Fitting Screen */
         .table-oval { position: relative; width: 700px; max-width: 95vw; height: 320px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
         
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
@@ -51,12 +50,19 @@
         .bottom-action-bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
         
         #turn-banner { background: #1e293b; border: 1px solid #38bdf8; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #38bdf8; font-weight: bold; flex-shrink: 0; }
+        #notification-banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; z-index: 3000; display: none; }
         
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 2000; }
-        .modal-content { background: #1e293b; padding: 20px; border-radius: 10px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 10px; }
+        /* Modal Overlays */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 2000; }
+        .modal-content { background: #1e293b; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px; display: flex; flex-direction: column; gap: 15px; border: 1px solid #334155; text-align: center; }
+        .dealer-draw-grid { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+        .dealer-card-option { width: 65px; height: 95px; background: #1e3a8a; border: 2px solid #38bdf8; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; color: #fff; font-size: 0.9rem; }
+        .dealer-card-option.revealed { background: #fff; color: #0f172a; flex-direction: column; }
     </style>
 </head>
 <body>
+
+    <div id="notification-banner">YOUR TURN!</div>
 
     <header>
         <div class="logo">31!</div>
@@ -120,7 +126,7 @@
 
             <div class="my-hand-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: #94a3b8;">
-                    <span>My Hand (Score: <span id="my-score-display">0</span>)</span>
+                    <span>My Hand (Score: <span id="my-score-display">0</span>) - Draw from deck/discard, then click card to discard</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar">
@@ -132,6 +138,16 @@
             </div>
         </div>
     </main>
+
+    <!-- Dealer Draw Modal Window -->
+    <div id="dealer-draw-modal" class="modal">
+        <div class="modal-content">
+            <h3>Picking for Dealer</h3>
+            <p id="dealer-instruction" style="font-size:0.85rem; color:#cbd5e1;">Click a face-down card to draw. Lowest card deals (Ace is highest)!</p>
+            <div class="dealer-draw-grid" id="dealer-draw-cards-container"></div>
+            <div id="dealer-announcement" style="font-size:0.9rem; font-weight:bold; color:#38bdf8; margin-top:10px;"></div>
+        </div>
+    </div>
 
     <div id="rules-modal" class="modal">
         <div class="modal-content">
@@ -145,6 +161,35 @@
         let ws = null;
         let isConnected = false;
         let clientState = { username: 'Player1', isReady: false, playersList: [] };
+        let lastTurnUser = '';
+        let hasChosenDealerCard = false;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playDing() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            let now = audioCtx.currentTime;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(587.33, now);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        }
+
+        function triggerVibration() {
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        }
+
+        function showTurnNotification() {
+            let banner = document.getElementById('notification-banner');
+            banner.style.display = 'block';
+            playDing();
+            triggerVibration();
+            setTimeout(() => { banner.style.display = 'none'; }, 3000);
+        }
 
         function connectSocket() {
             if (isConnected && ws && ws.readyState === WebSocket.OPEN) return;
@@ -198,6 +243,7 @@
         function toggleReady() {
             clientState.isReady = !clientState.isReady;
             document.getElementById('ready-btn').innerText = clientState.isReady ? 'Unready' : 'Ready Up';
+            hasChosenDealerCard = false;
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SET_READY', ready: clientState.isReady }));
         }
 
@@ -232,17 +278,54 @@
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
             clientState.playersList = lobby.players.map(p => p.username);
-
-            // Hide settings bar once playing or dealer draw starts
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
 
+            let dealerModal = document.getElementById('dealer-draw-modal');
             let turnBanner = document.getElementById('turn-banner');
+
             if (lobby.gameState === 'dealerDraw') {
-                turnBanner.innerText = `Dealer Draw! ${lobby.dealerName} won and deals!`;
-            } else if (lobby.gameState === 'playing') {
-                turnBanner.innerText = lobby.currentTurnUser === clientState.username ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
+                dealerModal.style.display = 'flex';
+                
+                let gridHtml = '';
+                let resultsText = '';
+                
+                lobby.dealerDrawPool.forEach((slot) => {
+                    if (slot.chosenBy) {
+                        let revealedCard = lobby.dealerDrawResults[slot.chosenBy];
+                        gridHtml += `
+                            <div class="dealer-card-option revealed">
+                                <span style="font-size:0.7rem; color:#475569;">${slot.chosenBy}</span>
+                                <span>${revealedCard ? revealedCard.val + revealedCard.suit : ''}</span>
+                            </div>
+                        `;
+                    } else {
+                        gridHtml += `
+                            <div class="dealer-card-option" onclick="chooseDealerCard(${slot.index})">
+                                ?
+                            </div>
+                        `;
+                    }
+                });
+
+                if (lobby.dealerName) {
+                    resultsText = `🎉 ${lobby.dealerName} drew the lowest card and is the Dealer!`;
+                } else {
+                    resultsText = `Draw results in progress...`;
+                }
+
+                document.getElementById('dealer-draw-cards-container').innerHTML = gridHtml;
+                document.getElementById('dealer-announcement').innerText = resultsText;
+                turnBanner.innerText = `Dealer Draw Phase`;
             } else {
-                turnBanner.innerText = "Lobby Waiting Room";
+                dealerModal.style.display = 'none';
+                if (lobby.gameState === 'playing') {
+                    let isMyTurn = (lobby.currentTurnUser === clientState.username);
+                    turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
+                    if (isMyTurn && lastTurnUser !== clientState.username) showTurnNotification();
+                    lastTurnUser = lobby.currentTurnUser;
+                } else {
+                    turnBanner.innerText = "Lobby Waiting Room";
+                }
             }
 
             let container = document.getElementById('table-oval-container');
@@ -274,11 +357,20 @@
             }
         }
 
+        function chooseDealerCard(cardIndex) {
+            if (hasChosenDealerCard) return;
+            hasChosenDealerCard = true;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'CHOOSE_DEALER_CARD', cardIndex }));
+            }
+        }
+
         function calculateLocalScore(cards) {
-            if (!cards || cards.length === 0) return 0;
+            let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
+            if (!scoringCards || scoringCards.length === 0) return 0;
             let sums = {};
-            cards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
-            if (cards.length === 3 && cards[0].val === cards[1].val && cards[1].val === cards[2].val) return 30.5;
+            scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
+            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
             return Math.max(...Object.values(sums), 0);
         }
 
@@ -296,7 +388,9 @@
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
+            document.getElementById('dealer-draw-modal').style.display = 'none';
             clientState.isReady = false;
+            hasChosenDealerCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
         }
 
