@@ -130,7 +130,7 @@ function handleTurnTimeout(roomId) {
   if (!current || current.isSpectator || current.lives <= 0) return;
 
   io.to(roomId).emit('bannerAnnouncement', {
-    text: `⏱️️ Time's up for ${current.name}! AI taking turn...`,
+    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
     duration: 3500
   });
 
@@ -1321,7 +1321,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁 ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -1941,7 +1941,7 @@ io.on('connection', (socket) => {
 
       if (agreedCount >= eligible.length) {
         io.to(roomId).emit('bigAnnouncement', {
-          title: '🏳️ GAME ENDED',
+          title: '🏳️️ GAME ENDED',
           message: 'MATCH CONCLUDED BY UNANIMOUS VOTE',
           subtext: 'Returning everyone to the lobby...',
           duration: 4000
@@ -2220,7 +2220,7 @@ io.on('connection', (socket) => {
 
     const activeEligible = room.players.filter(p => !p.isSpectator);
     const voteCounts = {};
-    activeEligible.filter(pl => !pl.isSpectator).forEach(pl => {
+    activeEligible.forEach(pl => {
       const v = pl.isBot ? room.configuredLives : (room.lifeVotes[pl.id] || room.configuredLives);
       voteCounts[v] = (voteCounts[v] || 0) + 1;
     });
