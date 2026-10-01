@@ -80,7 +80,6 @@ wss.on('connection', (ws) => {
                         broadcastLobbyUpdate(code);
                         broadcastLobbyList();
                     } else {
-                        // Join as spectator if game already started or table is full
                         lobby.spectators.push({ id: ws, username: currentUsername });
                         ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby) }));
                         broadcastLobbyUpdate(code);
@@ -221,7 +220,6 @@ function broadcastLobbyUpdate(code) {
     lobby.players.forEach(p => { if (p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized })); });
     lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized })); });
 
-    // Check if bot turn
     if (lobby.gameState === 'playing') {
         checkAndRunBotTurn(lobby);
     }
@@ -330,11 +328,9 @@ function checkAndRunBotTurn(lobby) {
             if (lobby.gameState !== 'playing') return;
             let currentTurnCheck = [...lobby.players, ...lobby.bots][lobby.turnIndex];
             if (currentTurnCheck && currentTurnCheck.username === currentPlayer.username) {
-                // Bot draws from deck
                 if (lobby.deck.length === 0) lobby.deck = createDeck();
                 currentPlayer.cards.push(lobby.deck.pop());
                 
-                // Bot discards random card
                 let discardIdx = Math.floor(Math.random() * currentPlayer.cards.length);
                 lobby.discardPile.push(currentPlayer.cards.splice(discardIdx, 1)[0]);
 
@@ -415,7 +411,7 @@ function resolveRoundEnd(lobby) {
     if (tiedPlayers.length > 1 && allParticipants.length >= 3) {
         lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
         lobby.drawResults = {};
-        lobby.phaseMessage = `⚠️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck.`;
+        lobby.phaseMessage = `⚠️️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck.`;
         lobby.gameState = 'tieBreaker';
 
         autoPickForBots(lobby);
