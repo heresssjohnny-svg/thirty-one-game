@@ -161,8 +161,8 @@
         <div class="modal-content" style="max-width:350px;">
             <h3>Ledger & Balances</h3>
             <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">No wagers recorded yet.</p>
-            <button onclick="alert('Ledger saved.')">Save Screenshot</button>
-            <button class="secondary" onclick="toggleModal('rules-modal')">Close</button>
+            <button onclick="alert('Ledger saved.'); toggleModal('ledger-modal');">Save Screenshot</button>
+            <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
     </div>
 
@@ -200,20 +200,27 @@
             setTimeout(() => { banner.style.display = 'none'; }, 3000);
         }
 
-        function connectSocket() {
-            if (isConnected && ws && ws.readyState === WebSocket.OPEN) return;
-            const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-            ws = new WebSocket(protocol + location.host);
-            ws.onopen = () => { isConnected = true; };
-            ws.onmessage = (event) => {
-                let data = JSON.parse(event.data);
-                if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') updateUIFromLobby(data.lobby);
-                else if (data.type === 'LEFT_LOBBY') resetToMainMenu();
-                else if (data.type === 'VOICE_DATA') playRemoteAudio(data.audioData);
-                else if (data.type === 'ERROR') alert(data.message);
-            };
-            ws.onclose = () => { isConnected = false; };
+        function initSocketAndSend(payload) {
+            clientState.username = document.getElementById('username-input').value || 'Player1';
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
+            } else {
+                const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+                ws = new WebSocket(protocol + location.host);
+                ws.onopen = () => {
+                    isConnected = true;
+                    ws.send(JSON.stringify(payload));
+                };
+                ws.onmessage = (event) => {
+                    let data = JSON.parse(event.data);
+                    if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
+                    else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') updateUIFromLobby(data.lobby);
+                    else if (data.type === 'LEFT_LOBBY') resetToMainMenu();
+                    else if (data.type === 'VOICE_DATA') playRemoteAudio(data.audioData);
+                    else if (data.type === 'ERROR') alert(data.message);
+                };
+                ws.onclose = () => { isConnected = false; };
+            }
         }
 
         function renderLobbyList(lobbies) {
@@ -223,10 +230,8 @@
         }
 
         function createLobby() {
-            connectSocket();
-            clientState.username = document.getElementById('username-input').value || 'Player1';
             let lobbyName = document.getElementById('lobby-name-input').value || 'My Table';
-            setTimeout(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CREATE_LOBBY', username: clientState.username, lobbyName })); }, 200);
+            initSocketAndSend({ type: 'CREATE_LOBBY', username: document.getElementById('username-input').value || 'Player1', lobbyName });
         }
 
         function joinLobby() {
@@ -235,9 +240,7 @@
         }
 
         function joinLobbyCode(code) {
-            connectSocket();
-            clientState.username = document.getElementById('username-input').value || 'Player1';
-            setTimeout(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code, username: clientState.username })); }, 200);
+            initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value || 'Player1' });
         }
 
         function updateSettings() {
@@ -396,6 +399,7 @@
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
             document.getElementById('pool-draw-modal').style.display = 'none';
+            document.getElementById('ledger-modal').style.display = 'none';
             clientState.isReady = false;
             hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
