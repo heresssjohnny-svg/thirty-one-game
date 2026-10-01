@@ -76,8 +76,8 @@ wss.on('connection', (ws) => {
                         turnIndex: 0,
                         dealerIndex: 0,
                         ledger: {},
-                        sideBets: [],
-                        firstEliminated: null,
+                        pendingBets: [], // { id, proposer, target, pickUser, targetSurvivor, wagerAmt, type }
+                        activeBets: [],
                         knockedBy: null,
                         finalTurnsRemaining: 0,
                         turnsTakenThisRound: 0,
@@ -147,26 +147,44 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let targetUser = data.targetUser;
-                        if (lobby.ledger && lobby.ledger[targetUser]) {
-                            lobby.ledger[targetUser].total = 0;
+                        if (lobby.ledger && lobby.ledger[currentUsername] && lobby.ledger[currentUsername][targetUser]) {
+                            lobby.ledger[currentUsername][targetUser] = 0;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
                     break;
 
-                case 'ADD_SIDE_BET':
+                case 'PROPOSE_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        if (lobby.gameState === 'playing' || lobby.gameState === 'lobby') {
-                            lobby.sideBets.push({
-                                proposer: currentUsername,
-                                target: data.target,
-                                pickUser: data.pickUser,
-                                wagerAmt: parseFloat(data.wagerAmt) || 5,
-                                type: data.betType || 'win'
-                            });
-                            let betLabel = data.betType === 'eliminate' ? 'to be first eliminated' : 'to win round';
-                            lobby.phaseMessage = `🤝 Side bet proposed: ${currentUsername} bets $${data.wagerAmt} with ${data.target} on ${data.pickUser} ${betLabel}!`;
+                        let betId = Math.random().toString(36).substring(2, 8);
+                        let newBet = {
+                            id: betId,
+                            proposer: currentUsername,
+                            target: data.target,
+                            pickUser: data.pickUser,
+                            targetSurvivor: data.targetSurvivor,
+                            wagerAmt: parseFloat(data.wagerAmt) || 5,
+                            type: data.betType // 'win' or 'eliminate'
+                        };
+                        lobby.pendingBets.push(newBet);
+                        lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
+                        broadcastLobbyUpdate(currentLobbyCode);
+                    }
+                    break;
+
+                case 'RESPOND_BET':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let betIdx = lobby.pendingBets.findIndex(b => b.id === data.betId);
+                        if (betIdx !== -1) {
+                            let bet = lobby.pendingBets.splice(betIdx, 1)[0];
+                            if (data.accept) {
+                                lobby.activeBets.push(bet);
+                                lobby.phaseMessage = `✅ ${currentUsername} accepted the bet from ${bet.proposer}!`;
+                            } else {
+                                lobby.phaseMessage = `❌ ${currentUsername} declined the bet from ${bet.proposer}.`;
+                            }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -429,6 +447,8 @@ function getSanitizedLobby(lobby, wsId) {
     }
     sortedParticipants.forEach((p, idx) => { p.seat = idx; });
 
+    let myPendingBets = (lobby.pendingBets || []).filter(b => b.target === myUsername);
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -441,6 +461,7 @@ function getSanitizedLobby(lobby, wsId) {
         canKnock: canKnock,
         potTotal: potTotal,
         ledger: lobby.ledger || {},
+        pendingBetsForMe: myPendingBets,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
@@ -630,11 +651,12 @@ function startRound(lobby) {
 }
 
 function resolveFirstToLoseBets(lobby, eliminatedName) {
-    if (!lobby.sideBets || lobby.sideBets.length === 0) return;
+    if (!lobby.activeBets || lobby.activeBets.length === 0) return;
 
     let remainingBets = [];
-    lobby.sideBets.forEach(bet => {
+    lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
+            // Proposer bets proposer's pickUser is eliminated before targetSurvivor
             let won = (bet.pickUser === eliminatedName);
             let debtor = won ? bet.target : bet.proposer;
             let creditor = won ? bet.proposer : bet.target;
@@ -648,7 +670,7 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
             remainingBets.push(bet);
         }
     });
-    lobby.sideBets = remainingBets;
+    lobby.activeBets = remainingBets;
 }
 
 function awardTournamentWinner(lobby, winner) {
@@ -680,6 +702,8 @@ function awardTournamentWinner(lobby, winner) {
             l.gameState = 'lobby';
             l.phaseMessage = null;
             l.firstEliminated = null;
+            l.activeBets = [];
+            l.pendingBets = [];
             
             l.players.forEach(p => {
                 p.lives = 2;
@@ -708,6 +732,12 @@ function awardTournamentWinner(lobby, winner) {
 
 function checkNextHandReady(lobby) {
     let activeParts = getActiveParticipants(lobby);
+    // If only 1 player remains, do not wait for next hand popup; award tournament win instantly
+    if (activeParts.length === 1) {
+        awardTournamentWinner(lobby, activeParts[0]);
+        return;
+    }
+
     let allReady = activeParts.every(p => p.nextHandReady);
     if (allReady) {
         startRound(lobby);
@@ -755,7 +785,6 @@ function checkAndRunBotTurn(lobby) {
                     currentPlayer.cards.push(card);
                     if (card === lobby.initialDealCard) {
                         lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
-                        // Broadcast notification so all players see who picked up from the discard pile
                         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
                     }
                 } else {
@@ -1008,10 +1037,10 @@ function recordRoundLedger(lobby, loserUsername, winnerUsername) {
 }
 
 function resolveWinSideBets(lobby, roundWinnerName) {
-    if (!lobby.sideBets || lobby.sideBets.length === 0) return;
+    if (!lobby.activeBets || lobby.activeBets.length === 0) return;
 
     let remainingBets = [];
-    lobby.sideBets.forEach(bet => {
+    lobby.activeBets.forEach(bet => {
         if (bet.type === 'win') {
             let won = (bet.pickUser === roundWinnerName);
             let debtor = won ? bet.target : bet.proposer;
@@ -1026,7 +1055,7 @@ function resolveWinSideBets(lobby, roundWinnerName) {
             remainingBets.push(bet);
         }
     });
-    lobby.sideBets = remainingBets;
+    lobby.activeBets = remainingBets;
 }
 
 function triggerRoundOver(lobby, msg) {
