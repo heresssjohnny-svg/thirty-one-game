@@ -66,9 +66,17 @@ function createDeck() {
 
 function calculateScore(hand) {
   if (!hand || hand.length === 0) return 0;
+
   if (hand.length === 3) {
     if (hand[0].rank === hand[1].rank && hand[1].rank === hand[2].rank) return 30.5;
+  } else if (hand.length === 4) {
+    const counts = {};
+    for (const c of hand) {
+      counts[c.rank] = (counts[c.rank] || 0) + 1;
+      if (counts[c.rank] >= 3) return 30.5;
+    }
   }
+
   const totals = { '♠': 0, '♥': 0, '♦': 0, '♣': 0 };
   for (const c of hand) {
     totals[c.suit] += c.value;
@@ -90,17 +98,318 @@ function getNonSpectatorCount(room) {
   return room.players.filter(p => !p.isSpectator).length;
 }
 
+function clearTurnTimer(room) {
+  if (room.turnTimer) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+  }
+  room.turnExpiresAt = null;
+}
+
+function startTurnTimer(roomId) {
+  const room = rooms[roomId];
+  if (!room || !room.gameStarted || room.isResolvingRound) return;
+
+  clearTurnTimer(room);
+
+  const durationMs = 45000;
+  room.turnExpiresAt = Date.now() + durationMs;
+
+  room.turnTimer = setTimeout(() => {
+    handleTurnTimeout(roomId);
+  }, durationMs);
+
+  broadcastState(roomId);
+}
+
+function handleTurnTimeout(roomId) {
+  const room = rooms[roomId];
+  if (!room || !room.gameStarted || room.isResolvingRound) return;
+
+  const current = room.players[room.currentTurnIdx];
+  if (!current || current.isSpectator || current.lives <= 0) return;
+
+  io.to(roomId).emit('bannerAnnouncement', {
+    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
+    duration: 3500
+  });
+
+  while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
+    current.hand.push(room.deck.pop());
+  }
+
+  if (!room.drawnCard) {
+    if (room.deck.length === 0) {
+      const top = room.discardPile.pop();
+      room.deck = room.discardPile.concat(room.discardPile.sort(() => Math.random() - 0.5));
+      room.discardPile = [top];
+    }
+    const drawn = room.deck.pop();
+    current.lastDrawnSource = 'deck';
+    current.hand.push(drawn);
+    room.drawnCard = drawn;
+  }
+
+  let bestIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < current.hand.length; i++) {
+    const remaining = current.hand.slice(0, i).concat(current.hand.slice(i + 1));
+    const s = calculateScore(remaining);
+    if (s > bestScore) {
+      bestScore = s;
+      bestIdx = i;
+    }
+  }
+
+  const [discarded] = current.hand.splice(bestIdx, 1);
+  room.discardPile.push(discarded);
+  room.currentDiscardFeederId = current.id;
+  room.drawnCard = null;
+  room.turnsTakenInRound += 1;
+
+  if (checkAndHandle31(room, current)) return;
+
+  if (room.knockerId) {
+    room.turnsLeftAfterKnock -= 1;
+    if (room.turnsLeftAfterKnock <= 0) {
+      resolveShowdown(roomId);
+      return;
+    }
+  }
+
+  advanceTurnIndex(room);
+  broadcastState(roomId, `⏱️ ${current.name}'s turn timed out. AI discarded ${discarded.rank}${discarded.suit}.`);
+  startTurnTimer(roomId);
+  triggerBotTurnIfNeeded(roomId);
+}
+
+function advanceTurnIndex(room) {
+  clearTurnTimer(room);
+  const total = room.players.length;
+  if (total === 0) return;
+
+  for (let step = 1; step <= total; step++) {
+    const nextIdx = (room.currentTurnIdx + step) % total;
+    const candidate = room.players[nextIdx];
+    if (candidate && !candidate.isSpectator && candidate.lives > 0) {
+      room.currentTurnIdx = nextIdx;
+      while (candidate.hand && candidate.hand.length < 3 && room.deck && room.deck.length > 0) {
+        candidate.hand.push(room.deck.pop());
+      }
+      startTurnTimer(room.id);
+      return;
+    }
+  }
+}
+
+function getPrevActivePlayer(room, currentIdx) {
+  const total = room.players.length;
+  for (let step = 1; step <= total; step++) {
+    const prevIdx = (currentIdx - step + total) % total;
+    const candidate = room.players[prevIdx];
+    if (candidate && !candidate.isSpectator && candidate.lives > 0) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function checkAllPlayersReady(room) {
-  const eligible = room.players.filter(p => !p.isSpectator);
+  const eligible = room.players.filter(p => !p.isSpectator && (room.gameStarted ? p.lives > 0 : true));
   if (eligible.length < 2) return false;
   return eligible.every(p => p.isReady || p.isBot);
+}
+
+function getRevealedHands(room) {
+  return room.players.filter(p => !p.isSpectator).map(p => ({
+    name: p.name,
+    score: calculateScore(p.hand),
+    hand: p.hand,
+    isKnocker: room.knockerId === p.id
+  }));
+}
+
+function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
+  if (debtorName === creditorName || amount <= 0) return;
+  if (!room.debts) room.debts = {};
+  if (!room.debts[debtorName]) room.debts[debtorName] = {};
+  if (!room.debtBreakdowns) room.debtBreakdowns = {};
+
+  room.debts[debtorName][creditorName] = (room.debts[debtorName][creditorName] || 0) + amount;
+
+  const key = `${debtorName}:::${creditorName}`;
+  if (!room.debtBreakdowns[key]) {
+    room.debtBreakdowns[key] = { match: 0, sideBets: 0 };
+  }
+  if (reason === 'sideBet') {
+    room.debtBreakdowns[key].sideBets += amount;
+  } else {
+    room.debtBreakdowns[key].match += amount;
+  }
+}
+
+function recordGameWagerSettlement(room, winner) {
+  let totalCollected = 0;
+  if (!room.currentMatchParticipants) return 0;
+
+  room.currentMatchParticipants.forEach(participant => {
+    if (participant.name !== winner.name) {
+      const wagerAmt = participant.wager || 0;
+      if (wagerAmt > 0) {
+        totalCollected += wagerAmt;
+        recordDebt(room, participant.name, winner.name, wagerAmt, 'match');
+      }
+    }
+  });
+  return totalCollected;
+}
+
+function settlePeerRoundBets(room, scores) {
+  if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
+  let reports = [];
+
+  room.peerSideBets.forEach(bet => {
+    if (!bet.accepted || bet.type !== 'round') return;
+
+    const bettor = room.players.find(p => p.id === bet.bettorId);
+    const opponent = room.players.find(p => p.id === bet.opponentId);
+    if (!bettor || !opponent) return;
+
+    const bettorTargetScore = scores[room.players.find(p => p.name === bet.targetPlayerName)?.id] || -1;
+    const oppTargetScore = scores[room.players.find(p => p.name === bet.opponentTargetName)?.id] || -1;
+
+    if (bettorTargetScore > oppTargetScore) {
+      recordDebt(room, opponent.name, bettor.name, bet.amount, 'sideBet');
+      reports.push(`${bettor.name} won $${bet.amount} side bet vs ${opponent.name}`);
+    } else if (oppTargetScore > bettorTargetScore) {
+      recordDebt(room, bettor.name, opponent.name, bet.amount, 'sideBet');
+      reports.push(`${opponent.name} won $${bet.amount} side bet vs ${bettor.name}`);
+    }
+  });
+
+  return reports.join(' | ');
+}
+
+function settleFirstLoserBetsThisHand(room, newlyEliminatedNames) {
+  if (!room.peerSideBets || room.peerSideBets.length === 0 || !newlyEliminatedNames || newlyEliminatedNames.length === 0) return '';
+  let reports = [];
+
+  room.peerSideBets.forEach(bet => {
+    if (!bet.accepted || bet.type !== 'firstLoser') return;
+
+    const bettor = room.players.find(p => p.id === bet.bettorId);
+    const opponent = room.players.find(p => p.id === bet.opponentId);
+    if (!bettor || !opponent) return;
+
+    if (newlyEliminatedNames.includes(bet.targetPlayerName)) {
+      recordDebt(room, opponent.name, bettor.name, bet.amount, 'sideBet');
+      reports.push(`${bettor.name} won First-Loser side bet vs ${opponent.name}`);
+    }
+  });
+
+  return reports.join(' | ');
+}
+
+function getPersonalLedger(room, playerName) {
+  if (!room.debts) return { balances: [], totalNet: 0, totalSideBetNet: 0 };
+  const allNames = room.knownMembers || [];
+  const balances = [];
+  let totalNet = 0;
+  let totalSideBetNet = 0;
+
+  allNames.forEach(otherName => {
+    if (otherName === playerName) return;
+
+    let iOweThem = (room.debts[playerName] && room.debts[playerName][otherName]) || 0;
+    let theyOweMe = (room.debts[otherName] && room.debts[otherName][playerName]) || 0;
+    let net = theyOweMe - iOweThem;
+
+    let sideBetNet = 0;
+    const key1 = `${playerName}:::${otherName}`;
+    const key2 = `${otherName}:::${playerName}`;
+    if (room.debtBreakdowns) {
+      if (room.debtBreakdowns[key1]) sideBetNet -= room.debtBreakdowns[key1].sideBets;
+      if (room.debtBreakdowns[key2]) sideBetNet += room.debtBreakdowns[key2].sideBets;
+    }
+
+    totalNet += net;
+    totalSideBetNet += sideBetNet;
+
+    const otherPl = room.players.find(p => p.name === otherName);
+    balances.push({
+      player: otherName,
+      netBalance: net,
+      sideBetBalance: sideBetNet,
+      hasLeft: !otherPl || otherPl.disconnected
+    });
+  });
+
+  return { balances, totalNet, totalSideBetNet };
+}
+
+function finalizePlayerExit(roomId, playerName) {
+  const room = rooms[roomId];
+  if (!room) return;
+
+  room.players = room.players.filter(p => p.name !== playerName);
+
+  if (room.currentMatchParticipants) {
+    room.currentMatchParticipants = room.currentMatchParticipants.filter(p => p.name !== playerName);
+  }
+
+  if (room.players.length === 0) {
+    clearTurnTimer(room);
+    delete rooms[roomId];
+  } else {
+    if (room.currentTurnIdx >= room.players.length) {
+      room.currentTurnIdx = 0;
+    }
+    if (room.dealerIdx >= room.players.length) {
+      room.dealerIdx = 0;
+    }
+    if (room.gameStarted && getActivePlayers(room).length <= 1) {
+      startNewRound(roomId);
+    } else {
+      broadcastState(roomId, `${playerName} left the room.`);
+    }
+  }
+  broadcastRoomList();
+}
+
+function handlePlayerDisconnect(socketId) {
+  for (const [roomId, room] of Object.entries(rooms)) {
+    const playerIdx = room.players.findIndex(p => p.id === socketId);
+    if (playerIdx !== -1) {
+      const player = room.players[playerIdx];
+      player.disconnected = true;
+
+      const key = `${roomId}:::${player.name}`;
+      if (disconnectTimeouts[key]) clearTimeout(disconnectTimeouts[key]);
+
+      disconnectTimeouts[key] = setTimeout(() => {
+        delete disconnectTimeouts[key];
+        finalizePlayerExit(roomId, player.name);
+      }, 15000);
+
+      broadcastState(roomId, `${player.name} disconnected.`);
+      broadcastRoomList();
+      break;
+    }
+  }
 }
 
 function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
     const spectatorCount = r.players.filter(p => p.isSpectator).length;
-    let totalPot = activeCount * 5;
+    
+    let totalPot = 0;
+    if (r.gameStarted && r.currentMatchParticipants) {
+      totalPot = r.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
+    } else {
+      totalPot = getActivePlayers(r).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+    }
+
     return {
       roomId: id,
       gameStarted: r.gameStarted,
@@ -112,16 +421,37 @@ function broadcastRoomList() {
   io.emit('roomListUpdate', roomList);
 }
 
+function broadcastSpectatorPeeks(room) {
+  if (!room.spectatorPeeks) return;
+
+  for (const [spectatorId, targetPlayerId] of Object.entries(room.spectatorPeeks)) {
+    const targetPlayer = room.players.find(p => p.id === targetPlayerId);
+    if (targetPlayer && targetPlayer.hand) {
+      io.to(spectatorId).emit('spectatorHandUpdate', {
+        targetPlayerName: targetPlayer.name,
+        targetPlayerId: targetPlayer.id,
+        hand: targetPlayer.hand,
+        score: calculateScore(targetPlayer.hand)
+      });
+    } else {
+      delete room.spectatorPeeks[spectatorId];
+      io.to(spectatorId).emit('spectatorHandRevoked');
+    }
+  }
+}
+
 function startDealerCut(room) {
   room.dealerCutActive = true;
   room.dealerCutPicks = {};
+  
   const eligible = getActivePlayers(room);
   room.dealerCutPlayerIds = eligible.map(p => p.id);
+
   let cutDeck = createDeck();
   room.dealerCutDeck = cutDeck;
 
   eligible.forEach(p => {
-    if (!p.isSpectator && !p.isBot) {
+    if (!p.isSpectator) {
       io.to(p.id).emit('startDealerSelectionCut', {
         deckCount: Math.min(cutDeck.length, 30),
         players: eligible.map(pl => ({ id: pl.id, name: pl.name }))
@@ -136,11 +466,13 @@ function startDealerCut(room) {
         const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
         const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
         room.dealerCutPicks[p.id] = { player: p, card: card };
+
         io.to(room.id).emit('dealerCutCardPicked', {
           playerId: p.id,
           playerName: p.name,
           remainingCount: room.dealerCutDeck.length
         });
+
         checkDealerCutComplete(room);
       }, 1000 + Math.random() * 800);
     }
@@ -151,6 +483,12 @@ function checkDealerCutComplete(room) {
   if (!room.dealerCutActive) return;
   const eligible = getActivePlayers(room);
   room.dealerCutPlayerIds = eligible.map(p => p.id);
+
+  for (const pickId of Object.keys(room.dealerCutPicks)) {
+    if (!eligible.some(p => p.id === pickId)) {
+      delete room.dealerCutPicks[pickId];
+    }
+  }
 
   const requiredCount = room.dealerCutPlayerIds.length;
   const pickedCount = Object.keys(room.dealerCutPicks).length;
@@ -180,22 +518,40 @@ function checkDealerCutComplete(room) {
     }
   });
 
-  io.to(room.id).emit('dealerCutResultsReveal', { results: revealData });
+  io.to(room.id).emit('dealerCutResultsReveal', {
+    results: revealData
+  });
 
   if (lowestPickers.length > 1) {
     setTimeout(() => {
       if (!room) return;
+      io.to(room.id).emit('bannerAnnouncement', {
+        text: `Tie for lowest dealer cut card! Re-cutting...`,
+        duration: 4000
+      });
       room.dealerCutActive = true;
       room.dealerCutPicks = {};
       room.dealerCutPlayerIds = lowestPickers.map(l => l.player.id);
       room.dealerCutDeck = createDeck();
 
       lowestPickers.forEach(l => {
-        if (!l.player.isSpectator && !l.player.isBot) {
+        if (!l.player.isSpectator) {
           io.to(l.player.id).emit('startDealerSelectionCut', {
             deckCount: Math.min(room.dealerCutDeck.length, 30),
             players: lowestPickers.map(lp => ({ id: lp.player.id, name: lp.player.name }))
           });
+        }
+      });
+
+      lowestPickers.forEach(l => {
+        if (l.player.isBot) {
+          setTimeout(() => {
+            if (!room.dealerCutActive || room.dealerCutPicks[l.player.id]) return;
+            const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
+            const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
+            room.dealerCutPicks[l.player.id] = { player: l.player, card: card };
+            checkDealerCutComplete(room);
+          }, 1000 + Math.random() * 800);
         }
       });
     }, 3200);
@@ -220,29 +576,108 @@ function checkDealerCutComplete(room) {
 function startNewRound(roomId) {
   const room = rooms[roomId];
   if (!room) return;
-  const active = getActivePlayers(room);
 
+  if (room.spectatorPeeks) {
+    for (const specId of Object.keys(room.spectatorPeeks)) {
+      io.to(specId).emit('spectatorHandRevoked');
+    }
+    room.spectatorPeeks = {};
+  }
+
+  const active = getActivePlayers(room);
   if (active.length <= 1) {
+    const winner = active[0] || null;
+    const winnerName = winner ? winner.name : 'Nobody';
+
+    io.to(roomId).emit('bigAnnouncement', {
+      title: '🏆 GAME OVER 🏆',
+      message: `${winnerName.toUpperCase()} WINS!`,
+      subtext: `${winnerName} will deal the next match!`,
+      duration: 8000
+    });
+
     room.gameStarted = false;
-    broadcastState(roomId, 'Game over: not enough active players.');
+    room.currentMatchParticipants = [];
+    room.peerSideBets = [];
+
+    room.players.forEach(p => { 
+      if (!p.manualSpectator) {
+        p.isSpectator = false;
+        p.lives = room.configuredLives || 2;
+      } else {
+        p.isSpectator = true;
+        p.lives = 0;
+      }
+      p.isReady = false; 
+    });
+
+    broadcastState(roomId, `Game over! ${winnerName} won.`);
     broadcastRoomList();
     return;
   }
 
+  room.players.forEach(p => { p.isReady = false; });
+
   room.deck = createDeck();
   room.discardPile = [];
   room.knockerId = null;
+  room.turnsLeftAfterKnock = null;
   room.drawnCard = null;
   room.isResolvingRound = false;
+  room.turnsTakenInRound = 0;
+  room.currentDiscardFeederId = null;
+  room.peerSideBets = (room.peerSideBets || []).filter(b => b.type === 'firstLoser');
 
-  active.forEach(p => {
+  if (!room.isFirstRoundOfMatch) {
+    for (let i = 1; i <= room.players.length; i++) {
+      const nextD = (room.dealerIdx + i) % room.players.length;
+      const candidate = room.players[nextD];
+      if (candidate && !candidate.isSpectator && candidate.lives > 0) {
+        room.dealerIdx = nextD;
+        break;
+      }
+    }
+  } else {
+    room.isFirstRoundOfMatch = false;
+  }
+
+  const dealer = room.players[room.dealerIdx];
+  const dealOrder = [...active].sort((a, b) => (a.joinOrder || 0) - (b.joinOrder || 0));
+
+  dealOrder.forEach(p => {
     p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+    p.fedCardsTracker = {};
+    p.discardPickedCards = [];
+    p.lastDrawnSource = 'deal';
+
+    if (dealer && dealer.id !== p.id) {
+      p.fedCardsTracker[dealer.id] = [];
+      p.hand.forEach(c => {
+        if (c.rank === 'A' || c.value === 10) {
+          p.fedCardsTracker[dealer.id].push(c);
+        }
+      });
+    }
   });
 
-  room.discardPile.push(room.deck.pop());
-  room.currentTurnIdx = room.dealerIdx;
+  const firstDiscard = room.deck.pop();
+  room.discardPile.push(firstDiscard);
+  room.initialDiscardCard = firstDiscard;
 
-  broadcastState(roomId, `New round started! Dealer: ${room.players[room.dealerIdx].name}`);
+  for (const p of active) {
+    if (calculateScore(p.hand) === 31) {
+      broadcastState(roomId, `⚡ ${p.name} was dealt 31!`);
+      checkAndHandle31(room, p);
+      return;
+    }
+  }
+
+  room.currentTurnIdx = room.dealerIdx;
+  advanceTurnIndex(room);
+
+  broadcastState(roomId, `New round! Dealer: ${dealer?.name || 'Dealer'}.`);
+  broadcastRoomList();
+  triggerBotTurnIfNeeded(roomId);
 }
 
 function broadcastState(roomId, message = '') {
@@ -250,11 +685,31 @@ function broadcastState(roomId, message = '') {
   if (!room) return;
 
   const active = getActivePlayers(room);
-  const currentTurnPlayer = room.players[room.currentTurnIdx] || room.players[0];
-  const totalGamePot = active.reduce((sum, p) => sum + (p.matchWager || 0), 0);
+  const currentTurnPlayer = room.players[room.currentTurnIdx];
+  const minKnockScore = active.length === 2 ? 25 : 21;
+  const roundHasPassed = room.turnsTakenInRound >= active.length;
+  
+  let totalGamePot = 0;
+  if (room.gameStarted && room.currentMatchParticipants) {
+    totalGamePot = room.currentMatchParticipants.reduce((sum, p) => sum + p.wager, 0);
+  } else {
+    totalGamePot = getActivePlayers(room).reduce((sum, p) => sum + (p.matchWager || 0), 0);
+  }
+
+  const activeSideBetsTotal = (room.peerSideBets || [])
+    .filter(b => b.accepted)
+    .reduce((sum, b) => sum + (b.amount * 2), 0);
+
+  let deckCount = room.deck ? room.deck.length : 52;
 
   room.players.forEach(p => {
     if (p.isBot) return;
+
+    const isCurrent = currentTurnPlayer && currentTurnPlayer.id === p.id && !room.isResolvingRound && !p.isSpectator;
+    const score = p.isSpectator ? 0 : calculateScore(p.hand);
+    const canKnock = isCurrent && !room.knockerId && roundHasPassed && score >= minKnockScore && !room.drawnCard;
+
+    const personalLedgerData = getPersonalLedger(room, p.name);
 
     io.to(p.id).emit('gameState', {
       myWager: p.matchWager || 0,
@@ -274,46 +729,151 @@ function broadcastState(roomId, message = '') {
         disconnected: Boolean(pl.disconnected),
         matchWager: pl.matchWager || 0
       })),
-      allTableMembers: room.players.map(pl => ({
-        id: pl.id,
-        name: pl.name,
-        isOnline: true,
-        isSpectator: Boolean(pl.isSpectator),
-        lives: pl.lives
-      })),
-      hand: p.hand || [],
-      score: calculateScore(p.hand),
-      minKnockScore: 21,
-      roundHasPassed: true,
-      topDiscard: room.discardPile && room.discardPile.length > 0 ? room.discardPile[room.discardPile.length - 1] : null,
+      allTableMembers: (room.knownMembers || []).map(name => {
+        const pl = room.players.find(x => x.name === name);
+        return {
+          id: pl ? pl.id : name,
+          name: name,
+          isOnline: Boolean(pl && !pl.disconnected),
+          isSpectator: Boolean(pl && pl.isSpectator),
+          lives: pl ? pl.lives : 0
+        };
+      }),
+      hand: p.isSpectator ? [] : p.hand,
+      score: score,
+      minKnockScore: minKnockScore,
+      roundHasPassed: roundHasPassed,
+      topDiscard: room.discardPile[room.discardPile.length - 1] || null,
       firstCardPickedUp: null,
-      deckCount: room.deck ? room.deck.length : 52,
-      isMyTurn: currentTurnPlayer?.id === p.id && room.gameStarted,
-      hasDrawn: false,
-      canKnock: false,
+      deckCount: deckCount,
+      isMyTurn: isCurrent,
+      hasDrawn: Boolean(room.drawnCard),
+      canKnock: canKnock,
       isSpectator: Boolean(p.isSpectator),
       manualSpectator: Boolean(p.manualSpectator),
       gameStarted: room.gameStarted,
-      knocker: null,
+      knocker: room.knockerId ? room.players.find(pl => pl.id === room.knockerId)?.name : null,
       isReady: Boolean(p.isReady),
       activePlayersCount: getNonSpectatorCount(room),
       botCount: room.players.filter(pl => pl.isBot).length,
       maxActivePlayers: MAX_ACTIVE_PLAYERS,
       totalPot: totalGamePot,
-      sideBetActionTotal: 0,
-      activeSideBets: [],
-      personalLedger: [],
-      netOverallBalance: 0,
-      netSideBetBalance: 0,
+      sideBetActionTotal: activeSideBetsTotal,
+      activeSideBets: (room.peerSideBets || []).map(b => ({
+        id: b.id,
+        type: b.type,
+        bettor: b.bettorName,
+        opponent: b.opponentName,
+        targetPlayer: b.targetPlayerName,
+        amount: b.amount,
+        accepted: b.accepted
+      })),
+      personalLedger: personalLedgerData.balances,
+      netOverallBalance: personalLedgerData.totalNet,
+      netSideBetBalance: personalLedgerData.totalSideBetNet,
       message: message
     });
   });
 
-  broadcastRoomList();
+  broadcastSpectatorPeeks(room);
+}
+
+function resolveShowdown(roomId) {
+  const room = rooms[roomId];
+  if (!room || room.isResolvingRound) return;
+  room.isResolvingRound = true;
+
+  const active = getActivePlayers(room);
+  let minScore = 32;
+  let scores = {};
+
+  active.forEach(p => {
+    const sc = calculateScore(p.hand);
+    scores[p.id] = sc;
+    if (sc < minScore) minScore = sc;
+  });
+
+  const lowestPlayers = active.filter(p => scores[p.id] === minScore);
+  const revealedHands = getRevealedHands(room);
+
+  let singleLoser = lowestPlayers[0];
+  singleLoser.lives -= 1;
+
+  io.to(roomId).emit('bigAnnouncement', {
+    title: '💀 ROUND OVER 💀',
+    message: `LOSER: ${singleLoser.name}`,
+    subtext: `Lowest Score: ${minScore}`,
+    hands: revealedHands,
+    duration: 7500
+  });
+
+  setTimeout(() => startNewRound(roomId), 7500);
+}
+
+function triggerBotTurnIfNeeded(roomId) {
+  const room = rooms[roomId];
+  if (!room || !room.gameStarted || room.isResolvingRound) return;
+
+  const current = room.players[room.currentTurnIdx];
+  if (!current || !current.isBot || current.lives <= 0 || current.isSpectator) return;
+
+  while (current.hand && current.hand.length < 3 && room.deck && room.deck.length > 0) {
+    current.hand.push(room.deck.pop());
+  }
+
+  setTimeout(() => {
+    if (!rooms[roomId] || room.isResolvingRound) return;
+
+    const activeCount = getActivePlayers(room).length;
+    const score = calculateScore(current.hand);
+
+    let drawn;
+    if (room.deck.length === 0) {
+      const top = room.discardPile.pop();
+      room.deck = room.discardPile.concat(room.discardPile.sort(() => Math.random() - 0.5));
+      room.discardPile = [top];
+    }
+    drawn = room.deck.pop();
+    current.hand.push(drawn);
+
+    let bestIdx = 0;
+    let bestScore = -1;
+    for (let i = 0; i < current.hand.length; i++) {
+      const remaining = current.hand.slice(0, i).concat(current.hand.slice(i + 1));
+      const s = calculateScore(remaining);
+      if (s > bestScore) {
+        bestScore = s;
+        bestIdx = i;
+      }
+    }
+    const [discarded] = current.hand.splice(bestIdx, 1);
+    room.discardPile.push(discarded);
+    room.turnsTakenInRound += 1;
+
+    if (checkAndHandle31(room, current)) return;
+
+    if (room.knockerId) {
+      room.turnsLeftAfterKnock -= 1;
+      if (room.turnsLeftAfterKnock <= 0) {
+        resolveShowdown(roomId);
+        return;
+      }
+    }
+
+    advanceTurnIndex(room);
+    broadcastState(roomId, `${current.name} discarded ${discarded.rank}${discarded.suit}.`);
+    triggerBotTurnIfNeeded(roomId);
+  }, 1200);
 }
 
 io.on('connection', (socket) => {
   broadcastRoomList();
+
+  socket.on('requestStateSync', (roomId) => {
+    if (roomId && rooms[roomId]) {
+      broadcastState(roomId);
+    }
+  });
 
   socket.on('joinRoom', ({ roomId, playerName, deviceId }) => {
     socket.join(roomId);
@@ -335,14 +895,15 @@ io.on('connection', (socket) => {
       };
     }
     const room = rooms[roomId];
-    let safeName = playerName ? playerName.trim() : `Player ${room.players.length + 1}`;
+    let safeName = playerName ? playerName.trim() : '';
 
     if (!room.knownMembers.includes(safeName)) {
       room.knownMembers.push(safeName);
     }
 
-    const existing = room.players.find(p => p.name === safeName || (deviceId && p.deviceId === deviceId));
+    let existing = room.players.find(p => p.deviceId === deviceId || p.name === safeName);
     if (existing) {
+      existing.name = safeName;
       existing.id = socket.id;
       existing.disconnected = false;
     } else {
@@ -363,20 +924,12 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId, `${safeName} joined the room.`);
+    broadcastRoomList();
   });
 
   socket.on('leaveRoom', (roomId) => {
     socket.leave(roomId);
-    const room = rooms[roomId];
-    if (room) {
-      room.players = room.players.filter(p => p.id !== socket.id);
-      if (room.players.length === 0) {
-        delete rooms[roomId];
-      } else {
-        broadcastState(roomId, `A player left.`);
-      }
-    }
-    broadcastRoomList();
+    finalizePlayerExit(roomId, socket.id);
   });
 
   socket.on('toggleSpectate', (roomId) => {
@@ -391,6 +944,7 @@ io.on('connection', (socket) => {
     player.isReady = false;
 
     broadcastState(roomId, `${player.name} is now ${player.isSpectator ? 'Spectating' : 'Playing'}.`);
+    broadcastRoomList();
   });
 
   socket.on('setWager', ({ roomId, wager }) => {
@@ -454,6 +1008,7 @@ io.on('connection', (socket) => {
       room.isFirstRoundOfMatch = true;
       startDealerCut(room);
     }
+    broadcastRoomList();
   });
 
   socket.on('removeBot', (roomId) => {
@@ -465,6 +1020,7 @@ io.on('connection', (socket) => {
       room.players.splice(lastBotIdx, 1);
       broadcastState(roomId, `Bot removed.`);
     }
+    broadcastRoomList();
   });
 
   socket.on('pickDealerCutCard', ({ roomId, cardIndex }) => {
@@ -536,20 +1092,13 @@ io.on('connection', (socket) => {
 
     if (checkAndHandle31(room, player)) return;
 
-    room.currentTurnIdx = (room.currentTurnIdx + 1) % room.players.length;
+    advanceTurnIndex(room);
     broadcastState(roomId, `${player.name} discarded ${discarded.rank}${discarded.suit}.`);
+    triggerBotTurnIfNeeded(roomId);
   });
 
   socket.on('disconnect', () => {
-    for (const [roomId, room] of Object.entries(rooms)) {
-      room.players = room.players.filter(p => p.id !== socket.id);
-      if (room.players.length === 0) {
-        delete rooms[roomId];
-      } else {
-        broadcastState(roomId, `A player disconnected.`);
-      }
-    }
-    broadcastRoomList();
+    handlePlayerDisconnect(socket.id);
   });
 });
 
