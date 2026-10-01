@@ -475,7 +475,7 @@
   <!-- INCOMING VOICE INVITE ALERT MODAL -->
   <div id="incomingVoiceInviteModal" class="custom-modal">
     <div class="modal-card" style="border-color:#00897b; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️️ Voice Invitation</div>
+      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️ Voice Invitation</div>
       <div id="incomingVoiceText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Player invited you to join voice chat.
       </div>
@@ -1906,7 +1906,7 @@
             const dealerMark = (mePlayer && mePlayer.isDealer) ? ' [D]' : '';
             const myLives = mePlayer ? mePlayer.lives : 2;
             const turnMark = (mePlayer && mePlayer.isTurn) ? ' ⭐' : '';
-            document.getElementById('centerPlayerNameLabel').innerText = `${readyMark}${myPlayerName}${dealerMark}${turnMark} (${myLives} ❤️️)`;
+            document.getElementById('centerPlayerNameLabel').innerText = `${readyMark}${myPlayerName}${dealerMark}${turnMark} (${myLives} ❤️)`;
             centerBadge.style.borderColor = (mePlayer && mePlayer.isTurn) ? '#ffcc00' : '#ffd700';
             centerBadge.style.background = (mePlayer && mePlayer.isTurn) ? 'rgba(255,204,0,0.3)' : 'rgba(0,0,0,0.85)';
           } else {
