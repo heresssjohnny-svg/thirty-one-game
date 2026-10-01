@@ -26,8 +26,15 @@
         .lobby-list-container { max-height: 120px; overflow-y: auto; background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 6px; }
         .lobby-item { display: flex; justify-content: space-between; padding: 4px; border-bottom: 1px solid #1e293b; cursor: pointer; font-size: 0.85rem; }
 
-        #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; }
+        #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
+        /* Top-Left Regular Chat Window */
+        #chat-window { position: absolute; top: 10px; left: 10px; width: 220px; height: 140px; background: rgba(30,41,59,0.9); border: 1px solid #475569; border-radius: 8px; display: flex; flex-direction: column; padding: 6px; z-index: 100; font-size: 0.75rem; }
+        #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; }
+        .chat-input-row { display: flex; gap: 4px; }
+        .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
+        .chat-input-row button { padding: 4px 8px; font-size: 0.75rem; }
+
         .table-oval { position: relative; width: 700px; max-width: 95vw; height: 320px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #78350f; border-radius: 160px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 30px rgba(0,0,0,0.6); }
         
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
@@ -35,11 +42,11 @@
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -18px; font-size: 0.75rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 120px; }
-        .seat-0 { bottom: -10px; left: calc(50% - 60px); border-color: #38bdf8; }
+        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; }
+        .seat-0 { bottom: -10px; left: calc(50% - 65px); border-color: #38bdf8; }
         .seat-1 { bottom: 45px; left: 15px; }
         .seat-2 { top: 45px; left: 20px; }
-        .seat-3 { top: -15px; left: calc(50% - 60px); }
+        .seat-3 { top: -15px; left: calc(50% - 65px); }
         .seat-4 { top: 45px; right: 20px; }
         .seat-5 { bottom: 45px; right: 15px; }
         .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
@@ -114,13 +121,22 @@
                     <button class="secondary" style="padding: 2px 6px; font-size: 0.75rem;" onclick="refreshLobbies()">Refresh</button>
                 </div>
                 <div class="lobby-list-container" id="lobby-list">
-                    <div style="text-align:center; color:#64748b; padding:6px;">No lobbies</div>
+                    <div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>
                 </div>
             </div>
         </div>
 
         <!-- Game View -->
         <div id="game-view">
+            <!-- Top-Left Regular Chat Window -->
+            <div id="chat-window">
+                <div id="chat-messages"></div>
+                <div class="chat-input-row">
+                    <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+                    <button onclick="sendChatMessage()">Send</button>
+                </div>
+            </div>
+
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.85rem; font-weight:bold; color:#38bdf8;">Lobby</span>
                 <div id="turn-banner">Turn: Waiting...</div>
@@ -171,7 +187,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knocking warns you if an Ace or face card is showing in the discard pile!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Check marks show ready status (❌/✅). WebRTC voice chat allows talking with players!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -192,8 +208,10 @@
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
-        let mediaRecorder = null;
-        let audioStream = null;
+        
+        let localAudioStream = null;
+        let peerConnections = {};
+        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         window.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('saved_username')) {
@@ -226,7 +244,6 @@
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                // Play 3 door knocks in rapid succession
                 [0, 0.12, 0.24].forEach(delay => {
                     let osc = audioCtx.createOscillator();
                     let gain = audioCtx.createGain();
@@ -271,9 +288,12 @@
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
                     if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                    else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') updateUIFromLobby(data.lobby);
+                    else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                        updateUIFromLobby(data.lobby);
+                        handleWebRTCConnections(data.lobby);
+                    } else if (data.type === 'CHAT_MESSAGE') appendChatMessage(data.username, data.message);
+                    else if (data.type === 'WEBRTC_SIGNAL') handleWebRTCSignal(data.sender, data.signal);
                     else if (data.type === 'LEFT_LOBBY') resetToMainMenu();
-                    else if (data.type === 'VOICE_DATA') playRemoteAudio(data.audioData);
                     else if (data.type === 'ERROR') alert(data.message);
                 };
                 ws.onclose = () => { isConnected = false; };
@@ -351,6 +371,133 @@
             }
         }
 
+        function sendChatMessage() {
+            let input = document.getElementById('chat-input');
+            let text = input.value.trim();
+            if (text && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'CHAT_MESSAGE', message: text }));
+                input.value = '';
+            }
+        }
+
+        function appendChatMessage(user, msg) {
+            let box = document.getElementById('chat-messages');
+            box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function toggleVoiceChat() {
+            let status = document.getElementById('vc-status');
+            if (status.innerText === 'Off') {
+                try {
+                    localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    status.innerText = 'On';
+                    // Trigger peer connections update if lobby already joined
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        refreshLobbies();
+                    }
+                } catch (e) {
+                    alert('Microphone access denied or unavailable.');
+                }
+            } else {
+                if (localAudioStream) {
+                    localAudioStream.getTracks().forEach(t => t.stop());
+                    localAudioStream = null;
+                }
+                for (let user in peerConnections) {
+                    peerConnections[user].close();
+                    delete peerConnections[user];
+                }
+                status.innerText = 'Off';
+            }
+        }
+
+        function handleWebRTCConnections(lobby) {
+            if (!localAudioStream) return;
+            let allOccupants = [...lobby.players, ...lobby.spectators].map(o => o.username).filter(u => u !== clientState.username);
+            
+            allOccupants.forEach(peerUser => {
+                if (!peerConnections[peerUser]) {
+                    let pc = new RTCPeerConnection(rtcConfig);
+                    peerConnections[peerUser] = pc;
+
+                    localAudioStream.getTracks().forEach(track => pc.addTrack(track, localAudioStream));
+
+                    pc.ontrack = (event) => {
+                        let audioElem = new Audio();
+                        audioElem.srcObject = event.streams[0];
+                        audioElem.autoplay = true;
+                        audioElem.play().catch(e => {});
+                    };
+
+                    pc.onicecandidate = (event) => {
+                        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'WEBRTC_SIGNAL',
+                                target: peerUser,
+                                signal: { candidate: event.candidate }
+                            }));
+                        }
+                    };
+
+                    // Initiate offer if alphabetically first
+                    if (clientState.username < peerUser) {
+                        pc.createOffer().then(offer => {
+                            return pc.setLocalDescription(offer);
+                        }).then(() => {
+                            ws.send(JSON.stringify({
+                                type: 'WEBRTC_SIGNAL',
+                                target: peerUser,
+                                signal: { sdp: pc.localDescription }
+                            }));
+                        });
+                    }
+                }
+            });
+        }
+
+        async function handleWebRTCSignal(sender, signal) {
+            if (!localAudioStream) return;
+            let pc = peerConnections[sender];
+            if (!pc) {
+                pc = new RTCPeerConnection(rtcConfig);
+                peerConnections[sender] = pc;
+                localAudioStream.getTracks().forEach(track => pc.addTrack(track, localAudioStream));
+
+                pc.ontrack = (event) => {
+                    let audioElem = new Audio();
+                    audioElem.srcObject = event.streams[0];
+                    audioElem.autoplay = true;
+                    audioElem.play().catch(e => {});
+                };
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'WEBRTC_SIGNAL',
+                            target: sender,
+                            signal: { candidate: event.candidate }
+                        }));
+                    }
+                };
+            }
+
+            if (signal.sdp) {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+                if (signal.sdp.type === 'offer') {
+                    let answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    ws.send(JSON.stringify({
+                        type: 'WEBRTC_SIGNAL',
+                        target: sender,
+                        signal: { sdp: pc.localDescription }
+                    }));
+                }
+            } else if (signal.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            }
+        }
+
         function requestPeek(targetUsername) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'REQUEST_PEEK', targetUsername }));
@@ -362,39 +509,6 @@
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'RESPOND_PEEK', spectatorUsername, allow }));
             }
-        }
-
-        async function toggleVoiceChat() {
-            let status = document.getElementById('vc-status');
-            if (status.innerText === 'Off') {
-                try {
-                    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(audioStream);
-                    mediaRecorder.ondataavailable = async (e) => {
-                        if (e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
-                            let buffer = await e.data.arrayBuffer();
-                            ws.send(JSON.stringify({ type: 'VOICE_DATA', audioData: Array.from(new Uint8Array(buffer)) }));
-                        }
-                    };
-                    mediaRecorder.start(300);
-                    status.innerText = 'On';
-                } catch (e) { alert('Microphone unavailable or permission denied.'); }
-            } else {
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                }
-                if (audioStream) {
-                    audioStream.getTracks().forEach(track => track.stop());
-                    audioStream = null;
-                }
-                mediaRecorder = null;
-                status.innerText = 'Off';
-            }
-        }
-
-        function playRemoteAudio(arrayData) {
-            let blob = new Blob([new Uint8Array(arrayData)], { type: 'audio/webm' });
-            new Audio(URL.createObjectURL(blob)).play().catch(e => {});
         }
 
         function updateUIFromLobby(lobby) {
@@ -513,7 +627,8 @@
                     revealedCardsHtml = `<div style="margin-top:2px;"><button style="font-size:0.6rem; padding:2px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
-                html += `<div class="seat seat-${p.seat}"><b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
+                let readyStatusIcon = p.ready ? '✅' : '❌';
+                html += `<div class="seat seat-${p.seat}"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
@@ -579,18 +694,18 @@
         }
         
         function leaveLobby() {
-            if (audioStream) {
-                audioStream.getTracks().forEach(t => t.stop());
-                audioStream = null;
+            if (localAudioStream) {
+                localAudioStream.getTracks().forEach(t => t.stop());
+                localAudioStream = null;
             }
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
             else resetToMainMenu();
         }
 
         function resetToMainMenu() {
-            if (audioStream) {
-                audioStream.getTracks().forEach(t => t.stop());
-                audioStream = null;
+            if (localAudioStream) {
+                localAudioStream.getTracks().forEach(t => t.stop());
+                localAudioStream = null;
             }
             document.getElementById('game-view').style.display = 'none';
             document.getElementById('main-menu').style.display = 'flex';
