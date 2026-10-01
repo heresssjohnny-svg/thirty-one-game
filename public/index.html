@@ -414,6 +414,10 @@
         `;
         container.appendChild(box);
       });
+
+      setTimeout(() => {
+        document.getElementById('dealerCutOverlay').classList.remove('active');
+      }, 2500);
     });
 
     socket.on('bigAnnouncement', (data) => {
