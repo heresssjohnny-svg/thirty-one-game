@@ -446,6 +446,10 @@ function startDealerDrawPhase(lobby) {
 }
 
 function handlePoolCardSelection(lobby, username, cardIndex) {
+    if (lobby.gameState === 'tieBreaker' && !lobby.tiedParticipantsList.includes(username)) {
+        return; // Restrict non-tied players from picking
+    }
+
     if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
         lobby.drawPool[cardIndex].chosenBy = username;
         let card = lobby.drawPool[cardIndex].card;
