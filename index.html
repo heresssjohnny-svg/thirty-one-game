@@ -93,7 +93,12 @@
                 <label>Lobby Name</label>
                 <input type="text" id="lobby-name-input" oninput="saveInputs()">
             </div>
-            <button onclick="createLobby()">Create Lobby</button>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button onclick="createLobby()" style="flex:1;">Create Lobby</button>
+                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size:0.85rem;">
+                    <input type="checkbox" id="private-lobby-checkbox"> Private
+                </label>
+            </div>
 
             <div class="input-group">
                 <label>Join Code</label>
@@ -104,7 +109,10 @@
             </div>
 
             <div class="input-group">
-                <label>Public Lobbies</label>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label>Public Lobbies</label>
+                    <button class="secondary" style="padding: 2px 6px; font-size: 0.75rem;" onclick="refreshLobbies()">Refresh</button>
+                </div>
                 <div class="lobby-list-container" id="lobby-list">
                     <div style="text-align:center; color:#64748b; padding:6px;">No lobbies</div>
                 </div>
@@ -163,7 +171,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Tie-breakers restrict card drawing only to tied players. Heads-up ties result in no life loss!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knocking warns you if an Ace or face card is showing in the discard pile!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -180,7 +188,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [] };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], discardTop: null };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -194,6 +202,7 @@
             if (localStorage.getItem('saved_lobby_name')) {
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
+            refreshLobbies();
         });
 
         function saveInputs() {
@@ -204,26 +213,33 @@
         function playSound(type) {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            let osc = audioCtx.createOscillator();
-            let gain = audioCtx.createGain();
             let now = audioCtx.currentTime;
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
 
             if (type === 'ding') {
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
                 osc.frequency.setValueAtTime(587.33, now);
                 gain.gain.setValueAtTime(0.2, now);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(120, now);
-                osc.frequency.exponentialRampToValueAtTime(45, now + 0.2);
-                gain.gain.setValueAtTime(0.5, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                osc.start(now);
-                osc.stop(now + 0.2);
+                // Play 3 door knocks in rapid succession
+                [0, 0.12, 0.24].forEach(delay => {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'square';
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.setValueAtTime(140, now + delay);
+                    osc.frequency.exponentialRampToValueAtTime(50, now + delay + 0.08);
+                    gain.gain.setValueAtTime(0.4, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.08);
+                    osc.start(now + delay);
+                    osc.stop(now + delay + 0.08);
+                });
             }
         }
 
@@ -264,15 +280,33 @@
             }
         }
 
+        function refreshLobbies() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'REFRESH_LOBBIES' }));
+            } else {
+                const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+                let tempWs = new WebSocket(protocol + location.host);
+                tempWs.onopen = () => {
+                    tempWs.send(JSON.stringify({ type: 'REFRESH_LOBBIES' }));
+                };
+                tempWs.onmessage = (e) => {
+                    let data = JSON.parse(e.data);
+                    if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
+                    tempWs.close();
+                };
+            }
+        }
+
         function renderLobbyList(lobbies) {
             let container = document.getElementById('lobby-list');
-            if (lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies</div>'; return; }
+            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
             container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress (Spectate)'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
         function createLobby() {
             let lobbyName = document.getElementById('lobby-name-input').value || 'My Table';
-            initSocketAndSend({ type: 'CREATE_LOBBY', username: document.getElementById('username-input').value || 'Player1', lobbyName });
+            let isPrivate = document.getElementById('private-lobby-checkbox').checked;
+            initSocketAndSend({ type: 'CREATE_LOBBY', username: document.getElementById('username-input').value || 'Player1', lobbyName, isPrivate });
         }
 
         function joinLobby() {
@@ -371,6 +405,8 @@
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
             clientState.playersList = lobby.players.map(p => p.username);
+            clientState.discardTop = lobby.discardTop;
+
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
@@ -420,7 +456,6 @@
 
                 let gridHtml = '';
                 lobby.drawPool.forEach((slot) => {
-                    let isTiedUser = !isTieBreaker || lobby.tiedParticipantsList.includes(slot.chosenBy);
                     if (slot.chosenBy) {
                         let revealedCard = lobby.drawResults[slot.chosenBy];
                         gridHtml += `
@@ -430,7 +465,6 @@
                             </div>
                         `;
                     } else {
-                        // In tie breaker, only allow clicking if user is part of tied list
                         let clickable = !isTieBreaker || lobby.tiedParticipantsList.includes(clientState.username);
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable && isTieBreaker ? 'opacity:0.5; cursor:not-allowed;' : ''}">
@@ -528,7 +562,16 @@
 
         function drawCard(type) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' })); }
         function discardCard(cardIndex) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'DISCARD_CARD', cardIndex })); }
-        function knockRound() { 
+        
+        function knockRound() {
+            if (clientState.discardTop) {
+                let topVal = clientState.discardTop.val;
+                if (topVal === 'A' || ['10', 'J', 'Q', 'K'].includes(topVal)) {
+                    if (!confirm(`Warning: An Ace or face card (${topVal}) is currently showing in the discard pile! Are you sure you want to knock?`)) {
+                        return;
+                    }
+                }
+            }
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'KNOCK' }));
                 playSound('knock');
@@ -563,6 +606,7 @@
             document.getElementById('knock-btn').style.display = 'inline-block';
             document.getElementById('knock-btn').disabled = true;
             document.getElementById('vc-status').innerText = 'Off';
+            refreshLobbies();
         }
 
         function toggleModal(id) {
