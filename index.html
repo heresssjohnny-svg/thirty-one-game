@@ -53,11 +53,11 @@
         #notification-banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; z-index: 3000; display: none; }
         
         /* Modal Overlays */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 2000; }
-        .modal-content { background: #1e293b; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px; display: flex; flex-direction: column; gap: 15px; border: 1px solid #334155; text-align: center; }
-        .dealer-draw-grid { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-        .dealer-card-option { width: 65px; height: 95px; background: #1e3a8a; border: 2px solid #38bdf8; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; color: #fff; font-size: 0.9rem; }
-        .dealer-card-option.revealed { background: #fff; color: #0f172a; flex-direction: column; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; }
+        .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; width: 95%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; gap: 12px; border: 1px solid #334155; text-align: center; }
+        .pool-cards-grid { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; overflow-y: auto; max-height: 350px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #475569; }
+        .pool-card-item { width: 45px; height: 65px; background: #1e3a8a; border: 1px solid #38bdf8; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; color: #fff; font-size: 0.75rem; }
+        .pool-card-item.revealed { background: #fff; color: #0f172a; flex-direction: column; font-size: 0.65rem; }
     </style>
 </head>
 <body>
@@ -139,20 +139,20 @@
         </div>
     </main>
 
-    <!-- Dealer Draw Modal Window -->
-    <div id="dealer-draw-modal" class="modal">
+    <!-- Card Pool Selection Modal (Used for Dealer Draw & Tie Breaker) -->
+    <div id="pool-draw-modal" class="modal">
         <div class="modal-content">
-            <h3>Picking for Dealer</h3>
-            <p id="dealer-instruction" style="font-size:0.85rem; color:#cbd5e1;">Click a face-down card to draw. Lowest card deals (Ace is highest)!</p>
-            <div class="dealer-draw-grid" id="dealer-draw-cards-container"></div>
-            <div id="dealer-announcement" style="font-size:0.9rem; font-weight:bold; color:#38bdf8; margin-top:10px;"></div>
+            <h3 id="pool-modal-title">Card Selection</h3>
+            <p id="pool-modal-instruction" style="font-size:0.8rem; color:#cbd5e1;">Select a face-down card from the deck pool.</p>
+            <div class="pool-cards-grid" id="pool-cards-container"></div>
+            <div id="pool-announcement" style="font-size:0.85rem; font-weight:bold; color:#38bdf8;"></div>
         </div>
     </div>
 
     <div id="rules-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1;">Collect 31 points in a suit. Ace=11, 10-King=10. Knock requires 21+ pts.</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knock requires 21+ pts. Ties with 3+ players trigger a remainder-deck draw tie-breaker!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -162,7 +162,7 @@
         let isConnected = false;
         let clientState = { username: 'Player1', isReady: false, playersList: [] };
         let lastTurnUser = '';
-        let hasChosenDealerCard = false;
+        let hasChosenPoolCard = false;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playDing() {
@@ -243,7 +243,7 @@
         function toggleReady() {
             clientState.isReady = !clientState.isReady;
             document.getElementById('ready-btn').innerText = clientState.isReady ? 'Unready' : 'Ready Up';
-            hasChosenDealerCard = false;
+            hasChosenPoolCard = false;
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SET_READY', ready: clientState.isReady }));
         }
 
@@ -280,44 +280,39 @@
             clientState.playersList = lobby.players.map(p => p.username);
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
 
-            let dealerModal = document.getElementById('dealer-draw-modal');
+            let poolModal = document.getElementById('pool-draw-modal');
             let turnBanner = document.getElementById('turn-banner');
 
-            if (lobby.gameState === 'dealerDraw') {
-                dealerModal.style.display = 'flex';
+            if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+                poolModal.style.display = 'flex';
                 
+                document.getElementById('pool-modal-title').innerText = lobby.gameState === 'dealerDraw' ? 'Picking for Dealer' : 'Tie-Breaker Draw';
+                document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
+
                 let gridHtml = '';
-                let resultsText = '';
-                
-                lobby.dealerDrawPool.forEach((slot) => {
+                lobby.drawPool.forEach((slot) => {
                     if (slot.chosenBy) {
-                        let revealedCard = lobby.dealerDrawResults[slot.chosenBy];
+                        let revealedCard = lobby.drawResults[slot.chosenBy];
                         gridHtml += `
-                            <div class="dealer-card-option revealed">
-                                <span style="font-size:0.7rem; color:#475569;">${slot.chosenBy}</span>
+                            <div class="pool-card-item revealed">
+                                <span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>
                                 <span>${revealedCard ? revealedCard.val + revealedCard.suit : ''}</span>
                             </div>
                         `;
                     } else {
                         gridHtml += `
-                            <div class="dealer-card-option" onclick="chooseDealerCard(${slot.index})">
+                            <div class="pool-card-item" onclick="choosePoolCard(${slot.index})">
                                 ?
                             </div>
                         `;
                     }
                 });
 
-                if (lobby.dealerName) {
-                    resultsText = `🎉 ${lobby.dealerName} drew the lowest card and is the Dealer!`;
-                } else {
-                    resultsText = `Draw results in progress...`;
-                }
-
-                document.getElementById('dealer-draw-cards-container').innerHTML = gridHtml;
-                document.getElementById('dealer-announcement').innerText = resultsText;
-                turnBanner.innerText = `Dealer Draw Phase`;
+                document.getElementById('pool-cards-container').innerHTML = gridHtml;
+                document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
+                turnBanner.innerText = lobby.gameState === 'dealerDraw' ? 'Dealer Draw Phase' : 'Tie-Breaker Phase';
             } else {
-                dealerModal.style.display = 'none';
+                poolModal.style.display = 'none';
                 if (lobby.gameState === 'playing') {
                     let isMyTurn = (lobby.currentTurnUser === clientState.username);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
@@ -357,11 +352,11 @@
             }
         }
 
-        function chooseDealerCard(cardIndex) {
-            if (hasChosenDealerCard) return;
-            hasChosenDealerCard = true;
+        function choosePoolCard(cardIndex) {
+            if (hasChosenPoolCard) return;
+            hasChosenPoolCard = true;
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CHOOSE_DEALER_CARD', cardIndex }));
+                ws.send(JSON.stringify({ type: 'CHOOSE_POOL_CARD', cardIndex }));
             }
         }
 
@@ -388,9 +383,9 @@
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
-            document.getElementById('dealer-draw-modal').style.display = 'none';
+            document.getElementById('pool-draw-modal').style.display = 'none';
             clientState.isReady = false;
-            hasChosenDealerCard = false;
+            hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
         }
 
