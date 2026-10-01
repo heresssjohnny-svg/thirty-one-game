@@ -34,7 +34,6 @@
         #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         
-        /* Top-center dropping chat window */
         #chat-window { position: absolute; top: 50px; left: calc(50% - 130px); width: 260px; height: 180px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 3000; font-size: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
         .chat-input-row { display: flex; gap: 4px; }
@@ -223,7 +222,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side pot totals now display right next to the main pot in the center!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets can only be proposed once the game has started!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -250,7 +249,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [] };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby' };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -699,6 +698,9 @@
         }
 
         function tapSeat(targetUsername) {
+            if (clientState.gameState === 'lobby') {
+                return; // Do not allow side bets until game starts
+            }
             if (targetUsername === clientState.username) return;
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
@@ -781,6 +783,7 @@
             document.getElementById('leave-lobby-btn').style.display = 'inline-block';
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
+            clientState.gameState = lobby.gameState;
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
@@ -828,7 +831,7 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('turn-banner').style.display = 'none';
+                document.getElementById('knock-btn').style.display = 'none';
             }
 
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
@@ -876,7 +879,6 @@
                             </div>
                         `;
                     } else {
-                        // Allow tied participants or any participant if not tie-breaker
                         let clickable = !isTieBreaker || lobby.tiedParticipantsList.includes(clientState.username);
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable && isTieBreaker ? 'opacity:0.5; cursor:not-allowed;' : ''}">
