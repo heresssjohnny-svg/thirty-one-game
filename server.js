@@ -76,7 +76,7 @@ wss.on('connection', (ws) => {
                         turnIndex: 0,
                         dealerIndex: 0,
                         ledger: {},
-                        pendingBets: [],
+                        pendingBets: [], // { id, proposer, target, pickUser, targetSurvivor, wagerAmt, type }
                         activeBets: [],
                         knockedBy: null,
                         finalTurnsRemaining: 0,
@@ -177,7 +177,8 @@ wss.on('connection', (ws) => {
                             pickUser: data.pickUser,
                             targetSurvivor: data.targetSurvivor,
                             wagerAmt: parseFloat(data.wagerAmt) || 5,
-                            type: data.betType || 'win'
+                            type: data.betType || 'win',
+                            responded: false
                         };
                         lobby.pendingBets.push(newBet);
                         lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
@@ -459,7 +460,11 @@ function getSanitizedLobby(lobby, wsId) {
     }
     sortedParticipants.forEach((p, idx) => { p.seat = idx; });
 
-    let myPendingBets = (lobby.pendingBets || []).filter(b => b.target === myUsername);
+    // Filter pending bets intended specifically for this user that haven't been responded to yet
+    let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.responded);
+    if (myUnrespondedBets.length > 0) {
+        myUnrespondedBets.forEach(b => b.responded = true); // Mark as delivered so it doesn't loop
+    }
 
     return {
         code: lobby.code,
@@ -473,7 +478,7 @@ function getSanitizedLobby(lobby, wsId) {
         canKnock: canKnock,
         potTotal: potTotal,
         ledger: lobby.ledger || {},
-        pendingBetsForMe: myPendingBets,
+        pendingBetsForMe: myUnrespondedBets,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
