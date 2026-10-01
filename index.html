@@ -52,7 +52,6 @@
         #turn-banner { background: #1e293b; border: 1px solid #38bdf8; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #38bdf8; font-weight: bold; flex-shrink: 0; }
         #notification-banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; z-index: 3000; display: none; }
         
-        /* Modal Overlays */
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; }
         .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; width: 95%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; gap: 12px; border: 1px solid #334155; text-align: center; }
         .pool-cards-grid { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; overflow-y: auto; max-height: 350px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #475569; }
@@ -68,6 +67,7 @@
         <div class="logo">31!</div>
         <div class="top-menu-btns">
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
+            <button class="secondary" onclick="toggleModal('ledger-modal')">Ledger</button>
             <button class="secondary" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
             <button class="danger" id="end-game-btn" style="display:none;" onclick="alert('End game requested')">End</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
@@ -139,7 +139,7 @@
         </div>
     </main>
 
-    <!-- Card Pool Selection Modal (Used for Dealer Draw & Tie Breaker) -->
+    <!-- Card Pool Selection Modal -->
     <div id="pool-draw-modal" class="modal">
         <div class="modal-content">
             <h3 id="pool-modal-title">Card Selection</h3>
@@ -154,6 +154,15 @@
             <h3>Rules</h3>
             <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knock requires 21+ pts. Ties with 3+ players trigger a remainder-deck draw tie-breaker!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
+        </div>
+    </div>
+
+    <div id="ledger-modal" class="modal">
+        <div class="modal-content" style="max-width:350px;">
+            <h3>Ledger & Balances</h3>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">No wagers recorded yet.</p>
+            <button onclick="alert('Ledger saved.')">Save Screenshot</button>
+            <button class="secondary" onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
 
@@ -210,7 +219,7 @@
         function renderLobbyList(lobbies) {
             let container = document.getElementById('lobby-list');
             if (lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies</div>'; return; }
-            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6)</span><span style="color:#38bdf8;">Join</span></div>`).join('');
+            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress (Spectate)'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
         function createLobby() {
@@ -279,6 +288,7 @@
 
             clientState.playersList = lobby.players.map(p => p.username);
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
+            document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
             let poolModal = document.getElementById('pool-draw-modal');
             let turnBanner = document.getElementById('turn-banner');
@@ -318,6 +328,8 @@
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
                     if (isMyTurn && lastTurnUser !== clientState.username) showTurnNotification();
                     lastTurnUser = lobby.currentTurnUser;
+                } else if (lobby.gameState === 'roundOver') {
+                    turnBanner.innerText = lobby.phaseMessage || 'Round Over';
                 } else {
                     turnBanner.innerText = "Lobby Waiting Room";
                 }
@@ -387,6 +399,7 @@
             clientState.isReady = false;
             hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
+            document.getElementById('ready-btn').style.display = 'inline-block';
         }
 
         function toggleModal(id) {
