@@ -60,6 +60,7 @@ wss.on('connection', (ws) => {
                         code: currentLobbyCode,
                         name: data.lobbyName || `${currentUsername}'s Lobby`,
                         host: currentUsername,
+                        isPrivate: !!data.isPrivate,
                         players: [{ id: ws, username: currentUsername, lives: 2, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false }],
                         bots: [],
                         spectators: [],
@@ -110,6 +111,10 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
+                case 'REFRESH_LOBBIES':
+                    ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
+                    break;
+
                 case 'UPDATE_SETTINGS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
@@ -132,6 +137,7 @@ wss.on('connection', (ws) => {
                             let botName = 'Bot_' + Math.floor(Math.random() * 900 + 100);
                             lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true, eliminated: false });
                             broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastLobbyList();
                         }
                     }
                     break;
@@ -142,6 +148,7 @@ wss.on('connection', (ws) => {
                         if (lobby.bots.length > 0 && lobby.gameState === 'lobby') {
                             lobby.bots.pop();
                             broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastLobbyList();
                         }
                     }
                     break;
@@ -304,11 +311,25 @@ function leaveLobby(ws, code) {
     broadcastLobbyList();
 }
 
+function getPublicLobbiesList() {
+    return Object.values(lobbies)
+        .filter(l => !l.isPrivate)
+        .map(l => ({
+            code: l.code,
+            name: l.name,
+            host: l.host,
+            count: l.players.length + l.bots.length,
+            state: l.gameState
+        }));
+}
+
 function broadcastLobbyList() {
-    let publicLobbies = Object.values(lobbies).map(l => ({
-        code: l.code, name: l.name, host: l.host, count: l.players.length + l.bots.length, state: l.gameState
-    }));
-    wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: publicLobbies })); });
+    let publicLobbies = getPublicLobbiesList();
+    wss.clients.forEach(c => {
+        if (c.readyState === WebSocket.OPEN) {
+            c.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: publicLobbies }));
+        }
+    });
 }
 
 function broadcastLobbyUpdate(code) {
@@ -692,10 +713,8 @@ function resolveRoundEnd(lobby) {
 
     if (tiedPlayers.length > 1) {
         if (activeParts.length === 2) {
-            // Heads up match tie: no one loses a life, rotate dealer/turn
             triggerRoundOver(lobby, `Round Over! Heads up match tied at ${lowestScore} pts. No one loses a life!`);
         } else {
-            // 3+ players tie breaker using remaining deck cards restricted to tied players
             lobby.tiedParticipantsList = tiedPlayers.map(t => t.player.username);
             lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
             lobby.drawResults = {};
@@ -727,7 +746,6 @@ function checkTieBreakerComplete(lobby) {
         lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loser.username} drew the lowest card and lost a life!`;
         broadcastLobbyUpdate(lobby.code);
 
-        // Display results for 4 seconds before auto-closing and proceeding to next hand
         setTimeout(() => {
             if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'tieBreaker') {
                 triggerRoundOver(lobbies[lobby.code], lobby.phaseMessage);
