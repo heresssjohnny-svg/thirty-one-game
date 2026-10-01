@@ -24,7 +24,6 @@ function createDeck() {
             deck.push({ suit: s, val: v, points: points });
         }
     }
-    // Shuffle deck
     for (let i = deck.length - 1; i > 0; i--) {
         let j = Math.floor(Math.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -50,15 +49,16 @@ wss.on('connection', (ws) => {
                 currentUsername = data.username;
                 lobbies[currentLobbyCode] = {
                     code: currentLobbyCode,
+                    name: data.lobbyName || `${currentUsername}'s Lobby`,
                     host: currentUsername,
-                    players: [{ id: ws, username: currentUsername, lives: data.lives || 2, cards: [], ready: false, seat: 0 }],
+                    players: [{ id: ws, username: currentUsername, lives: parseInt(data.lives) || 2, cards: [], ready: false, seat: 0 }],
                     bots: [],
                     spectators: [],
                     deck: [],
                     discardPile: [],
-                    gameState: 'lobby', // lobby, dealing, playing, roundOver
+                    gameState: 'lobby',
                     turnIndex: 0,
-                    wager: data.wager || 5,
+                    wager: parseInt(data.wager) || 5,
                     ledger: {}
                 };
                 ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode]) }));
@@ -76,14 +76,29 @@ wss.on('connection', (ws) => {
                     if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                         let availableSeat = findOpenSeat(lobby);
                         lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat });
+                        ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby) }));
+                        broadcastLobbyUpdate(code);
+                        broadcastLobbyList();
                     } else {
-                        lobby.spectators.push({ id: ws, username: currentUsername });
+                        ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby is full or already started!' }));
                     }
-                    ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby) }));
-                    broadcastLobbyUpdate(code);
-                    broadcastLobbyList();
                 } else {
                     ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
+                }
+                break;
+
+            case 'UPDATE_SETTINGS':
+                if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                    let lobby = lobbies[currentLobbyCode];
+                    if (lobby.host === currentUsername && lobby.gameState === 'lobby') {
+                        if (data.wager) lobby.wager = parseInt(data.wager);
+                        if (data.lives) {
+                            let newLives = parseInt(data.lives);
+                            lobby.players.forEach(p => p.lives = newLives);
+                            lobby.bots.forEach(b => b.lives = newLives);
+                        }
+                        broadcastLobbyUpdate(currentLobbyCode);
+                    }
                 }
                 break;
 
@@ -117,7 +132,6 @@ wss.on('connection', (ws) => {
                         player.ready = data.ready;
                         broadcastLobbyUpdate(currentLobbyCode);
 
-                        // Check if all ready to start game
                         let allReady = lobby.players.every(p => p.ready);
                         if (allReady && (lobby.players.length + lobby.bots.length >= 2)) {
                             startRound(lobby);
@@ -126,31 +140,40 @@ wss.on('connection', (ws) => {
                 }
                 break;
 
+            case 'VOICE_DATA':
+                if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                    let lobby = lobbies[currentLobbyCode];
+                    lobby.players.forEach(p => {
+                        if (p.id !== ws && p.id.readyState === WebSocket.OPEN) {
+                            p.id.send(JSON.stringify({ type: 'VOICE_DATA', username: currentUsername, audioData: data.audioData }));
+                        }
+                    });
+                }
+                break;
+
             case 'DRAW_DECK':
             case 'DRAW_DISCARD':
                 if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    handleTurnAction(lobby, ws, data.type);
+                    handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
                 }
                 break;
 
             case 'DISCARD_CARD':
                 if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    handleDiscardAction(lobby, ws, data.cardIndex);
+                    handleDiscardAction(lobbies[currentLobbyCode], ws, data.cardIndex);
                 }
                 break;
 
             case 'KNOCK':
                 if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    handleKnock(lobby, ws);
+                    handleKnock(lobbies[currentLobbyCode], ws);
                 }
                 break;
 
             case 'LEAVE_LOBBY':
                 leaveLobby(ws, currentLobbyCode);
                 currentLobbyCode = null;
+                ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
                 break;
         }
     });
@@ -187,6 +210,7 @@ function leaveLobby(ws, code) {
 function broadcastLobbyList() {
     let publicLobbies = Object.values(lobbies).map(l => ({
         code: l.code,
+        name: l.name,
         host: l.host,
         count: l.players.length + l.bots.length,
         state: l.gameState
@@ -203,13 +227,11 @@ function broadcastLobbyUpdate(code) {
     if (!lobby) return;
     let sanitized = getSanitizedLobby(lobby);
     
-    // Send to players
     lobby.players.forEach(p => {
         if (p.id.readyState === WebSocket.OPEN) {
             p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized }));
         }
     });
-    // Send to specs
     lobby.spectators.forEach(s => {
         if (s.id.readyState === WebSocket.OPEN) {
             s.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized }));
@@ -220,6 +242,7 @@ function broadcastLobbyUpdate(code) {
 function getSanitizedLobby(lobby) {
     return {
         code: lobby.code,
+        name: lobby.name,
         host: lobby.host,
         gameState: lobby.gameState,
         turnIndex: lobby.turnIndex,
@@ -231,7 +254,7 @@ function getSanitizedLobby(lobby) {
             cardCount: p.cards.length,
             ready: p.ready,
             seat: p.seat,
-            cards: p.cards // Sent to owner in client parsing or full view
+            cards: p.cards
         })),
         bots: lobby.bots.map(b => ({
             username: b.username,
@@ -260,17 +283,15 @@ function startRound(lobby) {
 function handleTurnAction(lobby, ws, actionType) {
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParticipants[lobby.turnIndex];
-    if (!currentPlayer || currentPlayer.id !== ws) return; // Not their turn
+    if (!currentPlayer || currentPlayer.id !== ws) return;
 
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
-        let drawn = lobby.deck.pop();
-        currentPlayer.cards.push(drawn);
+        currentPlayer.cards.push(lobby.deck.pop());
         broadcastLobbyUpdate(lobby.code);
     } else if (actionType === 'DRAW_DISCARD') {
         if (lobby.discardPile.length > 0) {
-            let drawn = lobby.discardPile.pop();
-            currentPlayer.cards.push(drawn);
+            currentPlayer.cards.push(lobby.discardPile.pop());
             broadcastLobbyUpdate(lobby.code);
         }
     }
@@ -285,16 +306,11 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
         lobby.discardPile.push(discarded);
 
-        // Check score / 31 condition
         let score = calculateScore(currentPlayer.cards);
         if (score === 31) {
-            // Instant win round stop
-            allParticipants.forEach(p => {
-                if (p !== currentPlayer) p.lives--;
-            });
+            allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
             lobby.gameState = 'roundOver';
         } else {
-            // Next turn clockwise
             lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
         }
         broadcastLobbyUpdate(lobby.code);
@@ -310,11 +326,9 @@ function handleKnock(lobby, ws) {
     let threshold = allParticipants.length > 2 ? 21 : 25;
 
     if (score >= threshold) {
-        // Find lowest score among all
         let scores = allParticipants.map(p => ({ player: p, score: calculateScore(p.cards) }));
         scores.sort((a, b) => a.score - b.score);
-        let lowest = scores[0];
-        lowest.player.lives--;
+        scores[0].player.lives--;
         lobby.gameState = 'roundOver';
         broadcastLobbyUpdate(lobby.code);
     }
@@ -322,16 +336,9 @@ function handleKnock(lobby, ws) {
 
 function calculateScore(cards) {
     let suitSums = {};
-    cards.forEach(c => {
-        suitSums[c.suit] = (suitSums[c.suit] || 0) + c.points;
-    });
-    let maxSuitSum = Math.max(...Object.values(suitSums), 0);
-    
-    // Check 3 of a kind
-    if (cards.length === 3 && cards[0].val === cards[1].val && cards[1].val === cards[2].val) {
-        return 30.5;
-    }
-    return maxSuitSum;
+    cards.forEach(c => { suitSums[c.suit] = (suitSums[c.suit] || 0) + c.points; });
+    if (cards.length === 3 && cards[0].val === cards[1].val && cards[1].val === cards[2].val) return 30.5;
+    return Math.max(...Object.values(suitSums), 0);
 }
 
 const PORT = process.env.PORT || 3000;
