@@ -28,7 +28,6 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
-        /* Chat Button & Window under -Bot button */
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 1rem; padding: 6px 10px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; height: 32px; }
         #chat-toggle-btn:hover { background: #334155; }
@@ -149,7 +148,6 @@
                 <button class="secondary" style="padding:4px 8px;" onclick="addBot()">+Bot</button>
                 <button class="secondary" style="padding:4px 8px;" onclick="removeBot()">-Bot</button>
                 
-                <!-- Chat Button under -Bot button -->
                 <div id="chat-container">
                     <button id="chat-toggle-btn" onclick="toggleChatWindow()" title="Toggle Chat">💬</button>
                     <div id="chat-window">
@@ -197,7 +195,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Voice channel audio is active upon entering rooms!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Tie-breakers restrict picking strictly to tied players while spectators watch!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -299,7 +297,6 @@
                 ws.onopen = async () => {
                     isConnected = true;
                     ws.send(JSON.stringify(payload));
-                    // Auto initialize audio receiver channel
                     try {
                         localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                         document.getElementById('vc-status').innerText = 'On';
