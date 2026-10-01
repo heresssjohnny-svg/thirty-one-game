@@ -28,7 +28,6 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
-        /* Chat Button in Top Menu */
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.85rem; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         #chat-toggle-btn:hover { background: #334155; }
@@ -43,6 +42,8 @@
         
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
+        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; }
+
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
         .card-slot.back { background: #1e3a8a; color: #fff; }
@@ -56,7 +57,7 @@
         .seat-4 { top: 45px; right: 20px; }
         .seat-5 { bottom: 45px; right: 15px; }
         .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
-        .mini-card { width: 20px; height: 28px; background: #fff; font-size: 0.5rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .mini-card { width: 22px; height: 32px; background: #fff; font-size: 0.55rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
         .black-suit { color: #0f172a; }
 
@@ -93,7 +94,6 @@
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             <button class="secondary" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
             
-            <!-- Chat Button in Top Menu -->
             <div id="chat-container">
                 <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
                 <div id="chat-window">
@@ -168,6 +168,7 @@
             
             <div class="table-oval" id="table-oval-container">
                 <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
+                <div class="discard-pickup-indicator" id="discard-pickup-banner"></div>
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
                 </div>
@@ -201,7 +202,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Wagers are individual. Winner takes all proportional payouts and deals first in the new lobby!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Your player seat is locked to the bottom, with left/right seats corresponding to turn order!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -209,8 +210,8 @@
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Ledger & Balances</h3>
-            <div id="ledger-content" style="font-size:0.85rem; color:#cbd5e1; text-align:left; max-height:200px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
-            <button onclick="alert('Ledger saved.'); toggleModal('ledger-modal');">Save Screenshot</button>
+            <div id="ledger-content" style="font-size:0.85rem; color:#cbd5e1; text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
+            <button onclick="saveLedgerScreenshot()">Save Screenshot</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
     </div>
@@ -218,7 +219,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], discardTop: null, ledger: {} };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], discardTop: null, ledger: {}, lastDiscardPickup: null };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -249,22 +250,48 @@
 
         function openLedgerModal() {
             let ledgerDiv = document.getElementById('ledger-content');
+            let myName = clientState.username;
             let ledgerData = clientState.ledger || {};
-            let entries = Object.entries(ledgerData);
+            let myRecord = ledgerData[myName] || { total: 0 };
+            let myTotal = myRecord.total || 0;
 
-            if (entries.length === 0) {
-                ledgerDiv.innerHTML = 'No wagers or balances recorded yet.';
-            } else {
-                let html = '<ul>';
-                for (let [user, data] of entries) {
-                    let total = data.total || 0;
-                    let color = total >= 0 ? '#34d399' : '#f87171';
-                    let relationText = total >= 0 ? `is owed` : `owes`;
-                    html += `<li style="margin-bottom:6px;"><b>${user}:</b> <span style="color:${color};">$${Math.abs(total).toFixed(2)} (${relationText})</span></li>`;
+            let html = `<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 8px; color: ${myTotal >= 0 ? '#34d399' : '#f87171'};">My Total Balance: $${myTotal.toFixed(2)}</div><hr style="border-color:#475569; margin-bottom:8px;">`;
+
+            let hasEntries = false;
+            let listHtml = '<ul>';
+            for (let [user, data] of Object.entries(ledgerData)) {
+                if (user === myName) continue;
+                let amount = data.total || 0;
+                if (amount !== 0) {
+                    hasEntries = true;
+                    let relationText = amount < 0 ? `<span style="color:#34d399;">owes you $${Math.abs(amount).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(amount).toFixed(2)}</span>`;
+                    let clearBtn = amount < 0 ? ` <button style="font-size:0.6rem; padding:2px 6px; background:#10b981;" onclick="clearUserDebt('${user}')">Clear Debt</button>` : '';
+                    listHtml += `<li style="margin-bottom:6px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
                 }
-                html += '</ul>';
-                ledgerDiv.innerHTML = html;
             }
+            listHtml += '</ul>';
+
+            if (!hasEntries) {
+                ledgerDiv.innerHTML = html + 'No active debts or balances recorded.';
+            } else {
+                ledgerDiv.innerHTML = html + listHtml;
+            }
+            toggleModal('ledger-modal');
+        }
+
+        function clearUserDebt(targetUser) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'CLEAR_DEBT', targetUser }));
+                setTimeout(() => openLedgerModal(), 200);
+            }
+        }
+
+        function saveLedgerScreenshot() {
+            let now = new Date();
+            let timestamp = now.toLocaleString();
+            let myName = clientState.username;
+            let myTotal = (clientState.ledger[myName] && clientState.ledger[myName].total) || 0;
+            alert(`--- LEDGER SNAPSHOT ---\nTimestamp: ${timestamp}\nMy Balance: $${myTotal.toFixed(2)}\nLedger status saved successfully.`);
             toggleModal('ledger-modal');
         }
 
@@ -275,7 +302,7 @@
             if (isMini) {
                 return `<div class="mini-card ${suitClass}"><span>${card.val}</span><span>${card.suit}</span></div>`;
             } else {
-                return `<div class="my-card ${suitClass}"><span>${card.val}</span><span style="font-size:1.2rem;">${card.suit}</span></div>`;
+                return `<div class="my-card ${suitClass}" style="width:70px; height:100px; font-size:1.25rem;"><span>${card.val}</span><span style="font-size:1.75rem;">${card.suit}</span></div>`;
             }
         }
 
@@ -457,7 +484,7 @@
                 try {
                     localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     status.innerText = 'On';
-                    peerConnections = {}; // Reset connection map for clean handshake restart
+                    peerConnections = {};
                     if (ws && ws.readyState === WebSocket.OPEN) {
                         refreshLobbies();
                     }
@@ -591,6 +618,15 @@
 
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
 
+            let pickupBanner = document.getElementById('discard-pickup-banner');
+            if (lobby.lastDiscardPickup) {
+                let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
+                pickupBanner.innerHTML = `<span>${lobby.lastDiscardPickup.username} picked up:</span> ${cardHtml}`;
+                pickupBanner.style.display = 'flex';
+            } else {
+                pickupBanner.style.display = 'none';
+            }
+
             let me = lobby.players.find(p => p.username === clientState.username);
             let isEliminated = me && me.eliminated;
             let isSpectatorOnly = !me || isEliminated;
@@ -675,10 +711,14 @@
             let container = document.getElementById('table-oval-container');
             let allSeats = [...lobby.players, ...lobby.bots];
             
-            let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, true) : 'Empty';
+            let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
 
             let html = `
                 <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                <div class="discard-pickup-indicator" id="discard-pickup-banner" style="display:${lobby.lastDiscardPickup ? 'flex' : 'none'};">
+                    <span>${lobby.lastDiscardPickup ? lobby.lastDiscardPickup.username + ' picked up:' : ''}</span>
+                    ${lobby.lastDiscardPickup ? formatCardHtml(lobby.lastDiscardPickup.card, true) : ''}
+                </div>
                 <div class="deck-center">
                     <div class="card-slot back" onclick="drawCard('deck')">
                         DECK
@@ -696,7 +736,6 @@
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                let wagerBadge = ` [$${p.wager || 5}]`;
                 html += `<div class="seat seat-${p.seat}"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
