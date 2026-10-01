@@ -11,6 +11,14 @@ app.use(express.static(path.join(__dirname)));
 
 const lobbies = {};
 
+// Prevent server crashes from unhandled errors
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 function createDeck() {
     const suits = ['♠', '♣', '♥', '♦'];
     const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -38,188 +46,217 @@ wss.on('connection', (ws) => {
 
     ws.on('message', (message) => {
         let data;
-        try { data = JSON.parse(message); } catch (e) { return; }
+        try {
+            data = JSON.parse(message);
+        } catch (e) {
+            return;
+        }
 
-        switch (data.type) {
-            case 'CREATE_LOBBY':
-                currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-                currentUsername = data.username;
-                lobbies[currentLobbyCode] = {
-                    code: currentLobbyCode,
-                    name: data.lobbyName || `${currentUsername}'s Lobby`,
-                    host: currentUsername,
-                    players: [{ id: ws, username: currentUsername, lives: 2, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false }],
-                    bots: [],
-                    spectators: [],
-                    deck: [],
-                    discardPile: [],
-                    gameState: 'lobby',
-                    drawPool: [],
-                    drawResults: {},
-                    phaseMessage: null,
-                    turnIndex: 0,
-                    dealerIndex: 0,
-                    wager: 5,
-                    ledger: {},
-                    knockedBy: null,
-                    finalTurnsRemaining: 0,
-                    turnsTakenThisRound: 0,
-                    nextHandTimer: null
-                };
-                ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws) }));
-                broadcastLobbyList();
-                break;
+        try {
+            switch (data.type) {
+                case 'CREATE_LOBBY':
+                    currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    currentUsername = data.username || 'Player';
+                    lobbies[currentLobbyCode] = {
+                        code: currentLobbyCode,
+                        name: data.lobbyName || `${currentUsername}'s Lobby`,
+                        host: currentUsername,
+                        players: [{ id: ws, username: currentUsername, lives: 2, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false }],
+                        bots: [],
+                        spectators: [],
+                        deck: [],
+                        discardPile: [],
+                        gameState: 'lobby',
+                        drawPool: [],
+                        drawResults: {},
+                        phaseMessage: null,
+                        turnIndex: 0,
+                        dealerIndex: 0,
+                        wager: 5,
+                        ledger: {},
+                        knockedBy: null,
+                        finalTurnsRemaining: 0,
+                        turnsTakenThisRound: 0,
+                        nextHandTimer: null
+                    };
+                    ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws) }));
+                    broadcastLobbyList();
+                    break;
 
-            case 'JOIN_LOBBY':
-                let code = data.code.toUpperCase();
-                if (lobbies[code]) {
-                    currentLobbyCode = code;
-                    currentUsername = data.username;
-                    let lobby = lobbies[code];
-                    
-                    let totalOccupants = lobby.players.length + lobby.bots.length;
-                    if (totalOccupants < 6 && lobby.gameState === 'lobby') {
-                        let availableSeat = findOpenSeat(lobby);
-                        lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false });
-                        ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
-                        broadcastLobbyUpdate(code);
-                        broadcastLobbyList();
+                case 'JOIN_LOBBY':
+                    let code = (data.code || '').toUpperCase();
+                    if (lobbies[code]) {
+                        currentLobbyCode = code;
+                        currentUsername = data.username || 'Player';
+                        let lobby = lobbies[code];
+                        
+                        let totalOccupants = lobby.players.length + lobby.bots.length;
+                        if (totalOccupants < 6 && lobby.gameState === 'lobby') {
+                            let availableSeat = findOpenSeat(lobby);
+                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false });
+                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
+                            broadcastLobbyUpdate(code);
+                            broadcastLobbyList();
+                        } else {
+                            lobby.spectators.push({ id: ws, username: currentUsername, peekRequests: {} });
+                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
+                            broadcastLobbyUpdate(code);
+                        }
                     } else {
-                        lobby.spectators.push({ id: ws, username: currentUsername, peekRequests: {} });
-                        ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
-                        broadcastLobbyUpdate(code);
+                        ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
                     }
-                } else {
-                    ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
-                }
-                break;
+                    break;
 
-            case 'UPDATE_SETTINGS':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    if (lobby.host === currentUsername && lobby.gameState === 'lobby') {
-                        if (data.wager) lobby.wager = parseInt(data.wager);
-                        if (data.lives) {
-                            let l = parseInt(data.lives);
-                            lobby.players.forEach(p => p.lives = l);
-                            lobby.bots.forEach(b => b.lives = l);
-                        }
-                        broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                }
-                break;
-
-            case 'ADD_BOT':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    if (lobby.players.length + lobby.bots.length < 6 && lobby.gameState === 'lobby') {
-                        let botName = 'Bot_' + Math.floor(Math.random() * 900 + 100);
-                        lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true, eliminated: false });
-                        broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                }
-                break;
-
-            case 'REMOVE_BOT':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    if (lobby.bots.length > 0 && lobby.gameState === 'lobby') {
-                        lobby.bots.pop();
-                        broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                }
-                break;
-
-            case 'SET_READY':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    let player = lobby.players.find(p => p.id === ws);
-                    if (player && lobby.gameState === 'lobby' && !player.eliminated) {
-                        player.ready = data.ready;
-                        broadcastLobbyUpdate(code);
-
-                        let activeParticipants = getActiveParticipants(lobby);
-                        if (activeParticipants.every(p => p.ready || p.eliminated) && activeParticipants.length >= 2) {
-                            startDealerDrawPhase(lobby);
+                case 'UPDATE_SETTINGS':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        if (lobby.host === currentUsername && lobby.gameState === 'lobby') {
+                            if (data.wager) lobby.wager = parseInt(data.wager);
+                            if (data.lives) {
+                                let l = parseInt(data.lives);
+                                lobby.players.forEach(p => p.lives = l);
+                                lobby.bots.forEach(b => b.lives = l);
+                            }
+                            broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
-                }
-                break;
+                    break;
 
-            case 'NEXT_HAND':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    let player = lobby.players.find(p => p.id === ws);
-                    if (player && lobby.gameState === 'roundOver' && !player.eliminated) {
-                        player.nextHandReady = true;
-                        broadcastLobbyUpdate(currentLobbyCode);
-                        checkNextHandReady(lobby);
-                    }
-                }
-                break;
-
-            case 'REQUEST_PEEK':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    handlePeekRequest(lobby, ws, data.targetUsername);
-                }
-                break;
-
-            case 'RESPOND_PEEK':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    handlePeekResponse(lobby, ws, data.spectatorUsername, data.allow);
-                }
-                break;
-
-            case 'CHOOSE_POOL_CARD':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-                        handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
-                    }
-                }
-                break;
-
-            case 'VOICE_DATA':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    let lobby = lobbies[currentLobbyCode];
-                    lobby.players.forEach(p => {
-                        if (p.id !== ws && p.id.readyState === WebSocket.OPEN) {
-                            p.id.send(JSON.stringify({ type: 'VOICE_DATA', audioData: data.audioData }));
+                case 'ADD_BOT':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        if (lobby.players.length + lobby.bots.length < 6 && lobby.gameState === 'lobby') {
+                            let botName = 'Bot_' + Math.floor(Math.random() * 900 + 100);
+                            lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true, eliminated: false });
+                            broadcastLobbyUpdate(currentLobbyCode);
                         }
-                    });
-                }
-                break;
+                    }
+                    break;
 
-            case 'DRAW_DECK':
-            case 'DRAW_DISCARD':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
-                }
-                break;
+                case 'REMOVE_BOT':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        if (lobby.bots.length > 0 && lobby.gameState === 'lobby') {
+                            lobby.bots.pop();
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
 
-            case 'DISCARD_CARD':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    handleDiscardAction(lobbies[currentLobbyCode], ws, data.cardIndex);
-                }
-                break;
+                case 'SET_READY':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let player = lobby.players.find(p => p.id === ws);
+                        if (player && lobby.gameState === 'lobby' && !player.eliminated) {
+                            player.ready = data.ready;
+                            broadcastLobbyUpdate(currentLobbyCode);
 
-            case 'KNOCK':
-                if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                    handleKnock(lobbies[currentLobbyCode], ws);
-                }
-                break;
+                            let activeParticipants = getActiveParticipants(lobby);
+                            if (activeParticipants.every(p => p.ready || p.eliminated) && activeParticipants.length >= 2) {
+                                startDealerDrawPhase(lobby);
+                            }
+                        }
+                    }
+                    break;
 
-            case 'LEAVE_LOBBY':
-                leaveLobby(ws, currentLobbyCode);
-                currentLobbyCode = null;
-                ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
-                break;
+                case 'NEXT_HAND':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let player = lobby.players.find(p => p.id === ws);
+                        if (player && lobby.gameState === 'roundOver' && !player.eliminated) {
+                            player.nextHandReady = true;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                            checkNextHandReady(lobby);
+                        }
+                    }
+                    break;
+
+                case 'REQUEST_PEEK':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let spec = lobby.spectators.find(s => s.id === ws);
+                        if (spec) {
+                            let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
+                            if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
+                                if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
+                                targetPlayer.peekIncoming[spec.username] = true;
+                                broadcastLobbyUpdate(currentLobbyCode);
+                            }
+                        }
+                    }
+                    break;
+
+                case 'RESPOND_PEEK':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let player = lobby.players.find(p => p.id === ws);
+                        if (player) {
+                            if (player.peekIncoming) delete player.peekIncoming[data.spectatorUsername];
+                            if (data.allow) {
+                                let spec = lobby.spectators.find(s => s.username === data.spectatorUsername);
+                                if (spec) {
+                                    if (!spec.peekRequests) spec.peekRequests = {};
+                                    spec.peekRequests[player.username] = true;
+                                }
+                            }
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'CHOOSE_POOL_CARD':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+                            handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
+                        }
+                    }
+                    break;
+
+                case 'VOICE_DATA':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        lobby.players.forEach(p => {
+                            if (p.id !== ws && p.id.readyState === WebSocket.OPEN) {
+                                p.id.send(JSON.stringify({ type: 'VOICE_DATA', audioData: data.audioData }));
+                            }
+                        });
+                    }
+                    break;
+
+                case 'DRAW_DECK':
+                case 'DRAW_DISCARD':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
+                    }
+                    break;
+
+                case 'DISCARD_CARD':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        handleDiscardAction(lobbies[currentLobbyCode], ws, data.cardIndex);
+                    }
+                    break;
+
+                case 'KNOCK':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        handleKnock(lobbies[currentLobbyCode], ws);
+                    }
+                    break;
+
+                case 'LEAVE_LOBBY':
+                    leaveLobby(ws, currentLobbyCode);
+                    currentLobbyCode = null;
+                    ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
+                    break;
+            }
+        } catch (err) {
+            console.error('Error handling message:', err);
         }
     });
 
-    ws.on('close', () => { if (currentLobbyCode) leaveLobby(ws, currentLobbyCode); });
+    ws.on('close', () => {
+        if (currentLobbyCode) leaveLobby(ws, currentLobbyCode);
+    });
 });
 
 function getActiveParticipants(lobby) {
@@ -259,12 +296,12 @@ function broadcastLobbyUpdate(code) {
     if (!lobby) return;
     
     lobby.players.forEach(p => {
-        if (p.id.readyState === WebSocket.OPEN) {
+        if (p.id && p.id.readyState === WebSocket.OPEN) {
             p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: getSanitizedLobby(lobby, p.id) }));
         }
     });
     lobby.spectators.forEach(s => {
-        if (s.id.readyState === WebSocket.OPEN) {
+        if (s.id && s.id.readyState === WebSocket.OPEN) {
             s.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: getSanitizedLobby(lobby, s.id) }));
         }
     });
@@ -278,7 +315,7 @@ function getSanitizedLobby(lobby, wsId) {
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentTurnUser = allParticipants[lobby.turnIndex] ? allParticipants[lobby.turnIndex].username : '';
     let isRoundOver = lobby.gameState === 'roundOver';
-    let canKnock = lobby.turnsTakenThisRound >= allParticipants.length;
+    let canKnock = lobby.turnsTakenThisRound >= getActiveParticipants(lobby).length;
 
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
     let requestingSpectator = lobby.spectators.find(s => s.id === wsId);
@@ -326,34 +363,6 @@ function getSanitizedLobby(lobby, wsId) {
             pendingRequests: s.peekRequests || {}
         }))
     };
-}
-
-function handlePeekRequest(lobby, ws, targetUsername) {
-    let spec = lobby.spectators.find(s => s.id === ws);
-    if (!spec) return;
-
-    let targetPlayer = lobby.players.find(p => p.username === targetUsername);
-    if (targetPlayer && targetPlayer.id.readyState === WebSocket.OPEN) {
-        if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
-        targetPlayer.peekIncoming[spec.username] = true;
-        broadcastLobbyUpdate(lobby.code);
-    }
-}
-
-function handlePeekResponse(lobby, ws, spectatorUsername, allow) {
-    let player = lobby.players.find(p => p.id === ws);
-    if (!player) return;
-
-    if (player.peekIncoming) delete player.peekIncoming[spectatorUsername];
-
-    if (allow) {
-        let spec = lobby.spectators.find(s => s.username === spectatorUsername);
-        if (spec) {
-            if (!spec.peekRequests) spec.peekRequests = {};
-            spec.peekRequests[player.username] = true;
-        }
-    }
-    broadcastLobbyUpdate(lobby.code);
 }
 
 function startDealerDrawPhase(lobby) {
@@ -435,7 +444,6 @@ function startRound(lobby) {
     lobby.deck = createDeck();
     lobby.discardPile = [];
     
-    // Check lives and transition eliminated players to spectators
     lobby.players.forEach(p => {
         if (p.lives <= 0 && !p.eliminated) {
             p.eliminated = true;
@@ -463,7 +471,6 @@ function startRound(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
     lobby.turnIndex = (lobby.dealerIndex + 1) % allParts.length;
     
-    // Skip eliminated participants in turn order
     while (allParts[lobby.turnIndex].eliminated) {
         lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
     }
@@ -679,4 +686,6 @@ function calculateScore(cards) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => { console.log(`31! Server running on port ${PORT}`); });
+server.listen(PORT, () => {
+    console.log(`31! Game Server running on port ${PORT}`);
+});
