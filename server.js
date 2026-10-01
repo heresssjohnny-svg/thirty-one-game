@@ -11,7 +11,6 @@ app.use(express.static(path.join(__dirname)));
 
 const lobbies = {};
 
-// Prevent server crashes from unhandled errors
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
 });
@@ -77,7 +76,10 @@ wss.on('connection', (ws) => {
                         knockedBy: null,
                         finalTurnsRemaining: 0,
                         turnsTakenThisRound: 0,
-                        nextHandTimer: null
+                        nextHandTimer: null,
+                        lastDiscarder: null,
+                        fedCardsTracker: {}, // username -> array of card values fed
+                        endGameVotes: {}
                     };
                     ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws) }));
                     broadcastLobbyList();
@@ -167,6 +169,24 @@ wss.on('connection', (ws) => {
                             player.nextHandReady = true;
                             broadcastLobbyUpdate(currentLobbyCode);
                             checkNextHandReady(lobby);
+                        }
+                    }
+                    break;
+
+                case 'END_GAME_PROPOSAL':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        lobby.endGameVotes = {};
+                        lobby.endGameVotes[currentUsername] = true;
+                        // Bots automatically vote yes
+                        lobby.bots.forEach(b => { lobby.endGameVotes[b.username] = true; });
+                        
+                        let activeParts = getActiveParticipants(lobby);
+                        let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
+                        if (allVotedYes) {
+                            lobby.phaseMessage = "⚠️ Game ended by unanimous agreement.";
+                            lobby.gameState = 'roundOver';
+                            broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
                     break;
@@ -374,6 +394,8 @@ function startDealerDrawPhase(lobby) {
     lobby.knockedBy = null;
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
+    lobby.lastDiscarder = null;
+    lobby.fedCardsTracker = {};
 
     lobby.players.forEach(p => { if (!p.eliminated) p.nextHandReady = false; });
     lobby.bots.forEach(b => { if (!b.eliminated) b.nextHandReady = true; });
@@ -443,6 +465,8 @@ function startRound(lobby) {
     }
     lobby.deck = createDeck();
     lobby.discardPile = [];
+    lobby.lastDiscarder = null;
+    lobby.fedCardsTracker = {};
     
     lobby.players.forEach(p => {
         if (p.lives <= 0 && !p.eliminated) {
@@ -461,7 +485,9 @@ function startRound(lobby) {
     });
     lobby.bots.forEach(b => { if (!b.eliminated) b.nextHandReady = true; });
 
-    lobby.discardPile.push(lobby.deck.pop());
+    let firstDiscard = lobby.deck.pop();
+    lobby.discardPile.push(firstDiscard);
+
     lobby.gameState = 'playing';
     lobby.phaseMessage = null;
     lobby.knockedBy = null;
@@ -512,7 +538,12 @@ function checkAndRunBotTurn(lobby) {
                 currentPlayer.cards.push(lobby.deck.pop());
                 
                 let discardIdx = Math.floor(Math.random() * currentPlayer.cards.length);
-                lobby.discardPile.push(currentPlayer.cards.splice(discardIdx, 1)[0]);
+                let discarded = currentPlayer.cards.splice(discardIdx, 1)[0];
+                lobby.discardPile.push(discarded);
+                
+                lobby.lastDiscarder = currentPlayer.username;
+                if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
+                lobby.fedCardsTracker[currentPlayer.username].push(discarded);
 
                 lobby.turnsTakenThisRound++;
 
@@ -548,6 +579,24 @@ function handleTurnAction(lobby, ws, actionType) {
         if (lobby.discardPile.length > 0) {
             let card = lobby.discardPile.pop();
             currentPlayer.cards.push(card);
+
+            // Check 21 out of 31 Rule
+            if (lobby.lastDiscarder && lobby.lastDiscarder !== currentPlayer.username) {
+                let fedCards = lobby.fedCardsTracker[lobby.lastDiscarder] || [];
+                fedCards.push(card);
+                
+                let hasAce = fedCards.some(c => c.val === 'A');
+                let hasFaceOr10 = fedCards.some(c => ['10', 'J', 'Q', 'K'].includes(c.val));
+
+                if (hasAce && hasFaceOr10) {
+                    let feeder = allParts.find(p => p.username === lobby.lastDiscarder);
+                    if (feeder) {
+                        feeder.lives = 0;
+                        lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and a 10-value card and loses ALL lives!`;
+                    }
+                }
+            }
+
             lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
             broadcastLobbyUpdate(lobby.code);
         }
@@ -562,7 +611,13 @@ function handleDiscardAction(lobby, ws, cardIndex) {
     if (currentPlayer.cards.length !== 4) return;
 
     if (currentPlayer.cards[cardIndex]) {
-        lobby.discardPile.push(currentPlayer.cards.splice(cardIndex, 1)[0]);
+        let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
+        lobby.discardPile.push(discarded);
+        
+        lobby.lastDiscarder = currentPlayer.username;
+        if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
+        lobby.fedCardsTracker[currentPlayer.username].push(discarded);
+
         lobby.turnsTakenThisRound++;
 
         if (calculateScore(currentPlayer.cards) === 31) {
@@ -633,7 +688,7 @@ function resolveRoundEnd(lobby) {
     if (tiedPlayers.length > 1 && activeParts.length >= 3) {
         lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
         lobby.drawResults = {};
-        lobby.phaseMessage = `⚠️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck. All hands revealed.`;
+        lobby.phaseMessage = `⚠️️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck. All hands revealed.`;
         lobby.gameState = 'tieBreaker';
 
         autoPickForBots(lobby);
