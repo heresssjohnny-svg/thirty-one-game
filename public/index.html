@@ -209,13 +209,14 @@
     }
     .showdown-cards-row { display: flex; gap: 3px; }
 
+    /* Fixed Card Cut Overlay: pointer-events none by default so it never blocks background buttons */
     .card-cut-overlay {
       position: fixed; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 2500; padding: 14px; text-align: center; pointer-events: auto;
+      z-index: 2500; padding: 14px; text-align: center; pointer-events: none;
     }
     .card-cut-overlay.active {
-      display: flex !important; pointer-events: auto;
+      display: flex !important; pointer-events: auto !important;
     }
     .card-cut-spread {
       display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; max-height: 240px;
@@ -230,13 +231,14 @@
     .card-cut-slot:hover { transform: translateY(-4px) scale(1.05); border-color: #ffd700; }
     .card-cut-picks-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; pointer-events: auto; }
 
+    /* Fixed Custom Modals: pointer-events none by default */
     .custom-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: none; flex-direction: column; justify-content: center; align-items: center;
       z-index: 2200; pointer-events: none;
     }
     .custom-modal[style*="display: flex"] {
-      pointer-events: auto;
+      pointer-events: auto !important;
     }
     .modal-card {
       background: #164033; border: 2px solid #ffd700; border-radius: 12px;
@@ -475,7 +477,7 @@
   <!-- INCOMING VOICE INVITE ALERT MODAL -->
   <div id="incomingVoiceInviteModal" class="custom-modal">
     <div class="modal-card" style="border-color:#00897b; text-align:center;">
-      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️️ Voice Invitation</div>
+      <div style="font-weight:900; font-size:15px; color:#00897b;">🎙️ Voice Invitation</div>
       <div id="incomingVoiceText" style="font-size:12px; line-height:1.4; opacity:0.9; margin: 4px 0;">
         Player invited you to join voice chat.
       </div>
@@ -728,7 +730,7 @@
 
   <div class="action-bar" id="actionBar">
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
-    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️️ Peek at Hand</button>
+    <button type="button" id="spectatorPeekBtn" class="peek-btn" style="display:none;" onclick="togglePeekSelectorModal()">👁️ Peek at Hand</button>
     <button type="button" id="spectatorJoinBtn" class="side-bet-btn" style="display:none;" onclick="openSpectatorJoinModal()">🎮 Join Game</button>
     <button type="button" id="roundBetBtn" class="side-bet-btn" style="display:none;" onclick="openRoundSideBetModal()">🎲 Side Bet</button>
     <button type="button" id="firstLoserBetBtn" class="first-loser-btn" style="display:none;" onclick="openFirstLoserSideBetModal()">💀 First to Lose</button>
