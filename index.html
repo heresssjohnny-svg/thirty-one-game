@@ -13,6 +13,7 @@
         .top-menu-btns { display: flex; gap: 8px; flex-wrap: wrap; }
         button { background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
         button:hover { background: #2563eb; }
+        button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
         button.danger { background: #ef4444; }
         button.secondary { background: #475569; }
         
@@ -133,7 +134,7 @@
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar">
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
-                    <button onclick="knockRound()" id="knock-btn" class="secondary">Knock</button>
+                    <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
                     <button onclick="openSideBetModal()" class="secondary">Side Bet</button>
                     <button onclick="openFirstToLoseModal()" class="secondary">First to Lose</button>
                 </div>
@@ -154,7 +155,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knock requires 21+ pts. Knocking gives everyone 1 final turn. All hands are revealed at round end!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knocking requires 21+ pts (or 25+ heads-up) after everyone has had 1 turn. Knocking gives everyone 1 final turn. Dealer rotates clockwise!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -297,6 +298,9 @@
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
+            // Enable or disable knock button based on server rule validation
+            document.getElementById('knock-btn').disabled = !lobby.canKnock;
+
             let poolModal = document.getElementById('pool-draw-modal');
             let turnBanner = document.getElementById('turn-banner');
 
@@ -419,6 +423,7 @@
             hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
             document.getElementById('ready-btn').style.display = 'inline-block';
+            document.getElementById('knock-btn').disabled = true;
         }
 
         function toggleModal(id) {
