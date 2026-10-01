@@ -61,7 +61,7 @@ wss.on('connection', (ws) => {
                         name: data.lobbyName || `${currentUsername}'s Lobby`,
                         host: currentUsername,
                         isPrivate: !!data.isPrivate,
-                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false }],
+                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, inVC: false, isMuted: false }],
                         bots: [],
                         spectators: [],
                         deck: [],
@@ -76,7 +76,7 @@ wss.on('connection', (ws) => {
                         turnIndex: 0,
                         dealerIndex: 0,
                         ledger: {},
-                        pendingBets: [], // { id, proposer, target, pickUser, targetSurvivor, wagerAmt, type }
+                        pendingBets: [],
                         activeBets: [],
                         knockedBy: null,
                         finalTurnsRemaining: 0,
@@ -100,12 +100,12 @@ wss.on('connection', (ws) => {
                         let totalOccupants = lobby.players.length + lobby.bots.length;
                         if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                             let availableSeat = findOpenSeat(lobby);
-                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false });
+                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false, inVC: false, isMuted: false });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            lobby.spectators.push({ id: ws, username: currentUsername, peekRequests: {} });
+                            lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false, peekRequests: {} });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                         }
@@ -143,6 +143,18 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
+                case 'UPDATE_VC_STATUS':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username === currentUsername);
+                        if (p) {
+                            p.inVC = !!data.inVC;
+                            p.isMuted = !!data.isMuted;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
                 case 'CLEAR_DEBT':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
@@ -165,7 +177,7 @@ wss.on('connection', (ws) => {
                             pickUser: data.pickUser,
                             targetSurvivor: data.targetSurvivor,
                             wagerAmt: parseFloat(data.wagerAmt) || 5,
-                            type: data.betType // 'win' or 'eliminate'
+                            type: data.betType || 'win'
                         };
                         lobby.pendingBets.push(newBet);
                         lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
@@ -485,6 +497,8 @@ function getSanitizedLobby(lobby, wsId) {
                 seat: sortedRef ? sortedRef.seat : p.seat,
                 nextHandReady: p.nextHandReady,
                 eliminated: p.eliminated,
+                inVC: !!p.inVC,
+                isMuted: !!p.isMuted,
                 peekIncoming: (wsId === p.id) ? p.peekIncoming : {},
                 cards: (canSeeCards || specAllowed) ? p.cards : []
             };
@@ -500,11 +514,15 @@ function getSanitizedLobby(lobby, wsId) {
                 ready: true,
                 nextHandReady: b.nextHandReady,
                 eliminated: b.eliminated,
+                inVC: false,
+                isMuted: false,
                 cards: isRoundOver ? b.cards : []
             };
         }),
         spectators: lobby.spectators.map(s => ({
             username: s.username,
+            inVC: !!s.inVC,
+            isMuted: !!s.isMuted,
             pendingRequests: s.peekRequests || {}
         }))
     };
@@ -656,7 +674,6 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
     let remainingBets = [];
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
-            // Proposer bets proposer's pickUser is eliminated before targetSurvivor
             let won = (bet.pickUser === eliminatedName);
             let debtor = won ? bet.target : bet.proposer;
             let creditor = won ? bet.proposer : bet.target;
@@ -732,7 +749,6 @@ function awardTournamentWinner(lobby, winner) {
 
 function checkNextHandReady(lobby) {
     let activeParts = getActiveParticipants(lobby);
-    // If only 1 player remains, do not wait for next hand popup; award tournament win instantly
     if (activeParts.length === 1) {
         awardTournamentWinner(lobby, activeParts[0]);
         return;
