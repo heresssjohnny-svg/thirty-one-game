@@ -44,7 +44,9 @@
         
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
-        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.9rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 8px; align-items: center; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; }
+        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; background: rgba(15, 23, 42, 0.85); padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; }
+
+        .side-bet-pot-badge { position: absolute; background: rgba(234, 179, 8, 0.9); color: #0f172a; padding: 2px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: bold; z-index: 15; box-shadow: 0 2px 5px rgba(0,0,0,0.5); pointer-events: none; }
 
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
@@ -216,7 +218,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. First to Lose options are unified on a single screen without self-selection!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bet pots appear directly between you and your betting opponents!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -243,7 +245,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [] };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], seatBets: {} };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -722,7 +724,6 @@
             modalTitle.innerText = 'First to Lose: Select player to be eliminated first (Cannot pick yourself):';
 
             let html = '';
-            // Prevent picking yourself
             clientState.playersList.filter(p => p !== clientState.username).forEach(p => {
                 html += `<button onclick="openEliminationSurvivorModal('${targetUsername}', '${p}')">${p}</button>`;
             });
@@ -781,6 +782,7 @@
 
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
+            clientState.seatBets = lobby.seatBets || {};
 
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
                 lobby.pendingBetsForMe.forEach(bet => {
@@ -814,8 +816,10 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('turn-banner').style.display = 'none';
+                document.getElementById('knock-btn').style.display = 'none';
             }
+
+            document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let nextHandOverlay = document.getElementById('next-hand-overlay');
@@ -920,7 +924,15 @@
                 if (p.inVC) {
                     micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
-                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
+
+                // Render side bet pot badge between me and this player if a bet exists
+                let sidePotBadge = '';
+                if (clientState.seatBets && clientState.seatBets[p.username]) {
+                    let betAmt = clientState.seatBets[p.username];
+                    sidePotBadge = `<div class="side-bet-pot-badge" style="${getBadgePosition(p.seat)}">Side Pot: $${betAmt}</div>`;
+                }
+
+                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>${sidePotBadge}`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
@@ -933,6 +945,18 @@
                 `).join('');
                 document.getElementById('my-cards-container').innerHTML = cardsHtml;
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
+            }
+        }
+
+        function getBadgePosition(seatIdx) {
+            // Position badge between bottom seat (0) and respective opponent seat
+            switch(seatIdx) {
+                case 1: return 'bottom: 90px; left: 160px;';
+                case 2: return 'top: 90px; left: 160px;';
+                case 3: return 'top: 25px; left: calc(50% - 40px);';
+                case 4: return 'top: 90px; right: 160px;';
+                case 5: return 'bottom: 90px; right: 160px;';
+                default: return 'display:none;';
             }
         }
 
