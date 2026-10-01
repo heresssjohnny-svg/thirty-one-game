@@ -34,13 +34,15 @@
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -18px; font-size: 0.75rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 110px; }
-        .seat-0 { bottom: -10px; left: calc(50% - 55px); border-color: #38bdf8; }
+        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 120px; }
+        .seat-0 { bottom: -10px; left: calc(50% - 60px); border-color: #38bdf8; }
         .seat-1 { bottom: 45px; left: 15px; }
         .seat-2 { top: 45px; left: 20px; }
-        .seat-3 { top: -15px; left: calc(50% - 55px); }
+        .seat-3 { top: -15px; left: calc(50% - 60px); }
         .seat-4 { top: 45px; right: 20px; }
         .seat-5 { bottom: 45px; right: 15px; }
+        .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
+        .mini-card { width: 20px; height: 28px; background: #fff; color: #000; font-size: 0.5rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
         .my-hand-area { background: #1e293b; padding: 10px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 500px; border: 1px solid #334155; flex-shrink: 0; }
         .cards-flex { display: flex; gap: 8px; }
@@ -152,7 +154,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knock requires 21+ pts. Ties with 3+ players trigger a remainder-deck draw tie-breaker!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knock requires 21+ pts. Knocking gives everyone 1 final turn. All hands are revealed at round end!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -172,6 +174,7 @@
         let clientState = { username: 'Player1', isReady: false, playersList: [] };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
+        let lastPhaseMessage = '';
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playDing() {
@@ -192,12 +195,13 @@
             if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
         }
 
-        function showTurnNotification() {
+        function showNotification(msg) {
             let banner = document.getElementById('notification-banner');
+            banner.innerText = msg;
             banner.style.display = 'block';
             playDing();
             triggerVibration();
-            setTimeout(() => { banner.style.display = 'none'; }, 3000);
+            setTimeout(() => { banner.style.display = 'none'; }, 4000);
         }
 
         function initSocketAndSend(payload) {
@@ -296,6 +300,11 @@
             let poolModal = document.getElementById('pool-draw-modal');
             let turnBanner = document.getElementById('turn-banner');
 
+            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
+                showNotification(lobby.phaseMessage);
+                lastPhaseMessage = lobby.phaseMessage;
+            }
+
             if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
                 poolModal.style.display = 'flex';
                 
@@ -326,13 +335,15 @@
                 turnBanner.innerText = lobby.gameState === 'dealerDraw' ? 'Dealer Draw Phase' : 'Tie-Breaker Phase';
             } else {
                 poolModal.style.display = 'none';
-                if (lobby.gameState === 'playing') {
+                if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
                     let isMyTurn = (lobby.currentTurnUser === clientState.username);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                    if (isMyTurn && lastTurnUser !== clientState.username) showTurnNotification();
+                    if (isMyTurn && lastTurnUser !== clientState.username) {
+                        showNotification("YOUR TURN!");
+                    }
                     lastTurnUser = lobby.currentTurnUser;
                 } else if (lobby.gameState === 'roundOver') {
-                    turnBanner.innerText = lobby.phaseMessage || 'Round Over';
+                    turnBanner.innerText = lobby.phaseMessage || 'Round Over - Hands Revealed';
                 } else {
                     turnBanner.innerText = "Lobby Waiting Room";
                 }
@@ -351,7 +362,11 @@
                 </div>
             `;
             allSeats.forEach(p => {
-                html += `<div class="seat seat-${p.seat}"><b>${p.username}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}</div>`;
+                let revealedCardsHtml = '';
+                if (p.cards && p.cards.length > 0) {
+                    revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => `<div class="mini-card"><span>${c.val}</span><span>${c.suit}</span></div>`).join('') + `</div>`;
+                }
+                html += `<div class="seat seat-${p.seat}"><b>${p.username}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
 
