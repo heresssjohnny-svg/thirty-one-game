@@ -53,8 +53,9 @@ wss.on('connection', (ws) => {
                     spectators: [],
                     deck: [],
                     discardPile: [],
-                    gameState: 'lobby', // lobby, dealerDraw, playing, roundOver
-                    dealerDrawResults: [],
+                    gameState: 'lobby',
+                    dealerDrawPool: [],
+                    dealerDrawResults: {}, // username -> card chosen
                     dealerName: null,
                     turnIndex: 0,
                     wager: 5,
@@ -129,8 +130,17 @@ wss.on('connection', (ws) => {
                         broadcastLobbyUpdate(currentLobbyCode);
 
                         if (lobby.players.every(p => p.ready) && (lobby.players.length + lobby.bots.length >= 2)) {
-                            startDealerDraw(lobby);
+                            startDealerDrawPhase(lobby);
                         }
+                    }
+                }
+                break;
+
+            case 'CHOOSE_DEALER_CARD':
+                if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                    let lobby = lobbies[currentLobbyCode];
+                    if (lobby.gameState === 'dealerDraw') {
+                        handleDealerCardSelection(lobby, currentUsername, data.cardIndex);
                     }
                 }
                 break;
@@ -219,6 +229,7 @@ function getSanitizedLobby(lobby) {
         turnIndex: lobby.turnIndex,
         currentTurnUser: currentTurnUser,
         dealerName: lobby.dealerName,
+        dealerDrawPool: lobby.dealerDrawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         dealerDrawResults: lobby.dealerDrawResults,
         wager: lobby.wager,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
@@ -228,25 +239,62 @@ function getSanitizedLobby(lobby) {
     };
 }
 
-function startDealerDraw(lobby) {
+function startDealerDrawPhase(lobby) {
     let deck = createDeck();
     let allParticipants = [...lobby.players, ...lobby.bots];
-    let draws = allParticipants.map(p => {
-        let card = deck.pop();
-        return { username: p.username, card: card, drawVal: card.drawVal };
-    });
-    draws.sort((a, b) => a.drawVal - b.drawVal); // Lowest card deals
-    let dealer = draws[0];
-
-    lobby.dealerDrawResults = draws;
-    lobby.dealerName = dealer.username;
+    
+    // Create face-down pool equal to number of participants
+    lobby.dealerDrawPool = allParticipants.map(() => ({ card: deck.pop(), chosenBy: null }));
+    lobby.dealerDrawResults = {};
+    lobby.dealerName = null;
     lobby.gameState = 'dealerDraw';
-    broadcastLobbyUpdate(lobby.code);
 
-    // Automatically transition to actual round start after 4 seconds
-    setTimeout(() => {
-        if (lobbies[lobby.code]) startRound(lobby);
-    }, 4000);
+    // Bots automatically pick a card right away
+    allParticipants.forEach(p => {
+        if (lobby.bots.some(b => b.username === p.username)) {
+            let availableIndices = lobby.dealerDrawPool.map((slot, i) => slot.chosenBy === null ? i : null).filter(i => i !== null);
+            if (availableIndices.length > 0) {
+                let randIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+                lobby.dealerDrawPool[randIdx].chosenBy = p.username;
+                lobby.dealerDrawResults[p.username] = lobby.dealerDrawPool[randIdx].card;
+            }
+        }
+    });
+
+    checkDealerDrawComplete(lobby);
+}
+
+function handleDealerCardSelection(lobby, username, cardIndex) {
+    if (lobby.dealerDrawPool[cardIndex] && lobby.dealerDrawPool[cardIndex].chosenBy === null) {
+        lobby.dealerDrawPool[cardIndex].chosenBy = username;
+        let card = lobby.dealerDrawPool[cardIndex].card;
+        lobby.dealerDrawResults[username] = card;
+        
+        broadcastLobbyUpdate(lobby.code);
+        checkDealerDrawComplete(lobby);
+    }
+}
+
+function checkDealerDrawComplete(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    let allPicked = allParticipants.every(p => lobby.dealerDrawResults[p.username]);
+
+    if (allPicked) {
+        // Find lowest card (Ace is highest, 2-10, J=11, Q=12, K=13)
+        let entries = Object.entries(lobby.dealerDrawResults).map(([user, card]) => ({ username: user, card: card }));
+        entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
+        let dealerWinner = entries[0];
+        lobby.dealerName = dealerWinner.username;
+
+        broadcastLobbyUpdate(lobby.code);
+
+        // Transition to playing round after 5 seconds
+        setTimeout(() => {
+            if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'dealerDraw') {
+                startRound(lobbies[lobby.code]);
+            }
+        }, 5000);
+    }
 }
 
 function startRound(lobby) {
@@ -261,9 +309,11 @@ function startRound(lobby) {
 }
 
 function handleTurnAction(lobby, ws, actionType) {
+    if (lobby.gameState !== 'playing') return;
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
+    if (currentPlayer.cards.length >= 4) return;
 
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
@@ -278,9 +328,11 @@ function handleTurnAction(lobby, ws, actionType) {
 }
 
 function handleDiscardAction(lobby, ws, cardIndex) {
+    if (lobby.gameState !== 'playing') return;
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
+    if (currentPlayer.cards.length !== 4) return;
 
     if (currentPlayer.cards[cardIndex]) {
         lobby.discardPile.push(currentPlayer.cards.splice(cardIndex, 1)[0]);
@@ -295,6 +347,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 }
 
 function handleKnock(lobby, ws) {
+    if (lobby.gameState !== 'playing') return;
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
@@ -310,9 +363,11 @@ function handleKnock(lobby, ws) {
 }
 
 function calculateScore(cards) {
+    let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
+    if (!scoringCards || scoringCards.length === 0) return 0;
     let suitSums = {};
-    cards.forEach(c => { suitSums[c.suit] = (suitSums[c.suit] || 0) + c.points; });
-    if (cards.length === 3 && cards[0].val === cards[1].val && cards[1].val === cards[2].val) return 30.5;
+    scoringCards.forEach(c => { suitSums[c.suit] = (suitSums[c.suit] || 0) + c.points; });
+    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
     return Math.max(...Object.values(suitSums), 0);
 }
 
