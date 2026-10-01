@@ -38,7 +38,6 @@
       display: flex; align-items: center; gap: 4px;
     }
 
-    /* Table Ring Container for Seating Players & Bots */
     .table-ring {
       position: absolute;
       inset: -115px 75px 50px -10px;
@@ -85,6 +84,7 @@
     button.secondary { background: #e0e0e0; color: #222; }
     button.danger { background: #d32f2f; color: #fff; padding: 5px 8px; font-size: 11px; }
     button.ready-on { background: #4caf50; color: #fff; }
+    button.spectate-btn { background: #455a64; color: #fff; }
 
     .wager-bar {
       display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0; z-index: 50; pointer-events: auto;
@@ -96,6 +96,33 @@
     .wager-chip.selected {
       background: #ffd700; color: #111; border-color: #ffd700;
     }
+
+    .card-cut-overlay {
+      position: fixed; inset: 0; background: rgba(10, 25, 20, 0.96);
+      display: none; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 2500; padding: 14px; text-align: center; pointer-events: none;
+    }
+    .card-cut-overlay.active {
+      display: flex !important; pointer-events: auto !important;
+    }
+    .card-cut-spread {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; max-height: 240px;
+      overflow-y: auto; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.25); border-radius: 12px; pointer-events: auto;
+    }
+    .card-cut-slot {
+      width: 44px; height: 64px; background: #0d47a1; border: 2px solid #fff; border-radius: 6px;
+      cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.4); display: flex; align-items: center;
+      justify-content: center; font-size: 11px; font-weight: bold; color: #fff; pointer-events: auto;
+    }
+
+    .banner-announcement {
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%) translateY(-100px);
+      background: #ff9800; color: #111; font-weight: 800; font-size: 13px;
+      padding: 8px 14px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      z-index: 3000; transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: none; text-align: center; border: 2px solid #fff;
+    }
+    .banner-announcement.show { transform: translateX(-50%) translateY(0); }
 
     .lobby-modal {
       position: fixed; inset: 0; background: rgba(12, 38, 30, 0.98);
@@ -111,7 +138,6 @@
       cursor: pointer; font-size: 12px; pointer-events: auto;
     }
     .room-dir-item:hover { background: rgba(255,255,255,0.2); }
-    .badge-in-play { background: #e53935; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
     .badge-lobby { background: #4caf50; color: #fff; padding: 2px 5px; border-radius: 6px; font-size: 10px; font-weight: bold; }
 
     input, select {
@@ -122,6 +148,16 @@
   </style>
 </head>
 <body>
+
+  <div id="bannerAnnouncement" class="banner-announcement"></div>
+
+  <!-- INITIAL DEALER CUT OVERLAY -->
+  <div id="dealerCutOverlay" class="card-cut-overlay">
+    <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">👑 INITIAL DEALER CUT 👑</h2>
+    <div id="dealerCutInstruction" style="font-size:13px; font-weight:bold; margin-bottom:6px;">Tap any face-down card! Lowest card becomes Dealer.</div>
+    <div id="dealerCutSpread" class="card-cut-spread"></div>
+    <div id="dealerCutPicksContainer" style="display:flex; gap:8px; justify-content:center; margin-top:8px;"></div>
+  </div>
 
   <!-- LOBBY SCREEN -->
   <div id="lobby" class="lobby-modal">
@@ -196,6 +232,7 @@
   </div>
 
   <div class="action-bar" id="actionBar">
+    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button type="button" id="removeBotBtn" class="secondary" onclick="removeBot()">- Remove Bot</button>
@@ -209,6 +246,7 @@
       document.getElementById('playerName').value = myPlayerName;
     }
     let deviceId = 'dev_' + Math.random().toString(36).substring(2, 10);
+    let hasPickedDealerCard = false;
 
     function joinGame() {
       const nameInput = document.getElementById('playerName');
@@ -230,7 +268,7 @@
     }
 
     function leaveLobby() {
-      socket.emit('disconnect');
+      socket.emit('leaveRoom', currentRoom);
       currentRoom = '';
       document.getElementById('lobby').style.display = 'flex';
       document.getElementById('roomLabel').innerText = 'Room: -';
@@ -245,6 +283,11 @@
     function toggleReady() {
       if (!currentRoom) return;
       socket.emit('toggleReady', currentRoom);
+    }
+
+    function toggleSpectate() {
+      if (!currentRoom) return;
+      socket.emit('toggleSpectate', currentRoom);
     }
 
     function addBot() {
@@ -285,19 +328,45 @@
       });
     });
 
+    socket.on('startDealerSelectionCut', (data) => {
+      const overlay = document.getElementById('dealerCutOverlay');
+      const spread = document.getElementById('dealerCutSpread');
+      spread.innerHTML = '';
+      hasPickedDealerCard = false;
+
+      for (let i = 0; i < data.deckCount; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'card-cut-slot';
+        slot.innerText = '🂠';
+        slot.onclick = () => {
+          if (hasPickedDealerCard) return;
+          hasPickedDealerCard = true;
+          slot.style.opacity = '0.3';
+          slot.style.pointerEvents = 'none';
+          socket.emit('pickDealerCutCard', { roomId: currentRoom, cardIndex: i });
+        };
+        spread.appendChild(slot);
+      }
+      overlay.classList.add('active');
+    });
+
+    socket.on('dealerCutResultsReveal', () => {
+      setTimeout(() => {
+        document.getElementById('dealerCutOverlay').classList.remove('active');
+      }, 3000);
+    });
+
     socket.on('gameState', (state) => {
       try {
         document.getElementById('potBanner').innerText = `🏆 MATCH POT: $${state.totalPot || 0}`;
         document.getElementById('deckCountLabel').innerText = `(${state.deckCount || 52})`;
         document.getElementById('statusBar').innerText = state.message || 'Waiting for players or bots...';
 
-        // Update Wager Chips selection highlight
         document.querySelectorAll('#wagerSection .wager-chip').forEach(chip => {
           const val = parseInt(chip.getAttribute('data-wager')) || 0;
           chip.classList.toggle('selected', val === state.myWager);
         });
 
-        // Update Ready Button State
         const readyBtn = document.getElementById('readyBtn');
         if (state.isReady) {
           readyBtn.className = 'ready-on';
@@ -307,7 +376,9 @@
           readyBtn.innerText = '⏳ Tap to Ready';
         }
 
-        // Render Opponents / Bots in the Table Ring
+        const spectateBtn = document.getElementById('spectateBtn');
+        spectateBtn.innerText = state.manualSpectator ? '🃏 Play Hand' : '👁️ Spectate';
+
         const tableRing = document.getElementById('tableRing');
         if (tableRing) {
           tableRing.innerHTML = '';
