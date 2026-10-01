@@ -42,14 +42,15 @@
         
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
-        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; }
+        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.85rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 8px; align-items: center; }
 
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -18px; font-size: 0.75rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; }
+        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; cursor: pointer; }
+        .seat:hover { border-color: #38bdf8; }
         .seat-0 { bottom: -10px; left: calc(50% - 65px); border-color: #38bdf8; }
         .seat-1 { bottom: 45px; left: 15px; }
         .seat-2 { top: 45px; left: 20px; }
@@ -57,7 +58,7 @@
         .seat-4 { top: 45px; right: 20px; }
         .seat-5 { bottom: 45px; right: 15px; }
         .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
-        .mini-card { width: 22px; height: 32px; background: #fff; font-size: 0.55rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
+        .mini-card { width: 28px; height: 40px; background: #fff; font-size: 0.65rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
         .black-suit { color: #0f172a; }
 
@@ -93,6 +94,7 @@
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             <button class="secondary" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
+            <button class="secondary" onclick="openSpectatorListModal()">Spectators (<span id="spec-count">0</span>)</button>
             
             <div id="chat-container">
                 <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
@@ -182,8 +184,6 @@
                 <div class="bottom-action-bar" id="my-action-buttons">
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
-                    <button onclick="openSideBetModal()" class="secondary">Side Bet</button>
-                    <button onclick="openFirstToLoseModal()" class="secondary">First to Lose</button>
                 </div>
             </div>
         </div>
@@ -199,14 +199,16 @@
         </div>
     </div>
 
+    <!-- Rules Modal -->
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. First to Lose wagers on who gets eliminated from the game first!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap any player's seat name to propose side or elimination bets! Check spectators in top menu.</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
 
+    <!-- Ledger Modal -->
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Ledger & Balances</h3>
@@ -216,10 +218,19 @@
         </div>
     </div>
 
+    <!-- Spectator List Modal -->
+    <div id="spectators-modal" class="modal">
+        <div class="modal-content" style="max-width:350px;">
+            <h3>Spectator List</h3>
+            <div id="spectators-list-content" style="font-size:0.85rem; color:#cbd5e1; text-align:left; max-height:180px; overflow-y:auto; padding:4px;">No spectators.</div>
+            <button class="secondary" onclick="toggleModal('spectators-modal')">Close</button>
+        </div>
+    </div>
+
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], discardTop: null, ledger: {}, lastDiscardPickup: null };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [] };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -278,6 +289,17 @@
                 ledgerDiv.innerHTML = html + listHtml;
             }
             toggleModal('ledger-modal');
+        }
+
+        function openSpectatorListModal() {
+            let content = document.getElementById('spectators-list-content');
+            let specs = clientState.spectatorsList || [];
+            if (specs.length === 0) {
+                content.innerHTML = 'No spectators in this room.';
+            } else {
+                content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:4px;"><b>${s.username}</b></li>`).join('') + '</ul>';
+            }
+            toggleModal('spectators-modal');
         }
 
         function clearUserDebt(targetUser) {
@@ -603,6 +625,32 @@
             }
         }
 
+        function tapSeat(targetUsername) {
+            if (targetUsername === clientState.username) return; // Can't bet with yourself
+            let betType = prompt(`Propose bet with ${targetUsername}:\nType '1' for Side Bet (Win Round)\nType '2' for First One Out (Elimination)`);
+            if (betType !== '1' && betType !== '2') return;
+
+            let typeStr = (betType === '1') ? 'win' : 'eliminate';
+            let activeList = clientState.playersList;
+            let pickPrompt = (typeStr === 'win') ? `Select player to win round:\n- ${activeList.join('\n- ')}` : `Select player to be eliminated first:\n- ${activeList.join('\n- ')}`;
+            let pickUser = prompt(pickPrompt);
+            if (!pickUser || !activeList.includes(pickUser)) return;
+
+            let wagerAmt = prompt("Select wager amount ($5, $10, $20):", "5");
+            if (!wagerAmt || !['5', '10', '20'].includes(wagerAmt)) return;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'PROPOSE_BET',
+                    target: targetUsername,
+                    pickUser: pickUser,
+                    wagerAmt: parseFloat(wagerAmt),
+                    betType: typeStr
+                }));
+                alert(`Bet proposed to ${targetUsername}. Awaiting their response.`);
+            }
+        }
+
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('game-view').style.display = 'flex';
@@ -611,8 +659,24 @@
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
             clientState.playersList = lobby.players.map(p => p.username);
+            clientState.spectatorsList = lobby.spectators || [];
+            document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
+
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
+
+            // Check if any pending bet proposals for me
+            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
+                lobby.pendingBetsForMe.forEach(bet => {
+                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated first.`;
+                    if (confirm(`Incoming Bet Proposal from ${bet.proposer}!\n\n${label}\n\nAccept this bet?`)) {
+                        respondToBet(bet.id, true);
+                    } else {
+                        respondToBet(bet.id, false);
+                    }
+                });
+                lobby.pendingBetsForMe = []; // Clear handled
+            }
 
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
@@ -737,33 +801,15 @@
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                html += `<div class="seat seat-${p.seat}"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
+                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b><br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
+        }
 
-            let myPlayerObj = lobby.players.find(p => p.username === clientState.username);
-            if (myPlayerObj && myPlayerObj.peekIncoming) {
-                for (let specName in myPlayerObj.peekIncoming) {
-                    if (confirm(`Spectator ${specName} requested to see your hand. Allow?`)) {
-                        respondPeek(specName, true);
-                    } else {
-                        respondPeek(specName, false);
-                    }
-                }
-            }
-
-            if (me && me.cards) {
-                let cardsHtml = me.cards.map((c, i) => `
-                    <div class="my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}" onclick="discardCard(${i})">
-                        <span>${c.val}</span><span style="font-size:1.2rem;">${c.suit}</span>
-                    </div>
-                `).join('');
-                document.getElementById('my-cards-container').innerHTML = cardsHtml || '<div style="color:#94a3b8; font-size:0.8rem;">No cards</div>';
-                document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
-            } else if (isSpectatorOnly) {
-                document.getElementById('my-cards-container').innerHTML = '<div style="color:#38bdf8; font-size:0.85rem;">You are spectating. Click "Peek Hand" on any seat to request viewing cards.</div>';
-                document.getElementById('my-score-display').innerText = '0';
+        function respondToBet(betId, accept) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'RESPOND_BET', betId, accept }));
             }
         }
 
@@ -822,6 +868,7 @@
             document.getElementById('leave-lobby-btn').style.display = 'none';
             document.getElementById('pool-draw-modal').style.display = 'none';
             document.getElementById('ledger-modal').style.display = 'none';
+            document.getElementById('spectators-modal').style.display = 'none';
             document.getElementById('next-hand-overlay').style.display = 'none';
             document.getElementById('chat-window').style.display = 'none';
             clientState.isReady = false;
@@ -837,42 +884,6 @@
         function toggleModal(id) {
             let m = document.getElementById(id);
             m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
-        }
-
-        function openSideBetModal() {
-            let others = clientState.playersList.filter(u => u !== clientState.username);
-            if (!others.length) return alert('No other players available to bet with.');
-            let target = prompt(`Select player to propose a side bet with:\n- ${others.join('\n- ')}`);
-            if (target && others.includes(target)) {
-                let pickUser = prompt(`Which player do you think will win this round?\n- ${clientState.playersList.join('\n- ')}`);
-                if (pickUser && clientState.playersList.includes(pickUser)) {
-                    let wagerAmt = prompt("Side bet wager amount ($):");
-                    if (wagerAmt && !isNaN(wagerAmt)) {
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({ type: 'ADD_SIDE_BET', target, pickUser, wagerAmt, betType: 'win' }));
-                            alert(`Side bet proposed to ${target}!`);
-                        }
-                    }
-                }
-            }
-        }
-
-        function openFirstToLoseModal() {
-            let others = clientState.playersList.filter(u => u !== clientState.username);
-            if (!others.length) return alert('No other players available to bet with.');
-            let target = prompt(`Select player to propose a First to Lose bet with:\n- ${others.join('\n- ')}`);
-            if (target && others.includes(target)) {
-                let pickUser = prompt(`Which player do you think will be the FIRST ELIMINATED from the game (reach 0 lives)?\n- ${clientState.playersList.join('\n- ')}`);
-                if (pickUser && clientState.playersList.includes(pickUser)) {
-                    let wagerAmt = prompt("Wager amount ($):");
-                    if (wagerAmt && !isNaN(wagerAmt)) {
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({ type: 'ADD_SIDE_BET', target, pickUser, wagerAmt, betType: 'eliminate' }));
-                            alert(`First to Lose (elimination) bet proposed to ${target}!`);
-                        }
-                    }
-                }
-            }
         }
     </script>
 </body>
