@@ -107,7 +107,7 @@
     .card-cut-overlay {
       position: fixed; inset: 0; background: rgba(10, 25, 20, 0.96);
       display: none; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 2500; padding: 14px; text-align: center; pointer-events: none;
+      z-index: 2500; pointer-events: none; padding: 14px; text-align: center;
     }
     .card-cut-overlay.active {
       display: flex !important; pointer-events: auto !important;
@@ -222,8 +222,8 @@
     <div class="middle-piles">
       <div style="font-size: 11px; font-weight: bold; color: #ffd700; text-align: center; margin-bottom: -2px;">Your Score: <span id="scoreLabel">0</span></div>
       <div style="display: flex; gap: 20px; align-items: center;">
-        <div id="drawPile" class="card back">DECK<br><span id="deckCountLabel" style="font-size:11px;">(52)</span></div>
-        <div id="discardPile" class="card">--</div>
+        <div id="drawPile" class="card back" onclick="draw('deck')">DECK<br><span id="deckCountLabel" style="font-size:11px;">(52)</span></div>
+        <div id="discardPile" class="card" onclick="draw('discard')">--</div>
       </div>
     </div>
 
@@ -325,6 +325,16 @@
       socket.emit('removeBot', currentRoom);
     }
 
+    function draw(source) {
+      if (!currentRoom) return;
+      socket.emit('drawCard', { roomId: currentRoom, source: source });
+    }
+
+    function discard(cardIndex) {
+      if (!currentRoom) return;
+      socket.emit('discardCard', { roomId: currentRoom, cardIndex: cardIndex });
+    }
+
     socket.on('roomListUpdate', (rooms) => {
       const container = document.getElementById('roomsContainer');
       const countLabel = document.getElementById('lobbyCountLabel');
@@ -404,10 +414,6 @@
         `;
         container.appendChild(box);
       });
-
-      setTimeout(() => {
-        document.getElementById('dealerCutOverlay').classList.remove('active');
-      }, 2500);
     });
 
     socket.on('bigAnnouncement', (data) => {
@@ -497,11 +503,12 @@
         const hArea = document.getElementById('handArea');
         if (state.hand && state.hand.length > 0) {
           hArea.innerHTML = '';
-          state.hand.forEach(c => {
+          state.hand.forEach((c, idx) => {
             const isRed = c.suit === '♥' || c.suit === '♦';
             const cardEl = document.createElement('div');
             cardEl.className = `card ${isRed ? 'red' : 'black'}`;
             cardEl.innerHTML = `<span>${c.rank}</span><span style="font-size:20px;">${c.suit}</span>`;
+            cardEl.onclick = () => discard(idx);
             hArea.appendChild(cardEl);
           });
         } else if (!state.gameStarted) {
