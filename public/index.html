@@ -257,7 +257,7 @@
   </div>
 
   <div class="action-bar" id="actionBar">
-    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️️ Spectate</button>
+    <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
     <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
@@ -444,12 +444,24 @@
         });
 
         const readyBtn = document.getElementById('readyBtn');
-        if (state.isReady) {
-          readyBtn.className = 'ready-on';
-          readyBtn.innerText = '✅ You are Ready';
+        const livesSec = document.getElementById('livesSelectorSection');
+        const wagerSec = document.getElementById('wagerSection');
+        const addBotBtn = document.getElementById('addBotBtn');
+        const removeBotBtn = document.getElementById('removeBotBtn');
+
+        if (state.gameStarted) {
+          readyBtn.style.display = 'none';
+          livesSec.style.display = 'none';
+          wagerSec.style.display = 'none';
+          addBotBtn.style.display = 'none';
+          removeBotBtn.style.display = 'none';
         } else {
-          readyBtn.className = '';
-          readyBtn.innerText = '⏳ Tap to Ready';
+          readyBtn.style.display = 'inline-block';
+          livesSec.style.display = 'flex';
+          wagerSec.style.display = 'flex';
+          addBotBtn.style.display = 'inline-block';
+          readyBtn.className = state.isReady ? 'ready-on' : '';
+          readyBtn.innerText = state.isReady ? '✅ You are Ready' : '⏳ Tap to Ready';
         }
 
         const spectateBtn = document.getElementById('spectateBtn');
