@@ -446,6 +446,7 @@ function getSanitizedLobby(lobby, wsId) {
     let isRoundOver = lobby.gameState === 'roundOver';
     let canKnock = lobby.turnsTakenThisRound >= activeParts.length;
     let potTotal = allParticipants.reduce((sum, p) => sum + (p.wager || 5), 0);
+    let sidePotTotal = (lobby.activeBets || []).reduce((sum, b) => sum + (b.wagerAmt || 0), 0);
 
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
     let requestingSpectator = lobby.spectators.find(s => s.id === wsId);
@@ -460,20 +461,9 @@ function getSanitizedLobby(lobby, wsId) {
     }
     sortedParticipants.forEach((p, idx) => { p.seat = idx; });
 
-    let myPendingBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.responded);
-    if (myPendingBets.length > 0) {
-        myPendingBets.forEach(b => b.responded = true);
-    }
-
-    // Attach active side bets for seat rendering
-    let seatBets = {};
-    if (myUsername) {
-        (lobby.activeBets || []).forEach(bet => {
-            if (bet.proposer === myUsername || bet.target === myUsername) {
-                let otherUser = bet.proposer === myUsername ? bet.target : bet.proposer;
-                seatBets[otherUser] = (seatBets[otherUser] || 0) + bet.wagerAmt;
-            }
-        });
+    let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.responded);
+    if (myUnrespondedBets.length > 0) {
+        myUnrespondedBets.forEach(b => b.responded = true);
     }
 
     return {
@@ -487,10 +477,9 @@ function getSanitizedLobby(lobby, wsId) {
         phaseMessage: lobby.phaseMessage,
         canKnock: canKnock,
         potTotal: potTotal,
+        sidePotTotal: sidePotTotal,
         ledger: lobby.ledger || {},
-        pendingBetsForMe: myPendingBets,
-        seatBets: seatBets,
-        lastDiscardPickup: lobby.lastDiscardPickup || null,
+        pendingBetsForMe: myUnrespondedBets,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
