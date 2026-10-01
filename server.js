@@ -58,10 +58,12 @@ wss.on('connection', (ws) => {
                     drawResults: {},
                     phaseMessage: null,
                     turnIndex: 0,
+                    dealerIndex: 0,
                     wager: 5,
                     ledger: {},
                     knockedBy: null,
-                    finalTurnsRemaining: 0
+                    finalTurnsRemaining: 0,
+                    turnsTakenThisRound: 0
                 };
                 ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode]) }));
                 broadcastLobbyList();
@@ -231,6 +233,7 @@ function getSanitizedLobby(lobby) {
     let allParticipants = [...lobby.players, ...lobby.bots];
     let currentTurnUser = allParticipants[lobby.turnIndex] ? allParticipants[lobby.turnIndex].username : '';
     let isRoundOver = lobby.gameState === 'roundOver';
+    let canKnock = lobby.turnsTakenThisRound >= allParticipants.length;
 
     return {
         code: lobby.code,
@@ -241,6 +244,7 @@ function getSanitizedLobby(lobby) {
         turnIndex: lobby.turnIndex,
         currentTurnUser: currentTurnUser,
         phaseMessage: lobby.phaseMessage,
+        canKnock: canKnock,
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
         wager: lobby.wager,
@@ -272,6 +276,7 @@ function startDealerDrawPhase(lobby) {
     lobby.gameState = 'dealerDraw';
     lobby.knockedBy = null;
     lobby.finalTurnsRemaining = 0;
+    lobby.turnsTakenThisRound = 0;
 
     autoPickForBots(lobby);
     broadcastLobbyUpdate(lobby.code);
@@ -315,6 +320,9 @@ function checkDealerDrawComplete(lobby) {
         let entries = Object.entries(lobby.drawResults).map(([user, card]) => ({ username: user, card: card }));
         entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
         let dealerWinner = entries[0];
+        
+        let dealerIndex = allParticipants.findIndex(p => p.username === dealerWinner.username);
+        lobby.dealerIndex = dealerIndex !== -1 ? dealerIndex : 0;
         lobby.phaseMessage = `🎉 ${dealerWinner.username} drew the lowest card (${dealerWinner.card.val}${dealerWinner.card.suit}) and is the Dealer!`;
 
         broadcastLobbyUpdate(lobby.code);
@@ -337,7 +345,10 @@ function startRound(lobby) {
     lobby.phaseMessage = null;
     lobby.knockedBy = null;
     lobby.finalTurnsRemaining = 0;
-    lobby.turnIndex = Math.floor(Math.random() * allParticipants.length);
+    lobby.turnsTakenThisRound = 0;
+    
+    // Play starts with the player to the left of the dealer
+    lobby.turnIndex = (lobby.dealerIndex + 1) % allParticipants.length;
     broadcastLobbyUpdate(lobby.code);
 }
 
@@ -355,10 +366,13 @@ function checkAndRunBotTurn(lobby) {
                 let discardIdx = Math.floor(Math.random() * currentPlayer.cards.length);
                 lobby.discardPile.push(currentPlayer.cards.splice(discardIdx, 1)[0]);
 
+                lobby.turnsTakenThisRound++;
+
                 if (calculateScore(currentPlayer.cards) === 31) {
                     allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
                     lobby.gameState = 'roundOver';
                     lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`;
+                    rotateDealer(lobby);
                     broadcastLobbyUpdate(lobby.code);
                     return;
                 }
@@ -399,10 +413,13 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
     if (currentPlayer.cards[cardIndex]) {
         lobby.discardPile.push(currentPlayer.cards.splice(cardIndex, 1)[0]);
+        lobby.turnsTakenThisRound++;
+
         if (calculateScore(currentPlayer.cards) === 31) {
             allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
             lobby.gameState = 'roundOver';
             lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`;
+            rotateDealer(lobby);
             broadcastLobbyUpdate(lobby.code);
         } else {
             advanceTurnOrResolve(lobby);
@@ -429,16 +446,20 @@ function handleKnock(lobby, ws) {
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
 
+    // Check turn-one restriction
+    if (lobby.turnsTakenThisRound < allParticipants.length) return;
+
+    // Check point requirements (21+ for 3+ players, 25+ for heads-up)
     let score = calculateScore(currentPlayer.cards);
     let threshold = allParticipants.length > 2 ? 21 : 25;
-    if (score >= threshold) {
-        lobby.gameState = 'finalTurn';
-        lobby.knockedBy = currentPlayer.username;
-        lobby.finalTurnsRemaining = allParticipants.length - 1; // Everyone else gets 1 turn
-        lobby.phaseMessage = `🔔 ${currentPlayer.username} knocked with ${score} points! Every other player gets 1 final turn.`;
-        lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
-        broadcastLobbyUpdate(lobby.code);
-    }
+    if (score < threshold) return; // Requirement not met
+
+    lobby.gameState = 'finalTurn';
+    lobby.knockedBy = currentPlayer.username;
+    lobby.finalTurnsRemaining = allParticipants.length - 1;
+    lobby.phaseMessage = `🔔 ${currentPlayer.username} knocked with ${score} points! Every other player gets 1 final turn.`;
+    lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
+    broadcastLobbyUpdate(lobby.code);
 }
 
 function resolveRoundEnd(lobby) {
@@ -461,6 +482,7 @@ function resolveRoundEnd(lobby) {
         scores[0].player.lives--;
         lobby.gameState = 'roundOver';
         lobby.phaseMessage = `Round Over! ${scores[0].player.username} had the lowest score (${lowestScore} pts) and lost a life. All hands revealed.`;
+        rotateDealer(lobby);
         broadcastLobbyUpdate(lobby.code);
     }
 }
@@ -483,8 +505,15 @@ function checkTieBreakerComplete(lobby) {
 
         lobby.gameState = 'roundOver';
         lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest card (${loser.card.val}${loser.card.suit}) and lost a life! All hands revealed.`;
+        rotateDealer(lobby);
         broadcastLobbyUpdate(lobby.code);
     }
+}
+
+function rotateDealer(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    // Rotate dealer clockwise to the left
+    lobby.dealerIndex = (lobby.dealerIndex + 1) % allParticipants.length;
 }
 
 function calculateScore(cards) {
