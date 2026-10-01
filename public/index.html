@@ -260,7 +260,7 @@
     <button type="button" id="spectateBtn" class="spectate-btn" onclick="toggleSpectate()">👁️ Spectate</button>
     <button type="button" id="readyBtn" onclick="toggleReady()">⏳ Tap to Ready</button>
     <button type="button" id="addBotBtn" class="secondary" onclick="addBot()">+ Add Bot</button>
-    <button type="button" id="removeBotBtn" class="secondary" onclick="removeBot()">- Remove Bot</button>
+    <button type="button" id="removeBotBtn" class="secondary" style="display:none;" onclick="removeBot()">- Remove Bot</button>
   </div>
 
   <script>
@@ -354,6 +354,7 @@
     });
 
     socket.on('startDealerSelectionCut', (data) => {
+      document.getElementById('dealerCutOverlay').classList.remove('active');
       const overlay = document.getElementById('dealerCutOverlay');
       const spread = document.getElementById('dealerCutSpread');
       const container = document.getElementById('dealerCutPicksContainer');
@@ -403,9 +404,14 @@
         `;
         container.appendChild(box);
       });
+
+      setTimeout(() => {
+        document.getElementById('dealerCutOverlay').classList.remove('active');
+      }, 2500);
     });
 
     socket.on('bigAnnouncement', (data) => {
+      document.getElementById('dealerCutOverlay').classList.remove('active');
       const overlay = document.getElementById('announcementOverlay');
       document.getElementById('annTitle').innerText = data.title || '👑 DEALER SELECTED! 👑';
       document.getElementById('annMessage').innerText = data.message || '';
