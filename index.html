@@ -55,6 +55,11 @@
         #turn-banner { background: #1e293b; border: 1px solid #38bdf8; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #38bdf8; font-weight: bold; flex-shrink: 0; }
         #notification-banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.9rem; z-index: 3000; display: none; }
         
+        /* Next Hand Overlay Button in Middle */
+        #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
+        #next-hand-btn { background: #10b981; color: #fff; font-size: 1.2rem; padding: 12px 24px; border-radius: 8px; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.5); border: 2px solid #34d399; }
+        #next-hand-btn:hover { background: #059669; }
+
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; }
         .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; width: 95%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; gap: 12px; border: 1px solid #334155; text-align: center; }
         .pool-cards-grid { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; overflow-y: auto; max-height: 350px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #475569; }
@@ -125,7 +130,12 @@
                 <button class="secondary" style="padding:4px 8px;" onclick="removeBot()">-Bot</button>
             </div>
             
-            <div class="table-oval" id="table-oval-container"></div>
+            <div class="table-oval" id="table-oval-container">
+                <!-- Next Hand Button Overlay in Middle -->
+                <div id="next-hand-overlay">
+                    <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
+                </div>
+            </div>
 
             <div class="my-hand-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: #94a3b8;">
@@ -155,7 +165,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knocking requires 21+ pts (or 25+ heads-up) after everyone has had 1 turn. Knocking gives everyone 1 final turn. Dealer rotates clockwise!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Knocking requires 21+ pts (or 25+ heads-up) after everyone has had 1 turn. Knocking gives everyone 1 final turn. All hands revealed at round end!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -178,18 +188,29 @@
         let lastPhaseMessage = '';
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playDing() {
+        function playSound(type) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             let osc = audioCtx.createOscillator();
             let gain = audioCtx.createGain();
             let now = audioCtx.currentTime;
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            osc.frequency.setValueAtTime(587.33, now);
-            gain.gain.setValueAtTime(0.2, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-            osc.start(now);
-            osc.stop(now + 0.4);
+
+            if (type === 'ding') {
+                osc.frequency.setValueAtTime(587.33, now);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'knock') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
         }
 
         function triggerVibration() {
@@ -200,7 +221,7 @@
             let banner = document.getElementById('notification-banner');
             banner.innerText = msg;
             banner.style.display = 'block';
-            playDing();
+            playSound('ding');
             triggerVibration();
             setTimeout(() => { banner.style.display = 'none'; }, 4000);
         }
@@ -264,6 +285,15 @@
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SET_READY', ready: clientState.isReady }));
         }
 
+        function clickNextHand() {
+            let btn = document.getElementById('next-hand-btn');
+            btn.innerText = 'Waiting...';
+            btn.disabled = true;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'NEXT_HAND' }));
+            }
+        }
+
         async function toggleVoiceChat() {
             let status = document.getElementById('vc-status');
             if (status.innerText === 'Off') {
@@ -298,14 +328,34 @@
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
-            // Enable or disable knock button based on server rule validation
+            // Knock button state
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
+
+            // Next hand overlay state
+            let nextHandOverlay = document.getElementById('next-hand-overlay');
+            if (lobby.gameState === 'roundOver') {
+                nextHandOverlay.style.display = 'block';
+                let me = lobby.players.find(p => p.username === clientState.username);
+                let nextBtn = document.getElementById('next-hand-btn');
+                if (me && me.nextHandReady) {
+                    nextBtn.innerText = 'Waiting...';
+                    nextBtn.disabled = true;
+                } else {
+                    nextBtn.innerText = 'Next Hand';
+                    nextBtn.disabled = false;
+                }
+            } else {
+                nextHandOverlay.style.display = 'none';
+            }
 
             let poolModal = document.getElementById('pool-draw-modal');
             let turnBanner = document.getElementById('turn-banner');
 
             if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
                 showNotification(lobby.phaseMessage);
+                if (lobby.phaseMessage.includes('KNOCK')) {
+                    playSound('knock');
+                }
                 lastPhaseMessage = lobby.phaseMessage;
             }
 
@@ -373,6 +423,8 @@
                 html += `<div class="seat seat-${p.seat}"><b>${p.username}</b><br>Lives: ${p.lives} | Cards: ${p.cardCount}${revealedCardsHtml}</div>`;
             });
             container.innerHTML = html;
+            // Re-append the next-hand overlay so it stays in the center
+            container.appendChild(nextHandOverlay);
 
             let me = lobby.players.find(p => p.username === clientState.username);
             if (me && me.cards) {
@@ -405,7 +457,12 @@
 
         function drawCard(type) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' })); }
         function discardCard(cardIndex) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'DISCARD_CARD', cardIndex })); }
-        function knockRound() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'KNOCK' })); }
+        function knockRound() { 
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'KNOCK' }));
+                playSound('knock');
+            }
+        }
         
         function leaveLobby() {
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
@@ -419,6 +476,7 @@
             document.getElementById('leave-lobby-btn').style.display = 'none';
             document.getElementById('pool-draw-modal').style.display = 'none';
             document.getElementById('ledger-modal').style.display = 'none';
+            document.getElementById('next-hand-overlay').style.display = 'none';
             clientState.isReady = false;
             hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
