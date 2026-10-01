@@ -372,6 +372,7 @@ function getSanitizedLobby(lobby, wsId) {
     let currentTurnUser = allParticipants[lobby.turnIndex] ? allParticipants[lobby.turnIndex].username : '';
     let isRoundOver = lobby.gameState === 'roundOver';
     let canKnock = lobby.turnsTakenThisRound >= activeParts.length;
+    let potTotal = allParticipants.length * (lobby.wager || 5);
 
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
     let requestingSpectator = lobby.spectators.find(s => s.id === wsId);
@@ -387,6 +388,7 @@ function getSanitizedLobby(lobby, wsId) {
         currentTurnUser: currentTurnUser,
         phaseMessage: lobby.phaseMessage,
         canKnock: canKnock,
+        potTotal: potTotal,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
