@@ -59,7 +59,7 @@
     /* Shifted Further Left Table Ring Container */
     .table-ring {
       position: absolute;
-      inset: -115px 75px 50px -20px;
+      inset: -115px 85px 50px -10px;
       display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 100; overflow: visible;
     }
     .player-seat {
@@ -156,7 +156,7 @@
       background: #d32f2f; color: white; border-radius: 50%;
       padding: 2px 5px; font-size: 10px; font-weight: bold; display: none;
     }
-    /* Constrained Chat Panel above table cloth and bottom action buttons */
+    /* Fixed Chat Panel with full pointer events and proper bounds */
     .chat-panel {
       position: fixed; top: 38px; right: -100%; width: 85%; max-width: 300px; height: calc(100vh - 110px);
       background: #0f2d24; z-index: 2400; display: flex; flex-direction: column;
@@ -525,7 +525,7 @@
   <div id="spectatorPeekSelectorModal" class="custom-modal">
     <div class="modal-card" style="border-color:#7b1fa2; max-width:340px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️ Request Hand View</span>
+        <span style="font-weight:900; font-size:14px; color:#ba68c8;">👁️️ Request Hand View</span>
         <span id="closePeekModalBtn" style="cursor:pointer; font-size:20px; padding:4px;" onclick="togglePeekSelectorModal()">✕</span>
       </div>
       <div style="font-size:11px; opacity:0.9;">Choose an active player to ask for permission to view their hand:</div>
@@ -1807,7 +1807,7 @@
           const slotCoordinates = [
             { x: -125, y: 70 },  // Bottom Left (Next Turn)
             { x: -125, y: -25 }, // Top Left
-            { x: -20,  y: -145 }, // Top Center (Shifted slightly left to align with my name badge)
+            { x: -20,  y: -145 }, // Top Center (Aligned with center name badge)
             { x: 125,  y: -25 }, // Top Right
             { x: 125,  y: 70 }   // Bottom Right (Previous Turn)
           ];
