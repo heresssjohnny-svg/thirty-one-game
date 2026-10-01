@@ -53,8 +53,8 @@ wss.on('connection', (ws) => {
                     spectators: [],
                     deck: [],
                     discardPile: [],
-                    gameState: 'lobby', // lobby, dealerDraw, playing, tieBreaker, roundOver
-                    drawPool: [], // Used for dealer draw or tie breaker
+                    gameState: 'lobby',
+                    drawPool: [],
                     drawResults: {},
                     phaseMessage: null,
                     turnIndex: 0,
@@ -71,14 +71,19 @@ wss.on('connection', (ws) => {
                     currentLobbyCode = code;
                     currentUsername = data.username;
                     let lobby = lobbies[code];
-                    if (lobby.players.length + lobby.bots.length < 6 && lobby.gameState === 'lobby') {
+                    
+                    let totalOccupants = lobby.players.length + lobby.bots.length;
+                    if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                         let availableSeat = findOpenSeat(lobby);
                         lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat });
                         ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby) }));
                         broadcastLobbyUpdate(code);
                         broadcastLobbyList();
                     } else {
-                        ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby full or game started!' }));
+                        // Join as spectator if game already started or table is full
+                        lobby.spectators.push({ id: ws, username: currentUsername });
+                        ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby) }));
+                        broadcastLobbyUpdate(code);
                     }
                 } else {
                     ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
@@ -125,7 +130,7 @@ wss.on('connection', (ws) => {
                 if (currentLobbyCode && lobbies[currentLobbyCode]) {
                     let lobby = lobbies[currentLobbyCode];
                     let player = lobby.players.find(p => p.id === ws);
-                    if (player) {
+                    if (player && lobby.gameState === 'lobby') {
                         player.ready = data.ready;
                         broadcastLobbyUpdate(currentLobbyCode);
 
@@ -215,6 +220,11 @@ function broadcastLobbyUpdate(code) {
     let sanitized = getSanitizedLobby(lobby);
     lobby.players.forEach(p => { if (p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized })); });
     lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: sanitized })); });
+
+    // Check if bot turn
+    if (lobby.gameState === 'playing') {
+        checkAndRunBotTurn(lobby);
+    }
 }
 
 function getSanitizedLobby(lobby) {
@@ -269,7 +279,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
 function autoPickForBots(lobby) {
     let allParticipants = [...lobby.players, ...lobby.bots];
     allParticipants.forEach(p => {
-        if (lobby.bots.some(b => b.username === p.username)) {
+        if (lobby.bots.some(b => b.username === p.username) && !lobby.drawResults[p.username]) {
             let available = lobby.drawPool.map((slot, i) => slot.chosenBy === null ? i : null).filter(i => i !== null);
             if (available.length > 0) {
                 let randIdx = available[Math.floor(Math.random() * available.length)];
@@ -312,6 +322,35 @@ function startRound(lobby) {
     broadcastLobbyUpdate(lobby.code);
 }
 
+function checkAndRunBotTurn(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    let currentPlayer = allParticipants[lobby.turnIndex];
+    if (currentPlayer && lobby.bots.some(b => b.username === currentPlayer.username)) {
+        setTimeout(() => {
+            if (lobby.gameState !== 'playing') return;
+            let currentTurnCheck = [...lobby.players, ...lobby.bots][lobby.turnIndex];
+            if (currentTurnCheck && currentTurnCheck.username === currentPlayer.username) {
+                // Bot draws from deck
+                if (lobby.deck.length === 0) lobby.deck = createDeck();
+                currentPlayer.cards.push(lobby.deck.pop());
+                
+                // Bot discards random card
+                let discardIdx = Math.floor(Math.random() * currentPlayer.cards.length);
+                lobby.discardPile.push(currentPlayer.cards.splice(discardIdx, 1)[0]);
+
+                if (calculateScore(currentPlayer.cards) === 31) {
+                    allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
+                    lobby.gameState = 'roundOver';
+                    lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points!`;
+                } else {
+                    lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
+                }
+                broadcastLobbyUpdate(lobby.code);
+            }
+        }, 1500);
+    }
+}
+
 function handleTurnAction(lobby, ws, actionType) {
     if (lobby.gameState !== 'playing') return;
     let allParticipants = [...lobby.players, ...lobby.bots];
@@ -342,7 +381,9 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         lobby.discardPile.push(currentPlayer.cards.splice(cardIndex, 1)[0]);
         if (calculateScore(currentPlayer.cards) === 31) {
             allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
-            checkRoundEndOrContinue(lobby);
+            lobby.gameState = 'roundOver';
+            lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points!`;
+            broadcastLobbyUpdate(lobby.code);
         } else {
             lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
             broadcastLobbyUpdate(lobby.code);
@@ -372,13 +413,11 @@ function resolveRoundEnd(lobby) {
     let tiedPlayers = scores.filter(s => s.score === lowestScore);
 
     if (tiedPlayers.length > 1 && allParticipants.length >= 3) {
-        // Tie breaker for 3 or more players using remaining deck cards
         lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
         lobby.drawResults = {};
-        lobby.phaseMessage = `⚠️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from the remaining deck.`;
+        lobby.phaseMessage = `⚠️ Tie breaker between ${tiedPlayers.map(t => t.player.username).join(', ')}! Draw from remaining deck.`;
         lobby.gameState = 'tieBreaker';
 
-        // Bots tied pick automatically
         autoPickForBots(lobby);
         broadcastLobbyUpdate(lobby.code);
     } else {
@@ -390,7 +429,6 @@ function resolveRoundEnd(lobby) {
 }
 
 function checkTieBreakerComplete(lobby) {
-    // Only tied players need to pick from pool
     let allParticipants = [...lobby.players, ...lobby.bots];
     let scores = allParticipants.map(p => ({ player: p, score: calculateScore(p.cards) })).sort((a, b) => a.score - b.score);
     let lowestScore = scores[0].score;
@@ -407,7 +445,7 @@ function checkTieBreakerComplete(lobby) {
         if (targetParticipant) targetParticipant.lives--;
 
         lobby.gameState = 'roundOver';
-        lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest tie card (${loser.card.val}${loser.card.suit}) and lost a life!`;
+        lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest card (${loser.card.val}${loser.card.suit}) and lost a life!`;
         broadcastLobbyUpdate(lobby.code);
     }
 }
