@@ -76,7 +76,7 @@
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Ledger</button>
             <button class="secondary" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
-            <button class="danger" id="end-game-btn" style="display:none;" onclick="alert('End game requested')">End</button>
+            <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End Game</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
         </div>
     </header>
@@ -163,7 +163,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Players with 0 lives are eliminated and can spectate/request to peek at active hands!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Ace=11, 10-King=10. Feeding an Ace & 10-val card via discard makes the feeder lose all lives (21 out of 31 rule)!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -306,6 +306,14 @@
             btn.disabled = true;
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'NEXT_HAND' }));
+            }
+        }
+
+        function proposeEndGame() {
+            if (confirm("Propose ending the game? Bots will automatically vote Yes.")) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'END_GAME_PROPOSAL' }));
+                }
             }
         }
 
