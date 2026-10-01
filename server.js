@@ -75,7 +75,7 @@ wss.on('connection', (ws) => {
                         lastDiscardPickup: null,
                         turnIndex: 0,
                         dealerIndex: 0,
-                        ledger: {}, // Fresh reset for new lobby
+                        ledger: {},
                         sideBets: [],
                         firstEliminated: null,
                         knockedBy: null,
@@ -654,7 +654,6 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
 function awardTournamentWinner(lobby, winner) {
     let allParts = [...lobby.players, ...lobby.bots];
     
-    // Peer-to-peer payout settlements based on individual wagers
     let ledgerMap = lobby.ledger || {};
     allParts.forEach(loser => {
         if (loser.username !== winner.username) {
@@ -756,10 +755,13 @@ function checkAndRunBotTurn(lobby) {
                     currentPlayer.cards.push(card);
                     if (card === lobby.initialDealCard) {
                         lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
+                        // Broadcast notification so all players see who picked up from the discard pile
+                        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
                     }
                 } else {
                     if (lobby.deck.length === 0) lobby.deck = createDeck();
                     currentPlayer.cards.push(lobby.deck.pop());
+                    lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
                 }
 
                 let worstIndex = 0;
@@ -814,6 +816,7 @@ function handleTurnAction(lobby, ws, actionType) {
         if (lobby.lastDiscardPickup && lobby.lastDiscardPickup.username === currentPlayer.username) {
             lobby.lastDiscardPickup = null;
         }
+        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
         broadcastLobbyUpdate(lobby.code);
     } else if (actionType === 'DRAW_DISCARD') {
         if (lobby.discardPile.length > 0) {
@@ -839,6 +842,8 @@ function handleTurnAction(lobby, ws, actionType) {
                     }
                 }
             }
+
+            lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
             broadcastLobbyUpdate(lobby.code);
         }
     }
@@ -945,7 +950,13 @@ function resolveRoundEnd(lobby) {
         }
     } else {
         scores[0].player.lives--;
-        triggerRoundOver(lobby, `Round Over! ${scores[0].player.username} had the lowest score and lost a life. All hands revealed.`);
+        let roundLoser = scores[0].player.username;
+        let roundWinner = scores[scores.length - 1].player.username;
+        
+        recordRoundLedger(lobby, roundLoser, roundWinner);
+        resolveWinSideBets(lobby, roundWinner);
+        
+        triggerRoundOver(lobby, `Round Over! ${roundLoser} had the lowest score and lost a life. All hands revealed.`);
     }
 }
 
@@ -962,6 +973,10 @@ function checkTieBreakerComplete(lobby) {
         let targetParticipant = activeParts.find(p => p.username === loser.username);
         if (targetParticipant) {
             targetParticipant.lives--;
+            let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
+            let roundWinner = activeScores[activeScores.length - 1].p.username;
+            recordRoundLedger(lobby, targetParticipant.username, roundWinner);
+            resolveWinSideBets(lobby, roundWinner);
         }
 
         lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loser.username} drew the lowest card and lost a life!`;
@@ -973,6 +988,45 @@ function checkTieBreakerComplete(lobby) {
             }
         }, 4000);
     }
+}
+
+function recordRoundLedger(lobby, loserUsername, winnerUsername) {
+    let activeParts = getActiveParticipants(lobby);
+    let loserObj = activeParts.find(p => p.username === loserUsername) || [...lobby.players, ...lobby.bots].find(p => p.username === loserUsername);
+    let winnerObj = activeParts.find(p => p.username === winnerUsername) || [...lobby.players, ...lobby.bots].find(p => p.username === winnerUsername);
+    if (!loserObj || !winnerObj) return;
+
+    let loserWager = loserObj.wager || 5;
+    let winnerWager = winnerObj.wager || 5;
+    let paidAmount = Math.min(loserWager, winnerWager);
+
+    if (!lobby.ledger[winnerUsername]) lobby.ledger[winnerUsername] = { total: 0 };
+    if (!lobby.ledger[loserUsername]) lobby.ledger[loserUsername] = { total: 0 };
+
+    lobby.ledger[winnerUsername]['total'] += paidAmount;
+    lobby.ledger[loserUsername]['total'] -= paidAmount;
+}
+
+function resolveWinSideBets(lobby, roundWinnerName) {
+    if (!lobby.sideBets || lobby.sideBets.length === 0) return;
+
+    let remainingBets = [];
+    lobby.sideBets.forEach(bet => {
+        if (bet.type === 'win') {
+            let won = (bet.pickUser === roundWinnerName);
+            let debtor = won ? bet.target : bet.proposer;
+            let creditor = won ? bet.proposer : bet.target;
+
+            if (!lobby.ledger[creditor]) lobby.ledger[creditor] = { total: 0 };
+            if (!lobby.ledger[debtor]) lobby.ledger[debtor] = { total: 0 };
+
+            lobby.ledger[creditor]['total'] += bet.wagerAmt;
+            lobby.ledger[debtor]['total'] -= bet.wagerAmt;
+        } else {
+            remainingBets.push(bet);
+        }
+    });
+    lobby.sideBets = remainingBets;
 }
 
 function triggerRoundOver(lobby, msg) {
