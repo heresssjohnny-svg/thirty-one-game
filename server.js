@@ -169,20 +169,21 @@ wss.on('connection', (ws) => {
                 case 'PROPOSE_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let betId = Math.random().toString(36).substring(2, 8);
-                        let newBet = {
-                            id: betId,
-                            proposer: currentUsername,
-                            target: data.target,
-                            pickUser: data.pickUser,
-                            targetSurvivor: data.targetSurvivor,
-                            wagerAmt: parseFloat(data.wagerAmt) || 5,
-                            type: data.betType || 'win',
-                            responded: false
-                        };
-                        lobby.pendingBets.push(newBet);
-                        lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
-                        broadcastLobbyUpdate(currentLobbyCode);
+                        if (lobby.gameState !== 'lobby') {
+                            let betId = Math.random().toString(36).substring(2, 8);
+                            let newBet = {
+                                id: betId,
+                                proposer: currentUsername,
+                                target: data.target,
+                                pickUser: data.pickUser,
+                                targetSurvivor: data.targetSurvivor,
+                                wagerAmt: parseFloat(data.wagerAmt) || 5,
+                                type: data.betType || 'win'
+                            };
+                            lobby.pendingBets.push(newBet);
+                            lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
                     }
                     break;
 
@@ -466,6 +467,16 @@ function getSanitizedLobby(lobby, wsId) {
         myUnrespondedBets.forEach(b => b.responded = true);
     }
 
+    let seatBets = {};
+    if (myUsername) {
+        (lobby.activeBets || []).forEach(bet => {
+            if (bet.proposer === myUsername || bet.target === myUsername) {
+                let otherUser = bet.proposer === myUsername ? bet.target : bet.proposer;
+                seatBets[otherUser] = (seatBets[otherUser] || 0) + bet.wagerAmt;
+            }
+        });
+    }
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -480,6 +491,8 @@ function getSanitizedLobby(lobby, wsId) {
         sidePotTotal: sidePotTotal,
         ledger: lobby.ledger || {},
         pendingBetsForMe: myUnrespondedBets,
+        seatBets: seatBets,
+        lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
