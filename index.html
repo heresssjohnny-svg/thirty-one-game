@@ -42,7 +42,7 @@
         
         .pot-total-display { position: absolute; top: 12px; font-size: 0.95rem; font-weight: bold; color: #facc15; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; letter-spacing: 0.5px; }
 
-        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.85rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 8px; align-items: center; }
+        .discard-pickup-indicator { position: absolute; top: 38px; font-size: 0.8rem; font-weight: bold; color: #38bdf8; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; display: flex; gap: 6px; align-items: center; }
 
         .deck-center { display: flex; gap: 15px; align-items: center; justify-content: center; }
         .card-slot { width: 55px; height: 80px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
@@ -58,7 +58,7 @@
         .seat-4 { top: 45px; right: 20px; }
         .seat-5 { bottom: 45px; right: 15px; }
         .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
-        .mini-card { width: 28px; height: 40px; background: #fff; font-size: 0.65rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
+        .mini-card { width: 22px; height: 32px; background: #fff; font-size: 0.55rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
         .black-suit { color: #0f172a; }
 
@@ -78,7 +78,8 @@
         #next-hand-btn:hover { background: #059669; }
 
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; }
-        .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; width: 95%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; gap: 12px; border: 1px solid #334155; text-align: center; }
+        .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; width: 95%; max-width: 400px; max-height: 80vh; display: flex; flex-direction: column; gap: 12px; border: 1px solid #334155; text-align: center; }
+        .button-group { display: flex; flex-direction: column; gap: 8px; }
         .pool-cards-grid { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; overflow-y: auto; max-height: 350px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #475569; }
         .pool-card-item { width: 45px; height: 65px; background: #1e3a8a; border: 1px solid #38bdf8; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; color: #fff; font-size: 0.75rem; }
         .pool-card-item.revealed { background: #fff; color: #0f172a; flex-direction: column; font-size: 0.65rem; }
@@ -189,6 +190,15 @@
         </div>
     </main>
 
+    <!-- Interactive Button Modal for Betting -->
+    <div id="bet-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="bet-modal-title">Propose Bet</h3>
+            <div id="bet-modal-body" class="button-group"></div>
+            <button class="secondary" onclick="toggleModal('bet-modal')">Cancel</button>
+        </div>
+    </div>
+
     <!-- Card Pool Selection Modal -->
     <div id="pool-draw-modal" class="modal">
         <div class="modal-content">
@@ -199,16 +209,14 @@
         </div>
     </div>
 
-    <!-- Rules Modal -->
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap any player's seat name to propose side or elimination bets! Check spectators in top menu.</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap any player's seat name to open interactive betting proposal buttons!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
 
-    <!-- Ledger Modal -->
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Ledger & Balances</h3>
@@ -218,7 +226,6 @@
         </div>
     </div>
 
-    <!-- Spectator List Modal -->
     <div id="spectators-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Spectator List</h3>
@@ -627,27 +634,53 @@
 
         function tapSeat(targetUsername) {
             if (targetUsername === clientState.username) return; // Can't bet with yourself
-            let betType = prompt(`Propose bet with ${targetUsername}:\nType '1' for Side Bet (Win Round)\nType '2' for First One Out (Elimination)`);
-            if (betType !== '1' && betType !== '2') return;
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Propose Bet with ${targetUsername}`;
+            
+            modalBody.innerHTML = `
+                <button onclick="openBetTypeModal('${targetUsername}', 'win')">Side Bet (Win Round)</button>
+                <button onclick="openBetTypeModal('${targetUsername}', 'eliminate')">First to Lose (Elimination)</button>
+            `;
+            toggleModal('bet-modal');
+        }
 
-            let typeStr = (betType === '1') ? 'win' : 'eliminate';
-            let activeList = clientState.playersList;
-            let pickPrompt = (typeStr === 'win') ? `Select player to win round:\n- ${activeList.join('\n- ')}` : `Select player to be eliminated first:\n- ${activeList.join('\n- ')}`;
-            let pickUser = prompt(pickPrompt);
-            if (!pickUser || !activeList.includes(pickUser)) return;
+        function openBetTypeModal(targetUsername, betType) {
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            let label = (betType === 'win') ? 'Select player to win round:' : 'Select player to be eliminated first:';
+            modalTitle.innerText = label;
 
-            let wagerAmt = prompt("Select wager amount ($5, $10, $20):", "5");
-            if (!wagerAmt || !['5', '10', '20'].includes(wagerAmt)) return;
+            let html = '';
+            clientState.playersList.forEach(p => {
+                html += `<button onclick="openWagerModal('${targetUsername}', '${betType}', '${p}')">${p}</button>`;
+            });
+            modalBody.innerHTML = html;
+        }
 
+        function openWagerModal(targetUsername, betType, pickUser) {
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = 'Select Wager Amount';
+
+            modalBody.innerHTML = `
+                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', 5)">$5 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', 10)">$10 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', '${betType}', '${pickUser}', 20)">$20 Wager</button>
+            `;
+        }
+
+        function submitProposal(target, betType, pickUser, wagerAmt) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'PROPOSE_BET',
-                    target: targetUsername,
+                    target: target,
                     pickUser: pickUser,
-                    wagerAmt: parseFloat(wagerAmt),
-                    betType: typeStr
+                    wagerAmt: wagerAmt,
+                    betType: betType
                 }));
-                alert(`Bet proposed to ${targetUsername}. Awaiting their response.`);
+                alert(`Bet proposed to ${target}! Waiting for their acceptance.`);
+                toggleModal('bet-modal');
             }
         }
 
@@ -665,7 +698,6 @@
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
 
-            // Check if any pending bet proposals for me
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
                 lobby.pendingBetsForMe.forEach(bet => {
                     let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated first.`;
@@ -675,7 +707,7 @@
                         respondToBet(bet.id, false);
                     }
                 });
-                lobby.pendingBetsForMe = []; // Clear handled
+                lobby.pendingBetsForMe = [];
             }
 
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
