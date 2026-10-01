@@ -40,6 +40,11 @@ const VALUES = {
   '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
 };
 
+const CUT_RANKS = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+};
+
 const MAX_ACTIVE_PLAYERS = 6;
 const rooms = {};
 let playerJoinCounter = 0;
@@ -88,7 +93,7 @@ function broadcastRoomList() {
   const roomList = Object.entries(rooms).map(([id, r]) => {
     const activeCount = r.players.filter(p => !p.isSpectator).length;
     const spectatorCount = r.players.filter(p => p.isSpectator).length;
-    const totalPot = activeCount * 5;
+    let totalPot = activeCount * 5;
     return {
       roomId: id,
       gameStarted: r.gameStarted,
@@ -98,6 +103,132 @@ function broadcastRoomList() {
     };
   });
   io.emit('roomListUpdate', roomList);
+}
+
+function startDealerCut(room) {
+  room.dealerCutActive = true;
+  room.dealerCutPicks = {};
+  const eligible = getActivePlayers(room);
+  room.dealerCutPlayerIds = eligible.map(p => p.id);
+  let cutDeck = createDeck();
+  room.dealerCutDeck = cutDeck;
+
+  eligible.forEach(p => {
+    if (!p.isSpectator && !p.isBot) {
+      io.to(p.id).emit('startDealerSelectionCut', {
+        deckCount: Math.min(cutDeck.length, 30),
+        players: eligible.map(pl => ({ id: pl.id, name: pl.name }))
+      });
+    }
+  });
+
+  eligible.forEach(p => {
+    if (p.isBot) {
+      setTimeout(() => {
+        if (!room.dealerCutActive || room.dealerCutPicks[p.id]) return;
+        const chosenCardIdx = Math.floor(Math.random() * room.dealerCutDeck.length);
+        const card = room.dealerCutDeck.splice(chosenCardIdx, 1)[0];
+        room.dealerCutPicks[p.id] = { player: p, card: card };
+        io.to(room.id).emit('dealerCutCardPicked', {
+          playerId: p.id,
+          playerName: p.name,
+          remainingCount: room.dealerCutDeck.length
+        });
+        checkDealerCutComplete(room);
+      }, 1000 + Math.random() * 800);
+    }
+  });
+}
+
+function checkDealerCutComplete(room) {
+  if (!room.dealerCutActive) return;
+  const eligible = getActivePlayers(room);
+  room.dealerCutPlayerIds = eligible.map(p => p.id);
+
+  const requiredCount = room.dealerCutPlayerIds.length;
+  const pickedCount = Object.keys(room.dealerCutPicks).length;
+  if (pickedCount < requiredCount) return;
+
+  room.dealerCutActive = false;
+  const picks = Object.values(room.dealerCutPicks);
+
+  let minCardVal = 99;
+  let lowestPickers = [];
+  const revealData = [];
+
+  picks.forEach(item => {
+    const rankVal = CUT_RANKS[item.card.rank];
+    revealData.push({
+      id: item.player.id,
+      name: item.player.name,
+      card: item.card,
+      rankVal: rankVal
+    });
+
+    if (rankVal < minCardVal) {
+      minCardVal = rankVal;
+      lowestPickers = [item];
+    } else if (rankVal === minCardVal) {
+      lowestPickers.push(item);
+    }
+  });
+
+  io.to(room.id).emit('dealerCutResultsReveal', { results: revealData });
+
+  if (lowestPickers.length > 1) {
+    setTimeout(() => {
+      if (!room) return;
+      room.dealerCutActive = true;
+      room.dealerCutPicks = {};
+      room.dealerCutPlayerIds = lowestPickers.map(l => l.player.id);
+      room.dealerCutDeck = createDeck();
+
+      lowestPickers.forEach(l => {
+        if (!l.player.isSpectator && !l.player.isBot) {
+          io.to(l.player.id).emit('startDealerSelectionCut', {
+            deckCount: Math.min(room.dealerCutDeck.length, 30),
+            players: lowestPickers.map(lp => ({ id: lp.player.id, name: lp.player.name }))
+          });
+        }
+      });
+    }, 3200);
+    return;
+  }
+
+  const chosenDealer = lowestPickers[0].player;
+  const dealerIdx = room.players.findIndex(p => p.id === chosenDealer.id);
+  room.dealerIdx = dealerIdx >= 0 ? dealerIdx : 0;
+
+  setTimeout(() => {
+    io.to(room.id).emit('bigAnnouncement', {
+      title: '👑 DEALER SELECTED! 👑',
+      message: `${chosenDealer.name.toUpperCase()} IS DEALER!`,
+      subtext: `Drew lowest card (${lowestPickers[0].card.rank}${lowestPickers[0].card.suit})`,
+      duration: 4000
+    });
+    setTimeout(() => startNewRound(room.id), 3800);
+  }, 3200);
+}
+
+function startNewRound(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  const active = getActivePlayers(room);
+
+  room.deck = createDeck();
+  room.discardPile = [];
+  room.knockerId = null;
+  room.drawnCard = null;
+  room.isResolvingRound = false;
+
+  active.forEach(p => {
+    p.hand = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+  });
+
+  room.discardPile.push(room.deck.pop());
+  room.currentTurnIdx = room.dealerIdx;
+
+  broadcastState(roomId, `New round started!`);
 }
 
 function broadcastState(roomId, message = '') {
@@ -120,7 +251,7 @@ function broadcastState(roomId, message = '') {
         name: pl.name,
         lives: pl.lives,
         cardCount: pl.hand ? pl.hand.length : 0,
-        isDealer: false,
+        isDealer: room.players[room.dealerIdx]?.id === pl.id,
         isTurn: currentTurnPlayer?.id === pl.id,
         isBot: Boolean(pl.isBot),
         isSpectator: Boolean(pl.isSpectator),
@@ -170,12 +301,6 @@ function broadcastState(roomId, message = '') {
 io.on('connection', (socket) => {
   broadcastRoomList();
 
-  socket.on('requestStateSync', (roomId) => {
-    if (roomId && rooms[roomId]) {
-      broadcastState(roomId);
-    }
-  });
-
   socket.on('joinRoom', ({ roomId, playerName, deviceId }) => {
     socket.join(roomId);
     if (!rooms[roomId]) {
@@ -207,6 +332,7 @@ io.on('connection', (socket) => {
         hand: [],
         isBot: false,
         isSpectator: room.gameStarted,
+        manualSpectator: false,
         isReady: false,
         matchWager: 0,
         joinOrder: playerJoinCounter
@@ -214,6 +340,20 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId, `${safeName} joined the room.`);
+  });
+
+  socket.on('toggleSpectate', (roomId) => {
+    const room = rooms[roomId];
+    if (!room || room.gameStarted) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    player.manualSpectator = !player.manualSpectator;
+    player.isSpectator = player.manualSpectator;
+    player.lives = player.isSpectator ? 0 : (room.configuredLives || 2);
+    player.isReady = false;
+
+    broadcastState(roomId, `${player.name} is now ${player.isSpectator ? 'Spectating' : 'Playing'}.`);
   });
 
   socket.on('setWager', ({ roomId, wager }) => {
@@ -230,10 +370,16 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room) return;
     const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
+    if (!player || player.isSpectator) return;
 
     player.isReady = !player.isReady;
     broadcastState(roomId, `${player.name} is ${player.isReady ? 'READY' : 'NOT READY'}`);
+
+    if (!room.gameStarted && checkAllPlayersReady(room)) {
+      room.gameStarted = true;
+      room.isFirstRoundOfMatch = true;
+      startDealerCut(room);
+    }
   });
 
   socket.on('addBot', (roomId) => {
@@ -253,12 +399,19 @@ io.on('connection', (socket) => {
       hand: [],
       isBot: true,
       isSpectator: false,
+      manualSpectator: false,
       isReady: true,
       matchWager: 5,
       joinOrder: playerJoinCounter
     });
 
     broadcastState(roomId, `Bot ${botCount} added.`);
+
+    if (!room.gameStarted && checkAllPlayersReady(room)) {
+      room.gameStarted = true;
+      room.isFirstRoundOfMatch = true;
+      startDealerCut(room);
+    }
   });
 
   socket.on('removeBot', (roomId) => {
@@ -270,6 +423,27 @@ io.on('connection', (socket) => {
       room.players.splice(lastBotIdx, 1);
       broadcastState(roomId, `Bot removed.`);
     }
+  });
+
+  socket.on('pickDealerCutCard', ({ roomId, cardIndex }) => {
+    const room = rooms[roomId];
+    if (!room || !room.dealerCutActive || !room.dealerCutPlayerIds.includes(socket.id)) return;
+    if (room.dealerCutPicks[socket.id]) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    const safeIdx = Math.min(Math.max(0, cardIndex), room.dealerCutDeck.length - 1);
+    const card = room.dealerCutDeck.splice(safeIdx, 1)[0];
+    room.dealerCutPicks[socket.id] = { player: player, card: card };
+
+    io.to(room.id).emit('dealerCutCardPicked', {
+      playerId: socket.id,
+      playerName: player.name,
+      remainingCount: room.dealerCutDeck.length
+    });
+
+    checkDealerCutComplete(room);
   });
 
   socket.on('disconnect', () => {
