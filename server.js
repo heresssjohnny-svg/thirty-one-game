@@ -130,7 +130,7 @@ function handleTurnTimeout(roomId) {
   if (!current || current.isSpectator || current.lives <= 0) return;
 
   io.to(roomId).emit('bannerAnnouncement', {
-    text: `⏱️ Time's up for ${current.name}! AI taking turn...`,
+    text: `⏱️️ Time's up for ${current.name}! AI taking turn...`,
     duration: 3500
   });
 
@@ -246,143 +246,6 @@ function recordDebt(room, debtorName, creditorName, amount, reason = 'match') {
   } else {
     room.debtBreakdowns[key].match += amount;
   }
-}
-
-function getNetPairBalance(room, p1Name, p2Name) {
-  const p2OwesP1 = (room.debts && room.debts[p2Name] && room.debts[p2Name][p1Name]) || 0;
-  const p1OwesP2 = (room.debts && room.debts[p1Name] && room.debts[p1Name][p2Name]) || 0;
-
-  const key1 = `${p2Name}:::${p1Name}`;
-  const key2 = `${p1Name}:::${p2Name}`;
-
-  const p2SideBets = (room.debtBreakdowns && room.debtBreakdowns[key1] && room.debtBreakdowns[key1].sideBets) || 0;
-  const p1SideBets = (room.debtBreakdowns && room.debtBreakdowns[key2] && room.debtBreakdowns[key2].sideBets) || 0;
-
-  const netBalance = p2OwesP1 - p1OwesP2;
-  const sideBetNet = p2SideBets - p1SideBets;
-
-  return {
-    net: netBalance,
-    sideBetNet: sideBetNet
-  };
-}
-
-function getPersonalLedger(room, playerName) {
-  const ledger = [];
-  let totalNet = 0;
-  let totalSideBetNet = 0;
-
-  const allNames = new Set(room.knownMembers || []);
-  room.players.forEach(p => allNames.add(p.name));
-
-  if (room.debts) {
-    Object.keys(room.debts).forEach(name => {
-      allNames.add(name);
-      Object.keys(room.debts[name] || {}).forEach(target => allNames.add(target));
-    });
-  }
-
-  const activeNames = new Set(room.players.map(p => p.name));
-
-  allNames.forEach(otherName => {
-    if (otherName === playerName) return;
-    const balanceInfo = getNetPairBalance(room, playerName, otherName);
-    totalNet += balanceInfo.net;
-    totalSideBetNet += balanceInfo.sideBetNet;
-    ledger.push({
-      player: otherName,
-      netBalance: balanceInfo.net,
-      sideBetBalance: balanceInfo.sideBetNet,
-      hasLeft: !activeNames.has(otherName)
-    });
-  });
-
-  ledger.sort((a, b) => b.netBalance - a.netBalance);
-
-  return {
-    balances: ledger,
-    totalNet: totalNet,
-    totalSideBetNet: totalSideBetNet
-  };
-}
-
-function recordGameWagerSettlement(room, winner) {
-  if (!winner || !room.currentMatchParticipants) return 0;
-  
-  const winnerData = room.currentMatchParticipants.find(p => p.id === winner.id || p.name === winner.name);
-  if (!winnerData || winnerData.wager <= 0) return 0;
-
-  let totalCollected = 0;
-
-  room.currentMatchParticipants.forEach(loserData => {
-    if (loserData.name !== winnerData.name) {
-      const amountToCollect = Math.min(winnerData.wager, loserData.wager);
-      if (amountToCollect > 0) {
-        recordDebt(room, loserData.name, winnerData.name, amountToCollect, 'match');
-        totalCollected += amountToCollect;
-      }
-    }
-  });
-
-  return totalCollected;
-}
-
-function settlePeerRoundBets(room, scores) {
-  if (!room.peerSideBets || room.peerSideBets.length === 0) return '';
-  const resultsSummary = [];
-
-  room.peerSideBets.forEach(bet => {
-    if (!bet.accepted || bet.type !== 'round') return;
-
-    let bTargetId = bet.bettorTargetId;
-    let oTargetId = bet.opponentTargetId;
-
-    if (!bTargetId || scores[bTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.targetPlayerName);
-      if (matchP) bTargetId = matchP.id;
-    }
-    if (!oTargetId || scores[oTargetId] === undefined) {
-      const matchP = room.players.find(p => p.name === bet.opponentTargetName);
-      if (matchP) oTargetId = matchP.id;
-    }
-
-    const bettorTargetScore = (bTargetId && scores[bTargetId] !== undefined) ? scores[bTargetId] : -1;
-    const opponentTargetScore = (oTargetId && scores[oTargetId] !== undefined) ? scores[oTargetId] : -1;
-
-    if (bettorTargetScore > opponentTargetScore) {
-      recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName}'s pick (${bet.targetPlayerName}: ${bettorTargetScore} pts) beat ${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) -> +$${bet.amount}`);
-    } else if (opponentTargetScore > bettorTargetScore) {
-      recordDebt(room, bet.bettorName, bet.opponentName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.opponentName}'s pick (${bet.opponentTargetName}: ${opponentTargetScore} pts) beat ${bet.bettorName}'s pick (${bet.targetPlayerName}: ${bettorTargetScore} pts) -> +$${bet.amount}`);
-    } else {
-      resultsSummary.push(`${bet.bettorName} & ${bet.opponentName} picks tied at ${bettorTargetScore} pts (push)`);
-    }
-  });
-
-  room.peerSideBets = room.peerSideBets.filter(b => b.type !== 'round');
-  return resultsSummary.length > 0 ? `Round Side Bets: ${resultsSummary.join(' | ')}` : '';
-}
-
-function settleFirstLoserBetsThisHand(room, newlyEliminatedNames) {
-  if (!room.peerSideBets || room.peerSideBets.length === 0 || !newlyEliminatedNames || newlyEliminatedNames.length === 0) return '';
-  const resultsSummary = [];
-
-  room.peerSideBets.forEach(bet => {
-    if (!bet.accepted || bet.type !== 'firstLoser') return;
-
-    if (newlyEliminatedNames.includes(bet.targetPlayerName)) {
-      recordDebt(room, bet.opponentName, bet.bettorName, bet.amount, 'sideBet');
-      resultsSummary.push(`${bet.bettorName} won first-loser bet vs ${bet.opponentName} on ${bet.targetPlayerName} (+$${bet.amount})`);
-    }
-  });
-
-  room.peerSideBets = room.peerSideBets.filter(b => {
-    if (b.type !== 'firstLoser' || !b.accepted) return true;
-    return !newlyEliminatedNames.includes(b.targetPlayerName);
-  });
-
-  return resultsSummary.length > 0 ? `First-Loser Bets Settled: ${resultsSummary.join(' | ')}` : '';
 }
 
 function finalizePlayerExit(roomId, playerName) {
@@ -1458,7 +1321,7 @@ io.on('connection', (socket) => {
     if (roomIsFull && !room.gameStarted) {
       joinMsg = `👁️ Room active limit (6) reached. ${safeName} is spectating.`;
     } else if (room.gameStarted) {
-      joinMsg = `👁️ ${safeName} joined as a spectator.`;
+      joinMsg = `👁️️ ${safeName} joined as a spectator.`;
     }
 
     broadcastState(roomId, joinMsg);
@@ -2140,7 +2003,6 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room || room.gameStarted) return;
     
-    // Strict limit check: Max 6 total (humans + bots)
     if (room.players.length >= MAX_ACTIVE_PLAYERS) {
       return socket.emit('errorMsg', 'Max 6 players allowed in the game (humans + bots).');
     }
@@ -2358,7 +2220,7 @@ io.on('connection', (socket) => {
 
     const activeEligible = room.players.filter(p => !p.isSpectator);
     const voteCounts = {};
-    activeEligible.forEach(pl => {
+    activeEligible.filter(pl => !pl.isSpectator).forEach(pl => {
       const v = pl.isBot ? room.configuredLives : (room.lifeVotes[pl.id] || room.configuredLives);
       voteCounts[v] = (voteCounts[v] || 0) + 1;
     });
@@ -2381,7 +2243,7 @@ io.on('connection', (socket) => {
       });
     } else {
       io.to(roomId).emit('bannerAnnouncement', {
-        text: `❤️ ${player.name} proposed ${lives} lives. Vote in progress...`,
+        text: `❤️️ ${player.name} proposed ${lives} lives. Vote in progress...`,
         duration: 4000
       });
     }
