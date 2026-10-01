@@ -85,7 +85,7 @@ function getNonSpectatorCount(room) {
 
 function checkAllPlayersReady(room) {
   const eligible = room.players.filter(p => !p.isSpectator);
-  if (eligible.length < 1) return false;
+  if (eligible.length < 2) return false; // Require at least 2 players/bots to start
   return eligible.every(p => p.isReady || p.isBot);
 }
 
@@ -215,6 +215,13 @@ function startNewRound(roomId) {
   if (!room) return;
   const active = getActivePlayers(room);
 
+  if (active.length <= 1) {
+    room.gameStarted = false;
+    broadcastState(roomId, 'Game over: not enough active players.');
+    broadcastRoomList();
+    return;
+  }
+
   room.deck = createDeck();
   room.discardPile = [];
   room.knockerId = null;
@@ -228,7 +235,7 @@ function startNewRound(roomId) {
   room.discardPile.push(room.deck.pop());
   room.currentTurnIdx = room.dealerIdx;
 
-  broadcastState(roomId, `New round started!`);
+  broadcastState(roomId, `New round started! Dealer: ${room.players[room.dealerIdx].name}`);
 }
 
 function broadcastState(roomId, message = '') {
@@ -340,6 +347,20 @@ io.on('connection', (socket) => {
     }
 
     broadcastState(roomId, `${safeName} joined the room.`);
+  });
+
+  socket.on('leaveRoom', (roomId) => {
+    socket.leave(roomId);
+    const room = rooms[roomId];
+    if (room) {
+      room.players = room.players.filter(p => p.id !== socket.id);
+      if (room.players.length === 0) {
+        delete rooms[roomId];
+      } else {
+        broadcastState(roomId, `A player left.`);
+      }
+    }
+    broadcastRoomList();
   });
 
   socket.on('toggleSpectate', (roomId) => {
