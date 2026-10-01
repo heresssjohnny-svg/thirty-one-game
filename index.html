@@ -28,11 +28,11 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; }
         
-        #chat-container { position: relative; display: inline-block; }
+        #chat-container { position: relative; display: inline-block; z-index: 100; }
         #chat-toggle-btn { background: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 1rem; padding: 6px 10px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; height: 32px; }
         #chat-toggle-btn:hover { background: #334155; }
         
-        #chat-window { position: absolute; top: 38px; left: 0; width: 240px; height: 150px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 200; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
+        #chat-window { position: absolute; top: 38px; left: 0; width: 240px; height: 150px; background: rgba(30,41,59,0.95); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 500; font-size: 0.75rem; box-shadow: 0 6px 15px rgba(0,0,0,0.4); }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
         .chat-input-row { display: flex; gap: 4px; }
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
@@ -68,7 +68,6 @@
         
         #turn-banner { background: #1e293b; border: 1px solid #38bdf8; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; color: #38bdf8; font-weight: bold; flex-shrink: 0; }
         
-        /* Large Center-Screen Notification Banner (2 Seconds) */
         #center-notification-banner { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(30, 41, 59, 0.95); border: 2px solid #38bdf8; color: #f8fafc; padding: 20px 40px; border-radius: 12px; font-weight: 800; font-size: 1.5rem; text-align: center; z-index: 4000; box-shadow: 0 10px 30px rgba(0,0,0,0.8); display: none; pointer-events: none; }
         
         #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
@@ -199,7 +198,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Pick up and knock events appear big in the center of the screen for 2 seconds!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Last player standing wins the pot and deals first in the new ready lobby!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -316,7 +315,7 @@
             let banner = document.getElementById('center-notification-banner');
             banner.innerText = msg;
             banner.style.display = 'block';
-            if (msg.includes('KNOCK')) {
+            if (msg.includes('KNOCK') || msg.includes('TOURNAMENT WINNER')) {
                 playSound('knock');
             } else {
                 playSound('ding');
@@ -593,7 +592,7 @@
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
             let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
+            if (lobby.gameState === 'roundOver' && !isSpectatorOnly && !lobby.phaseMessage.includes('TOURNAMENT WINNER')) {
                 nextHandOverlay.style.display = 'block';
                 let nextBtn = document.getElementById('next-hand-btn');
                 if (me && me.nextHandReady) {
@@ -691,8 +690,9 @@
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
 
-            if (me && me.peekIncoming) {
-                for (let specName in me.peekIncoming) {
+            let myPlayerObj = lobby.players.find(p => p.username === clientState.username);
+            if (myPlayerObj && myPlayerObj.peekIncoming) {
+                for (let specName in myPlayerObj.peekIncoming) {
                     if (confirm(`Spectator ${specName} requested to see your hand. Allow?`)) {
                         respondPeek(specName, true);
                     } else {
