@@ -48,7 +48,7 @@ wss.on('connection', (ws) => {
                     code: currentLobbyCode,
                     name: data.lobbyName || `${currentUsername}'s Lobby`,
                     host: currentUsername,
-                    players: [{ id: ws, username: currentUsername, lives: 2, cards: [], ready: false, seat: 0 }],
+                    players: [{ id: ws, username: currentUsername, lives: 2, cards: [], ready: false, seat: 0, nextHandReady: false }],
                     bots: [],
                     spectators: [],
                     deck: [],
@@ -63,7 +63,8 @@ wss.on('connection', (ws) => {
                     ledger: {},
                     knockedBy: null,
                     finalTurnsRemaining: 0,
-                    turnsTakenThisRound: 0
+                    turnsTakenThisRound: 0,
+                    nextHandTimer: null
                 };
                 ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode]) }));
                 broadcastLobbyList();
@@ -79,7 +80,7 @@ wss.on('connection', (ws) => {
                     let totalOccupants = lobby.players.length + lobby.bots.length;
                     if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                         let availableSeat = findOpenSeat(lobby);
-                        lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat });
+                        lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, cards: [], ready: false, seat: availableSeat, nextHandReady: false });
                         ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby) }));
                         broadcastLobbyUpdate(code);
                         broadcastLobbyList();
@@ -113,7 +114,7 @@ wss.on('connection', (ws) => {
                     let lobby = lobbies[currentLobbyCode];
                     if (lobby.players.length + lobby.bots.length < 6 && lobby.gameState === 'lobby') {
                         let botName = 'Bot_' + Math.floor(Math.random() * 900 + 100);
-                        lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, cards: [], seat: findOpenSeat(lobby), ready: true });
+                        lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true });
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                 }
@@ -140,6 +141,18 @@ wss.on('connection', (ws) => {
                         if (lobby.players.every(p => p.ready) && (lobby.players.length + lobby.bots.length >= 2)) {
                             startDealerDrawPhase(lobby);
                         }
+                    }
+                }
+                break;
+
+            case 'NEXT_HAND':
+                if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                    let lobby = lobbies[currentLobbyCode];
+                    let player = lobby.players.find(p => p.id === ws);
+                    if (player && lobby.gameState === 'roundOver') {
+                        player.nextHandReady = true;
+                        broadcastLobbyUpdate(currentLobbyCode);
+                        checkNextHandReady(lobby);
                     }
                 }
                 break;
@@ -205,8 +218,12 @@ function leaveLobby(ws, code) {
     let lobby = lobbies[code];
     lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.id !== ws);
-    if (lobby.players.length === 0 && lobby.bots.length === 0) delete lobbies[code];
-    else broadcastLobbyUpdate(code);
+    if (lobby.players.length === 0 && lobby.bots.length === 0) {
+        if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
+        delete lobbies[code];
+    } else {
+        broadcastLobbyUpdate(code);
+    }
     broadcastLobbyList();
 }
 
@@ -255,6 +272,7 @@ function getSanitizedLobby(lobby) {
             cardCount: p.cards.length,
             ready: p.ready,
             seat: p.seat,
+            nextHandReady: p.nextHandReady,
             cards: (isRoundOver || p.id === lobby.players.find(x => x.username === p.username)?.id) ? p.cards : []
         })),
         bots: lobby.bots.map(b => ({
@@ -277,6 +295,9 @@ function startDealerDrawPhase(lobby) {
     lobby.knockedBy = null;
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
+
+    lobby.players.forEach(p => p.nextHandReady = false);
+    lobby.bots.forEach(b => b.nextHandReady = true);
 
     autoPickForBots(lobby);
     broadcastLobbyUpdate(lobby.code);
@@ -336,10 +357,17 @@ function checkDealerDrawComplete(lobby) {
 }
 
 function startRound(lobby) {
+    if (lobby.nextHandTimer) {
+        clearTimeout(lobby.nextHandTimer);
+        lobby.nextHandTimer = null;
+    }
     lobby.deck = createDeck();
     lobby.discardPile = [];
     let allParticipants = [...lobby.players, ...lobby.bots];
-    allParticipants.forEach(p => { p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()]; });
+    allParticipants.forEach(p => { 
+        p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()]; 
+        p.nextHandReady = false;
+    });
     lobby.discardPile.push(lobby.deck.pop());
     lobby.gameState = 'playing';
     lobby.phaseMessage = null;
@@ -347,9 +375,23 @@ function startRound(lobby) {
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
     
-    // Play starts with the player to the left of the dealer
     lobby.turnIndex = (lobby.dealerIndex + 1) % allParticipants.length;
     broadcastLobbyUpdate(lobby.code);
+}
+
+function checkNextHandReady(lobby) {
+    let allParticipants = [...lobby.players, ...lobby.bots];
+    let allReady = allParticipants.every(p => p.nextHandReady);
+    if (allReady) {
+        startRound(lobby);
+    } else if (!lobby.nextHandTimer) {
+        // 10 second fallback timer
+        lobby.nextHandTimer = setTimeout(() => {
+            if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'roundOver') {
+                startRound(lobbies[lobby.code]);
+            }
+        }, 10000);
+    }
 }
 
 function checkAndRunBotTurn(lobby) {
@@ -370,10 +412,7 @@ function checkAndRunBotTurn(lobby) {
 
                 if (calculateScore(currentPlayer.cards) === 31) {
                     allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
-                    lobby.gameState = 'roundOver';
-                    lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`;
-                    rotateDealer(lobby);
-                    broadcastLobbyUpdate(lobby.code);
+                    triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
                     return;
                 }
 
@@ -417,10 +456,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         if (calculateScore(currentPlayer.cards) === 31) {
             allParticipants.forEach(p => { if (p !== currentPlayer) p.lives--; });
-            lobby.gameState = 'roundOver';
-            lobby.phaseMessage = `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`;
-            rotateDealer(lobby);
-            broadcastLobbyUpdate(lobby.code);
+            triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
         } else {
             advanceTurnOrResolve(lobby);
         }
@@ -446,18 +482,16 @@ function handleKnock(lobby, ws) {
     let currentPlayer = allParticipants[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws) return;
 
-    // Check turn-one restriction
     if (lobby.turnsTakenThisRound < allParticipants.length) return;
 
-    // Check point requirements (21+ for 3+ players, 25+ for heads-up)
     let score = calculateScore(currentPlayer.cards);
     let threshold = allParticipants.length > 2 ? 21 : 25;
-    if (score < threshold) return; // Requirement not met
+    if (score < threshold) return;
 
     lobby.gameState = 'finalTurn';
     lobby.knockedBy = currentPlayer.username;
     lobby.finalTurnsRemaining = allParticipants.length - 1;
-    lobby.phaseMessage = `🔔 ${currentPlayer.username} knocked with ${score} points! Every other player gets 1 final turn.`;
+    lobby.phaseMessage = `🔔 KNOCK! ${currentPlayer.username} knocked with ${score} points! Every other player gets 1 final turn.`;
     lobby.turnIndex = (lobby.turnIndex + 1) % allParticipants.length;
     broadcastLobbyUpdate(lobby.code);
 }
@@ -480,11 +514,15 @@ function resolveRoundEnd(lobby) {
         broadcastLobbyUpdate(lobby.code);
     } else {
         scores[0].player.lives--;
-        lobby.gameState = 'roundOver';
-        lobby.phaseMessage = `Round Over! ${scores[0].player.username} had the lowest score (${lowestScore} pts) and lost a life. All hands revealed.`;
-        rotateDealer(lobby);
-        broadcastLobbyUpdate(lobby.code);
+        triggerRoundOver(lobby, `Round Over! ${scores[0].player.username} had the lowest score (${lowestScore} pts) and lost a life. All hands revealed.`);
     }
+}
+
+function triggerRoundOver(lobby, msg) {
+    lobby.gameState = 'roundOver';
+    lobby.phaseMessage = msg;
+    rotateDealer(lobby);
+    broadcastLobbyUpdate(lobby.code);
 }
 
 function checkTieBreakerComplete(lobby) {
@@ -503,16 +541,12 @@ function checkTieBreakerComplete(lobby) {
         let targetParticipant = allParticipants.find(p => p.username === loser.username);
         if (targetParticipant) targetParticipant.lives--;
 
-        lobby.gameState = 'roundOver';
-        lobby.phaseMessage = `Tie-breaker resolved: ${loser.username} drew the lowest card (${loser.card.val}${loser.card.suit}) and lost a life! All hands revealed.`;
-        rotateDealer(lobby);
-        broadcastLobbyUpdate(lobby.code);
+        triggerRoundOver(lobby, `Tie-breaker resolved: ${loser.username} drew the lowest card (${loser.card.val}${loser.card.suit}) and lost a life! All hands revealed.`);
     }
 }
 
 function rotateDealer(lobby) {
     let allParticipants = [...lobby.players, ...lobby.bots];
-    // Rotate dealer clockwise to the left
     lobby.dealerIndex = (lobby.dealerIndex + 1) % allParticipants.length;
 }
 
