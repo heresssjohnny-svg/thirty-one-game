@@ -53,14 +53,6 @@
     }
     .player-seat.active .player-seat-tag { border: 2px solid #ffcc00; background: rgba(255,204,0,0.45); color: #fff; }
     .player-seat.is-ready .player-seat-tag { border-left: 3px solid #4caf50; }
-    
-    .seat-mini-cards {
-      display: flex; gap: 2px; margin-top: 2px;
-    }
-    .mini-card-back {
-      width: 16px; height: 24px; background: #0d47a1; border: 1px solid #fff; border-radius: 3px;
-      font-size: 7px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-    }
 
     .middle-piles { display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 3; position: relative; pointer-events: auto; }
     
@@ -71,7 +63,14 @@
       font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.35);
       border: 1px solid #ccc; pointer-events: auto;
     }
+    .card.red { color: #d32f2f; }
+    .card.black { color: #111111; }
     .card.back { background: #0d47a1; border: 2px solid #ffffff; color: #ffffff; font-size: 11px; text-align: center; }
+    .card.mini {
+      width: 36px; height: 50px; min-width: 36px; min-height: 50px;
+      font-size: 11px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .card.mini span:last-child { font-size: 11px !important; }
 
     .hand-area { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; flex-shrink: 0; z-index: 50; pointer-events: auto; }
     .hand-cards { display: flex; gap: 8px; justify-content: center; min-height: 100px; pointer-events: auto; }
@@ -156,7 +155,7 @@
     <h2 style="color:#ffd700; margin:0 0 6px 0; font-size: 20px;">👑 INITIAL DEALER CUT 👑</h2>
     <div id="dealerCutInstruction" style="font-size:13px; font-weight:bold; margin-bottom:6px;">Tap any face-down card! Lowest card becomes Dealer.</div>
     <div id="dealerCutSpread" class="card-cut-spread"></div>
-    <div id="dealerCutPicksContainer" style="display:flex; gap:8px; justify-content:center; margin-top:8px;"></div>
+    <div id="dealerCutPicksContainer" style="display:flex; gap:8px; justify-content:center; margin-top:8px; flex-wrap:wrap;"></div>
   </div>
 
   <!-- LOBBY SCREEN -->
@@ -331,7 +330,9 @@
     socket.on('startDealerSelectionCut', (data) => {
       const overlay = document.getElementById('dealerCutOverlay');
       const spread = document.getElementById('dealerCutSpread');
+      const container = document.getElementById('dealerCutPicksContainer');
       spread.innerHTML = '';
+      container.innerHTML = '';
       hasPickedDealerCard = false;
 
       for (let i = 0; i < data.deckCount; i++) {
@@ -350,10 +351,36 @@
       overlay.classList.add('active');
     });
 
-    socket.on('dealerCutResultsReveal', () => {
+    socket.on('dealerCutCardPicked', (data) => {
+      const container = document.getElementById('dealerCutPicksContainer');
+      if (!container) return;
+      const div = document.createElement('div');
+      div.className = 'showdown-player-box';
+      div.innerHTML = `<span style="font-size:11px; font-weight:bold; color:#ffd700;">${data.playerName}</span><div class="card mini back" style="margin-top:3px;">DRAWN</div>`;
+      container.appendChild(div);
+    });
+
+    socket.on('dealerCutResultsReveal', (data) => {
+      const container = document.getElementById('dealerCutPicksContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      data.results.forEach(res => {
+        const box = document.createElement('div');
+        box.className = 'showdown-player-box';
+        const isRed = res.card.suit === '♥' || res.card.suit === '♦';
+        box.innerHTML = `
+          <span style="font-size:11px; font-weight:bold; color:#ffd700;">${res.name}</span>
+          <div class="card mini ${isRed ? 'red' : 'black'}" style="margin-top:3px;">
+            <span>${res.card.rank}</span><span>${res.card.suit}</span>
+          </div>
+        `;
+        container.appendChild(box);
+      });
+
       setTimeout(() => {
         document.getElementById('dealerCutOverlay').classList.remove('active');
-      }, 3000);
+      }, 3500);
     });
 
     socket.on('gameState', (state) => {
@@ -416,6 +443,20 @@
             `;
             tableRing.appendChild(seat);
           });
+        }
+
+        const hArea = document.getElementById('handArea');
+        if (state.hand && state.hand.length > 0) {
+          hArea.innerHTML = '';
+          state.hand.forEach(c => {
+            const isRed = c.suit === '♥' || c.suit === '♦';
+            const cardEl = document.createElement('div');
+            cardEl.className = `card ${isRed ? 'red' : 'black'}`;
+            cardEl.innerHTML = `<span>${c.rank}</span><span style="font-size:20px;">${c.suit}</span>`;
+            hArea.appendChild(cardEl);
+          });
+        } else if (!state.gameStarted) {
+          hArea.innerHTML = '<div style="opacity: 0.5; margin-top: 30px; font-size: 13px;">(No cards dealt yet)</div>';
         }
       } catch (err) {
         console.error('Error updating gameState felt:', err);
