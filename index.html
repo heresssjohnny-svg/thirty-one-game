@@ -1397,6 +1397,7 @@
                 lastPhaseMessage = lobby.phaseMessage;
             }
 
+            // Explicitly manage and clear modals when states change to prevent freezing
             if (lobby.gameState === 'dealerDraw') {
                 poolModal.style.display = 'flex';
                 revealModal.style.display = 'none';
@@ -1476,8 +1477,10 @@
                 document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
                 turnBanner.innerText = 'Tie-Breaker Phase';
             } else {
+                // Instantly auto-close tie-breaker and draw pool modals when conclusion is reached
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
+
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
                     let isMyTurn = (lobby.currentTurnUser === activeUsername);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
