@@ -683,16 +683,36 @@
         function calculatePairwiseNet(ledgerData, myName, allUsers) {
             let totalNet = 0;
             let records = {};
-            for (let otherUser of allUsers) {
-                if (otherUser === myName) continue;
+            
+            // Gather every unique user mentioned in the ledger dictionary across nested levels
+            let ledgerKeys = new Set([...Object.keys(ledgerData), ...allUsers]);
+            
+            // Also inspect subkeys to ensure anyone who owes or is owed is captured
+            for (let debtorKey in ledgerData) {
+                ledgerKeys.add(debtorKey);
+                if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
+                    for (let creditorKey in ledgerData[debtorKey]) {
+                        ledgerKeys.add(creditorKey);
+                    }
+                }
+            }
+
+            ledgerKeys.forEach(otherUser => {
+                if (otherUser === myName) return;
+                
+                // How much they owe me (they are debtor, I am creditor)
                 let theyOweMe = (ledgerData[otherUser] && ledgerData[otherUser][myName]) || 0;
+                
+                // How much I owe them (I am debtor, they are creditor)
                 let iOweThem = (ledgerData[myName] && ledgerData[myName][otherUser]) || 0;
+                
                 let net = theyOweMe - iOweThem;
                 if (net !== 0) {
                     records[otherUser] = net;
                     totalNet += net;
                 }
-            }
+            });
+
             return { totalNet, records };
         }
 
@@ -1397,7 +1417,6 @@
                 lastPhaseMessage = lobby.phaseMessage;
             }
 
-            // Explicitly manage and clear modals when states change to prevent freezing
             if (lobby.gameState === 'dealerDraw') {
                 poolModal.style.display = 'flex';
                 revealModal.style.display = 'none';
@@ -1477,10 +1496,8 @@
                 document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
                 turnBanner.innerText = 'Tie-Breaker Phase';
             } else {
-                // Instantly auto-close tie-breaker and draw pool modals when conclusion is reached
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
-
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
                     let isMyTurn = (lobby.currentTurnUser === activeUsername);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
