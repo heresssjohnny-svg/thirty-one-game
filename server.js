@@ -367,7 +367,7 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠️ Unanimous vote! Game ended, returning to lobby ready-up.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
