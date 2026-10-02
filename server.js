@@ -54,8 +54,19 @@ wss.on('connection', (ws) => {
         try {
             switch (data.type) {
                 case 'CREATE_LOBBY':
-                    currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                     currentUsername = data.username || 'Player';
+                    
+                    // Prevent duplicate lobby creation if user is already bound or spamming
+                    for (let existingCode in lobbies) {
+                        let l = lobbies[existingCode];
+                        if (l.host === currentUsername && l.gameState === 'lobby') {
+                            currentLobbyCode = existingCode;
+                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(l, ws) }));
+                            return;
+                        }
+                    }
+
+                    currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                     lobbies[currentLobbyCode] = {
                         code: currentLobbyCode,
                         name: data.lobbyName || `${currentUsername}'s Lobby`,
@@ -98,6 +109,15 @@ wss.on('connection', (ws) => {
                         currentUsername = data.username || 'Player';
                         let lobby = lobbies[code];
                         
+                        // Check if player already exists in this lobby to update socket reference instead of duplicating
+                        let existingPlayer = lobby.players.find(p => p.username === currentUsername);
+                        if (existingPlayer) {
+                            existingPlayer.id = ws;
+                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
+                            broadcastLobbyUpdate(code);
+                            return;
+                        }
+
                         let totalOccupants = lobby.players.length + lobby.bots.length;
                         if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                             let availableSeat = findOpenSeat(lobby);
@@ -106,7 +126,12 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false, peekRequests: {} });
+                            let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
+                            if (existingSpec) {
+                                existingSpec.id = ws;
+                            } else {
+                                lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false, peekRequests: {} });
+                            }
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                         }
@@ -182,9 +207,8 @@ wss.on('connection', (ws) => {
                         let isSpec = lobby.spectators.some(s => s.username === currentUsername);
                         if (!isSpec && lobby.gameState !== 'lobby' && activeParts.length >= 3) {
                             let target = data.target;
-                            let betId = Math.random().toString(36).substring(2, 8);
                             let newBet = {
-                                id: betId,
+                                id: Math.random().toString(36).substring(2, 8),
                                 proposer: currentUsername,
                                 target: target,
                                 pickUser: target,
@@ -439,7 +463,9 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => {});
+    ws.on('close', () => {
+        // Keeps user state intact on backgrounding; only explicit LEAVE_LOBBY removes them.
+    });
 });
 
 function getActiveParticipants(lobby) {
