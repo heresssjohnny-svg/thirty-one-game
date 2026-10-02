@@ -182,7 +182,7 @@ wss.on('connection', (ws) => {
                             p.isMuted = !!data.isMuted;
 
                             if (!wasInVC && p.inVC) {
-                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️️ ${currentUsername} joined the voice chat.` };
+                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
                                 lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
                             }
@@ -810,7 +810,10 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
     let remainingBets = [];
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
+            // Check if the eliminated player matches the bet's pickUser target
             let won = (bet.pickUser === eliminatedName);
+            
+            // Strictly calculate between the proposer and proposee (the target of the bet)
             let debtor = won ? bet.target : bet.proposer;
             let creditor = won ? bet.proposer : bet.target;
 
