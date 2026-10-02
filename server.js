@@ -134,7 +134,7 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false });
+                            lobby.spectators.push({ id: ws, username: currentUsername, idSocket: ws, inVC: false, isMuted: false });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -185,7 +185,7 @@ wss.on('connection', (ws) => {
                             if (!wasInVC && p.inVC) {
                                 let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
-                                lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
+                                lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
                             }
 
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -371,7 +371,7 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠️️ Unanimous vote! Game ended, returning to lobby ready-up.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
@@ -407,7 +407,7 @@ wss.on('connection', (ws) => {
                 case 'REQUEST_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let activeSender = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.id === ws);
+                        let activeSender = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws || s.username === currentUsername);
                         let requesterName = activeSender ? activeSender.username : currentUsername;
                         
                         let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
@@ -472,7 +472,7 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
                         lobby.players.forEach(p => { if (p.id && p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify(chatPayload)); });
-                        lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
+                        lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
                     }
                     break;
 
@@ -480,9 +480,9 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let targetUser = data.target;
-                        let allRecipients = [...lobby.players, ...lobby.spectators];
+                        let allRecipients = [...lobby.players, ...lobby.spectators.map(s => ({ username: s.username, id: s.idSocket }))];
                         let targetRec = allRecipients.find(r => r.username === targetUser);
-                        if (targetRec && targetRec.id.readyState === WebSocket.OPEN) {
+                        if (targetRec && targetRec.id && targetRec.id.readyState === WebSocket.OPEN) {
                             targetRec.id.send(JSON.stringify({
                                 type: 'WEBRTC_SIGNAL',
                                 sender: currentUsername,
@@ -540,7 +540,7 @@ function leaveLobby(ws, code) {
     if (!lobbies[code]) return;
     let lobby = lobbies[code];
     lobby.players = lobby.players.filter(p => p.id !== ws);
-    lobby.spectators = lobby.spectators.filter(s => s.id !== ws);
+    lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
     if (lobby.players.length === 0 && lobby.bots.length === 0) {
         if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
         delete lobbies[code];
@@ -581,8 +581,8 @@ function broadcastLobbyUpdate(code) {
         }
     });
     lobby.spectators.forEach(s => {
-        if (s.id && s.id.readyState === WebSocket.OPEN) {
-            s.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: getSanitizedLobby(lobby, s.id) }));
+        if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) {
+            s.idSocket.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: getSanitizedLobby(lobby, s.idSocket) }));
         }
     });
 
@@ -601,7 +601,7 @@ function getSanitizedLobby(lobby, wsId) {
     let sidePotTotal = (lobby.activeBets || []).reduce((sum, b) => sum + (b.wagerAmt || 0), 0);
 
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
-    let requestingSpectator = lobby.spectators.find(s => s.id === wsId);
+    let requestingSpectator = lobby.spectators.find(s => s.idSocket === wsId);
     let myUsername = requestingPlayer ? requestingPlayer.username : (requestingSpectator ? requestingSpectator.username : null);
 
     let sortedParticipants = [...allParticipants];
@@ -807,7 +807,7 @@ function startRound(lobby) {
                 lobby.firstEliminated = p.username;
                 resolveFirstToLoseBets(lobby, p.username);
             }
-            lobby.spectators.push({ id: p.id, username: p.username });
+            lobby.spectators.push({ idSocket: p.id, username: p.username });
         }
     });
 
@@ -1000,7 +1000,7 @@ function checkAndRunBotTurn(lobby) {
                     currentPlayer.cards.push(card);
                     if (card === lobby.initialDealCard) {
                         lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
-                        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
+                        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
                     }
                 } else {
                     if (lobby.deck.length === 0) lobby.deck = createDeck();
@@ -1090,7 +1090,11 @@ function handleTurnAction(lobby, ws, actionType) {
                 }
             }
 
-            lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
+            if (card === lobby.initialDealCard) {
+                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
+            } else {
+                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
+            }
             broadcastLobbyUpdate(lobby.code);
         }
     }
@@ -1213,7 +1217,7 @@ function resolveRoundEnd(lobby) {
             lobby.tiedParticipantsList = tiedPlayers.map(t => t.player.username);
             lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
             lobby.drawResults = {};
-            lobby.phaseMessage = `⚠️ Tie breaker between ${lobby.tiedParticipantsList.join(', ')}! Draw from remaining deck.`;
+            lobby.phaseMessage = `Tie-Breaker Phase`; // Fixed to read tie breaker
             lobby.gameState = 'tieBreaker';
 
             autoPickForBots(lobby);
