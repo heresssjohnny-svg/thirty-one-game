@@ -34,7 +34,9 @@
         #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         
-        #chat-window { position: absolute; top: 50px; left: calc(50% - 130px); width: 260px; height: 180px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 3000; font-size: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
+        /* Repositioned chat window lower down so it never blocks top buttons */
+        #chat-window { position: fixed; top: 70px; left: calc(50% - 130px); width: 260px; height: 180px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 8px; z-index: 3000; font-size: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
+        .chat-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; border-bottom: 1px solid #334155; padding-bottom: 4px; color: #38bdf8; font-weight: bold; }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
         .chat-input-row { display: flex; gap: 4px; }
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
@@ -113,6 +115,10 @@
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
         </div>
         <div id="chat-window">
+            <div class="chat-header-row">
+                <span>Chat Room</span>
+                <button class="secondary" style="padding: 2px 6px; font-size: 0.7rem;" onclick="toggleChatWindow()">➖</button>
+            </div>
             <div id="chat-messages"></div>
             <div class="chat-input-row">
                 <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
@@ -229,7 +235,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Clicking any player's name (including your own) during heads-up automatically selects them to win and asks for your wager!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Use the minimize button (➖) inside the chat window to safely close it anytime!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -713,7 +719,6 @@
 
             if (activeCount >= 3) {
                 if (targetUsername === clientState.username) return; // Cannot bet yourself out in 3+ players
-                // 3+ players: Automatically trigger First to Lose bet modal
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
@@ -725,7 +730,7 @@
                 `;
                 toggleModal('bet-modal');
             } else if (activeCount === 2) {
-                // Heads up: Clicked player (can be yourself or opponent) is automatically picked to win, ask for wager amount
+                // Heads up: Clicked player (including your own name) is automatically picked to win, ask for wager amount
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
@@ -763,7 +768,13 @@
                     pickUser: pickUser,
                     wagerAmt: wagerAmt
                 }));
-                toggleModal('bet-modal');
+                let modalTitle = document.getElementById('bet-modal-title');
+                let modalBody = document.getElementById('bet-modal-body');
+                modalTitle.innerText = 'Global Bet Offered';
+                modalBody.innerHTML = `
+                    <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">Your global proposal ("I like ${pickUser} for $${wagerAmt}") is now active on the right sidebar!</p>
+                    <button onclick="toggleModal('bet-modal')">OK</button>
+                `;
             }
         }
 
@@ -783,6 +794,7 @@
                     proposalId: proposalId,
                     acceptedUser: acceptedUser
                 }));
+                toggleModal('bet-modal');
             }
         }
 
