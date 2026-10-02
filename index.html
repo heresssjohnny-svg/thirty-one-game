@@ -109,7 +109,6 @@
             <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End Game</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
         </div>
-        <!-- Top-center dropping chat window -->
         <div id="chat-window">
             <div id="chat-messages"></div>
             <div class="chat-input-row">
@@ -222,7 +221,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets can only be proposed once the game has started!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets feature accept/decline buttons and update peer-to-peer ledger balances instantly!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -699,7 +698,7 @@
 
         function tapSeat(targetUsername) {
             if (clientState.gameState === 'lobby') {
-                return; // Do not allow side bets until game starts
+                return; // Do not allow betting until game starts
             }
             if (targetUsername === clientState.username) return;
             let modalTitle = document.getElementById('bet-modal-title');
@@ -794,11 +793,17 @@
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
                 lobby.pendingBetsForMe.forEach(bet => {
                     let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
-                    if (confirm(`Incoming Bet Proposal from ${bet.proposer}!\n\n${label}\n\nAccept this bet?`)) {
-                        respondToBet(bet.id, true);
-                    } else {
-                        respondToBet(bet.id, false);
-                    }
+                    
+                    // Replace confirm popup with custom accept/decline buttons modal
+                    let modalTitle = document.getElementById('bet-modal-title');
+                    let modalBody = document.getElementById('bet-modal-body');
+                    modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
+                    modalBody.innerHTML = `
+                        <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">${label}</p>
+                        <button onclick="respondToBet('${bet.id}', true)">Accept</button>
+                        <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
+                    `;
+                    toggleModal('bet-modal');
                 });
                 lobby.pendingBetsForMe = [];
             }
@@ -831,7 +836,7 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('knock-btn').style.display = 'none';
+                document.getElementById('turn-banner').style.display = 'none';
             }
 
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
@@ -955,6 +960,13 @@
                 `).join('');
                 document.getElementById('my-cards-container').innerHTML = cardsHtml;
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
+            }
+        }
+
+        function respondToBet(betId, accept) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'RESPOND_BET', betId, accept }));
+                toggleModal('bet-modal');
             }
         }
 
