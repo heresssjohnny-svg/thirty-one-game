@@ -54,10 +54,10 @@ wss.on('connection', (ws) => {
         try {
             switch (data.type) {
                 case 'CREATE_LOBBY':
-                    currentUsername = data.username || 'Player';
+                    currentUsername = (data.username || 'Player').trim();
                     for (let existingCode in lobbies) {
                         let l = lobbies[existingCode];
-                        if (l.host === currentUsername && l.gameState === 'lobby') {
+                        if (l.host.trim().toLowerCase() === currentUsername.toLowerCase() && l.gameState === 'lobby') {
                             currentLobbyCode = existingCode;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(l, ws) }));
                             return;
@@ -105,10 +105,10 @@ wss.on('connection', (ws) => {
                     let code = (data.code || '').toUpperCase();
                     if (lobbies[code]) {
                         currentLobbyCode = code;
-                        currentUsername = data.username || 'Player';
+                        currentUsername = (data.username || 'Player').trim();
                         let lobby = lobbies[code];
                         
-                        let existingPlayer = lobby.players.find(p => p.username === currentUsername);
+                        let existingPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
@@ -117,7 +117,7 @@ wss.on('connection', (ws) => {
                             return;
                         }
 
-                        let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
+                        let existingSpec = lobby.spectators.find(s => s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (existingSpec) {
                             existingSpec.idSocket = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
@@ -166,7 +166,7 @@ wss.on('connection', (ws) => {
                 case 'SIT_DOWN':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username === currentUsername);
+                        let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         let totalOccupants = lobby.players.length + lobby.bots.length;
 
                         if (specIdx !== -1 && totalOccupants < 6 && lobby.gameState === 'lobby') {
@@ -212,7 +212,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_SETTINGS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        if (lobby.host === currentUsername && lobby.gameState === 'lobby') {
+                        if (lobby.host.trim().toLowerCase() === currentUsername.toLowerCase() && lobby.gameState === 'lobby') {
                             if (data.lives) {
                                 let l = parseInt(data.lives);
                                 lobby.players.forEach(p => p.lives = l);
@@ -226,7 +226,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_VC_STATUS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username === currentUsername);
+                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (p) {
                             let wasInVC = p.inVC;
                             p.inVC = !!data.inVC;
@@ -261,7 +261,7 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let activeParts = getActiveParticipants(lobby);
-                        let isSpec = lobby.spectators.some(s => s.username === currentUsername);
+                        let isSpec = lobby.spectators.some(s => s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (!isSpec && lobby.gameState !== 'lobby' && activeParts.length >= 3) {
                             let target = data.target;
                             let newBet = {
@@ -459,12 +459,15 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let requesterName = currentUsername;
                         
-                        let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
+                        // Clean, case-insensitive match for target player lookup
+                        let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === (data.targetUsername || '').trim().toLowerCase());
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
                             if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
                             targetPlayer.peekIncoming[requesterName] = true;
-                            console.log(`[Peek Request] Spectator ${requesterName} requested to peek at ${data.targetUsername}`);
+                            console.log(`[Peek Request] Spectator ${requesterName} requested to peek at ${targetPlayer.username}`);
                             broadcastLobbyUpdate(currentLobbyCode);
+                        } else {
+                            console.log(`[Peek Request Failed] Target player '${data.targetUsername}' not found or inactive.`);
                         }
                     }
                     break;
@@ -478,6 +481,9 @@ wss.on('connection', (ws) => {
                             if (data.allow) {
                                 if (!player.peekAllowed) player.peekAllowed = {};
                                 player.peekAllowed[data.spectatorUsername] = true;
+                                console.log(`[Peek Allowed] Player ${player.username} allowed ${data.spectatorUsername} to peek.`);
+                            } else {
+                                console.log(`[Peek Denied] Player ${player.username} denied ${data.spectatorUsername}.`);
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -487,7 +493,7 @@ wss.on('connection', (ws) => {
                 case 'STOP_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
+                        let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === (data.targetUsername || '').trim().toLowerCase());
                         if (targetPlayer && targetPlayer.peekAllowed) {
                             delete targetPlayer.peekAllowed[currentUsername];
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -697,9 +703,9 @@ function getSanitizedLobby(lobby, wsId) {
             
             let specAllowed = false;
             if (requestingSpectator) {
-                specAllowed = p.peekAllowed && !!p.peekAllowed[requestingSpectator.username];
+                specAllowed = p.peekAllowed && Object.keys(p.peekAllowed).some(k => k.trim().toLowerCase() === requestingSpectator.username.trim().toLowerCase());
             } else if (requestingPlayer) {
-                specAllowed = p.username === myUsername || (p.peekAllowed && !!p.peekAllowed[requestingPlayer.username]);
+                specAllowed = p.username === myUsername || (p.peekAllowed && Object.keys(p.peekAllowed).some(k => k.trim().toLowerCase() === requestingPlayer.username.trim().toLowerCase()));
             }
 
             let incomingPeekMap = p.peekRequests || {};
