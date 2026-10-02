@@ -702,8 +702,6 @@ function awardTournamentWinner(lobby, winner) {
     let allParts = [...lobby.players, ...lobby.bots];
     
     let ledgerMap = lobby.ledger || {};
-    // DO NOT deduct main pot buy-in per round; buy-in is initial stake only.
-    // Tournament winner receives payout directly from losers based on individual wagers.
     allParts.forEach(loser => {
         if (loser.username !== winner.username) {
             let loserWager = loser.wager || 5;
@@ -1008,8 +1006,6 @@ function resolveRoundEnd(lobby) {
         let roundLoser = scores[0].player.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // DO NOT deduct round loss from main pot wager; wagers are tournament stakes only.
-        // Side bets settle peer-to-peer immediately upon resolution.
         resolveWinSideBets(lobby, roundWinner);
         
         triggerRoundOver(lobby, `Round Over! ${roundLoser} had the lowest score and lost a life. All hands revealed.`);
