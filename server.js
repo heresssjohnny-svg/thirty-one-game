@@ -608,7 +608,7 @@ function getSanitizedLobby(lobby, wsId) {
         globalProposals: lobby.globalProposals || [],
         activeParticipantsCount: activeParts.length,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
-        tiedParticipantsList: lobby.tiedParticipantsList || [], // Fixed: explicitly included tiedParticipantsList in state payload
+        tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
@@ -685,8 +685,10 @@ function startDealerDrawPhase(lobby) {
 }
 
 function handlePoolCardSelection(lobby, username, cardIndex) {
-    if (lobby.gameState === 'tieBreaker' && !lobby.tiedParticipantsList.includes(username)) {
-        return;
+    if (lobby.gameState === 'tieBreaker') {
+        if (!lobby.tiedParticipantsList.includes(username)) {
+            return; // Only allow players involved in the tie breaker to select cards
+        }
     }
 
     if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
@@ -1207,7 +1209,7 @@ function resolveWinSideBets(lobby, roundWinnerName) {
             if (!lobby.ledger[creditor]) lobby.ledger[creditor] = { total: 0 };
             if (!lobby.ledger[debtor]) lobby.ledger[debtor] = { total: 0 };
 
-            lobby.ledger[creditor]['total'] += bet.wagerAmt;
+            ledger[creditor]['total'] += bet.wagerAmt;
             lobby.ledger[debtor]['total'] -= bet.wagerAmt;
         } else {
             remainingBets.push(bet);
