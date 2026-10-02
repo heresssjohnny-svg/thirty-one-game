@@ -846,9 +846,7 @@ function resolveFirstToLoseBets(lobby, loserName) {
 
     let remainingBets = [];
     
-    // Evaluate every active bet and handle both directions:
-    // 1. If pickUser === loserName (the target died first) -> Target owes Proposer.
-    // 2. If proposer === loserName (the proposer died before their pick) -> Proposer owes Target.
+    // Evaluate active bets with support for both pickUser loss and proposer loss
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
             let proposer = bet.proposer;
@@ -1002,7 +1000,7 @@ function checkAndRunBotTurn(lobby) {
                 if (shouldTakeDiscard && lobby.discardPile.length > 0) {
                     let card = lobby.discardPile.pop();
                     currentPlayer.cards.push(card);
-                    if (card === lobby.initialDealCard) {
+                    if (card && lobby.initialDealCard && card.val === lobby.initialDealCard.val && card.suit === lobby.initialDealCard.suit) {
                         lobby.lastDiscardPickup = null;
                         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
                     }
@@ -1074,8 +1072,15 @@ function handleTurnAction(lobby, ws, actionType) {
             let card = lobby.discardPile.pop();
             currentPlayer.cards.push(card);
 
-            if (card === lobby.initialDealCard) {
-                // Keep modal active until discard
+            let isInitialDeal = lobby.initialDealCard && 
+                                card.val === lobby.initialDealCard.val && 
+                                card.suit === lobby.initialDealCard.suit;
+
+            if (isInitialDeal) {
+                lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
+                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
+            } else {
+                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
             }
 
             if (lobby.lastDiscarder && lobby.lastDiscarder !== currentPlayer.username) {
@@ -1104,11 +1109,6 @@ function handleTurnAction(lobby, ws, actionType) {
                 }
             }
 
-            if (card === lobby.initialDealCard) {
-                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
-            } else {
-                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
-            }
             broadcastLobbyUpdate(lobby.code);
         }
     }
