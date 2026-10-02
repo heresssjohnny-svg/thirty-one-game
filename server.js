@@ -263,19 +263,23 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId && gp.proposer === currentUsername);
                         if (prop && prop.acceptedBy.includes(data.acceptedUser)) {
-                            lobby.activeBets.push({
-                                id: Math.random().toString(36).substring(2, 8),
-                                proposer: prop.proposer,
-                                target: data.acceptedUser,
-                                pickUser: prop.pickUser,
-                                wagerAmt: prop.wagerAmt,
-                                type: 'win'
-                            });
+                            if (data.confirm) {
+                                lobby.activeBets.push({
+                                    id: Math.random().toString(36).substring(2, 8),
+                                    proposer: prop.proposer,
+                                    target: data.acceptedUser,
+                                    pickUser: prop.pickUser,
+                                    wagerAmt: prop.wagerAmt,
+                                    type: 'win'
+                                });
+                                lobby.phaseMessage = `🤝 Confirmed global side bet between ${prop.proposer} and ${data.acceptedUser}!`;
+                            } else {
+                                lobby.phaseMessage = `❌ ${prop.proposer} declined global bet acceptance from ${data.acceptedUser}.`;
+                            }
                             prop.acceptedBy = prop.acceptedBy.filter(u => u !== data.acceptedUser);
                             if (prop.acceptedBy.length === 0) {
                                 lobby.globalProposals = lobby.globalProposals.filter(gp => gp.id !== prop.id);
                             }
-                            lobby.phaseMessage = `🤝 Confirmed global side bet between ${prop.proposer} and ${data.acceptedUser}!`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -355,15 +359,40 @@ wss.on('connection', (ws) => {
                 case 'END_GAME_PROPOSAL':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        lobby.endGameVotes = {};
+                        if (!lobby.endGameVotes) lobby.endGameVotes = {};
                         lobby.endGameVotes[currentUsername] = true;
                         lobby.bots.forEach(b => { lobby.endGameVotes[b.username] = true; });
                         
                         let activeParts = getActiveParticipants(lobby);
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
+                        
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️ Game ended by unanimous agreement.";
-                            lobby.gameState = 'roundOver';
+                            lobby.phaseMessage = "⚠️️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.gameState = 'lobby';
+                            lobby.endGameVotes = {};
+                            lobby.activeBets = [];
+                            lobby.pendingBets = [];
+                            lobby.globalProposals = [];
+                            
+                            lobby.players.forEach(p => {
+                                p.lives = 2;
+                                p.eliminated = false;
+                                p.cards = [];
+                                p.ready = false;
+                                p.nextHandReady = false;
+                            });
+                            lobby.bots.forEach(b => {
+                                b.lives = 2;
+                                b.eliminated = false;
+                                b.cards = [];
+                                b.ready = true;
+                                b.nextHandReady = true;
+                            });
+                            lobby.spectators = [];
+                            broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastLobbyList();
+                        } else {
+                            lobby.phaseMessage = `⚠️ ${currentUsername} voted to end the game (${Object.keys(lobby.endGameVotes).length}/${activeParts.length} votes)`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
