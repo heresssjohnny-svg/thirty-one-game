@@ -153,11 +153,10 @@ wss.on('connection', (ws) => {
                             p.inVC = !!data.inVC;
                             p.isMuted = !!data.isMuted;
 
-                            // Announce in chat if someone just joined VC
                             if (!wasInVC && p.inVC) {
                                 let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
-                                lobby.players.forEach(pl => { if (pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
-                                lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
+                                lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
+                                lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
                             }
 
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -298,11 +297,15 @@ wss.on('connection', (ws) => {
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
                             player.ready = data.ready;
-                            broadcastLobbyUpdate(currentLobbyCode);
-
+                            
                             let activeParticipants = getActiveParticipants(lobby);
-                            if (activeParticipants.every(p => p.ready || p.eliminated) && activeParticipants.length >= 2) {
+                            // Check if all active human players and bots are ready
+                            let allReady = activeParticipants.every(p => p.ready || lobby.bots.some(b => b.username === p.username));
+                            
+                            if (allReady && activeParticipants.length >= 2) {
                                 startDealerDrawPhase(lobby);
+                            } else {
+                                broadcastLobbyUpdate(currentLobbyCode);
                             }
                         }
                     }
@@ -383,8 +386,8 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
-                        lobby.players.forEach(p => { if (p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify(chatPayload)); });
-                        lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
+                        lobby.players.forEach(p => { if (p.id && p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify(chatPayload)); });
+                        lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
                     }
                     break;
 
