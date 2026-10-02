@@ -686,9 +686,8 @@ function startDealerDrawPhase(lobby) {
 
 function handlePoolCardSelection(lobby, username, cardIndex) {
     if (lobby.gameState === 'tieBreaker') {
-        if (!lobby.tiedParticipantsList.includes(username)) {
-            return; // Only allow players involved in the tie breaker to select cards
-        }
+        let isTied = lobby.tiedParticipantsList.some(t => t.trim().toLowerCase() === username.trim().toLowerCase());
+        if (!isTied) return;
     }
 
     if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
@@ -1209,7 +1208,7 @@ function resolveWinSideBets(lobby, roundWinnerName) {
             if (!lobby.ledger[creditor]) lobby.ledger[creditor] = { total: 0 };
             if (!lobby.ledger[debtor]) lobby.ledger[debtor] = { total: 0 };
 
-            ledger[creditor]['total'] += bet.wagerAmt;
+            lobby.ledger[creditor]['total'] += bet.wagerAmt;
             lobby.ledger[debtor]['total'] -= bet.wagerAmt;
         } else {
             remainingBets.push(bet);
