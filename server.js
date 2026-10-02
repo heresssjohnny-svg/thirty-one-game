@@ -179,19 +179,22 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let activeParts = getActiveParticipants(lobby);
-                        if (lobby.gameState !== 'lobby' && activeParts.length >= 3) {
+                        let isSpec = lobby.spectators.some(s => s.username === currentUsername);
+                        if (!isSpec && lobby.gameState !== 'lobby' && activeParts.length >= 3) {
                             let target = data.target;
+                            let betId = Math.random().toString(36).substring(2, 8);
                             let newBet = {
-                                id: Math.random().toString(36).substring(2, 8),
+                                id: betId,
                                 proposer: currentUsername,
                                 target: target,
                                 pickUser: target,
                                 targetSurvivor: currentUsername,
                                 wagerAmt: parseFloat(data.wagerAmt) || 5,
-                                type: 'eliminate'
+                                type: 'eliminate',
+                                delivered: {}
                             };
-                            lobby.activeBets.push(newBet);
-                            lobby.phaseMessage = `🤝 Auto First to Lose Bet: ${currentUsername} bets $${newBet.wagerAmt} that ${target} is eliminated before ${currentUsername}!`;
+                            lobby.pendingBets.push(newBet);
+                            lobby.phaseMessage = `🤝 First to Lose Bet proposed by ${currentUsername} to ${target}!`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -297,9 +300,8 @@ wss.on('connection', (ws) => {
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
                             player.ready = data.ready;
-                            
+
                             let activeParticipants = getActiveParticipants(lobby);
-                            // Check if all active human players and bots are ready
                             let allReady = activeParticipants.every(p => p.ready || lobby.bots.some(b => b.username === p.username));
                             
                             if (allReady && activeParticipants.length >= 2) {
@@ -437,9 +439,7 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => {
-        if (currentLobbyCode) leaveLobby(ws, currentLobbyCode);
-    });
+    ws.on('close', () => {});
 });
 
 function getActiveParticipants(lobby) {
