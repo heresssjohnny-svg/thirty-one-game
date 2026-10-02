@@ -1016,8 +1016,13 @@ function handleTurnAction(lobby, ws, actionType) {
                 if (hasAce && hasFaceOr10) {
                     let feeder = allParts.find(p => p.username === lobby.lastDiscarder);
                     if (feeder) {
-                        feeder.lives = 0;
-                        lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and a 10-value card and loses ALL lives!`;
+                        // Amended 21 out of 31 Rule Check:
+                        // The player who was fed must get 31 at any given point in the round for the feeder to lose all lives.
+                        let fedPlayerScore = calculateScore(currentPlayer.cards);
+                        if (fedPlayerScore === 31 || calculateSuitScore(currentPlayer.cards, card.suit) === 31) {
+                            feeder.lives = 0;
+                            lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and a 10-value card, and ${currentPlayer.username} hit 31! ${feeder.username} loses ALL lives!`;
+                        }
                     }
                 }
             }
@@ -1026,6 +1031,12 @@ function handleTurnAction(lobby, ws, actionType) {
             broadcastLobbyUpdate(lobby.code);
         }
     }
+}
+
+function calculateSuitScore(cards, suit) {
+    let sum = 0;
+    cards.forEach(c => { if (c.suit === suit) sum += c.points; });
+    return sum;
 }
 
 function handleDiscardAction(lobby, ws, cardIndex) {
@@ -1047,9 +1058,30 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
         lobby.fedCardsTracker[currentPlayer.username].push(discarded);
 
+        // Check amended 21 out of 31 rule upon discarding / hitting 31
+        let currentScore = calculateScore(currentPlayer.cards);
+        if (currentScore === 31 && lobby.lastDiscarder) {
+            // Check if any fed cards tracker involved an Ace and 10-value card of the same suit fed to this player
+            // Simplified check: If they hit 31 and were fed by someone, check the fed tracking
+            for (let feederName in lobby.fedCardsTracker) {
+                if (feederName !== currentPlayer.username) {
+                    let fedCards = lobby.fedCardsTracker[feederName];
+                    let hasAce = fedCards.some(c => c.val === 'A');
+                    let hasFaceOr10 = fedCards.some(c => ['10', 'J', 'Q', 'K'].includes(c.val));
+                    if (hasAce && hasFaceOr10) {
+                        let feeder = allParts.find(p => p.username === feederName);
+                        if (feeder) {
+                            feeder.lives = 0;
+                            lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} cards and ${currentPlayer.username} hit 31! ${feeder.username} loses ALL lives!`;
+                        }
+                    }
+                }
+            }
+        }
+
         lobby.turnsTakenThisRound++;
 
-        if (calculateScore(currentPlayer.cards) === 31) {
+        if (currentScore === 31) {
             allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
             triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
         } else {
