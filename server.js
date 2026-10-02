@@ -848,18 +848,9 @@ function resolveFirstToLoseBets(lobby, loserName) {
     
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate' && bet.pickUser === loserName) {
-            // A First-to-Lose bet means the Proposer bet that [pickUser] would lose first.
-            // If [pickUser] (loserName) actually lost, the Proposer wins the bet!
-            // Therefore, the person who accepted/targeted the bet (debtor) pays the Proposer (creditor).
             let debtor = bet.target; 
             let creditor = bet.proposer;
-
-            // If the person who lost was the target themselves, make sure debtor is correct
-            if (debtor === loserName || debtor === bet.pickUser) {
-                addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
-            } else {
-                addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
-            }
+            addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
         } else {
             remainingBets.push(bet);
         }
@@ -1032,16 +1023,14 @@ function checkAndRunBotTurn(lobby) {
                 lobby.turnsTakenThisRound++;
 
                 if (calculateScore(currentPlayer.cards) === 31) {
-                    allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
-                    
-                    // Check and process eliminations immediately when lives drop
-                    let newlyEliminated = [];
-                    allParts.forEach(p => {
-                        if (p.lives <= 0 && !p.eliminated) {
-                            p.eliminated = true;
-                            newlyEliminated.push(p.username);
-                            resolveFirstToLoseBets(lobby, p.username);
-                            lobby.spectators.push({ idSocket: p.id, username: p.username });
+                    allParts.forEach(p => { 
+                        if (p !== currentPlayer && !p.eliminated) {
+                            p.lives--;
+                            if (p.lives <= 0) {
+                                p.eliminated = true;
+                                resolveFirstToLoseBets(lobby, p.username);
+                                lobby.spectators.push({ idSocket: p.id, username: p.username });
+                            }
                         }
                     });
 
@@ -1097,11 +1086,9 @@ function handleTurnAction(lobby, ws, actionType) {
                         let fedPlayerScore = calculateScore(currentPlayer.cards);
                         if (fedPlayerScore === 31 || calculateSuitScore(currentPlayer.cards, card.suit) === 31) {
                             feeder.lives = 0;
-                            let newlyEliminated = [];
                             allParts.forEach(p => {
                                 if (p.lives <= 0 && !p.eliminated) {
                                     p.eliminated = true;
-                                    newlyEliminated.push(p.username);
                                     resolveFirstToLoseBets(lobby, p.username);
                                     lobby.spectators.push({ idSocket: p.id, username: p.username });
                                 }
@@ -1158,11 +1145,9 @@ function handleDiscardAction(lobby, ws, cardIndex) {
                         let feeder = allParts.find(p => p.username === feederName);
                         if (feeder) {
                             feeder.lives = 0;
-                            let newlyEliminated = [];
                             allParts.forEach(p => {
                                 if (p.lives <= 0 && !p.eliminated) {
                                     p.eliminated = true;
-                                    newlyEliminated.push(p.username);
                                     resolveFirstToLoseBets(lobby, p.username);
                                     lobby.spectators.push({ idSocket: p.id, username: p.username });
                                 }
@@ -1177,16 +1162,16 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         lobby.turnsTakenThisRound++;
 
         if (currentScore === 31) {
-            allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
-            
-            allParts.forEach(p => {
-                if (p.lives <= 0 && !p.eliminated) {
-                    p.eliminated = true;
-                    resolveFirstToLoseBets(lobby, p.username);
-                    lobby.spectators.push({ idSocket: p.id, username: p.username });
+            allParts.forEach(p => { 
+                if (p !== currentPlayer && !p.eliminated) {
+                    p.lives--;
+                    if (p.lives <= 0) {
+                        p.eliminated = true;
+                        resolveFirstToLoseBets(lobby, p.username);
+                        lobby.spectators.push({ idSocket: p.id, username: p.username });
+                    }
                 }
             });
-
             triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
         } else {
             advanceTurnOrResolve(lobby);
@@ -1269,11 +1254,16 @@ function resolveRoundEnd(lobby) {
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // Immediately settle First-to-Lose and Win side bets the moment the round ends and life is lost!
+        // Immediately settle First-to-Lose side bets the moment any player loses a life at round end!
         if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
             loserPlayer.eliminated = true;
             resolveFirstToLoseBets(lobby, roundLoser);
             lobby.spectators.push({ idSocket: loserPlayer.id, username: loserPlayer.username });
+        } else {
+            // Even if they didn't hit 0 lives, check if any active First-to-Lose bets target this round's loser 
+            // if you want round-by-round tracking, or let's resolve them when lives drop. 
+            // To ensure wagers settle immediately when someone loses a life:
+            resolveFirstToLoseBets(lobby, roundLoser);
         }
         
         resolveWinSideBets(lobby, roundWinner);
@@ -1297,9 +1287,10 @@ function checkTieBreakerComplete(lobby) {
             targetParticipant.lives--;
             if (targetParticipant.lives <= 0 && !targetParticipant.eliminated) {
                 targetParticipant.eliminated = true;
-                resolveFirstToLoseBets(lobby, targetParticipant.username);
                 lobby.spectators.push({ idSocket: targetParticipant.id, username: targetParticipant.username });
             }
+            resolveFirstToLoseBets(lobby, targetParticipant.username);
+
             let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
             let roundWinner = activeScores[activeScores.length - 1].p.username;
             resolveWinSideBets(lobby, roundWinner);
