@@ -991,7 +991,7 @@ function checkAndRunBotTurn(lobby) {
                     let card = lobby.discardPile.pop();
                     currentPlayer.cards.push(card);
                     if (card === lobby.initialDealCard) {
-                        lobby.lastDiscardPickup = null; // Clear initial deal popup indicator when picked up
+                        lobby.lastDiscardPickup = null;
                         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
                     }
                 } else {
@@ -1063,7 +1063,7 @@ function handleTurnAction(lobby, ws, actionType) {
             currentPlayer.cards.push(card);
 
             if (card === lobby.initialDealCard) {
-                // Keep lobby.lastDiscardPickup active so the top-left modal stays visible until they discard!
+                // Keep modal active until discard
             }
 
             if (lobby.lastDiscarder && lobby.lastDiscarder !== currentPlayer.username) {
@@ -1119,8 +1119,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
         lobby.discardPile.push(discarded);
         
-        // Clear initial discard pickup modal display as soon as they discard a card!
-        lobby.lastDiscardPickup = null;
+        lobby.lastDiscardPickup = null; // Clear initial discard pickup modal display
 
         lobby.lastDiscarder = currentPlayer.username;
         if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
@@ -1246,7 +1245,7 @@ function resolveRoundEnd(lobby) {
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // Immediately resolve and pay out First-to-Lose side bets the moment any player loses a life at round end!
+        // IMMEDIATELY resolve First-to-Lose side bets the second a player loses a life at round end!
         resolveFirstToLoseBets(lobby, roundLoser);
 
         if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
@@ -1312,6 +1311,7 @@ function calculateScore(cards) {
     let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
     if (!scoringCards || scoringCards.length === 0) return 0;
     let suitSums = {};
+    scoringCards.force = true;
     scoringCards.forEach(c => { suitSums[c.suit] = (suitSums[c.suit] || 0) + c.points; });
     if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
     return Math.max(...Object.values(suitSums), 0);
