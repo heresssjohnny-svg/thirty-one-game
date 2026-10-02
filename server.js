@@ -76,7 +76,7 @@ wss.on('connection', (ws) => {
                         turnIndex: 0,
                         dealerIndex: 0,
                         ledger: {},
-                        pendingBets: [],
+                        pendingBets: [], // { id, proposer, target, pickUser, targetSurvivor, wagerAmt, type, delivered: {} }
                         activeBets: [],
                         knockedBy: null,
                         finalTurnsRemaining: 0,
@@ -179,7 +179,7 @@ wss.on('connection', (ws) => {
                                 targetSurvivor: data.targetSurvivor,
                                 wagerAmt: parseFloat(data.wagerAmt) || 5,
                                 type: data.betType || 'win',
-                                responded: false
+                                delivered: {} // Track delivery per username
                             };
                             lobby.pendingBets.push(newBet);
                             lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
@@ -463,9 +463,10 @@ function getSanitizedLobby(lobby, wsId) {
     }
     sortedParticipants.forEach((p, idx) => { p.seat = idx; });
 
-    let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.responded);
+    // Explicitly check unresponded pending bets where target is me and proposer is NOT me
+    let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && b.proposer !== myUsername && !b.delivered[myUsername]);
     if (myUnrespondedBets.length > 0) {
-        myUnrespondedBets.forEach(b => b.responded = true);
+        myUnrespondedBets.forEach(b => { b.delivered[myUsername] = true; });
     }
 
     return {
