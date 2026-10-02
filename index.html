@@ -1115,7 +1115,7 @@
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
             clientState.activeParticipantsCount = lobby.activeParticipantsCount || 3;
-            clientState.tiedParticipantsList = lobby.tiedParticipantsList || []; // Synchronize tied participants list
+            clientState.tiedParticipantsList = lobby.tiedParticipantsList || [];
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
             let me = lobby.players.find(p => p.username === clientState.username);
