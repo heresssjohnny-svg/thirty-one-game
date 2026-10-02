@@ -1410,7 +1410,6 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Robust check for incoming peek requests matching current active user
             if (me && me.peekIncoming) {
                 let incomingSpecs = Object.keys(me.peekIncoming);
                 let peekModal = document.getElementById('peek-request-modal');
@@ -1710,9 +1709,13 @@
                 }
                 
                 let activePeekersHtml = '';
-                if (p.username.trim().toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
+                let myActivePeek = false;
+                if (p.peekAllowed) {
                     for (let peekerName in p.peekAllowed) {
-                        if (p.peekAllowed[peekerName]) {
+                        if (p.peekAllowed[peekerName] && peekerName.trim().toLowerCase() === activeUsername.trim().toLowerCase()) {
+                            myActivePeek = true;
+                        }
+                        if (p.peekAllowed[peekerName] && p.username.trim().toLowerCase() === activeUsername.trim().toLowerCase()) {
                             activePeekersHtml += `
                                 <div style="background:rgba(185,28,28,0.85); border-radius:4px; padding:1px 3px; margin-top:2px; font-size:0.5rem; display:flex; justify-content:space-between; align-items:center;">
                                     <span>👀 ${peekerName}</span>
@@ -1721,6 +1724,11 @@
                             `;
                         }
                     }
+                }
+
+                // Render Stop Peeking button for spectators if access is granted
+                if (isSpectatorOnly && myActivePeek) {
+                    peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
                 }
 
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
