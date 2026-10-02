@@ -119,7 +119,7 @@ wss.on('connection', (ws) => {
 
                         let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
                         if (existingSpec) {
-                            existingSpec.id = ws;
+                            existingSpec.idSocket = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -134,7 +134,7 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            lobby.spectators.push({ id: ws, username: currentUsername, idSocket: ws, inVC: false, isMuted: false });
+                            lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: false, isMuted: false });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -371,7 +371,7 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠️ Unanimous vote! Game ended, returning to lobby ready-up.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
@@ -398,7 +398,7 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         } else {
-                            lobby.phaseMessage = `⚠️ ${currentUsername} voted to end the game (${Object.keys(lobby.endGameVotes).length}/${activeParts.length} votes)`;
+                            lobby.phaseMessage = `⚠️️ ${currentUsername} voted to end the game (${Object.keys(lobby.endGameVotes).length}/${activeParts.length} votes)`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -1217,7 +1217,7 @@ function resolveRoundEnd(lobby) {
             lobby.tiedParticipantsList = tiedPlayers.map(t => t.player.username);
             lobby.drawPool = lobby.deck.map(card => ({ card: card, chosenBy: null }));
             lobby.drawResults = {};
-            lobby.phaseMessage = `Tie-Breaker Phase`; // Fixed to read tie breaker
+            lobby.phaseMessage = `Tie-Breaker Phase`;
             lobby.gameState = 'tieBreaker';
 
             autoPickForBots(lobby);
