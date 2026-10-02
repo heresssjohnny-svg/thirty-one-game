@@ -6,7 +6,7 @@
     <title>31! Card Game</title>
     <link rel="manifest" href="manifest.json">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; touch-action: manipulation; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
         body { background: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         header { background: #1e293b; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; flex-shrink: 0; z-index: 1000; position: relative; }
         .logo { font-size: 1.25rem; font-weight: 800; color: #38bdf8; }
@@ -220,7 +220,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Custom proposals and accept/decline modals keep game flow smooth and interruption-free!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Fully synchronized peer-to-peer ledger wagers and responsive button actions!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -794,16 +794,16 @@
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
 
-            // If there's an incoming proposal for me, and the bet modal isn't already showing an incoming proposal, display it cleanly
-            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
+            let modal = document.getElementById('bet-modal');
+            let isModalOpen = modal.style.display === 'flex';
+
+            // Only prompt incoming proposals if modal is closed or not currently proposing
+            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
                 lobby.pendingBetsForMe.forEach(bet => {
                     let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
                     
-                    let modal = document.getElementById('bet-modal');
                     let modalTitle = document.getElementById('bet-modal-title');
                     let modalBody = document.getElementById('bet-modal-body');
-                    
-                    // Only open if not already proposing something else
                     modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
                     modalBody.innerHTML = `
                         <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">${label}</p>
@@ -845,10 +845,12 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('knock-btn').style.display = 'none';
+                document.getElementById('turn-banner').style.display = 'none';
             }
 
-            document.getElementById('knock-btn').disabled = !lobby.canKnock;
+            let canKnockNow = lobby.canKnock;
+            let knockBtn = document.getElementById('knock-btn');
+            knockBtn.disabled = !canKnockNow;
 
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let nextHandOverlay = document.getElementById('next-hand-overlay');
