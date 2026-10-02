@@ -486,7 +486,7 @@
         </div>
     </div>
 
-    <!-- Unified Seat Tap Action Modal for Spectators (Peek & Heads-Up Betting) -->
+    <!-- Unified Seat Tap Action Modal for Spectators -->
     <div id="seat-action-modal" class="modal">
         <div class="modal-content" style="max-width:300px;">
             <h3 id="seat-action-title" style="color:var(--accent-gold);">Player Actions</h3>
@@ -494,10 +494,10 @@
         </div>
     </div>
 
-    <!-- Peek Request Permission Modal for Target Players -->
+    <!-- Standardized Modal for Incoming Peek Permission Requests -->
     <div id="peek-request-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
-            <h3 style="color:var(--accent-gold);">Peek Request</h3>
+            <h3 style="color:var(--accent-gold);">Peek Permission Request</h3>
             <p id="peek-modal-msg" style="font-size:0.85rem; color:var(--text-muted);">Spectator wants to peek at your hand.</p>
             <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
                 <button id="peek-allow-btn" style="background:#10b981;">Allow</button>
@@ -1258,7 +1258,6 @@
             let activeCount = clientState.activeParticipantsCount;
 
             if (isSpecOnly) {
-                // Unified Action Modal for Spectators tapping a player's name
                 let modalTitle = document.getElementById('seat-action-title');
                 let modalBody = document.getElementById('seat-action-body');
                 modalTitle.innerText = `Actions for ${targetUsername}`;
@@ -1411,15 +1410,15 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Check if anyone is requesting a peek from ME specifically
             if (me && me.peekIncoming) {
                 let incomingSpecs = Object.keys(me.peekIncoming);
-                if (incomingSpecs.length > 0) {
+                let peekModal = document.getElementById('peek-request-modal');
+                if (incomingSpecs.length > 0 && peekModal.style.display !== 'flex') {
                     let requestingSpec = incomingSpecs[0];
                     document.getElementById('peek-modal-msg').innerHTML = `<b>${requestingSpec}</b> is requesting permission to peek at your hand.`;
                     document.getElementById('peek-allow-btn').onclick = () => respondPeek(requestingSpec, true);
                     document.getElementById('peek-deny-btn').onclick = () => respondPeek(requestingSpec, false);
-                    document.getElementById('peek-request-modal').style.display = 'flex';
+                    peekModal.style.display = 'flex';
                 }
             }
 
