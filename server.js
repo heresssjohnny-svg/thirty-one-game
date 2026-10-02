@@ -55,8 +55,6 @@ wss.on('connection', (ws) => {
             switch (data.type) {
                 case 'CREATE_LOBBY':
                     currentUsername = data.username || 'Player';
-                    
-                    // Prevent duplicate lobby creation if user is already bound or spamming
                     for (let existingCode in lobbies) {
                         let l = lobbies[existingCode];
                         if (l.host === currentUsername && l.gameState === 'lobby') {
@@ -109,12 +107,21 @@ wss.on('connection', (ws) => {
                         currentUsername = data.username || 'Player';
                         let lobby = lobbies[code];
                         
-                        // Check if player already exists in this lobby to update socket reference instead of duplicating
                         let existingPlayer = lobby.players.find(p => p.username === currentUsername);
                         if (existingPlayer) {
                             existingPlayer.id = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
+                            broadcastLobbyList();
+                            return;
+                        }
+
+                        let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
+                        if (existingSpec) {
+                            existingSpec.id = ws;
+                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
+                            broadcastLobbyUpdate(code);
+                            broadcastLobbyList();
                             return;
                         }
 
@@ -126,14 +133,10 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
-                            if (existingSpec) {
-                                existingSpec.id = ws;
-                            } else {
-                                lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false, peekRequests: {} });
-                            }
+                            lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false, peekRequests: {} });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
+                            broadcastLobbyList();
                         }
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
@@ -463,9 +466,7 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => {
-        // Keeps user state intact on backgrounding; only explicit LEAVE_LOBBY removes them.
-    });
+    ws.on('close', () => {});
 });
 
 function getActiveParticipants(lobby) {
