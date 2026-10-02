@@ -251,6 +251,7 @@
         .modal-content h3 { color: var(--accent-gold); font-size: 1.2rem; }
         .button-group { display: flex; flex-direction: column; gap: 8px; }
         
+        /* Auto-resizing compact card grid for dealer draw and tie breakers */
         .pool-cards-grid { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); 
@@ -508,19 +509,23 @@
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
         let isSidebarMinimized = false;
-        let lastGameState = ''; // Track previous game state to reset selection locks automatically
+        let lastGameState = '';
         
         let localAudioStream = null;
         let isMicMuted = false;
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
+        // Background Audio & Dynamic Volume Management with Persistent LocalStorage & Taper Curve
         let isMusicMuted = false;
 
         function toggleMusicMute() {
             isMusicMuted = !isMusicMuted;
             let bgAudio = document.getElementById('bg-audio');
             let btn = document.getElementById('music-toggle-btn');
+            
+            localStorage.setItem('saved_music_muted', isMusicMuted);
+
             if (isMusicMuted) {
                 bgAudio.pause();
                 btn.innerText = 'Music: Off';
@@ -538,8 +543,11 @@
                 let adjustedVolume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
                 bgAudio.volume = adjustedVolume;
 
+                localStorage.setItem('saved_volume_slider', sliderVal);
+
                 if (sliderVal > 0 && isMusicMuted) {
                     isMusicMuted = false;
+                    localStorage.setItem('saved_music_muted', isMusicMuted);
                     bgAudio.play().catch(e => {});
                     document.getElementById('music-toggle-btn').innerText = 'Music: On';
                 }
@@ -556,9 +564,27 @@
             refreshLobbies();
 
             let bgAudio = document.getElementById('bg-audio');
+            let volumeSlider = document.getElementById('volume-slider');
+            let musicBtn = document.getElementById('music-toggle-btn');
+
             if (bgAudio) {
-                bgAudio.volume = Math.pow(0.5, 3);
-                bgAudio.play().catch(() => {});
+                let savedSlider = localStorage.getItem('saved_volume_slider');
+                let sliderVal = savedSlider !== null ? parseFloat(savedSlider) : 0.5;
+                volumeSlider.value = sliderVal;
+                bgAudio.volume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
+
+                let savedMuted = localStorage.getItem('saved_music_muted');
+                if (savedMuted !== null) {
+                    isMusicMuted = (savedMuted === 'true');
+                }
+
+                if (isMusicMuted) {
+                    bgAudio.pause();
+                    musicBtn.innerText = 'Music: Off';
+                } else {
+                    bgAudio.play().catch(() => {});
+                    musicBtn.innerText = 'Music: On';
+                }
             }
 
             document.addEventListener("visibilitychange", () => {
@@ -1120,7 +1146,6 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
-            // Automatically reset local card choice lock if state transitioned
             if (lobby.gameState !== lastGameState) {
                 hasChosenPoolCard = false;
                 lastGameState = lobby.gameState;
