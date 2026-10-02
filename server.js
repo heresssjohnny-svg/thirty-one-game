@@ -458,16 +458,24 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let requesterName = currentUsername;
-                        
-                        // Clean, case-insensitive match for target player lookup
-                        let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === (data.targetUsername || '').trim().toLowerCase());
+                        let rawTarget = (data.targetUsername || '').trim().toLowerCase();
+
+                        // Check if target is a bot
+                        let isBotTarget = lobby.bots.some(b => b.username.trim().toLowerCase() === rawTarget);
+                        if (isBotTarget) {
+                            console.log(`[Peek Request Blocked] Cannot peek at bot: ${data.targetUsername}`);
+                            break;
+                        }
+
+                        // Robust human player lookup supporting spacing and case variations
+                        let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === rawTarget);
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
                             if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
                             targetPlayer.peekIncoming[requesterName] = true;
-                            console.log(`[Peek Request] Spectator ${requesterName} requested to peek at ${targetPlayer.username}`);
+                            console.log(`[Peek Request Success] Spectator '${requesterName}' requested to peek at player '${targetPlayer.username}'`);
                             broadcastLobbyUpdate(currentLobbyCode);
                         } else {
-                            console.log(`[Peek Request Failed] Target player '${data.targetUsername}' not found or inactive.`);
+                            console.log(`[Peek Request Failed] Target player '${data.targetUsername}' not found or inactive in lobby.`);
                         }
                     }
                     break;
@@ -477,13 +485,20 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
-                            if (player.peekIncoming) delete player.peekIncoming[data.spectatorUsername];
+                            if (player.peekIncoming) {
+                                // Clear matching incoming request keys regardless of exact case spacing
+                                Object.keys(player.peekIncoming).forEach(k => {
+                                    if (k.trim().toLowerCase() === (data.spectatorUsername || '').trim().toLowerCase()) {
+                                        delete player.peekIncoming[k];
+                                    }
+                                });
+                            }
                             if (data.allow) {
                                 if (!player.peekAllowed) player.peekAllowed = {};
                                 player.peekAllowed[data.spectatorUsername] = true;
-                                console.log(`[Peek Allowed] Player ${player.username} allowed ${data.spectatorUsername} to peek.`);
+                                console.log(`[Peek Allowed] Player '${player.username}' granted peek permission to '${data.spectatorUsername}'.`);
                             } else {
-                                console.log(`[Peek Denied] Player ${player.username} denied ${data.spectatorUsername}.`);
+                                console.log(`[Peek Denied] Player '${player.username}' denied peek permission to '${data.spectatorUsername}'.`);
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -495,7 +510,11 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === (data.targetUsername || '').trim().toLowerCase());
                         if (targetPlayer && targetPlayer.peekAllowed) {
-                            delete targetPlayer.peekAllowed[currentUsername];
+                            Object.keys(targetPlayer.peekAllowed).forEach(k => {
+                                if (k.trim().toLowerCase() === currentUsername.trim().toLowerCase()) {
+                                    delete targetPlayer.peekAllowed[k];
+                                }
+                            });
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -506,7 +525,11 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && player.peekAllowed) {
-                            delete player.peekAllowed[data.spectatorUsername];
+                            Object.keys(player.peekAllowed).forEach(k => {
+                                if (k.trim().toLowerCase() === (data.spectatorUsername || '').trim().toLowerCase()) {
+                                    delete player.peekAllowed[k];
+                                }
+                            });
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
