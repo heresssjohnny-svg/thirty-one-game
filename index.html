@@ -228,7 +228,7 @@
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
         .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
-        /* Initial Discard Pickup Modal securely positioned top left inside main layout */
+        /* Initial Discard Pickup Modal securely positioned top left inside main container */
         .discard-pickup-modal-topleft { 
             position: absolute; 
             top: 10px; 
@@ -343,12 +343,6 @@
 
     <div id="center-notification-banner">NOTIFICATION</div>
 
-    <!-- Initial Discard Pickup Modal moved to top-level main container for clean anchoring -->
-    <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
-        <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
-        <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
-    </div>
-
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
@@ -389,6 +383,12 @@
     </header>
 
     <main>
+        <!-- Initial Discard Pickup Modal placed inside main container for clean top-left anchoring -->
+        <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
+            <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
+            <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
+        </div>
+
         <!-- Main Menu -->
         <div id="main-menu">
             <h2>Lobby Menu</h2>
