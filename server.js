@@ -78,6 +78,7 @@ wss.on('connection', (ws) => {
                         ledger: {},
                         pendingBets: [],
                         activeBets: [],
+                        globalProposals: [], // { id, proposer, pickUser, wagerAmt, acceptedBy: [] }
                         knockedBy: null,
                         finalTurnsRemaining: 0,
                         turnsTakenThisRound: 0,
@@ -166,23 +167,79 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
-                case 'PROPOSE_BET':
+                case 'PROPOSE_ELIMINATION_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        if (lobby.gameState !== 'lobby') {
-                            let betId = Math.random().toString(36).substring(2, 8);
+                        let isSpec = lobby.spectators.some(s => s.username === currentUsername);
+                        let activeParts = getActiveParticipants(lobby);
+                        if (!isSpec && lobby.gameState !== 'lobby' && activeParts.length >= 3) {
+                            let target = data.target;
                             let newBet = {
-                                id: betId,
+                                id: Math.random().toString(36).substring(2, 8),
                                 proposer: currentUsername,
-                                target: data.target,
-                                pickUser: data.pickUser || currentUsername,
-                                targetSurvivor: data.targetSurvivor,
+                                target: target,
+                                pickUser: target,
+                                targetSurvivor: currentUsername,
                                 wagerAmt: parseFloat(data.wagerAmt) || 5,
-                                type: data.betType || 'win',
-                                delivered: {}
+                                type: 'eliminate'
                             };
-                            lobby.pendingBets.push(newBet);
-                            lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
+                            lobby.activeBets.push(newBet);
+                            lobby.phaseMessage = `🤝 Auto First to Lose Bet: ${currentUsername} bets $${newBet.wagerAmt} that ${target} is eliminated before ${currentUsername}!`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'PROPOSE_GLOBAL_SIDE_BET':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let activeParts = getActiveParticipants(lobby);
+                        if (lobby.gameState !== 'lobby' && activeParts.length === 2) {
+                            let proposalId = Math.random().toString(36).substring(2, 8);
+                            lobby.globalProposals.push({
+                                id: proposalId,
+                                proposer: currentUsername,
+                                pickUser: data.pickUser,
+                                wagerAmt: parseFloat(data.wagerAmt) || 5,
+                                acceptedBy: []
+                            });
+                            lobby.phaseMessage = `📢 Global Side Bet offered by ${currentUsername}: I like ${data.pickUser} for $${data.wagerAmt}!`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'ACCEPT_GLOBAL_PROPOSAL':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId);
+                        if (prop && !prop.acceptedBy.includes(currentUsername) && prop.proposer !== currentUsername) {
+                            prop.acceptedBy.push(currentUsername);
+                            lobby.phaseMessage = `✅ ${currentUsername} accepted global bet from ${prop.proposer} ("You got it!")`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'CONFIRM_GLOBAL_BET':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId && gp.proposer === currentUsername);
+                        if (prop && prop.acceptedBy.includes(data.acceptedUser)) {
+                            // Turn accepted global bet into an active side bet between proposer and acceptedUser
+                            lobby.activeBets.push({
+                                id: Math.random().toString(36).substring(2, 8),
+                                proposer: prop.proposer,
+                                target: data.acceptedUser,
+                                pickUser: prop.pickUser,
+                                wagerAmt: prop.wagerAmt,
+                                type: 'win'
+                            });
+                            prop.acceptedBy = prop.acceptedBy.filter(u => u !== data.acceptedUser);
+                            if (prop.acceptedBy.length === 0) {
+                                lobby.globalProposals = lobby.globalProposals.filter(gp => gp.id !== prop.id);
+                            }
+                            lobby.phaseMessage = `🤝 Confirmed global side bet between ${prop.proposer} and ${data.acceptedUser}!`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -482,6 +539,7 @@ function getSanitizedLobby(lobby, wsId) {
         sidePotTotal: sidePotTotal,
         ledger: lobby.ledger || {},
         pendingBetsForMe: myUnrespondedBets,
+        globalProposals: lobby.globalProposals || [],
         activeParticipantsCount: activeParts.length,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
@@ -730,6 +788,7 @@ function awardTournamentWinner(lobby, winner) {
             l.firstEliminated = null;
             l.activeBets = [];
             l.pendingBets = [];
+            l.globalProposals = [];
             
             l.players.forEach(p => {
                 p.lives = 2;
