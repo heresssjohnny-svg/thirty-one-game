@@ -199,14 +199,37 @@
         #global-side-bets-sidebar { position: absolute; right: 8px; top: 60px; width: 190px; max-height: 200px; background: rgba(4, 78, 54, 0.92); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; display: none; flex-direction: column; gap: 4px; z-index: 100; font-size: 0.7rem; overflow-y: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         .global-bet-item { background: rgba(15, 23, 42, 0.8); padding: 5px; border-radius: 4px; border: 1px solid rgba(250, 204, 21, 0.2); display: flex; flex-direction: column; gap: 3px; }
 
-        /* Scaled table size to fit smaller viewports without overflowing */
         .table-oval { position: relative; width: 620px; max-width: 96vw; height: 260px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 6px solid #78350f; border-radius: 140px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 25px rgba(0,0,0,0.6); flex-shrink: 0; }
         
         .pots-container { position: absolute; top: 6px; display: flex; gap: 6px; align-items: center; z-index: 10; }
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
         .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
-        .discard-pickup-indicator { position: absolute; top: 35px; font-size: 0.75rem; font-weight: bold; color: var(--accent-cyan); z-index: 10; display: flex; gap: 4px; align-items: center; background: rgba(15, 23, 42, 0.85); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border-color); }
+        /* Initial Discard Pickup Modal positioned top left under room name */
+        .discard-pickup-modal-topleft { 
+            position: absolute; 
+            top: 6px; 
+            left: 6px; 
+            font-size: 0.75rem; 
+            font-weight: bold; 
+            color: var(--accent-cyan); 
+            z-index: 20; 
+            display: flex; 
+            flex-direction: column;
+            gap: 3px; 
+            align-items: flex-start; 
+            background: rgba(15, 23, 42, 0.92); 
+            padding: 6px 10px; 
+            border-radius: 6px; 
+            border: 1px solid var(--border-color); 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            animation: slideInTopLeft 0.3s ease-out;
+        }
+
+        @keyframes slideInTopLeft {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
         .deck-center { display: flex; gap: 10px; align-items: center; justify-content: center; }
         .card-slot { width: 48px; height: 70px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
@@ -296,6 +319,12 @@
     <audio id="bg-audio" src="background-music.mp3" loop preload="auto"></audio>
 
     <div id="center-notification-banner">NOTIFICATION</div>
+
+    <!-- Initial Discard Pickup Modal Display Top Left Under Room Name -->
+    <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
+        <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
+        <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
+    </div>
 
     <header>
         <div class="logo">31!</div>
@@ -392,7 +421,6 @@
                     <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
                     <div class="side-pot-total-display" id="side-pot-total-banner" style="display:none;">Side Pots: $0</div>
                 </div>
-                <div class="discard-pickup-indicator" id="discard-pickup-banner"></div>
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
                 </div>
@@ -1276,13 +1304,14 @@
                 sidePotBanner.style.display = 'none';
             }
 
-            let pickupBanner = document.getElementById('discard-pickup-banner');
+            let topleftModal = document.getElementById('discard-pickup-topleft-modal');
+            let topleftCardContent = document.getElementById('discard-pickup-card-content');
             if (lobby.lastDiscardPickup) {
                 let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
-                pickupBanner.innerHTML = `<span>${lobby.lastDiscardPickup.username} picked up:</span> ${cardHtml}`;
-                pickupBanner.style.display = 'flex';
+                topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b> picked up:</span> ${cardHtml}`;
+                topleftModal.style.display = 'flex';
             } else {
-                pickupBanner.style.display = 'none';
+                topleftModal.style.display = 'none';
             }
 
             if (isEliminated) {
@@ -1367,7 +1396,7 @@
                         }
                     });
                     document.getElementById('tie-breaker-stream-grid').innerHTML = streamGridHtml;
-                    document.getElementById('tie-breaker-stream-msg').innerText = lobby.phaseMessage || 'Waiting for tied participants to draw...';
+                    document.getElementById('tie-breaker-stream-msg').innerText = lobby.phaseMessage || 'Tie-Breaker Phase';
                 }
 
                 let gridHtml = '';
@@ -1421,10 +1450,6 @@
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
                     <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
-                </div>
-                <div class="discard-pickup-indicator" id="discard-pickup-banner" style="display:${lobby.lastDiscardPickup ? 'flex' : 'none'};">
-                    <span>${lobby.lastDiscardPickup ? lobby.lastDiscardPickup.username + ' picked up:' : ''}</span>
-                    ${lobby.lastDiscardPickup ? formatCardHtml(lobby.lastDiscardPickup.card, true) : ''}
                 </div>
                 <div class="deck-center">
                     <div class="card-slot back" onclick="drawCard('deck')">
@@ -1576,6 +1601,7 @@
             document.getElementById('chat-window').style.display = 'none';
             document.getElementById('mute-btn').style.display = 'none';
             document.getElementById('global-side-bets-sidebar').style.display = 'none';
+            document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
             clientState.isReady = false;
             hasChosenPoolCard = false;
             isMicMuted = false;
