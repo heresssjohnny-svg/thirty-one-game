@@ -596,12 +596,11 @@
 
         function toggleGlobalSidebar() {
             isSidebarMinimized = !isSidebarMinimized;
-            let list = document.getElementById('global-side-bets-sidebar');
         }
 
         function openLedgerModal() {
             let ledgerDiv = document.getElementById('ledger-content');
-            let myName = clientState.username;
+            let myName = document.getElementById('username-input').value.trim() || clientState.username;
             let ledgerData = clientState.ledger || {};
             let myRecord = ledgerData[myName] || { total: 0 };
             let myTotal = myRecord.total || 0;
@@ -652,7 +651,7 @@
         function saveLedgerScreenshot() {
             let now = new Date();
             let timestamp = now.toLocaleString();
-            let myName = clientState.username;
+            let myName = document.getElementById('username-input').value.trim() || clientState.username;
             let myTotal = (clientState.ledger[myName] && clientState.ledger[myName].total) || 0;
             alert(`--- LEDGER SNAPSHOT ---\nTimestamp: ${timestamp}\nMy Balance: $${myTotal.toFixed(2)}\nLedger status saved successfully.`);
             toggleModal('ledger-modal');
@@ -720,7 +719,7 @@
 
         function initSocketAndSend(payload) {
             saveInputs();
-            clientState.username = document.getElementById('username-input').value || 'Player1';
+            clientState.username = document.getElementById('username-input').value.trim() || 'Player1';
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(payload));
             } else {
@@ -776,9 +775,9 @@
         }
 
         function createLobby() {
-            let lobbyName = document.getElementById('lobby-name-input').value || 'My Table';
+            let lobbyName = document.getElementById('lobby-name-input').value.trim() || 'My Table';
             let isPrivate = document.getElementById('private-lobby-checkbox').checked;
-            initSocketAndSend({ type: 'CREATE_LOBBY', username: document.getElementById('username-input').value || 'Player1', lobbyName, isPrivate });
+            initSocketAndSend({ type: 'CREATE_LOBBY', username: document.getElementById('username-input').value.trim() || 'Player1', lobbyName, isPrivate });
         }
 
         function joinLobby() {
@@ -787,7 +786,7 @@
         }
 
         function joinLobbyCode(code) {
-            initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value || 'Player1' });
+            initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
         function updateWager() {
@@ -901,7 +900,8 @@
 
         function handleWebRTCConnections(lobby) {
             if (!localAudioStream) return;
-            let allOccupants = [...lobby.players, ...lobby.spectators].map(o => o.username).filter(u => u !== clientState.username);
+            let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            let allOccupants = [...lobby.players, ...lobby.spectators].map(o => o.username).filter(u => u !== currentUsername);
             
             allOccupants.forEach(peerUser => {
                 if (!peerConnections[peerUser]) {
@@ -927,7 +927,7 @@
                         }
                     };
 
-                    if (clientState.username < peerUser) {
+                    if (currentUsername < peerUser) {
                         pc.createOffer().then(offer => {
                             return pc.setLocalDescription(offer);
                         }).then(() => {
@@ -998,14 +998,15 @@
         }
 
         function tapSeat(targetUsername) {
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
             if (clientState.gameState === 'lobby') {
-                return; // Do not allow betting until game starts
+                return;
             }
 
             let activeCount = clientState.activeParticipantsCount;
 
             if (activeCount >= 3) {
-                if (!clientState.isSpectator && targetUsername === clientState.username) return;
+                if (!clientState.isSpectator && targetUsername === activeUsername) return;
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
@@ -1118,6 +1119,8 @@
             document.getElementById('leave-lobby-btn').style.display = 'inline-block';
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
+
             clientState.gameState = lobby.gameState;
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
@@ -1125,7 +1128,7 @@
             clientState.tiedParticipantsList = lobby.tiedParticipantsList || [];
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
-            let me = lobby.players.find(p => p.username === clientState.username);
+            let me = lobby.players.find(p => p.username === activeUsername);
             let isEliminated = me && me.eliminated;
             let isSpectatorOnly = !me || isEliminated;
             clientState.isSpectator = isSpectatorOnly;
@@ -1141,8 +1144,8 @@
                 sidebar.style.display = 'flex';
                 let sidebarHtml = '';
                 globalProps.forEach(gp => {
-                    let isMyProp = (gp.proposer === clientState.username);
-                    let alreadyAccepted = gp.acceptedBy.includes(clientState.username);
+                    let isMyProp = (gp.proposer === activeUsername);
+                    let alreadyAccepted = gp.acceptedBy.includes(activeUsername);
 
                     let actionHtml = '';
                     if (isMyProp) {
@@ -1265,7 +1268,7 @@
                             </div>
                         `;
                     } else {
-                        let clickable = !lobby.drawResults[clientState.username];
+                        let clickable = !lobby.drawResults[activeUsername];
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
                                 ?
@@ -1278,7 +1281,7 @@
                 document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
                 turnBanner.innerText = 'Dealer Draw Phase';
             } else if (lobby.gameState === 'tieBreaker') {
-                let isAmITied = clientState.tiedParticipantsList.some(t => t.trim().toLowerCase() === clientState.username.trim().toLowerCase());
+                let isAmITied = clientState.tiedParticipantsList.some(t => t.trim().toLowerCase() === activeUsername.trim().toLowerCase());
                 
                 if (isAmITied) {
                     poolModal.style.display = 'flex';
@@ -1312,7 +1315,7 @@
                             </div>
                         `;
                     } else {
-                        let alreadyPicked = lobby.drawResults[clientState.username];
+                        let alreadyPicked = lobby.drawResults[activeUsername];
                         let clickable = isAmITied && !alreadyPicked;
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
@@ -1329,9 +1332,9 @@
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-                    let isMyTurn = (lobby.currentTurnUser === clientState.username);
+                    let isMyTurn = (lobby.currentTurnUser === activeUsername);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                    if (isMyTurn && lastTurnUser !== clientState.username && !isSpectatorOnly) {
+                    if (isMyTurn && lastTurnUser !== activeUsername && !isSpectatorOnly) {
                         showCenterNotification("YOUR TURN!");
                     }
                     lastTurnUser = lobby.currentTurnUser;
@@ -1369,7 +1372,7 @@
                 let peekBtnHtml = '';
                 if (p.cards && p.cards.length > 0) {
                     revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>`;
-                } else if (isSpectatorOnly && p.username !== clientState.username) {
+                } else if (isSpectatorOnly && p.username !== activeUsername) {
                     peekBtnHtml = `<div style="margin-top:2px;"><button style="font-size:0.55rem; padding:1px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
