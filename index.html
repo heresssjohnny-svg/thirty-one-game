@@ -239,7 +239,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets work peer-to-peer and backgrounding the app will no longer kick you out!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Robust session handling ensures real-time room updates when players join!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -757,9 +757,9 @@
                 }));
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
-                modalTitle.innerText = 'Auto Bet Placed';
+                modalTitle.innerText = 'First to Lose Bet Proposed';
                 modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">First to Lose bet placed successfully!</p>
+                    <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">First to Lose bet proposed to ${target}! Waiting for their acceptance.</p>
                     <button onclick="toggleModal('bet-modal')">OK</button>
                 `;
             }
@@ -1038,7 +1038,7 @@
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = '';
                 if (p.inVC) {
-                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️️';
+                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
                 html += `
                     <div class="seat seat-${p.seat}">
