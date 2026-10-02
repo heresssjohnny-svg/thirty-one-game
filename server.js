@@ -444,8 +444,7 @@ wss.on('connection', (ws) => {
                                 b.ready = true;
                                 b.nextHandReady = true;
                             });
-                            // Clears spectators back to ready lobby too
-                            lobby.spectators = []; 
+                            lobby.spectators = [];
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         } else {
@@ -460,6 +459,24 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let requesterName = currentUsername;
                         let rawTarget = (data.targetUsername || '').trim().toLowerCase();
+
+                        // Enforce 1-hand peek limit: Clear any existing peek requests or permissions this spectator has anywhere else
+                        lobby.players.forEach(pl => {
+                            if (pl.peekRequests) {
+                                Object.keys(pl.peekRequests).forEach(k => {
+                                    if (k.trim().toLowerCase() === requesterName.toLowerCase()) {
+                                        delete pl.peekRequests[k];
+                                    }
+                                });
+                            }
+                            if (pl.peekAllowed) {
+                                Object.keys(pl.peekAllowed).forEach(k => {
+                                    if (k.trim().toLowerCase() === requesterName.toLowerCase()) {
+                                        delete pl.peekAllowed[k];
+                                    }
+                                });
+                            }
+                        });
 
                         let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === rawTarget);
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
@@ -500,15 +517,16 @@ wss.on('connection', (ws) => {
                 case 'STOP_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === (data.targetUsername || '').trim().toLowerCase());
-                        if (targetPlayer && targetPlayer.peekAllowed) {
-                            Object.keys(targetPlayer.peekAllowed).forEach(k => {
-                                if (k.trim().toLowerCase() === currentUsername.trim().toLowerCase()) {
-                                    delete targetPlayer.peekAllowed[k];
-                                }
-                            });
-                            broadcastLobbyUpdate(currentLobbyCode);
-                        }
+                        lobby.players.forEach(pl => {
+                            if (pl.peekAllowed) {
+                                Object.keys(pl.peekAllowed).forEach(k => {
+                                    if (k.trim().toLowerCase() === currentUsername.trim().toLowerCase()) {
+                                        delete pl.peekAllowed[k];
+                                    }
+                                });
+                            }
+                        });
+                        broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
 
