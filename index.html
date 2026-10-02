@@ -1404,12 +1404,13 @@
             clientState.pendingBetsList = lobby.pendingBets || [];
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
-            let me = lobby.players.find(p => p.username === activeUsername);
-            let isSpecUser = lobby.spectators.some(s => s.username === activeUsername);
+            let me = lobby.players.find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
+            let isSpecUser = lobby.spectators.some(s => s.username.trim().toLowerCase() === activeUsername.toLowerCase());
             let isEliminated = me && me.eliminated;
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
+            // Robust check for incoming peek requests matching current active user
             if (me && me.peekIncoming) {
                 let incomingSpecs = Object.keys(me.peekIncoming);
                 let peekModal = document.getElementById('peek-request-modal');
@@ -1702,14 +1703,14 @@
                 if (p.cards && p.cards.length > 0) {
                     revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>`;
                 } else if (isSpectatorOnly && p.username !== activeUsername && lobby.gameState !== 'lobby' && lobby.gameState !== 'dealerDraw') {
-                    let isCurrentlyPeeking = p.peekAllowed && p.peekAllowed[activeUsername];
+                    let isCurrentlyPeeking = p.peekAllowed && Object.keys(p.peekAllowed).some(k => k.trim().toLowerCase() === activeUsername.trim().toLowerCase());
                     if (isCurrentlyPeeking) {
                         peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
                     }
                 }
                 
                 let activePeekersHtml = '';
-                if (p.username === activeUsername && p.peekAllowed) {
+                if (p.username.trim().toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
                     for (let peekerName in p.peekAllowed) {
                         if (p.peekAllowed[peekerName]) {
                             activePeekersHtml += `
