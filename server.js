@@ -163,6 +163,37 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
+                case 'SIT_DOWN':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username === currentUsername);
+                        let totalOccupants = lobby.players.length + lobby.bots.length;
+
+                        if (specIdx !== -1 && totalOccupants < 6 && lobby.gameState === 'lobby') {
+                            let spec = lobby.spectators.splice(specIdx, 1)[0];
+                            let availableSeat = findOpenSeat(lobby);
+                            lobby.players.push({
+                                id: ws,
+                                username: spec.username,
+                                lives: lobby.players[0]?.lives || 2,
+                                wager: 5,
+                                cards: [],
+                                ready: false,
+                                seat: availableSeat,
+                                nextHandReady: false,
+                                eliminated: false,
+                                inVC: spec.inVC,
+                                isMuted: spec.isMuted,
+                                peekRequests: {},
+                                peekAllowed: {}
+                            });
+                            lobby.phaseMessage = `🪑 ${spec.username} sat down at the table!`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastLobbyList();
+                        }
+                    }
+                    break;
+
                 case 'REFRESH_LOBBIES':
                     ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
                     break;
