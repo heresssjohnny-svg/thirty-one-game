@@ -803,10 +803,9 @@ function startRound(lobby) {
     allPartsCheck.forEach(p => {
         if (p.lives <= 0 && !p.eliminated) {
             p.eliminated = true;
-            if (!lobby.firstEliminated) {
-                lobby.firstEliminated = p.username;
-                resolveFirstToLoseBets(lobby, p.username);
-            }
+            // Removed the `if (!lobby.firstEliminated)` gatekeeper block so ALL simultaneous elimination side bets are resolved.
+            resolveFirstToLoseBets(lobby, p.username);
+            
             lobby.spectators.push({ idSocket: p.id, username: p.username });
         }
     });
@@ -855,6 +854,8 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
     if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
 
     let remainingBets = [];
+    
+    // Iterate through all active bets and resolve EVERY match targeting this eliminated player simultaneously
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate' && bet.pickUser === eliminatedName) {
             let debtor = bet.target;
@@ -864,6 +865,7 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
             remainingBets.push(bet);
         }
     });
+    
     lobby.activeBets = remainingBets;
 }
 
