@@ -486,7 +486,7 @@
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Ledger & Balances</h3>
-            <div id="ledger-content" style="font-size:0.85rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
+            <div id="ledger-content" style="font-size:0.85rem; color:var(--text-muted); text-align:left; max-height:240px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
             <button onclick="saveLedgerScreenshot()">Save Screenshot</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
@@ -504,7 +504,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [] };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [] };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -516,7 +516,6 @@
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // Background Audio & Dynamic Volume Management with Persistent LocalStorage & Taper Curve
         let isMusicMuted = false;
 
         function toggleMusicMute() {
@@ -623,36 +622,76 @@
             isSidebarMinimized = !isSidebarMinimized;
         }
 
+        function calculatePairwiseNet(ledgerData, myName, allUsers) {
+            let totalNet = 0;
+            let records = {};
+            for (let otherUser of allUsers) {
+                if (otherUser === myName) continue;
+                let theyOweMe = (ledgerData[otherUser] && ledgerData[otherUser][myName]) || 0;
+                let iOweThem = (ledgerData[myName] && ledgerData[myName][otherUser]) || 0;
+                let net = theyOweMe - iOweThem;
+                if (net !== 0) {
+                    records[otherUser] = net;
+                    totalNet += net;
+                }
+            }
+            return { totalNet, records };
+        }
+
         function openLedgerModal() {
             let ledgerDiv = document.getElementById('ledger-content');
             let myName = document.getElementById('username-input').value.trim() || clientState.username;
-            let ledgerData = clientState.ledger || {};
-            let myRecord = ledgerData[myName] || { total: 0 };
-            let myTotal = myRecord.total || 0;
+            
+            let sideLedgerData = clientState.sideBetLedger || {};
+            let mainLedgerData = clientState.mainGameLedger || {};
+            let allUsers = new Set([
+                ...Object.keys(sideLedgerData), 
+                ...Object.keys(mainLedgerData), 
+                ...(clientState.playersList || [])
+            ]);
 
-            let html = `<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 8px; color: ${myTotal >= 0 ? '#34d399' : '#f87171'};">My Total Balance: $${myTotal.toFixed(2)}</div><hr style="border-color:#475569; margin-bottom:8px;">`;
+            let sideCalc = calculatePairwiseNet(sideLedgerData, myName, allUsers);
+            let mainCalc = calculatePairwiseNet(mainLedgerData, myName, allUsers);
+            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
 
-            let hasEntries = false;
-            let listHtml = '<ul>';
-            for (let [user, data] of Object.entries(ledgerData)) {
-                if (user === myName) continue;
-                let amount = data.total || 0;
-                if (amount !== 0) {
-                    hasEntries = true;
-                    let displayAmt = -amount;
-                    let relationText = displayAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(displayAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(displayAmt).toFixed(2)}</span>`;
-                    let clearBtn = displayAmt > 0 ? ` <button style="font-size:0.6rem; padding:2px 6px; background:#10b981;" onclick="clearUserDebt('${user}')">Clear Debt</button>` : '';
-                    listHtml += `<li style="margin-bottom:6px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
-                }
+            let html = `<div style="font-size: 0.95rem; font-weight: bold; margin-bottom: 6px; color: ${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net Balance: $${grandTotal.toFixed(2)}</div>`;
+            html += `<hr style="border-color:#475569; margin-bottom:6px;">`;
+
+            // --- SIDE BETS SECTION ---
+            html += `<div style="font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 3px;">🤝 Side Bets (Peer-to-Peer)</div>`;
+            let hasSideEntries = false;
+            let sideHtml = '<ul style="margin-bottom: 6px;">';
+            for (let [user, netAmt] of Object.entries(sideCalc.records)) {
+                hasSideEntries = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.55rem; padding:2px 4px; background:#10b981;" onclick="clearDebtCategory('${user}', 'side')">Clear</button>` : '';
+                sideHtml += `<li style="margin-left: 10px; margin-bottom:3px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
-            listHtml += '</ul>';
+            sideHtml += '</ul>';
+            html += hasSideEntries ? sideHtml : `<div style="font-size: 0.7rem; color: var(--text-muted); margin-left: 10px; margin-bottom: 6px;">No active side bet balances.</div>`;
 
-            if (!hasEntries) {
-                ledgerDiv.innerHTML = html + 'No active debts or balances recorded.';
-            } else {
-                ledgerDiv.innerHTML = html + listHtml;
+            // --- MAIN GAME BETS SECTION ---
+            html += `<div style="font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 3px;">🎮 Main Game Bets (Peer-to-Peer)</div>`;
+            let hasMainEntries = false;
+            let mainHtml = '<ul>';
+            for (let [user, netAmt] of Object.entries(mainCalc.records)) {
+                hasMainEntries = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.55rem; padding:2px 4px; background:#10b981;" onclick="clearDebtCategory('${user}', 'main')">Clear</button>` : '';
+                mainHtml += `<li style="margin-left: 10px; margin-bottom:3px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
+            mainHtml += '</ul>';
+            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.7rem; color: var(--text-muted); margin-left: 10px;">No active main game balances.</div>`;
+
+            ledgerDiv.innerHTML = html;
             toggleModal('ledger-modal');
+        }
+
+        function clearDebtCategory(targetUser, category) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'CLEAR_DEBT', targetUser, category }));
+                setTimeout(() => openLedgerModal(), 200);
+            }
         }
 
         function openSpectatorListModal() {
@@ -666,19 +705,10 @@
             toggleModal('spectators-modal');
         }
 
-        function clearUserDebt(targetUser) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CLEAR_DEBT', targetUser }));
-                setTimeout(() => openLedgerModal(), 200);
-            }
-        }
-
         function saveLedgerScreenshot() {
             let now = new Date();
             let timestamp = now.toLocaleString();
-            let myName = document.getElementById('username-input').value.trim() || clientState.username;
-            let myTotal = (clientState.ledger[myName] && clientState.ledger[myName].total) || 0;
-            alert(`--- LEDGER SNAPSHOT ---\nTimestamp: ${timestamp}\nMy Balance: $${myTotal.toFixed(2)}\nLedger status saved successfully.`);
+            alert(`--- LEDGER SNAPSHOT ---\nTimestamp: ${timestamp}\nLedger status saved successfully.`);
             toggleModal('ledger-modal');
         }
 
@@ -1164,7 +1194,8 @@
             clientState.isSpectator = isSpectatorOnly;
 
             clientState.discardTop = lobby.discardTop;
-            clientState.ledger = lobby.ledger || {};
+            clientState.sideBetLedger = lobby.sideBetLedger || {};
+            clientState.mainGameLedger = lobby.mainGameLedger || {};
 
             let sidebar = document.getElementById('global-side-bets-sidebar');
             let sidebarList = document.getElementById('global-side-bets-list');
@@ -1405,6 +1436,22 @@
                 } else if (isSpectatorOnly && p.username !== activeUsername) {
                     peekBtnHtml = `<div style="margin-top:2px;"><button style="font-size:0.55rem; padding:1px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
                 }
+                
+                // Render accept/decline peek buttons if an incoming request exists for this player
+                let incomingPeekMap = p.peekIncoming || {};
+                let pendingPeekHtml = '';
+                for (let specName in incomingPeekMap) {
+                    pendingPeekHtml += `
+                        <div style="background:rgba(15,23,42,0.95); border:1px solid var(--accent-gold); border-radius:4px; padding:3px; margin-top:2px; font-size:0.6rem;">
+                            <span><b>${specName}</b> wants to peek!</span>
+                            <div style="display:flex; gap:3px; justify-content:center; margin-top:2px;">
+                                <button style="font-size:0.5rem; padding:1px 4px; background:#10b981;" onclick="respondPeek('${specName}', true)">Allow</button>
+                                <button class="danger" style="font-size:0.5rem; padding:1px 4px;" onclick="respondPeek('${specName}', false)">Deny</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = '';
@@ -1418,6 +1465,7 @@
                         </div>
                         ${revealedCardsHtml}
                         ${peekBtnHtml}
+                        ${pendingPeekHtml}
                     </div>
                 `;
             });
