@@ -398,7 +398,7 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         } else {
-                            lobby.phaseMessage = `⚠️️ ${currentUsername} voted to end the game (${Object.keys(lobby.endGameVotes).length}/${activeParts.length} votes)`;
+                            lobby.phaseMessage = `⚠️ ${currentUsername} voted to end the game (${Object.keys(lobby.endGameVotes).length}/${activeParts.length} votes)`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
