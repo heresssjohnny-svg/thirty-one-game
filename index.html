@@ -6,7 +6,7 @@
     <title>31! Card Game</title>
     <link rel="manifest" href="manifest.json">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; touch-action: manipulation; }
         body { background: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         header { background: #1e293b; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; flex-shrink: 0; z-index: 1000; position: relative; }
         .logo { font-size: 1.25rem; font-weight: 800; color: #38bdf8; }
@@ -203,7 +203,7 @@
         <div class="modal-content">
             <h3 id="bet-modal-title">Propose Bet</h3>
             <div id="bet-modal-body" class="button-group"></div>
-            <button class="secondary" onclick="toggleModal('bet-modal')">Cancel</button>
+            <!-- Cancel button removed from accept/decline or proposal state dynamically -->
         </div>
     </div>
 
@@ -221,7 +221,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets feature accept/decline buttons and update peer-to-peer ledger balances instantly!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets now display custom modals instead of browser popups!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -770,7 +770,15 @@
                     wagerAmt: wagerAmt,
                     betType: betType
                 }));
-                alert(`Bet proposed to ${target}! Waiting for their acceptance.`);
+                toggleModal('bet-modal');
+                // Custom modal confirmation instead of browser alert
+                let modalTitle = document.getElementById('bet-modal-title');
+                let modalBody = document.getElementById('bet-modal-body');
+                modalTitle.innerText = 'Bet Proposed';
+                modalBody.innerHTML = `
+                    <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">Bet proposed to ${target}!! Waiting for their acceptance.</p>
+                    <button onclick="toggleModal('bet-modal')">OK</button>
+                `;
                 toggleModal('bet-modal');
             }
         }
