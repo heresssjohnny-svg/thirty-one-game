@@ -40,7 +40,6 @@
         .chat-input-row input { flex: 1; padding: 4px; font-size: 0.75rem; }
         .chat-input-row button { padding: 4px 8px; font-size: 0.75rem; }
 
-        /* Global Side Bet Window to the Right of Table */
         #global-side-bets-sidebar { position: absolute; right: 15px; top: 70px; width: 220px; max-height: 250px; background: rgba(30, 41, 59, 0.9); border: 1px solid #475569; border-radius: 8px; padding: 8px; display: none; flex-direction: column; gap: 6px; z-index: 100; font-size: 0.75rem; overflow-y: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         .global-bet-item { background: #0f172a; padding: 6px; border-radius: 6px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 4px; }
 
@@ -230,7 +229,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. 3+ players auto-propose First to Lose bets when clicking a name. Heads up opens global side bets on the right sidebar!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tapping a player's name during heads-up automatically picks them to win and asks for your wager amount!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -714,7 +713,7 @@
             let activeCount = clientState.activeParticipantsCount;
 
             if (activeCount >= 3) {
-                // 3+ players: Automatically trigger First to Lose bet
+                // 3+ players: Automatically trigger First to Lose bet modal
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
@@ -726,12 +725,12 @@
                 `;
                 toggleModal('bet-modal');
             } else if (activeCount === 2) {
-                // Heads up: Offer global side bet proposal modal
+                // Heads up: Automatically pick clicked player to win, ask for wager amount
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
-                modalTitle.innerText = `Global Side Bet: Who will win the round?`;
+                modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
                 modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">Select wager amount for ${targetUsername} to win:</p>
+                    <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">Select wager amount:</p>
                     <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
                     <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
                     <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
@@ -787,6 +786,27 @@
             }
         }
 
+        function openConfirmModal(proposalId, proposer, pickUser, acceptedUsers) {
+            let modal = document.getElementById('bet-modal');
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Confirm Global Side Bet (${pickUser})`;
+            
+            let listHtml = acceptedUsers.map(acc => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
+                    <span><b>${acc}</b> accepted</span>
+                    <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}')">Confirm</button>
+                </div>
+            `).join('');
+
+            modalBody.innerHTML = `
+                <p style="font-size:0.80rem; color:#cbd5e1; margin-bottom:6px;">Players who accepted your proposal:</p>
+                ${listHtml}
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:8px;">Close</button>
+            `;
+            modal.style.display = 'flex';
+        }
+
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('game-view').style.display = 'flex';
@@ -808,7 +828,6 @@
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
 
-            // Render Global Side Bets sidebar
             let sidebar = document.getElementById('global-side-bets-sidebar');
             let sidebarList = document.getElementById('global-side-bets-list');
             let globalProps = lobby.globalProposals || [];
@@ -823,8 +842,7 @@
                     let actionHtml = '';
                     if (isMyProp) {
                         if (gp.acceptedBy.length > 0) {
-                            actionHtml = `<div style="font-size:0.7rem; color:#38bdf8; margin-top:2px;">Accepted by:</div>` +
-                                gp.acceptedBy.map(accUsr => `<div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;"><span>${accUsr}</span> <button style="font-size:0.6rem; padding:2px 4px;" onclick="confirmGlobalBet('${gp.id}', '${accUsr}')">Confirm</button></div>`).join('');
+                            actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${gp.proposer}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
                         } else {
                             actionHtml = `<span style="color:#94a3b8; font-size:0.65rem;">Waiting for acceptances...</span>`;
                         }
@@ -838,7 +856,7 @@
 
                     sidebarHtml += `
                         <div class="global-bet-item">
-                            <span><b>${gp.proposer}</b> likes <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b></span>
+                            <span>I like <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b> (${gp.proposer})</span>
                             ${actionHtml}
                         </div>
                     `;
@@ -848,11 +866,13 @@
                 sidebar.style.display = 'none';
             }
 
-            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
+            let modal = document.getElementById('bet-modal');
+            let isModalOpen = modal.style.display === 'flex';
+
+            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
                 lobby.pendingBetsForMe.forEach(bet => {
                     let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that you win round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
                     
-                    let modal = document.getElementById('bet-modal');
                     let modalTitle = document.getElementById('bet-modal-title');
                     let modalBody = document.getElementById('bet-modal-body');
                     modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
