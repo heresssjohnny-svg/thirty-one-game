@@ -444,7 +444,8 @@ wss.on('connection', (ws) => {
                                 b.ready = true;
                                 b.nextHandReady = true;
                             });
-                            lobby.spectators = [];
+                            // Clears spectators back to ready lobby too
+                            lobby.spectators = []; 
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         } else {
