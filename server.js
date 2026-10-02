@@ -634,6 +634,8 @@ function getSanitizedLobby(lobby, wsId) {
         mainGameLedger: lobby.mainGameLedger || {},
         pendingBetsForMe: myUnrespondedBets,
         globalProposals: lobby.globalProposals || [],
+        activeBets: lobby.activeBets || [],
+        pendingBets: lobby.pendingBets || [],
         activeParticipantsCount: activeParts.length,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
@@ -799,16 +801,6 @@ function startRound(lobby) {
         p.peekAllowed = {};
     });
 
-    let allPartsCheck = [...lobby.players, ...lobby.bots];
-    allPartsCheck.forEach(p => {
-        if (p.lives <= 0 && !p.eliminated) {
-            p.eliminated = true;
-            resolveFirstToLoseBets(lobby, p.username);
-            
-            lobby.spectators.push({ idSocket: p.id, username: p.username });
-        }
-    });
-
     let activeParts = getActiveParticipants(lobby);
     if (activeParts.length === 1) {
         let winner = activeParts[0];
@@ -848,17 +840,26 @@ function addLedgerDebt(ledgerObj, debtor, creditor, amount) {
     ledgerObj[debtor][creditor] = (ledgerObj[debtor][creditor] || 0) + amount;
 }
 
-function resolveFirstToLoseBets(lobby, eliminatedName) {
+function resolveFirstToLoseBets(lobby, loserName) {
     if (!lobby.activeBets || lobby.activeBets.length === 0) return;
     if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
 
     let remainingBets = [];
     
     lobby.activeBets.forEach(bet => {
-        if (bet.type === 'eliminate' && bet.pickUser === eliminatedName) {
-            let debtor = eliminatedName;
-            let creditor = (bet.proposer === eliminatedName) ? bet.target : bet.proposer;
-            addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
+        if (bet.type === 'eliminate' && bet.pickUser === loserName) {
+            // A First-to-Lose bet means the Proposer bet that [pickUser] would lose first.
+            // If [pickUser] (loserName) actually lost, the Proposer wins the bet!
+            // Therefore, the person who accepted/targeted the bet (debtor) pays the Proposer (creditor).
+            let debtor = bet.target; 
+            let creditor = bet.proposer;
+
+            // If the person who lost was the target themselves, make sure debtor is correct
+            if (debtor === loserName || debtor === bet.pickUser) {
+                addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
+            } else {
+                addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
+            }
         } else {
             remainingBets.push(bet);
         }
@@ -1032,6 +1033,18 @@ function checkAndRunBotTurn(lobby) {
 
                 if (calculateScore(currentPlayer.cards) === 31) {
                     allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
+                    
+                    // Check and process eliminations immediately when lives drop
+                    let newlyEliminated = [];
+                    allParts.forEach(p => {
+                        if (p.lives <= 0 && !p.eliminated) {
+                            p.eliminated = true;
+                            newlyEliminated.push(p.username);
+                            resolveFirstToLoseBets(lobby, p.username);
+                            lobby.spectators.push({ idSocket: p.id, username: p.username });
+                        }
+                    });
+
                     triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
                     return;
                 }
@@ -1084,6 +1097,15 @@ function handleTurnAction(lobby, ws, actionType) {
                         let fedPlayerScore = calculateScore(currentPlayer.cards);
                         if (fedPlayerScore === 31 || calculateSuitScore(currentPlayer.cards, card.suit) === 31) {
                             feeder.lives = 0;
+                            let newlyEliminated = [];
+                            allParts.forEach(p => {
+                                if (p.lives <= 0 && !p.eliminated) {
+                                    p.eliminated = true;
+                                    newlyEliminated.push(p.username);
+                                    resolveFirstToLoseBets(lobby, p.username);
+                                    lobby.spectators.push({ idSocket: p.id, username: p.username });
+                                }
+                            });
                             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and a 10-value card, and ${currentPlayer.username} hit 31! ${feeder.username} loses ALL lives!`;
                         }
                     }
@@ -1136,6 +1158,15 @@ function handleDiscardAction(lobby, ws, cardIndex) {
                         let feeder = allParts.find(p => p.username === feederName);
                         if (feeder) {
                             feeder.lives = 0;
+                            let newlyEliminated = [];
+                            allParts.forEach(p => {
+                                if (p.lives <= 0 && !p.eliminated) {
+                                    p.eliminated = true;
+                                    newlyEliminated.push(p.username);
+                                    resolveFirstToLoseBets(lobby, p.username);
+                                    lobby.spectators.push({ idSocket: p.id, username: p.username });
+                                }
+                            });
                             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} cards and ${currentPlayer.username} hit 31! ${feeder.username} loses ALL lives!`;
                         }
                     }
@@ -1147,6 +1178,15 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         if (currentScore === 31) {
             allParts.forEach(p => { if (p !== currentPlayer && !p.eliminated) p.lives--; });
+            
+            allParts.forEach(p => {
+                if (p.lives <= 0 && !p.eliminated) {
+                    p.eliminated = true;
+                    resolveFirstToLoseBets(lobby, p.username);
+                    lobby.spectators.push({ idSocket: p.id, username: p.username });
+                }
+            });
+
             triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
         } else {
             advanceTurnOrResolve(lobby);
@@ -1224,9 +1264,17 @@ function resolveRoundEnd(lobby) {
             broadcastLobbyUpdate(lobby.code);
         }
     } else {
-        scores[0].player.lives--;
-        let roundLoser = scores[0].player.username;
+        let loserPlayer = scores[0].player;
+        loserPlayer.lives--;
+        let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
+        
+        // Immediately settle First-to-Lose and Win side bets the moment the round ends and life is lost!
+        if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
+            loserPlayer.eliminated = true;
+            resolveFirstToLoseBets(lobby, roundLoser);
+            lobby.spectators.push({ idSocket: loserPlayer.id, username: loserPlayer.username });
+        }
         
         resolveWinSideBets(lobby, roundWinner);
         
@@ -1241,18 +1289,23 @@ function checkTieBreakerComplete(lobby) {
     if (allTiedPicked) {
         let entries = tiedNames.map(username => ({ username: username, card: lobby.drawResults[username] }));
         entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
-        let loser = entries[0];
+        let loserEntry = entries[0];
         
         let activeParts = getActiveParticipants(lobby);
-        let targetParticipant = activeParts.find(p => p.username === loser.username);
+        let targetParticipant = activeParts.find(p => p.username === loserEntry.username);
         if (targetParticipant) {
             targetParticipant.lives--;
+            if (targetParticipant.lives <= 0 && !targetParticipant.eliminated) {
+                targetParticipant.eliminated = true;
+                resolveFirstToLoseBets(lobby, targetParticipant.username);
+                lobby.spectators.push({ idSocket: targetParticipant.id, username: targetParticipant.username });
+            }
             let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
             let roundWinner = activeScores[activeScores.length - 1].p.username;
             resolveWinSideBets(lobby, roundWinner);
         }
 
-        lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loser.username} drew the lowest card and lost a life!`;
+        lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loserEntry.username} drew the lowest card and lost a life!`;
         broadcastLobbyUpdate(lobby.code);
 
         setTimeout(() => {
@@ -1267,12 +1320,6 @@ function triggerRoundOver(lobby, msg) {
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
     rotateDealer(lobby);
-    
-    lobby.players.forEach(p => {
-        p.peekRequests = {};
-        p.peekAllowed = {};
-    });
-
     broadcastLobbyUpdate(lobby.code);
 }
 
