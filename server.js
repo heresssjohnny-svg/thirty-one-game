@@ -78,7 +78,7 @@ wss.on('connection', (ws) => {
                         ledger: {},
                         pendingBets: [],
                         activeBets: [],
-                        globalProposals: [], // { id, proposer, pickUser, wagerAmt, acceptedBy: [] }
+                        globalProposals: [],
                         knockedBy: null,
                         finalTurnsRemaining: 0,
                         turnsTakenThisRound: 0,
@@ -226,7 +226,6 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId && gp.proposer === currentUsername);
                         if (prop && prop.acceptedBy.includes(data.acceptedUser)) {
-                            // Turn accepted global bet into an active side bet between proposer and acceptedUser
                             lobby.activeBets.push({
                                 id: Math.random().toString(36).substring(2, 8),
                                 proposer: prop.proposer,
