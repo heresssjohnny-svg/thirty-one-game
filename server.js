@@ -460,22 +460,14 @@ wss.on('connection', (ws) => {
                         let requesterName = currentUsername;
                         let rawTarget = (data.targetUsername || '').trim().toLowerCase();
 
-                        // Check if target is a bot
-                        let isBotTarget = lobby.bots.some(b => b.username.trim().toLowerCase() === rawTarget);
-                        if (isBotTarget) {
-                            console.log(`[Peek Request Blocked] Cannot peek at bot: ${data.targetUsername}`);
-                            break;
-                        }
-
-                        // Robust human player lookup supporting spacing and case variations
                         let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === rawTarget);
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
-                            if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
-                            targetPlayer.peekIncoming[requesterName] = true;
+                            if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
+                            targetPlayer.peekRequests[requesterName] = true;
                             console.log(`[Peek Request Success] Spectator '${requesterName}' requested to peek at player '${targetPlayer.username}'`);
                             broadcastLobbyUpdate(currentLobbyCode);
                         } else {
-                            console.log(`[Peek Request Failed] Target player '${data.targetUsername}' not found or inactive in lobby.`);
+                            console.log(`[Peek Request Failed] Target player '${data.targetUsername}' not found or inactive.`);
                         }
                     }
                     break;
@@ -485,11 +477,10 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
-                            if (player.peekIncoming) {
-                                // Clear matching incoming request keys regardless of exact case spacing
-                                Object.keys(player.peekIncoming).forEach(k => {
+                            if (player.peekRequests) {
+                                Object.keys(player.peekRequests).forEach(k => {
                                     if (k.trim().toLowerCase() === (data.spectatorUsername || '').trim().toLowerCase()) {
-                                        delete player.peekIncoming[k];
+                                        delete player.peekRequests[k];
                                     }
                                 });
                             }
@@ -731,7 +722,11 @@ function getSanitizedLobby(lobby, wsId) {
                 specAllowed = p.username === myUsername || (p.peekAllowed && Object.keys(p.peekAllowed).some(k => k.trim().toLowerCase() === requestingPlayer.username.trim().toLowerCase()));
             }
 
-            let incomingPeekMap = p.peekRequests || {};
+            let incomingPeekMap = {};
+            if (wsId === p.id && p.peekRequests) {
+                incomingPeekMap = p.peekRequests;
+            }
+
             let allowedPeekMap = p.peekAllowed || {};
 
             let sortedRef = sortedParticipants.find(sp => sp.username === p.username);
@@ -746,7 +741,7 @@ function getSanitizedLobby(lobby, wsId) {
                 eliminated: p.eliminated,
                 inVC: !!p.inVC,
                 isMuted: !!p.isMuted,
-                peekIncoming: (wsId === p.id) ? incomingPeekMap : {},
+                peekIncoming: incomingPeekMap,
                 peekAllowed: allowedPeekMap,
                 cards: (canSeeCards || specAllowed) ? p.cards : []
             };
