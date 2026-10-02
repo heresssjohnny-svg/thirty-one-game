@@ -228,7 +228,6 @@
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
         .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
-        /* Initial Discard Pickup Modal securely positioned top left inside main container */
         .discard-pickup-modal-topleft { 
             position: absolute; 
             top: 10px; 
@@ -383,7 +382,7 @@
     </header>
 
     <main>
-        <!-- Initial Discard Pickup Modal placed inside main container for clean top-left anchoring -->
+        <!-- Initial Discard Pickup Modal positioned top left inside main container -->
         <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
             <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
             <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
@@ -460,6 +459,8 @@
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar" id="my-action-buttons">
+                    <!-- Stand Up button added to the left of Ready Up button -->
+                    <button class="danger" id="stand-up-btn" onclick="standUp()" style="display:none;">Stand Up</button>
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
                     <button class="secondary" onclick="openActiveBetsModal()" style="background:#065f46; border:1px solid var(--accent-gold);">Active Bets</button>
@@ -961,6 +962,12 @@
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
+        function standUp() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'STAND_UP' }));
+            }
+        }
+
         function updateWager() {
             let wager = document.getElementById('config-wager').value;
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1340,6 +1347,14 @@
             let isEliminated = me && me.eliminated;
             let isSpectatorOnly = !me || isEliminated;
             clientState.isSpectator = isSpectatorOnly;
+
+            // Show "Stand Up" button only when seated as an active participant
+            let standUpBtn = document.getElementById('stand-up-btn');
+            if (me && !isEliminated && lobby.gameState === 'lobby') {
+                standUpBtn.style.display = 'inline-block';
+            } else {
+                standUpBtn.style.display = 'none';
+            }
 
             clientState.discardTop = lobby.discardTop;
             clientState.sideBetLedger = lobby.sideBetLedger || {};
