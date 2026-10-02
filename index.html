@@ -228,6 +228,7 @@
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
         .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
+        /* Initial Discard Pickup Modal securely positioned top left inside main container */
         .discard-pickup-modal-topleft { 
             position: absolute; 
             top: 10px; 
@@ -459,8 +460,8 @@
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar" id="my-action-buttons">
-                    <!-- Stand Up button added to the left of Ready Up button -->
                     <button class="danger" id="stand-up-btn" onclick="standUp()" style="display:none;">Stand Up</button>
+                    <button id="sit-btn" onclick="sitDown()" style="display:none; background:#10b981; border:1px solid #34d399;">Sit</button>
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
                     <button class="secondary" onclick="openActiveBetsModal()" style="background:#065f46; border:1px solid var(--accent-gold);">Active Bets</button>
@@ -968,6 +969,12 @@
             }
         }
 
+        function sitDown() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'SIT_DOWN' }));
+            }
+        }
+
         function updateWager() {
             let wager = document.getElementById('config-wager').value;
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1344,16 +1351,54 @@
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
             let me = lobby.players.find(p => p.username === activeUsername);
+            let isSpecUser = lobby.spectators.some(s => s.username === activeUsername);
             let isEliminated = me && me.eliminated;
-            let isSpectatorOnly = !me || isEliminated;
+            let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Show "Stand Up" button only when seated as an active participant
             let standUpBtn = document.getElementById('stand-up-btn');
-            if (me && !isEliminated && lobby.gameState === 'lobby') {
-                standUpBtn.style.display = 'inline-block';
+            let sitBtn = document.getElementById('sit-btn');
+            let readyBtn = document.getElementById('ready-btn');
+            let knockBtn = document.getElementById('knock-btn');
+
+            // Button visibility controls based on role and phase
+            if (lobby.gameState === 'lobby') {
+                if (me && !isEliminated) {
+                    standUpBtn.style.display = 'inline-block';
+                    sitBtn.style.display = 'none';
+                    readyBtn.style.display = 'inline-block';
+                    knockBtn.style.display = 'none';
+                } else {
+                    standUpBtn.style.display = 'none';
+                    readyBtn.style.display = 'none';
+                    knockBtn.style.display = 'none';
+                    
+                    if (isSpecUser) {
+                        sitBtn.style.display = 'inline-block';
+                        let totalOccupants = lobby.players.length + lobby.bots.length;
+                        if (totalOccupants >= 6) {
+                            sitBtn.disabled = true;
+                            sitBtn.innerText = 'Table Full';
+                        } else {
+                            sitBtn.disabled = false;
+                            sitBtn.innerText = 'Sit';
+                        }
+                    } else {
+                        sitBtn.style.display = 'none';
+                    }
+                }
             } else {
-                standUpBtn.style.display = 'none';
+                // In-game controls
+                sitBtn.style.display = 'none';
+                if (isSpectatorOnly) {
+                    standUpBtn.style.display = 'none';
+                    readyBtn.style.display = 'none';
+                    knockBtn.style.display = 'none';
+                } else {
+                    standUpBtn.style.display = 'none';
+                    readyBtn.style.display = 'none';
+                    knockBtn.style.display = 'inline-block';
+                }
             }
 
             clientState.discardTop = lobby.discardTop;
@@ -1421,7 +1466,6 @@
             }
 
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
-            document.getElementById('ready-btn').style.display = lobby.gameState === 'lobby' ? 'inline-block' : 'none';
 
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
             
@@ -1444,11 +1488,11 @@
             }
 
             if (isEliminated) {
-                document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('knock-btn').style.display = 'none';
+                readyBtn.style.display = 'none';
+                knockBtn.style.display = 'none';
             }
 
-            document.getElementById('knock-btn').disabled = !lobby.canKnock;
+            knockBtn.disabled = !lobby.canKnock;
 
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let nextHandOverlay = document.getElementById('next-hand-overlay');
