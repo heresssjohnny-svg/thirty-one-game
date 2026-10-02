@@ -846,17 +846,14 @@ function resolveFirstToLoseBets(lobby, loserName) {
 
     let remainingBets = [];
     
-    // Evaluate active bets with support for both pickUser loss and proposer loss
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
             let proposer = bet.proposer;
             let target = bet.target;
 
             if (bet.pickUser === loserName) {
-                // The picked player lost first -> Target owes Proposer
                 addLedgerDebt(lobby.sideBetLedger, target, proposer, bet.wagerAmt);
             } else if (bet.proposer === loserName) {
-                // The Proposer died first before their pick -> Proposer owes Target
                 addLedgerDebt(lobby.sideBetLedger, proposer, target, bet.wagerAmt);
             } else {
                 remainingBets.push(bet);
@@ -1129,9 +1126,17 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
     if (currentPlayer.cards[cardIndex]) {
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
-        lobby.discardPile.push(discarded);
         
-        lobby.lastDiscardPickup = null;
+        // ONLY clear the initial pickup modal if the card they are discarding 
+        // matches the specific initial card they picked up!
+        if (lobby.lastDiscardPickup && 
+            lobby.lastDiscardPickup.username === currentPlayer.username &&
+            lobby.lastDiscardPickup.card.val === discarded.val &&
+            lobby.lastDiscardPickup.card.suit === discarded.suit) {
+            lobby.lastDiscardPickup = null;
+        }
+
+        lobby.discardPile.push(discarded);
 
         lobby.lastDiscarder = currentPlayer.username;
         if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
@@ -1257,7 +1262,6 @@ function resolveRoundEnd(lobby) {
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // INSTANTLY SETTLE ALL SIDE BETS THE EXACT MILLISECOND A ROUND ENDS:
         resolveFirstToLoseBets(lobby, roundLoser);
 
         if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
