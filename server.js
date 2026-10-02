@@ -182,7 +182,7 @@ wss.on('connection', (ws) => {
                             p.isMuted = !!data.isMuted;
 
                             if (!wasInVC && p.inVC) {
-                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
+                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️️ ${currentUsername} joined the voice chat.` };
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
                                 lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
                             }
@@ -402,13 +402,14 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let spec = lobby.spectators.find(s => s.id === ws) || lobby.players.find(p => p.id === ws);
-                        if (spec) {
-                            let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
-                            if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
-                                if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
-                                targetPlayer.peekIncoming[spec.username] = true;
-                                broadcastLobbyUpdate(currentLobbyCode);
-                            }
+                        let activeSender = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.id === ws);
+                        let requesterName = activeSender ? activeSender.username : currentUsername;
+                        
+                        let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
+                        if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
+                            if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
+                            targetPlayer.peekRequests[requesterName] = true;
+                            broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
                     break;
@@ -418,12 +419,12 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
-                            if (player.peekIncoming) delete player.peekIncoming[data.spectatorUsername];
+                            if (player.peekRequests) delete player.peekRequests[data.spectatorUsername];
                             if (data.allow) {
                                 let spec = lobby.spectators.find(s => s.username === data.spectatorUsername) || lobby.players.find(p => p.username === data.spectatorUsername);
                                 if (spec) {
-                                    if (!spec.peekRequests) spec.peekRequests = {};
-                                    spec.peekRequests[player.username] = true;
+                                    if (!spec.peekAllowed) spec.peekAllowed = {};
+                                    spec.peekAllowed[player.username] = true;
                                 }
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -616,12 +617,10 @@ function getSanitizedLobby(lobby, wsId) {
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
-            let specAllowed = (requestingSpectator && requestingSpectator.peekRequests && requestingSpectator.peekRequests[p.username]) ||
+            let specAllowed = (requestingSpectator && requestingSpectator.peekAllowed && requestingSpectator.peekAllowed[p.username]) ||
                               (requestingPlayer && requestingPlayer.peekRequests && requestingPlayer.peekRequests[p.username]);
-            let incomingPeek = p.peekIncoming || {};
-            if (wsId === p.id) {
-                p.peekIncoming = incomingPeek;
-            }
+            let peekRequestsMap = p.peekRequests || {};
+
             let sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
                 username: p.username,
@@ -634,7 +633,7 @@ function getSanitizedLobby(lobby, wsId) {
                 eliminated: p.eliminated,
                 inVC: !!p.inVC,
                 isMuted: !!p.isMuted,
-                peekIncoming: (wsId === p.id) ? p.peekIncoming : {},
+                peekRequests: (wsId === p.id) ? peekRequestsMap : {},
                 cards: (canSeeCards || specAllowed) ? p.cards : []
             };
         }),
@@ -658,7 +657,7 @@ function getSanitizedLobby(lobby, wsId) {
             username: s.username,
             inVC: !!s.inVC,
             isMuted: !!s.isMuted,
-            pendingRequests: s.peekRequests || {}
+            peekAllowed: s.peekAllowed || {}
         }))
     };
 }
@@ -810,7 +809,6 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
     let remainingBets = [];
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
-            // Strictly check if the eliminated player matches this specific bet's pickUser target
             if (bet.pickUser === eliminatedName) {
                 let debtor = bet.target;
                 let creditor = bet.proposer;
