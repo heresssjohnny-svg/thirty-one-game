@@ -239,11 +239,15 @@
 </head>
 <body>
 
+    <!-- Scattered background playing cards for felt theme -->
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
+
+    <!-- HTML5 Audio Element for custom .mp3 background track -->
+    <audio id="bg-audio" src="background-music.mp3" loop></audio>
 
     <div id="center-notification-banner">NOTIFICATION</div>
 
@@ -448,65 +452,18 @@
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // Card Game Themed Procedural Background Music Generator
-        let menuAudioCtx = null;
-        let menuAudioInterval = null;
+        // Custom .mp3 Background Audio Integration
         let isMusicMuted = false;
-
-        function startMenuMusic() {
-            if (menuAudioCtx || isMusicMuted) return;
-            try {
-                menuAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                const scale = [261.63, 329.63, 392.00, 440.00, 523.25, 659.25]; 
-                let step = 0;
-
-                function playArpeggio() {
-                    if (!menuAudioCtx || isMusicMuted) return;
-                    let now = menuAudioCtx.currentTime;
-                    let freq = scale[step % scale.length];
-                    step++;
-
-                    let osc = menuAudioCtx.createOscillator();
-                    let gain = menuAudioCtx.createGain();
-                    
-                    osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(freq, now);
-                    
-                    gain.gain.setValueAtTime(0.001, now);
-                    gain.gain.linearRampToValueAtTime(0.04, now + 0.05);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
-                    
-                    osc.connect(gain);
-                    gain.connect(menuAudioCtx.destination);
-                    
-                    osc.start(now);
-                    osc.stop(now + 0.45);
-                }
-
-                menuAudioInterval = setInterval(playArpeggio, 300);
-            } catch (e) {}
-        }
-
-        function stopMenuMusic() {
-            if (menuAudioInterval) {
-                clearInterval(menuAudioInterval);
-                menuAudioInterval = null;
-            }
-            if (menuAudioCtx) {
-                menuAudioCtx.close();
-                menuAudioCtx = null;
-            }
-        }
 
         function toggleMusicMute() {
             isMusicMuted = !isMusicMuted;
+            let bgAudio = document.getElementById('bg-audio');
             let btn = document.getElementById('music-toggle-btn');
             if (isMusicMuted) {
-                stopMenuMusic();
+                bgAudio.pause();
                 btn.innerText = 'Music: Off';
             } else {
-                startMenuMusic();
+                bgAudio.play().catch(e => {});
                 btn.innerText = 'Music: On';
             }
         }
@@ -519,7 +476,6 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
             refreshLobbies();
-            startMenuMusic();
 
             document.addEventListener("visibilitychange", () => {
                 if (document.hidden && localAudioStream) {
@@ -530,9 +486,11 @@
             });
         });
 
+        // Trigger audio playback on first user gesture to comply with browser autoplay policies
         window.addEventListener('click', () => {
-            if (!menuAudioCtx && !isMusicMuted) {
-                startMenuMusic();
+            let bgAudio = document.getElementById('bg-audio');
+            if (bgAudio && bgAudio.paused && !isMusicMuted) {
+                bgAudio.play().catch(e => {});
             }
         }, { once: true });
 
