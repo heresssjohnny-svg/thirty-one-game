@@ -57,7 +57,7 @@
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -18px; font-size: 0.75rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; cursor: pointer; z-index: 5; }
+        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; text-align: center; width: 130px; z-index: 5; display: flex; flex-direction: column; align-items: center; }
         .seat:hover { border-color: #38bdf8; }
         .seat-0 { bottom: -10px; left: calc(50% - 65px); border-color: #38bdf8; }
         .seat-1 { bottom: 35px; left: 10px; }
@@ -65,6 +65,8 @@
         .seat-3 { top: -15px; left: calc(50% - 65px); }
         .seat-4 { top: 35px; right: 15px; }
         .seat-5 { bottom: 35px; right: 10px; }
+        .seat-name-area { cursor: pointer; width: 100%; }
+        .seat-name-area:hover { color: #38bdf8; }
         .seat-cards { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
         .mini-card { width: 22px; height: 32px; background: #fff; font-size: 0.55rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
@@ -205,9 +207,12 @@
             </div>
         </div>
 
-        <!-- Separate Global Side Bets Window to the Right of Table -->
+        <!-- Separate Global Side Bets Window to the Right of Table with Minimize Toggle -->
         <div id="global-side-bets-sidebar">
-            <div style="font-weight:bold; color:#38bdf8; border-bottom:1px solid #475569; padding-bottom:4px; margin-bottom:4px;">Global Side Bets</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #475569; padding-bottom:4px; margin-bottom:4px;">
+                <span style="font-weight:bold; color:#38bdf8;">Global Side Bets</span>
+                <button class="secondary" style="padding: 2px 6px; font-size: 0.65rem;" onclick="toggleGlobalSidebar()">➖</button>
+            </div>
             <div id="global-side-bets-list" style="display:flex; flex-direction:column; gap:4px;"></div>
         </div>
     </main>
@@ -234,7 +239,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Clicking any player's name (including your own) during heads-up automatically selects them to win and asks for your wager!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Click any player's name (including your own) during heads-up to propose a global side bet on who will win!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -265,6 +270,7 @@
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
+        let isSidebarMinimized = false;
         
         let localAudioStream = null;
         let isMicMuted = false;
@@ -303,6 +309,12 @@
                 chatBtn.classList.remove('unread');
                 chatBtn.innerText = '💬 Chat';
             }
+        }
+
+        function toggleGlobalSidebar() {
+            isSidebarMinimized = !isSidebarMinimized;
+            let list = document.getElementById('global-side-bets-list');
+            list.style.display = isSidebarMinimized ? 'none' : 'flex';
         }
 
         function openLedgerModal() {
@@ -435,7 +447,6 @@
                 ws.onopen = async () => {
                     isConnected = true;
                     ws.send(JSON.stringify(payload));
-                    // Voice chat remains OFF by default upon connecting
                 };
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
@@ -724,6 +735,7 @@
                 `;
                 toggleModal('bet-modal');
             } else if (activeCount === 2) {
+                // Heads up: Clicked player (including your own name) is automatically picked to win, ask for wager amount
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
@@ -1017,10 +1029,11 @@
             `;
             allSeats.forEach(p => {
                 let revealedCardsHtml = '';
+                let peekBtnHtml = '';
                 if (p.cards && p.cards.length > 0) {
                     revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>`;
                 } else if (isSpectatorOnly && p.username !== clientState.username) {
-                    revealedCardsHtml = `<div style="margin-top:2px;"><button style="font-size:0.6rem; padding:2px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
+                    peekBtnHtml = `<div style="margin-top:2px;"><button style="font-size:0.55rem; padding:1px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
                 }
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
@@ -1028,7 +1041,15 @@
                 if (p.inVC) {
                     micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
-                html += `<div class="seat seat-${p.seat}" onclick="tapSeat('${p.username}')"><span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}${revealedCardsHtml}</div>`;
+                html += `
+                    <div class="seat seat-${p.seat}">
+                        <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                            <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                        </div>
+                        ${revealedCardsHtml}
+                        ${peekBtnHtml}
+                    </div>
+                `;
             });
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
