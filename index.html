@@ -486,6 +486,18 @@
         </div>
     </div>
 
+    <!-- Peek Request Permission Modal for Target Players -->
+    <div id="peek-request-modal" class="modal">
+        <div class="modal-content" style="max-width:320px;">
+            <h3 style="color:var(--accent-gold);">Peek Request</h3>
+            <p id="peek-modal-msg" style="font-size:0.85rem; color:var(--text-muted);">Spectator wants to peek at your hand.</p>
+            <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+                <button id="peek-allow-btn" style="background:#10b981;">Allow</button>
+                <button class="danger" id="peek-deny-btn">Deny</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Active Side Bets Modal -->
     <div id="active-bets-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
@@ -1189,7 +1201,7 @@
         function requestPeek(targetUsername) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'REQUEST_PEEK', targetUsername }));
-                alert(`Peek request sent to ${targetUsername}.`);
+                alert(`Peek request sent to ${targetUsername}. Waiting for permission.`);
             }
         }
 
@@ -1202,6 +1214,7 @@
         function respondPeek(spectatorUsername, allow) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'RESPOND_PEEK', spectatorUsername, allow }));
+                document.getElementById('peek-request-modal').style.display = 'none';
             }
         }
 
@@ -1354,6 +1367,18 @@
             let isEliminated = me && me.eliminated;
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
+
+            // Check if anyone is requesting a peek from ME specifically
+            if (me && me.peekIncoming) {
+                let incomingSpecs = Object.keys(me.peekIncoming);
+                if (incomingSpecs.length > 0) {
+                    let requestingSpec = incomingSpecs[0];
+                    document.getElementById('peek-modal-msg').innerHTML = `<b>${requestingSpec}</b> is requesting permission to peek at your hand.`;
+                    document.getElementById('peek-allow-btn').onclick = () => respondPeek(requestingSpec, true);
+                    document.getElementById('peek-deny-btn').onclick = () => respondPeek(requestingSpec, false);
+                    document.getElementById('peek-request-modal').style.display = 'flex';
+                }
+            }
 
             let standUpBtn = document.getElementById('stand-up-btn');
             let sitBtn = document.getElementById('sit-btn');
@@ -1637,26 +1662,12 @@
                 } else if (isSpectatorOnly && p.username !== activeUsername && lobby.gameState !== 'lobby' && lobby.gameState !== 'dealerDraw') {
                     let isCurrentlyPeeking = p.peekAllowed && p.peekAllowed[activeUsername];
                     if (isCurrentlyPeeking) {
-                        peekBtnHtml = `<div style="margin-top:3px;"><button class="danger" style="font-size:0.65rem; padding:3px 6px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
+                        peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
                     } else {
-                        peekBtnHtml = `<div style="margin-top:3px;"><button style="font-size:0.65rem; padding:3px 8px; background:#2563eb;" onclick="requestPeek('${p.username}')">🔍 Peek Hand</button></div>`;
+                        peekBtnHtml = `<div style="margin-top:4px;"><button style="font-size:0.7rem; padding:5px 10px; background:#2563eb; font-weight:bold;" onclick="requestPeek('${p.username}')">🔍 Peek Hand</button></div>`;
                     }
                 }
                 
-                let incomingPeekMap = p.peekIncoming || {};
-                let pendingPeekHtml = '';
-                for (let specName in incomingPeekMap) {
-                    pendingPeekHtml += `
-                        <div style="background:rgba(15,23,42,0.95); border:1px solid var(--accent-gold); border-radius:4px; padding:2px; margin-top:2px; font-size:0.55rem;">
-                            <span><b>${specName}</b> wants to peek!</span>
-                            <div style="display:flex; gap:2px; justify-content:center; margin-top:1px;">
-                                <button style="font-size:0.45rem; padding:1px 3px; background:#10b981;" onclick="respondPeek('${specName}', true)">Allow</button>
-                                <button class="danger" style="font-size:0.45rem; padding:1px 3px;" onclick="respondPeek('${specName}', false)">Deny</button>
-                            </div>
-                        </div>
-                    `;
-                }
-
                 let activePeekersHtml = '';
                 if (p.username === activeUsername && p.peekAllowed) {
                     for (let peekerName in p.peekAllowed) {
@@ -1684,7 +1695,6 @@
                         </div>
                         ${revealedCardsHtml}
                         ${peekBtnHtml}
-                        ${pendingPeekHtml}
                         ${activePeekersHtml}
                     </div>
                 `;
@@ -1773,6 +1783,7 @@
             document.getElementById('mute-btn').style.display = 'none';
             document.getElementById('global-side-bets-sidebar').style.display = 'none';
             document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
+            document.getElementById('peek-request-modal').style.display = 'none';
             document.getElementById('vc-led').classList.remove('active');
             clientState.isReady = false;
             hasChosenPoolCard = false;
