@@ -810,18 +810,19 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
     let remainingBets = [];
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate') {
-            // Check if the eliminated player matches the bet's pickUser target
-            let won = (bet.pickUser === eliminatedName);
-            
-            // Strictly calculate between the proposer and proposee (the target of the bet)
-            let debtor = won ? bet.target : bet.proposer;
-            let creditor = won ? bet.proposer : bet.target;
+            // Strictly check if the eliminated player matches this specific bet's pickUser target
+            if (bet.pickUser === eliminatedName) {
+                let debtor = bet.target;
+                let creditor = bet.proposer;
 
-            if (!lobby.ledger[creditor]) lobby.ledger[creditor] = { total: 0 };
-            if (!lobby.ledger[debtor]) lobby.ledger[debtor] = { total: 0 };
+                if (!lobby.ledger[creditor]) lobby.ledger[creditor] = { total: 0 };
+                if (!lobby.ledger[debtor]) lobby.ledger[debtor] = { total: 0 };
 
-            lobby.ledger[creditor]['total'] += bet.wagerAmt;
-            lobby.ledger[debtor]['total'] -= bet.wagerAmt;
+                lobby.ledger[creditor]['total'] += bet.wagerAmt;
+                lobby.ledger[debtor]['total'] -= bet.wagerAmt;
+            } else {
+                remainingBets.push(bet);
+            }
         } else {
             remainingBets.push(bet);
         }
