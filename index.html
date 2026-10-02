@@ -495,7 +495,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [] };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -1115,6 +1115,7 @@
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
             clientState.activeParticipantsCount = lobby.activeParticipantsCount || 3;
+            clientState.tiedParticipantsList = lobby.tiedParticipantsList || []; // Synchronize tied participants list
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
             let me = lobby.players.find(p => p.username === clientState.username);
@@ -1257,7 +1258,7 @@
                             </div>
                         `;
                     } else {
-                        let clickable = !isTieBreaker || lobby.tiedParticipantsList.includes(clientState.username);
+                        let clickable = !isTieBreaker || clientState.tiedParticipantsList.includes(clientState.username);
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable && isTieBreaker ? 'opacity:0.5; cursor:not-allowed;' : ''}">
                                 ?
