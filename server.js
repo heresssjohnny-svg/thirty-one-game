@@ -412,8 +412,8 @@ wss.on('connection', (ws) => {
                         
                         let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
-                            if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
-                            targetPlayer.peekRequests[requesterName] = true;
+                            if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
+                            targetPlayer.peekIncoming[requesterName] = true;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -424,7 +424,7 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
-                            if (player.peekRequests) delete player.peekRequests[data.spectatorUsername];
+                            if (player.peekIncoming) delete player.peekIncoming[data.spectatorUsername];
                             if (data.allow) {
                                 if (!player.peekAllowed) player.peekAllowed = {};
                                 player.peekAllowed[data.spectatorUsername] = true;
@@ -643,7 +643,6 @@ function getSanitizedLobby(lobby, wsId) {
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
             
-            // Check if peeking is allowed for this requesting user
             let specAllowed = false;
             if (requestingSpectator) {
                 specAllowed = p.peekAllowed && !!p.peekAllowed[requestingSpectator.username];
@@ -795,7 +794,6 @@ function startRound(lobby) {
     lobby.fedCardsTracker = {};
     lobby.tiedParticipantsList = [];
     
-    // Clear all peeking permissions and requests when a new round starts
     lobby.players.forEach(p => {
         p.peekRequests = {};
         p.peekAllowed = {};
@@ -904,7 +902,6 @@ function awardTournamentWinner(lobby, winner) {
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} is the last player standing and wins the match!`;
     
-    // Clear all peeking permissions on round/game over
     lobby.players.forEach(p => {
         p.peekRequests = {};
         p.peekAllowed = {};
@@ -1233,12 +1230,40 @@ function resolveRoundEnd(lobby) {
     }
 }
 
+function checkTieBreakerComplete(lobby) {
+    let tiedNames = lobby.tiedParticipantsList;
+    let allTiedPicked = tiedNames.every(username => lobby.drawResults[username]);
+
+    if (allTiedPicked) {
+        let entries = tiedNames.map(username => ({ username: username, card: lobby.drawResults[username] }));
+        entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
+        let loser = entries[0];
+        
+        let activeParts = getActiveParticipants(lobby);
+        let targetParticipant = activeParts.find(p => p.username === loser.username);
+        if (targetParticipant) {
+            targetParticipant.lives--;
+            let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
+            let roundWinner = activeScores[activeScores.length - 1].p.username;
+            resolveWinSideBets(lobby, roundWinner);
+        }
+
+        lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loser.username} drew the lowest card and lost a life!`;
+        broadcastLobbyUpdate(lobby.code);
+
+        setTimeout(() => {
+            if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'tieBreaker') {
+                triggerRoundOver(lobbies[lobby.code], lobby.phaseMessage);
+            }
+        }, 4000);
+    }
+}
+
 function triggerRoundOver(lobby, msg) {
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
     rotateDealer(lobby);
     
-    // Clear peeking permissions when round ends
     lobby.players.forEach(p => {
         p.peekRequests = {};
         p.peekAllowed = {};
