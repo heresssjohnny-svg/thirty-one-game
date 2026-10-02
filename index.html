@@ -235,12 +235,33 @@
         </div>
     </div>
 
-    <!-- Rules Modal -->
+    <!-- Rules Modal with Tutorial -->
     <div id="rules-modal" class="modal">
-        <div class="modal-content" style="max-width:350px;">
-            <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Robust session handling ensures real-time room updates when players join!</p>
-            <button onclick="toggleModal('rules-modal')">Close</button>
+        <div class="modal-content" style="max-width:380px; text-align:left;">
+            <h3 style="text-align:center; color:#38bdf8; margin-bottom:6px;">How to Play 31!</h3>
+            <div style="font-size:0.80rem; color:#cbd5e1; max-height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+                <p><b>Objective:</b> Collect 31 points in a single suit or achieve a higher hand score than your opponents before the round ends.</p>
+                <p><b>Scoring:</b></p>
+                <ul style="padding-left:16px;">
+                    <li>Numbered cards (2-10) are worth face value.</li>
+                    <li>Face cards (Jack, Queen, King) are worth 10 points.</li>
+                    <li>Aces are worth 11 points.</li>
+                    <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
+                </ul>
+                <p><b>Gameplay Loop:</b></p>
+                <ul style="padding-left:16px;">
+                    <li>Each player starts with 3 cards and 2 or more lives.</li>
+                    <li>On your turn, draw 1 card from either the <b>Deck</b> or the <b>Discard Pile</b>, then discard 1 card from your hand.</li>
+                    <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
+                </ul>
+                <p><b>Knocking:</b> Once every player has taken at least 1 turn, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
+                <p><b>Side Betting & Review:</b></p>
+                <ul style="padding-left:16px;">
+                    <li><b>3+ Players:</b> Tap any player's name to propose a First to Lose elimination bet.</li>
+                    <li><b>Heads-Up:</b> Tap any name for a Global Side Bet. When players accept via the right sidebar, review their acceptance to either <b>Confirm</b> or <b>Decline</b>!</li>
+                </ul>
+            </div>
+            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
         </div>
     </div>
 
@@ -540,7 +561,7 @@
         }
 
         function proposeEndGame() {
-            if (confirm("Propose ending the game? Bots will automatically vote Yes.")) {
+            if (confirm("Propose ending the game and returning everyone to the ready-up lobby?")) {
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'END_GAME_PROPOSAL' }));
                 }
@@ -791,12 +812,13 @@
             }
         }
 
-        function confirmGlobalBet(proposalId, acceptedUser) {
+        function confirmGlobalBet(proposalId, acceptedUser, confirm) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'CONFIRM_GLOBAL_BET',
                     proposalId: proposalId,
-                    acceptedUser: acceptedUser
+                    acceptedUser: acceptedUser,
+                    confirm: confirm
                 }));
                 toggleModal('bet-modal');
             }
@@ -811,7 +833,10 @@
             let listHtml = acceptedUsers.map(acc => `
                 <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
                     <span><b>${acc}</b> accepted</span>
-                    <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}')">Confirm</button>
+                    <div style="display:flex; gap:4px;">
+                        <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
+                        <button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="confirmGlobalBet('${proposalId}', '${acc}', false)">Decline</button>
+                    </div>
                 </div>
             `).join('');
 
