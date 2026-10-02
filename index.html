@@ -27,7 +27,6 @@
             overflow: hidden; 
         }
 
-        /* Decorative scattered background playing cards */
         .bg-card {
             position: absolute;
             width: 50px;
@@ -240,7 +239,6 @@
 </head>
 <body>
 
-    <!-- Scattered background playing cards for felt theme -->
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
@@ -386,7 +384,7 @@
         </div>
     </div>
 
-    <!-- Rules Modal with Tutorial -->
+    <!-- Rules Modal with Comprehensive Tutorial -->
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:380px; text-align:left;">
             <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:6px;">How to Play 31!</h3>
@@ -399,12 +397,12 @@
                     <li>Aces are worth 11 points.</li>
                     <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
                 </ul>
-                <p><b>Gameplay Loop & 21 out of 31 Rule:</b></p>
+                <p><b>Gameplay Loop & Amended 21 out of 31 Rule:</b></p>
                 <ul style="padding-left:16px;">
                     <li>Each player starts with 3 cards and 2 or more lives.</li>
                     <li>On your turn, draw 1 card from either the <b>Deck</b> or the <b>Discard Pile</b>, then discard 1 card from your hand.</li>
                     <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
-                    <li><b>21 out of 31 Rule:</b> If a player feeds an opponent an Ace and a 10-value card from the discard pile over the course of turns, that feeder loses all lives instantly!</li>
+                    <li><b>Amended 21 out of 31 Rule:</b> If a player feeds an opponent an Ace and a 10-value card from the discard pile, the feeder only loses all lives if that fed player achieves a full 31 points at any point during the round!</li>
                 </ul>
                 <p><b>Knocking:</b> Once every player has taken at least 1 turn, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
                 <p><b>Side Betting & Review:</b></p>
@@ -460,7 +458,6 @@
             try {
                 menuAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 
-                // Casino/Card lounge upbeat arpeggio scale notes (Pentatonic Minor)
                 const scale = [261.63, 329.63, 392.00, 440.00, 523.25, 659.25]; 
                 let step = 0;
 
