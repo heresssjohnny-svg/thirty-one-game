@@ -229,7 +229,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tapping a player's name during heads-up automatically picks them to win and asks for your wager amount!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Clicking any player's name (including your own) during heads-up automatically selects them to win and asks for your wager!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -708,11 +708,11 @@
             if (clientState.gameState === 'lobby' || clientState.isSpectator) {
                 return; // Spectators or lobby state cannot propose bets
             }
-            if (targetUsername === clientState.username) return;
 
             let activeCount = clientState.activeParticipantsCount;
 
             if (activeCount >= 3) {
+                if (targetUsername === clientState.username) return; // Cannot bet yourself out in 3+ players
                 // 3+ players: Automatically trigger First to Lose bet modal
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
@@ -725,7 +725,7 @@
                 `;
                 toggleModal('bet-modal');
             } else if (activeCount === 2) {
-                // Heads up: Automatically pick clicked player to win, ask for wager amount
+                // Heads up: Clicked player (can be yourself or opponent) is automatically picked to win, ask for wager amount
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
