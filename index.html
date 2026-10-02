@@ -228,23 +228,24 @@
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
         .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
+        /* Initial Discard Pickup Modal positioned top left under room name, with high z-index to stay visible */
         .discard-pickup-modal-topleft { 
             position: absolute; 
-            top: 6px; 
-            left: 6px; 
+            top: 40px; 
+            left: 10px; 
             font-size: 0.75rem; 
             font-weight: bold; 
             color: var(--accent-cyan); 
-            z-index: 20; 
+            z-index: 2500; 
             display: flex; 
             flex-direction: column;
             gap: 3px; 
             align-items: flex-start; 
-            background: rgba(15, 23, 42, 0.92); 
-            padding: 6px 10px; 
-            border-radius: 6px; 
-            border: 1px solid var(--border-color); 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            background: rgba(15, 23, 42, 0.95); 
+            padding: 8px 12px; 
+            border-radius: 8px; 
+            border: 1px solid var(--accent-gold); 
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
             animation: slideInTopLeft 0.3s ease-out;
         }
 
@@ -342,11 +343,6 @@
 
     <div id="center-notification-banner">NOTIFICATION</div>
 
-    <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
-        <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
-        <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
-    </div>
-
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
@@ -426,6 +422,12 @@
 
         <!-- Game View -->
         <div id="game-view">
+            <!-- Initial Discard Pickup Modal positioned top left under room name -->
+            <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
+                <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
+                <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
+            </div>
+
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
                 <div id="turn-banner">Turn: Waiting...</div>
