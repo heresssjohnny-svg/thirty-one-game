@@ -527,7 +527,6 @@
             let sliderVal = parseFloat(val);
             
             if (bgAudio) {
-                // Cubed audio taper curve for finer low-end volume control
                 let adjustedVolume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
                 bgAudio.volume = adjustedVolume;
 
@@ -550,7 +549,7 @@
 
             let bgAudio = document.getElementById('bg-audio');
             if (bgAudio) {
-                bgAudio.volume = Math.pow(0.5, 3); // Initial volume 50% on curve
+                bgAudio.volume = Math.pow(0.5, 3);
                 bgAudio.play().catch(() => {});
             }
 
@@ -588,8 +587,8 @@
 
         function toggleGlobalSidebar() {
             isSidebarMinimized = !isSidebarMinimized;
-            let list = document.getElementById('global-side-bets-list');
-            list.style.display = isSidebarMinimized ? 'none' : 'flex';
+            let list = document.getElementById('global-side-bets-sidebar'); // fixed ID reference
+            // ... handled by standard view
         }
 
         function openLedgerModal() {
@@ -1239,11 +1238,9 @@
                 lastPhaseMessage = lobby.phaseMessage;
             }
 
-            if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+            if (lobby.gameState === 'dealerDraw') {
                 poolModal.style.display = 'flex';
-                
-                let isTieBreaker = lobby.gameState === 'tieBreaker';
-                document.getElementById('pool-modal-title').innerText = isTieBreaker ? 'Tie-Breaker Draw' : 'Picking for Dealer';
+                document.getElementById('pool-modal-title').innerText = 'Picking for Dealer';
                 document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
 
                 let gridHtml = '';
@@ -1258,9 +1255,9 @@
                             </div>
                         `;
                     } else {
-                        let clickable = !isTieBreaker || clientState.tiedParticipantsList.includes(clientState.username);
+                        let clickable = !lobby.drawResults[clientState.username];
                         gridHtml += `
-                            <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable && isTieBreaker ? 'opacity:0.5; cursor:not-allowed;' : ''}">
+                            <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
                                 ?
                             </div>
                         `;
@@ -1269,7 +1266,45 @@
 
                 document.getElementById('pool-cards-container').innerHTML = gridHtml;
                 document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
-                turnBanner.innerText = isTieBreaker ? 'Tie-Breaker Phase' : 'Dealer Draw Phase';
+                turnBanner.innerText = 'Dealer Draw Phase';
+            } else if (lobby.gameState === 'tieBreaker') {
+                let isAmITied = clientState.tiedParticipantsList.some(t => t.trim().toLowerCase() === clientState.username.trim().toLowerCase());
+                
+                // Only open the selection modal for players directly involved in the tie!
+                if (isAmITied) {
+                    poolModal.style.display = 'flex';
+                } else {
+                    poolModal.style.display = 'none'; // Hidden for non-tied players and spectators
+                }
+
+                document.getElementById('pool-modal-title').innerText = 'Tie-Breaker Draw';
+                document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
+
+                let gridHtml = '';
+                lobby.drawPool.forEach((slot) => {
+                    if (slot.chosenBy) {
+                        let revealedCard = lobby.drawResults[slot.chosenBy];
+                        let cardHtmlStr = revealedCard ? formatCardHtml(revealedCard, true) : '';
+                        gridHtml += `
+                            <div class="pool-card-item revealed">
+                                <span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>
+                                ${cardHtmlStr}
+                            </div>
+                        `;
+                    } else {
+                        let alreadyPicked = lobby.drawResults[clientState.username];
+                        let clickable = isAmITied && !alreadyPicked;
+                        gridHtml += `
+                            <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
+                                ?
+                            </div>
+                        `;
+                    }
+                });
+
+                document.getElementById('pool-cards-container').innerHTML = gridHtml;
+                document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
+                turnBanner.innerText = 'Tie-Breaker Phase';
             } else {
                 poolModal.style.display = 'none';
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
