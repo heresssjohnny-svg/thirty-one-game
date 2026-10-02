@@ -1210,7 +1210,7 @@
             toggleModal('seat-action-modal');
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'REQUEST_PEEK', targetUsername }));
-                alert(`Peek request sent to ${targetUsername}. Waiting for their permission.`);
+                showCenterNotification(`Peek request sent to ${targetUsername}!`);
             }
         }
 
