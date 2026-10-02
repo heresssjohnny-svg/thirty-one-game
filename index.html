@@ -1488,7 +1488,6 @@
                             actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
                         }
                     } else {
-                        // Allow spectators as well as players to press "You got it"
                         if (!alreadyAccepted) {
                             actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
                         } else if (alreadyAccepted) {
