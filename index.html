@@ -1634,12 +1634,12 @@
                 let peekBtnHtml = '';
                 if (p.cards && p.cards.length > 0) {
                     revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>`;
-                } else if (isSpectatorOnly && p.username !== activeUsername) {
+                } else if (isSpectatorOnly && p.username !== activeUsername && lobby.gameState !== 'lobby' && lobby.gameState !== 'dealerDraw') {
                     let isCurrentlyPeeking = p.peekAllowed && p.peekAllowed[activeUsername];
                     if (isCurrentlyPeeking) {
-                        peekBtnHtml = `<div style="margin-top:2px;"><button class="danger" style="font-size:0.5rem; padding:1px 3px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
+                        peekBtnHtml = `<div style="margin-top:3px;"><button class="danger" style="font-size:0.65rem; padding:3px 6px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
                     } else {
-                        peekBtnHtml = `<div style="margin-top:2px;"><button style="font-size:0.5rem; padding:1px 3px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
+                        peekBtnHtml = `<div style="margin-top:3px;"><button style="font-size:0.65rem; padding:3px 8px; background:#2563eb;" onclick="requestPeek('${p.username}')">🔍 Peek Hand</button></div>`;
                     }
                 }
                 
