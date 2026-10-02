@@ -92,6 +92,25 @@
         button.secondary { background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.12); box-shadow: none; }
         button.secondary:hover { background: rgba(51, 65, 85, 0.95); }
         
+        /* Music control container styling */
+        .music-control-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(255,255,255,0.12);
+            padding: 4px 8px;
+            border-radius: 8px;
+        }
+
+        .music-control-group input[type="range"] {
+            width: 70px;
+            accent-color: var(--accent-gold);
+            cursor: pointer;
+            padding: 0;
+            height: 6px;
+        }
+
         main { flex: 1; display: flex; flex-direction: column; padding: 15px; align-items: center; justify-content: center; overflow: hidden; position: relative; z-index: 10; }
         
         #main-menu { 
@@ -239,14 +258,12 @@
 </head>
 <body>
 
-    <!-- Scattered background playing cards for felt theme -->
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    <!-- HTML5 Audio Element for custom .mp3 background track -->
     <audio id="bg-audio" src="background-music.mp3" loop></audio>
 
     <div id="center-notification-banner">NOTIFICATION</div>
@@ -254,7 +271,12 @@
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <button class="secondary" onclick="toggleMusicMute()" id="music-toggle-btn">Music: On</button>
+            <!-- Music Control Group with Button and Volume Slider -->
+            <div class="music-control-group">
+                <button class="secondary" onclick="toggleMusicMute()" id="music-toggle-btn" style="padding: 4px 8px; font-size: 0.75rem;">Music: On</button>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="0.5" oninput="adjustVolume(this.value)" title="Volume Control">
+            </div>
+
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             <button class="secondary" id="vc-btn" onclick="toggleVoiceChat()">VC: <span id="vc-status">Off</span></button>
@@ -452,7 +474,7 @@
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // Custom .mp3 Background Audio Integration
+        // Background Audio & Volume Management
         let isMusicMuted = false;
 
         function toggleMusicMute() {
@@ -468,6 +490,18 @@
             }
         }
 
+        function adjustVolume(val) {
+            let bgAudio = document.getElementById('bg-audio');
+            if (bgAudio) {
+                bgAudio.volume = parseFloat(val);
+                if (parseFloat(val) > 0 && isMusicMuted) {
+                    isMusicMuted = false;
+                    bgAudio.play().catch(e => {});
+                    document.getElementById('music-toggle-btn').innerText = 'Music: On';
+                }
+            }
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('saved_username')) {
                 document.getElementById('username-input').value = localStorage.getItem('saved_username');
@@ -476,6 +510,11 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
             refreshLobbies();
+
+            let bgAudio = document.getElementById('bg-audio');
+            if (bgAudio) {
+                bgAudio.volume = 0.5; // Default initial volume set to 50%
+            }
 
             document.addEventListener("visibilitychange", () => {
                 if (document.hidden && localAudioStream) {
@@ -486,7 +525,6 @@
             });
         });
 
-        // Trigger audio playback on first user gesture to comply with browser autoplay policies
         window.addEventListener('click', () => {
             let bgAudio = document.getElementById('bg-audio');
             if (bgAudio && bgAudio.paused && !isMusicMuted) {
