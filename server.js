@@ -468,16 +468,6 @@ function getSanitizedLobby(lobby, wsId) {
         myUnrespondedBets.forEach(b => b.responded = true);
     }
 
-    let seatBets = {};
-    if (myUsername) {
-        (lobby.activeBets || []).forEach(bet => {
-            if (bet.proposer === myUsername || bet.target === myUsername) {
-                let otherUser = bet.proposer === myUsername ? bet.target : bet.proposer;
-                seatBets[otherUser] = (seatBets[otherUser] || 0) + bet.wagerAmt;
-            }
-        });
-    }
-
     return {
         code: lobby.code,
         name: lobby.name,
@@ -492,7 +482,6 @@ function getSanitizedLobby(lobby, wsId) {
         sidePotTotal: sidePotTotal,
         ledger: lobby.ledger || {},
         pendingBetsForMe: myUnrespondedBets,
-        seatBets: seatBets,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
@@ -713,6 +702,8 @@ function awardTournamentWinner(lobby, winner) {
     let allParts = [...lobby.players, ...lobby.bots];
     
     let ledgerMap = lobby.ledger || {};
+    // DO NOT deduct main pot buy-in per round; buy-in is initial stake only.
+    // Tournament winner receives payout directly from losers based on individual wagers.
     allParts.forEach(loser => {
         if (loser.username !== winner.username) {
             let loserWager = loser.wager || 5;
@@ -1017,7 +1008,8 @@ function resolveRoundEnd(lobby) {
         let roundLoser = scores[0].player.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        recordRoundLedger(lobby, roundLoser, roundWinner);
+        // DO NOT deduct round loss from main pot wager; wagers are tournament stakes only.
+        // Side bets settle peer-to-peer immediately upon resolution.
         resolveWinSideBets(lobby, roundWinner);
         
         triggerRoundOver(lobby, `Round Over! ${roundLoser} had the lowest score and lost a life. All hands revealed.`);
@@ -1039,7 +1031,6 @@ function checkTieBreakerComplete(lobby) {
             targetParticipant.lives--;
             let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
             let roundWinner = activeScores[activeScores.length - 1].p.username;
-            recordRoundLedger(lobby, targetParticipant.username, roundWinner);
             resolveWinSideBets(lobby, roundWinner);
         }
 
@@ -1052,23 +1043,6 @@ function checkTieBreakerComplete(lobby) {
             }
         }, 4000);
     }
-}
-
-function recordRoundLedger(lobby, loserUsername, winnerUsername) {
-    let activeParts = getActiveParticipants(lobby);
-    let loserObj = activeParts.find(p => p.username === loserUsername) || [...lobby.players, ...lobby.bots].find(p => p.username === loserUsername);
-    let winnerObj = activeParts.find(p => p.username === winnerUsername) || [...lobby.players, ...lobby.bots].find(p => p.username === winnerUsername);
-    if (!loserObj || !winnerObj) return;
-
-    let loserWager = loserObj.wager || 5;
-    let winnerWager = winnerObj.wager || 5;
-    let paidAmount = Math.min(loserWager, winnerWager);
-
-    if (!lobby.ledger[winnerUsername]) lobby.ledger[winnerUsername] = { total: 0 };
-    if (!lobby.ledger[loserUsername]) lobby.ledger[loserUsername] = { total: 0 };
-
-    lobby.ledger[winnerUsername]['total'] += paidAmount;
-    lobby.ledger[loserUsername]['total'] -= paidAmount;
 }
 
 function resolveWinSideBets(lobby, roundWinnerName) {
