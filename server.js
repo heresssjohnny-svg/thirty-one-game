@@ -149,8 +149,17 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username === currentUsername);
                         if (p) {
+                            let wasInVC = p.inVC;
                             p.inVC = !!data.inVC;
                             p.isMuted = !!data.isMuted;
+
+                            // Announce in chat if someone just joined VC
+                            if (!wasInVC && p.inVC) {
+                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
+                                lobby.players.forEach(pl => { if (pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
+                                lobby.spectators.forEach(s => { if (s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
+                            }
+
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -170,9 +179,8 @@ wss.on('connection', (ws) => {
                 case 'PROPOSE_ELIMINATION_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let isSpec = lobby.spectators.some(s => s.username === currentUsername);
                         let activeParts = getActiveParticipants(lobby);
-                        if (!isSpec && lobby.gameState !== 'lobby' && activeParts.length >= 3) {
+                        if (lobby.gameState !== 'lobby' && activeParts.length >= 3) {
                             let target = data.target;
                             let newBet = {
                                 id: Math.random().toString(36).substring(2, 8),
