@@ -1265,7 +1265,7 @@
                 let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${targetUsername}')">🔍 Peek Hand</button>`;
                 
                 if (activeCount === 2) {
-                    actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on him</button>`;
+                    actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on ${targetUsername}</button>`;
                 }
 
                 actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
@@ -1726,7 +1726,6 @@
                     }
                 }
 
-                // Render Stop Peeking button for spectators if access is granted
                 if (isSpectatorOnly && myActivePeek) {
                     peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
                 }
