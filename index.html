@@ -794,7 +794,6 @@
                 lobby.pendingBetsForMe.forEach(bet => {
                     let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
                     
-                    // Replace confirm popup with custom accept/decline buttons modal
                     let modalTitle = document.getElementById('bet-modal-title');
                     let modalBody = document.getElementById('bet-modal-body');
                     modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
@@ -836,7 +835,7 @@
 
             if (isEliminated) {
                 document.getElementById('ready-btn').style.display = 'none';
-                document.getElementById('turn-banner').style.display = 'none';
+                document.getElementById('knock-btn').style.display = 'none';
             }
 
             document.getElementById('knock-btn').disabled = !lobby.canKnock;
