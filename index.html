@@ -239,7 +239,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Click any player's name (including your own) during heads-up to propose a global side bet on who will win!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets work peer-to-peer and backgrounding the app will no longer kick you out!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -735,7 +735,6 @@
                 `;
                 toggleModal('bet-modal');
             } else if (activeCount === 2) {
-                // Heads up: Clicked player (including your own name) is automatically picked to win, ask for wager amount
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
@@ -1039,7 +1038,7 @@
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = '';
                 if (p.inVC) {
-                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
+                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️️';
                 }
                 html += `
                     <div class="seat seat-${p.seat}">
