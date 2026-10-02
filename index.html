@@ -486,6 +486,14 @@
         </div>
     </div>
 
+    <!-- Unified Seat Tap Action Modal for Spectators (Peek & Heads-Up Betting) -->
+    <div id="seat-action-modal" class="modal">
+        <div class="modal-content" style="max-width:300px;">
+            <h3 id="seat-action-title" style="color:var(--accent-gold);">Player Actions</h3>
+            <div id="seat-action-body" class="button-group" style="margin-top:4px;"></div>
+        </div>
+    </div>
+
     <!-- Peek Request Permission Modal for Target Players -->
     <div id="peek-request-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
@@ -1198,11 +1206,27 @@
             }
         }
 
-        function requestPeek(targetUsername) {
+        function requestPeekFromModal(targetUsername) {
+            toggleModal('seat-action-modal');
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'REQUEST_PEEK', targetUsername }));
-                alert(`Peek request sent to ${targetUsername}. Waiting for permission.`);
+                alert(`Peek request sent to ${targetUsername}. Waiting for their permission.`);
             }
+        }
+
+        function betOnHimFromModal(targetUsername) {
+            toggleModal('seat-action-modal');
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+            modalBody.innerHTML = `
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+                <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+            `;
+            toggleModal('bet-modal');
         }
 
         function stopPeek(targetUsername) {
@@ -1230,10 +1254,29 @@
                 return;
             }
 
+            let isSpecOnly = clientState.isSpectator;
             let activeCount = clientState.activeParticipantsCount;
 
+            if (isSpecOnly) {
+                // Unified Action Modal for Spectators tapping a player's name
+                let modalTitle = document.getElementById('seat-action-title');
+                let modalBody = document.getElementById('seat-action-body');
+                modalTitle.innerText = `Actions for ${targetUsername}`;
+
+                let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${targetUsername}')">🔍 Peek Hand</button>`;
+                
+                if (activeCount === 2) {
+                    actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on him</button>`;
+                }
+
+                actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
+                modalBody.innerHTML = actionsHtml;
+                toggleModal('seat-action-modal');
+                return;
+            }
+
             if (activeCount >= 3) {
-                if (!clientState.isSpectator && targetUsername === activeUsername) return;
+                if (targetUsername === activeUsername) return;
                 let modalTitle = document.getElementById('bet-modal-title');
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
@@ -1663,8 +1706,6 @@
                     let isCurrentlyPeeking = p.peekAllowed && p.peekAllowed[activeUsername];
                     if (isCurrentlyPeeking) {
                         peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
-                    } else {
-                        peekBtnHtml = `<div style="margin-top:4px;"><button style="font-size:0.7rem; padding:5px 10px; background:#2563eb; font-weight:bold;" onclick="requestPeek('${p.username}')">🔍 Peek Hand</button></div>`;
                     }
                 }
                 
@@ -1784,6 +1825,7 @@
             document.getElementById('global-side-bets-sidebar').style.display = 'none';
             document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
             document.getElementById('peek-request-modal').style.display = 'none';
+            document.getElementById('seat-action-modal').style.display = 'none';
             document.getElementById('vc-led').classList.remove('active');
             clientState.isReady = false;
             hasChosenPoolCard = false;
