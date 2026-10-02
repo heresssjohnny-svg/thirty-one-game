@@ -248,11 +248,12 @@
                     <li>Aces are worth 11 points.</li>
                     <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
                 </ul>
-                <p><b>Gameplay Loop:</b></p>
+                <p><b>Gameplay Loop & 21 out of 31 Rule:</b></p>
                 <ul style="padding-left:16px;">
                     <li>Each player starts with 3 cards and 2 or more lives.</li>
                     <li>On your turn, draw 1 card from either the <b>Deck</b> or the <b>Discard Pile</b>, then discard 1 card from your hand.</li>
                     <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
+                    <li><b>21 out of 31 Rule:</b> If a player feeds an opponent an Ace and a 10-value card from the discard pile over the course of turns, that feeder loses all lives instantly!</li>
                 </ul>
                 <p><b>Knocking:</b> Once every player has taken at least 1 turn, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
                 <p><b>Side Betting & Review:</b></p>
@@ -753,6 +754,7 @@
                     <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
                     <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
                     <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
                 `;
                 toggleModal('bet-modal');
             } else if (activeCount === 2) {
@@ -764,6 +766,7 @@
                     <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
                     <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
                     <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
                 `;
                 toggleModal('bet-modal');
             }
