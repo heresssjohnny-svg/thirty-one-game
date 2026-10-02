@@ -113,7 +113,6 @@
             height: 4px;
         }
 
-        /* Voice Chat LED Indicator Light Styles */
         .vc-btn-wrapper {
             display: inline-flex;
             align-items: center;
@@ -128,12 +127,12 @@
             height: 8px;
             border-radius: 50%;
             display: inline-block;
-            background-color: #ef4444; /* Red light default */
+            background-color: #ef4444; 
             box-shadow: 0 0 6px #ef4444;
             transition: background-color 0.3s, box-shadow 0.3s;
         }
         .led-indicator.active {
-            background-color: #10b981; /* Green light when active */
+            background-color: #10b981; 
             box-shadow: 0 0 8px #10b981;
         }
 
@@ -359,7 +358,6 @@
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             
-            <!-- Voice Chat with LED Light Indicator -->
             <div class="vc-btn-wrapper">
                 <span id="vc-led" class="led-indicator"></span>
                 <button class="secondary" id="vc-btn" onclick="toggleVoiceChat()" style="background:transparent; border:none; box-shadow:none; padding:2px 4px;">VC: <span id="vc-status">Off</span></button>
@@ -638,11 +636,11 @@
                 }
             }
 
-            // Auto-reconnect and refresh lobbies when returning to the app window/tab
+            // Enhanced visibility/focus listener to force immediate refresh and socket sync
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) {
                     refreshLobbies();
-                    if (ws && ws.readyState !== WebSocket.OPEN) {
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {
                         initSocketAndSend({ type: 'REFRESH_LOBBIES' });
                     }
                 }
@@ -650,6 +648,9 @@
 
             window.addEventListener('focus', () => {
                 refreshLobbies();
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+                }
             });
         });
 
@@ -963,7 +964,7 @@
                 try {
                     localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     status.innerText = 'On';
-                    ledLight.classList.add('active'); // Turn LED Green
+                    ledLight.classList.add('active'); 
                     muteBtn.style.display = 'inline-block';
                     peerConnections = {};
                     sendVCStatusUpdate();
@@ -983,7 +984,7 @@
                     delete peerConnections[user];
                 }
                 status.innerText = 'Off';
-                ledLight.classList.remove('active'); // Turn LED Red
+                ledLight.classList.remove('active'); 
                 muteBtn.style.display = 'none';
                 isMicMuted = false;
                 muteBtn.innerText = 'Mute Mic';
