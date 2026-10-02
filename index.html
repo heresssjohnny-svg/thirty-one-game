@@ -220,7 +220,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Fully synchronized peer-to-peer ledger wagers and responsive button actions!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Side bets only appear when the match is heads up (2 players left)!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -247,7 +247,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby' };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, ledger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3 };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -704,23 +704,28 @@
             let modalBody = document.getElementById('bet-modal-body');
             modalTitle.innerText = `Propose Bet with ${targetUsername}`;
             
-            modalBody.innerHTML = `
-                <button onclick="openBetTypeModal('${targetUsername}', 'win')">Side Bet (Win Round)</button>
-                <button onclick="openEliminationModal('${targetUsername}')">First to Lose (Elimination)</button>
-            `;
+            let isHeadsUp = (clientState.activeParticipantsCount === 2);
+
+            let html = '';
+            if (isHeadsUp) {
+                html += `<button onclick="openHeadsUpWagerModal('${targetUsername}')">Side Bet (Win Round against Opponent)</button>`;
+            }
+            html += `<button onclick="openEliminationModal('${targetUsername}')">First to Lose (Elimination)</button>`;
+
+            modalBody.innerHTML = html;
             toggleModal('bet-modal');
         }
 
-        function openBetTypeModal(targetUsername, betType) {
+        function openHeadsUpWagerModal(targetUsername) {
             let modalTitle = document.getElementById('bet-modal-title');
             let modalBody = document.getElementById('bet-modal-body');
-            modalTitle.innerText = 'Select player to win round:';
+            modalTitle.innerText = 'Select Wager Amount for Side Bet';
 
-            let html = '';
-            clientState.playersList.forEach(p => {
-                html += `<button onclick="openWagerModal('${targetUsername}', 'win', '${p}', '')">${p}</button>`;
-            });
-            modalBody.innerHTML = html;
+            modalBody.innerHTML = `
+                <button onclick="submitProposal('${targetUsername}', 'win', '${clientState.username}', '', 5)">$5 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', 'win', '${clientState.username}', '', 10)">$10 Wager</button>
+                <button onclick="submitProposal('${targetUsername}', 'win', '${clientState.username}', '', 20)">$20 Wager</button>
+            `;
         }
 
         function openEliminationModal(targetUsername) {
@@ -789,6 +794,7 @@
             clientState.gameState = lobby.gameState;
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
+            clientState.activeParticipantsCount = lobby.activeParticipantsCount || 3;
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
             clientState.discardTop = lobby.discardTop;
@@ -797,10 +803,9 @@
             let modal = document.getElementById('bet-modal');
             let isModalOpen = modal.style.display === 'flex';
 
-            // Only prompt incoming proposals if modal is closed or not currently proposing
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
                 lobby.pendingBetsForMe.forEach(bet => {
-                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
+                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that you win round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
                     
                     let modalTitle = document.getElementById('bet-modal-title');
                     let modalBody = document.getElementById('bet-modal-body');
@@ -848,9 +853,7 @@
                 document.getElementById('turn-banner').style.display = 'none';
             }
 
-            let canKnockNow = lobby.canKnock;
-            let knockBtn = document.getElementById('knock-btn');
-            knockBtn.disabled = !canKnockNow;
+            document.getElementById('knock-btn').disabled = !lobby.canKnock;
 
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let nextHandOverlay = document.getElementById('next-hand-overlay');
