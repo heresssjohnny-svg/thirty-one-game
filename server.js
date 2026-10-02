@@ -991,7 +991,7 @@ function checkAndRunBotTurn(lobby) {
                     let card = lobby.discardPile.pop();
                     currentPlayer.cards.push(card);
                     if (card === lobby.initialDealCard) {
-                        lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
+                        lobby.lastDiscardPickup = null; // Clear initial deal popup indicator when picked up
                         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
                     }
                 } else {
@@ -1012,10 +1012,6 @@ function checkAndRunBotTurn(lobby) {
                 let discarded = currentPlayer.cards.splice(worstIndex, 1)[0];
                 lobby.discardPile.push(discarded);
                 
-                if (lobby.lastDiscardPickup && lobby.lastDiscardPickup.username === currentPlayer.username) {
-                    lobby.lastDiscardPickup = null;
-                }
-
                 lobby.lastDiscarder = currentPlayer.username;
                 if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
                 lobby.fedCardsTracker[currentPlayer.username].push(discarded);
@@ -1026,9 +1022,9 @@ function checkAndRunBotTurn(lobby) {
                     allParts.forEach(p => { 
                         if (p !== currentPlayer && !p.eliminated) {
                             p.lives--;
+                            resolveFirstToLoseBets(lobby, p.username);
                             if (p.lives <= 0) {
                                 p.eliminated = true;
-                                resolveFirstToLoseBets(lobby, p.username);
                                 lobby.spectators.push({ idSocket: p.id, username: p.username });
                             }
                         }
@@ -1059,9 +1055,6 @@ function handleTurnAction(lobby, ws, actionType) {
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
         currentPlayer.cards.push(lobby.deck.pop());
-        if (lobby.lastDiscardPickup && lobby.lastDiscardPickup.username === currentPlayer.username) {
-            lobby.lastDiscardPickup = null;
-        }
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
         broadcastLobbyUpdate(lobby.code);
     } else if (actionType === 'DRAW_DISCARD') {
@@ -1070,7 +1063,7 @@ function handleTurnAction(lobby, ws, actionType) {
             currentPlayer.cards.push(card);
 
             if (card === lobby.initialDealCard) {
-                lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
+                // Keep lobby.lastDiscardPickup active so the top-left modal stays visible until they discard!
             }
 
             if (lobby.lastDiscarder && lobby.lastDiscarder !== currentPlayer.username) {
@@ -1126,9 +1119,8 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
         lobby.discardPile.push(discarded);
         
-        if (lobby.lastDiscardPickup && lobby.lastDiscardPickup.username === currentPlayer.username) {
-            lobby.lastDiscardPickup = null;
-        }
+        // Clear initial discard pickup modal display as soon as they discard a card!
+        lobby.lastDiscardPickup = null;
 
         lobby.lastDiscarder = currentPlayer.username;
         if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
@@ -1165,9 +1157,9 @@ function handleDiscardAction(lobby, ws, cardIndex) {
             allParts.forEach(p => { 
                 if (p !== currentPlayer && !p.eliminated) {
                     p.lives--;
+                    resolveFirstToLoseBets(lobby, p.username);
                     if (p.lives <= 0) {
                         p.eliminated = true;
-                        resolveFirstToLoseBets(lobby, p.username);
                         lobby.spectators.push({ idSocket: p.id, username: p.username });
                     }
                 }
@@ -1254,16 +1246,12 @@ function resolveRoundEnd(lobby) {
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // Immediately settle First-to-Lose side bets the moment any player loses a life at round end!
+        // Immediately resolve and pay out First-to-Lose side bets the moment any player loses a life at round end!
+        resolveFirstToLoseBets(lobby, roundLoser);
+
         if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
             loserPlayer.eliminated = true;
-            resolveFirstToLoseBets(lobby, roundLoser);
             lobby.spectators.push({ idSocket: loserPlayer.id, username: loserPlayer.username });
-        } else {
-            // Even if they didn't hit 0 lives, check if any active First-to-Lose bets target this round's loser 
-            // if you want round-by-round tracking, or let's resolve them when lives drop. 
-            // To ensure wagers settle immediately when someone loses a life:
-            resolveFirstToLoseBets(lobby, roundLoser);
         }
         
         resolveWinSideBets(lobby, roundWinner);
@@ -1285,11 +1273,12 @@ function checkTieBreakerComplete(lobby) {
         let targetParticipant = activeParts.find(p => p.username === loserEntry.username);
         if (targetParticipant) {
             targetParticipant.lives--;
+            resolveFirstToLoseBets(lobby, targetParticipant.username);
+
             if (targetParticipant.lives <= 0 && !targetParticipant.eliminated) {
                 targetParticipant.eliminated = true;
                 lobby.spectators.push({ idSocket: targetParticipant.id, username: targetParticipant.username });
             }
-            resolveFirstToLoseBets(lobby, targetParticipant.username);
 
             let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
             let roundWinner = activeScores[activeScores.length - 1].p.username;
