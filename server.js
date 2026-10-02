@@ -70,7 +70,7 @@ wss.on('connection', (ws) => {
                         name: data.lobbyName || `${currentUsername}'s Lobby`,
                         host: currentUsername,
                         isPrivate: !!data.isPrivate,
-                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, inVC: false, isMuted: false }],
+                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, inVC: false, isMuted: false, peekRequests: {}, peekAllowed: {} }],
                         bots: [],
                         spectators: [],
                         deck: [],
@@ -129,12 +129,12 @@ wss.on('connection', (ws) => {
                         let totalOccupants = lobby.players.length + lobby.bots.length;
                         if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                             let availableSeat = findOpenSeat(lobby);
-                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false, inVC: false, isMuted: false });
+                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false, inVC: false, isMuted: false, peekRequests: {}, peekAllowed: {} });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false, peekRequests: {} });
+                            lobby.spectators.push({ id: ws, username: currentUsername, inVC: false, isMuted: false });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -384,6 +384,8 @@ wss.on('connection', (ws) => {
                                 p.cards = [];
                                 p.ready = false;
                                 p.nextHandReady = false;
+                                p.peekRequests = {};
+                                p.peekAllowed = {};
                             });
                             lobby.bots.forEach(b => {
                                 b.lives = 2;
@@ -410,8 +412,8 @@ wss.on('connection', (ws) => {
                         
                         let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
-                            if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
-                            targetPlayer.peekIncoming[requesterName] = true;
+                            if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
+                            targetPlayer.peekRequests[requesterName] = true;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -422,14 +424,33 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
-                            if (player.peekIncoming) delete player.peekIncoming[data.spectatorUsername];
+                            if (player.peekRequests) delete player.peekRequests[data.spectatorUsername];
                             if (data.allow) {
-                                let spec = lobby.spectators.find(s => s.username === data.spectatorUsername) || lobby.players.find(p => p.username === data.spectatorUsername);
-                                if (spec) {
-                                    if (!spec.peekAllowed) spec.peekAllowed = {};
-                                    spec.peekAllowed[player.username] = true;
-                                }
+                                if (!player.peekAllowed) player.peekAllowed = {};
+                                player.peekAllowed[data.spectatorUsername] = true;
                             }
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'STOP_PEEK':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
+                        if (targetPlayer && targetPlayer.peekAllowed) {
+                            delete targetPlayer.peekAllowed[currentUsername];
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'KICK_PEEKER':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let player = lobby.players.find(p => p.id === ws);
+                        if (player && player.peekAllowed) {
+                            delete player.peekAllowed[data.spectatorUsername];
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -621,11 +642,17 @@ function getSanitizedLobby(lobby, wsId) {
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
-            let specAllowed = (requestingSpectator && requestingSpectator.peekAllowed && requestingSpectator.peekAllowed[p.username]) ||
-                              (requestingPlayer && requestingPlayer.peekRequests && requestingPlayer.peekRequests[p.username]);
             
-            // Map incoming peek requests explicitly for player dashboard rendering
-            let incomingPeekMap = p.peekIncoming || {};
+            // Check if peeking is allowed for this requesting user
+            let specAllowed = false;
+            if (requestingSpectator) {
+                specAllowed = p.peekAllowed && !!p.peekAllowed[requestingSpectator.username];
+            } else if (requestingPlayer) {
+                specAllowed = p.username === myUsername || (p.peekAllowed && !!p.peekAllowed[requestingPlayer.username]);
+            }
+
+            let incomingPeekMap = p.peekRequests || {};
+            let allowedPeekMap = p.peekAllowed || {};
 
             let sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
@@ -640,6 +667,7 @@ function getSanitizedLobby(lobby, wsId) {
                 inVC: !!p.inVC,
                 isMuted: !!p.isMuted,
                 peekIncoming: (wsId === p.id) ? incomingPeekMap : {},
+                peekAllowed: allowedPeekMap,
                 cards: (canSeeCards || specAllowed) ? p.cards : []
             };
         }),
@@ -662,8 +690,7 @@ function getSanitizedLobby(lobby, wsId) {
         spectators: lobby.spectators.map(s => ({
             username: s.username,
             inVC: !!s.inVC,
-            isMuted: !!s.isMuted,
-            peekAllowed: s.peekAllowed || {}
+            isMuted: !!s.isMuted
         }))
     };
 }
@@ -684,7 +711,11 @@ function startDealerDrawPhase(lobby) {
     lobby.fedCardsTracker = {};
     lobby.firstEliminated = null;
 
-    lobby.players.forEach(p => { if (!p.eliminated) p.nextHandReady = false; });
+    lobby.players.forEach(p => { 
+        if (!p.eliminated) p.nextHandReady = false; 
+        p.peekRequests = {};
+        p.peekAllowed = {};
+    });
     lobby.bots.forEach(b => { if (!b.eliminated) b.nextHandReady = true; });
 
     autoPickForBots(lobby);
@@ -764,6 +795,12 @@ function startRound(lobby) {
     lobby.fedCardsTracker = {};
     lobby.tiedParticipantsList = [];
     
+    // Clear all peeking permissions and requests when a new round starts
+    lobby.players.forEach(p => {
+        p.peekRequests = {};
+        p.peekAllowed = {};
+    });
+
     let allPartsCheck = [...lobby.players, ...lobby.bots];
     allPartsCheck.forEach(p => {
         if (p.lives <= 0 && !p.eliminated) {
@@ -772,7 +809,7 @@ function startRound(lobby) {
                 lobby.firstEliminated = p.username;
                 resolveFirstToLoseBets(lobby, p.username);
             }
-            lobby.spectators.push({ id: p.id, username: p.username, peekRequests: {} });
+            lobby.spectators.push({ id: p.id, username: p.username });
         }
     });
 
@@ -821,14 +858,10 @@ function resolveFirstToLoseBets(lobby, eliminatedName) {
 
     let remainingBets = [];
     lobby.activeBets.forEach(bet => {
-        if (bet.type === 'eliminate') {
-            if (bet.pickUser === eliminatedName) {
-                let debtor = bet.target;
-                let creditor = bet.proposer;
-                addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
-            } else {
-                remainingBets.push(bet);
-            }
+        if (bet.type === 'eliminate' && bet.pickUser === eliminatedName) {
+            let debtor = bet.target;
+            let creditor = bet.proposer;
+            addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
         } else {
             remainingBets.push(bet);
         }
@@ -870,6 +903,13 @@ function awardTournamentWinner(lobby, winner) {
 
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} is the last player standing and wins the match!`;
+    
+    // Clear all peeking permissions on round/game over
+    lobby.players.forEach(p => {
+        p.peekRequests = {};
+        p.peekAllowed = {};
+    });
+
     broadcastLobbyUpdate(lobby.code);
 
     setTimeout(() => {
@@ -888,6 +928,8 @@ function awardTournamentWinner(lobby, winner) {
                 p.cards = [];
                 p.ready = false;
                 p.nextHandReady = false;
+                p.peekRequests = {};
+                p.peekAllowed = {};
             });
             l.bots.forEach(b => {
                 b.lives = 2;
@@ -1191,39 +1233,17 @@ function resolveRoundEnd(lobby) {
     }
 }
 
-function checkTieBreakerComplete(lobby) {
-    let tiedNames = lobby.tiedParticipantsList;
-    let allTiedPicked = tiedNames.every(username => lobby.drawResults[username]);
-
-    if (allTiedPicked) {
-        let entries = tiedNames.map(username => ({ username: username, card: lobby.drawResults[username] }));
-        entries.sort((a, b) => a.card.drawVal - b.card.drawVal);
-        let loser = entries[0];
-        
-        let activeParts = getActiveParticipants(lobby);
-        let targetParticipant = activeParts.find(p => p.username === loser.username);
-        if (targetParticipant) {
-            targetParticipant.lives--;
-            let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
-            let roundWinner = activeScores[activeScores.length - 1].p.username;
-            resolveWinSideBets(lobby, roundWinner);
-        }
-
-        lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loser.username} drew the lowest card and lost a life!`;
-        broadcastLobbyUpdate(lobby.code);
-
-        setTimeout(() => {
-            if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'tieBreaker') {
-                triggerRoundOver(lobbies[lobby.code], lobby.phaseMessage);
-            }
-        }, 4000);
-    }
-}
-
 function triggerRoundOver(lobby, msg) {
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
     rotateDealer(lobby);
+    
+    // Clear peeking permissions when round ends
+    lobby.players.forEach(p => {
+        p.peekRequests = {};
+        p.peekAllowed = {};
+    });
+
     broadcastLobbyUpdate(lobby.code);
 }
 
