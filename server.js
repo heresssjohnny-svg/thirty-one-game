@@ -608,7 +608,7 @@ function getSanitizedLobby(lobby, wsId) {
         globalProposals: lobby.globalProposals || [],
         activeParticipantsCount: activeParts.length,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
-        tiedParticipantsList: lobby.tiedParticipantsList || [],
+        tiedParticipantsList: lobby.tiedParticipantsList || [], // Fixed: explicitly included tiedParticipantsList in state payload
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
