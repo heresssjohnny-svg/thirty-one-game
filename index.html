@@ -263,7 +263,8 @@
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    <audio id="bg-audio" src="background-music.mp3" loop></audio>
+    <!-- Custom .mp3 audio element preloaded to start as quickly as possible -->
+    <audio id="bg-audio" src="background-music.mp3" loop preload="auto"></audio>
 
     <div id="center-notification-banner">NOTIFICATION</div>
 
@@ -334,7 +335,7 @@
                     <button class="secondary" style="padding: 2px 6px; font-size: 0.75rem;" onclick="refreshLobbies()">Refresh</button>
                 </div>
                 <div class="lobby-list-container" id="lobby-list">
-                    <div style="text-align:center; color:#cbd5e1; padding:6px;">No lobbies found</div>
+                    <div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>
                 </div>
             </div>
         </div>
@@ -369,7 +370,7 @@
             </div>
 
             <div class="my-hand-area" id="my-hand-control-area">
-                <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: var(--text-muted);">
+                <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.80rem; color: var(--text-muted);">
                     <span id="my-hand-title">My Hand (Score: <span id="my-score-display">0</span>) - Draw from deck/discard, then click card to discard</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
@@ -472,7 +473,7 @@
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // Background Audio & Dynamic Volume Management with Audio Taper Curve
+        // Background Audio & Dynamic Volume Management with Logarithmic Taper Curve
         let isMusicMuted = false;
 
         function toggleMusicMute() {
@@ -517,6 +518,8 @@
             let bgAudio = document.getElementById('bg-audio');
             if (bgAudio) {
                 bgAudio.volume = Math.pow(0.5, 3); // Initial volume 50% on curve
+                // Attempt instant playback on load; browser policies will fall back to the click gesture listener if blocked
+                bgAudio.play().catch(() => {});
             }
 
             document.addEventListener("visibilitychange", () => {
