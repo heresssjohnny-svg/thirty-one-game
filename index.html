@@ -228,7 +228,6 @@
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
         .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
-        /* Initial Discard Pickup Modal securely positioned top left inside main container */
         .discard-pickup-modal-topleft { 
             position: absolute; 
             top: 10px; 
@@ -1361,7 +1360,6 @@
             let readyBtn = document.getElementById('ready-btn');
             let knockBtn = document.getElementById('knock-btn');
 
-            // Button visibility controls based on role and phase
             if (lobby.gameState === 'lobby') {
                 if (me && !isEliminated) {
                     standUpBtn.style.display = 'inline-block';
@@ -1388,7 +1386,6 @@
                     }
                 }
             } else {
-                // In-game controls
                 sitBtn.style.display = 'none';
                 if (isSpectatorOnly) {
                     standUpBtn.style.display = 'none';
