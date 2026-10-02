@@ -92,7 +92,6 @@
         button.secondary { background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.12); box-shadow: none; }
         button.secondary:hover { background: rgba(51, 65, 85, 0.95); }
         
-        /* Music control container styling */
         .music-control-group {
             display: flex;
             align-items: center;
@@ -271,10 +270,9 @@
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <!-- Music Control Group with Button and Volume Slider -->
             <div class="music-control-group">
                 <button class="secondary" onclick="toggleMusicMute()" id="music-toggle-btn" style="padding: 4px 8px; font-size: 0.75rem;">Music: On</button>
-                <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="0.5" oninput="adjustVolume(this.value)" title="Volume Control">
+                <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" oninput="adjustVolume(this.value)" title="Volume Control">
             </div>
 
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
@@ -474,7 +472,7 @@
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // Background Audio & Volume Management
+        // Background Audio & Dynamic Volume Management with Audio Taper Curve
         let isMusicMuted = false;
 
         function toggleMusicMute() {
@@ -492,9 +490,14 @@
 
         function adjustVolume(val) {
             let bgAudio = document.getElementById('bg-audio');
+            let sliderVal = parseFloat(val);
+            
             if (bgAudio) {
-                bgAudio.volume = parseFloat(val);
-                if (parseFloat(val) > 0 && isMusicMuted) {
+                // Cubed audio taper curve for finer low-end volume control
+                let adjustedVolume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
+                bgAudio.volume = adjustedVolume;
+
+                if (sliderVal > 0 && isMusicMuted) {
                     isMusicMuted = false;
                     bgAudio.play().catch(e => {});
                     document.getElementById('music-toggle-btn').innerText = 'Music: On';
@@ -513,7 +516,7 @@
 
             let bgAudio = document.getElementById('bg-audio');
             if (bgAudio) {
-                bgAudio.volume = 0.5; // Default initial volume set to 50%
+                bgAudio.volume = Math.pow(0.5, 3); // Initial volume 50% on curve
             }
 
             document.addEventListener("visibilitychange", () => {
@@ -726,7 +729,7 @@
 
         function renderLobbyList(lobbies) {
             let container = document.getElementById('lobby-list');
-            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#cbd5e1; padding:6px;">No lobbies found</div>'; return; }
+            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
             container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress (Spectate)'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
