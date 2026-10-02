@@ -178,7 +178,8 @@ wss.on('connection', (ws) => {
                                 pickUser: data.pickUser,
                                 targetSurvivor: data.targetSurvivor,
                                 wagerAmt: parseFloat(data.wagerAmt) || 5,
-                                type: data.betType || 'win'
+                                type: data.betType || 'win',
+                                responded: false
                             };
                             lobby.pendingBets.push(newBet);
                             lobby.phaseMessage = `🤝 Bet proposed by ${currentUsername} to ${data.target}!`;
