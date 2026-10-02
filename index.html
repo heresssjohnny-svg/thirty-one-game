@@ -251,7 +251,6 @@
         .modal-content h3 { color: var(--accent-gold); font-size: 1.2rem; }
         .button-group { display: flex; flex-direction: column; gap: 8px; }
         
-        /* Auto-resizing compact card grid for dealer draw and tie breakers */
         .pool-cards-grid { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); 
@@ -1046,9 +1045,21 @@
             }
         }
 
+        function stopPeek(targetUsername) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'STOP_PEEK', targetUsername }));
+            }
+        }
+
         function respondPeek(spectatorUsername, allow) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'RESPOND_PEEK', spectatorUsername, allow }));
+            }
+        }
+
+        function kickPeeker(spectatorUsername) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'KICK_PEEKER', spectatorUsername }));
             }
         }
 
@@ -1434,10 +1445,14 @@
                 if (p.cards && p.cards.length > 0) {
                     revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>`;
                 } else if (isSpectatorOnly && p.username !== activeUsername) {
-                    peekBtnHtml = `<div style="margin-top:2px;"><button style="font-size:0.55rem; padding:1px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
+                    let isCurrentlyPeeking = p.peekAllowed && p.peekAllowed[activeUsername];
+                    if (isCurrentlyPeeking) {
+                        peekBtnHtml = `<div style="margin-top:2px;"><button class="danger" style="font-size:0.55rem; padding:1px 4px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
+                    } else {
+                        peekBtnHtml = `<div style="margin-top:2px;"><button style="font-size:0.55rem; padding:1px 4px;" onclick="requestPeek('${p.username}')">Peek Hand</button></div>`;
+                    }
                 }
                 
-                // Render accept/decline peek buttons if an incoming request exists for this player
                 let incomingPeekMap = p.peekIncoming || {};
                 let pendingPeekHtml = '';
                 for (let specName in incomingPeekMap) {
@@ -1450,6 +1465,21 @@
                             </div>
                         </div>
                     `;
+                }
+
+                // Render "Kick Peeker" buttons for active allowed peekers on your own seat
+                let activePeekersHtml = '';
+                if (p.username === activeUsername && p.peekAllowed) {
+                    for (let peekerName in p.peekAllowed) {
+                        if (p.peekAllowed[peekerName]) {
+                            activePeekersHtml += `
+                                <div style="background:rgba(185,28,28,0.85); border-radius:4px; padding:2px 4px; margin-top:2px; font-size:0.55rem; display:flex; justify-content:space-between; align-items:center;">
+                                    <span>👀 ${peekerName}</span>
+                                    <button class="danger" style="font-size:0.45rem; padding:1px 3px;" onclick="kickPeeker('${peekerName}')">Kick</button>
+                                </div>
+                            `;
+                        }
+                    }
                 }
 
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
@@ -1466,6 +1496,7 @@
                         ${revealedCardsHtml}
                         ${peekBtnHtml}
                         ${pendingPeekHtml}
+                        ${activePeekersHtml}
                     </div>
                 `;
             });
