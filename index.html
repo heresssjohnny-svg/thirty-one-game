@@ -251,7 +251,6 @@
         .modal-content h3 { color: var(--accent-gold); font-size: 1.2rem; }
         .button-group { display: flex; flex-direction: column; gap: 8px; }
         
-        /* Auto-resizing compact card grid for dealer draw and tie breakers */
         .pool-cards-grid { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); 
@@ -432,13 +431,22 @@
         </div>
     </div>
 
-    <!-- Card Pool Selection Modal -->
+    <!-- Card Pool Selection Modal (For Tied Participants) -->
     <div id="pool-draw-modal" class="modal">
         <div class="modal-content">
             <h3 id="pool-modal-title">Card Selection</h3>
             <p id="pool-modal-instruction" style="font-size:0.80rem; color:var(--text-muted);">Select a face-down card from the deck pool.</p>
             <div class="pool-cards-grid" id="pool-cards-container"></div>
             <div id="pool-announcement" style="font-size:0.85rem; font-weight:bold; color:var(--accent-cyan);"></div>
+        </div>
+    </div>
+
+    <!-- Public Tie-Breaker Live Stream Modal (For Non-Tied Players and Spectators to watch picks) -->
+    <div id="tie-breaker-reveal-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="color: var(--accent-gold);">Tie-Breaker Draw Live Stream</h3>
+            <p id="tie-breaker-stream-msg" style="font-size:0.85rem; color: var(--text-muted);">Waiting for tied participants to select their cards...</p>
+            <div id="tie-breaker-stream-grid" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; padding:10px; background:rgba(15,23,42,0.6); border-radius:8px;"></div>
         </div>
     </div>
 
@@ -587,8 +595,7 @@
 
         function toggleGlobalSidebar() {
             isSidebarMinimized = !isSidebarMinimized;
-            let list = document.getElementById('global-side-bets-sidebar'); // fixed ID reference
-            // ... handled by standard view
+            let list = document.getElementById('global-side-bets-sidebar');
         }
 
         function openLedgerModal() {
@@ -1231,6 +1238,7 @@
             }
 
             let poolModal = document.getElementById('pool-draw-modal');
+            let revealModal = document.getElementById('tie-breaker-reveal-modal');
             let turnBanner = document.getElementById('turn-banner');
 
             if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
@@ -1240,6 +1248,7 @@
 
             if (lobby.gameState === 'dealerDraw') {
                 poolModal.style.display = 'flex';
+                revealModal.style.display = 'none';
                 document.getElementById('pool-modal-title').innerText = 'Picking for Dealer';
                 document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
 
@@ -1270,15 +1279,26 @@
             } else if (lobby.gameState === 'tieBreaker') {
                 let isAmITied = clientState.tiedParticipantsList.some(t => t.trim().toLowerCase() === clientState.username.trim().toLowerCase());
                 
-                // Only open the selection modal for players directly involved in the tie!
                 if (isAmITied) {
                     poolModal.style.display = 'flex';
+                    revealModal.style.display = 'none';
                 } else {
-                    poolModal.style.display = 'none'; // Hidden for non-tied players and spectators
-                }
+                    poolModal.style.display = 'none';
+                    revealModal.style.display = 'flex'; // Broadcast stream window for non-tied players and spectators
 
-                document.getElementById('pool-modal-title').innerText = 'Tie-Breaker Draw';
-                document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
+                    // Populate stream grid for onlookers
+                    let streamGridHtml = '';
+                    clientState.tiedParticipantsList.forEach(tiedUser => {
+                        let pickedCard = lobby.drawResults[tiedUser];
+                        if (pickedCard) {
+                            streamGridHtml += `<div style="display:flex; flex-direction:column; align-items:center;"><b>${tiedUser}</b>${formatCardHtml(pickedCard, true)}</div>`;
+                        } else {
+                            streamGridHtml += `<div style="display:flex; flex-direction:column; align-items:center;"><b>${tiedUser}</b><div class="mini-card" style="background:#1e3a8a; color:#fff;">?</div></div>`;
+                        }
+                    });
+                    document.getElementById('tie-breaker-stream-grid').innerHTML = streamGridHtml;
+                    document.getElementById('tie-breaker-stream-msg').innerText = lobby.phaseMessage || 'Waiting for tied participants to draw...';
+                }
 
                 let gridHtml = '';
                 lobby.drawPool.forEach((slot) => {
@@ -1307,6 +1327,7 @@
                 turnBanner.innerText = 'Tie-Breaker Phase';
             } else {
                 poolModal.style.display = 'none';
+                revealModal.style.display = 'none';
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
                     let isMyTurn = (lobby.currentTurnUser === clientState.username);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
@@ -1442,6 +1463,7 @@
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
             document.getElementById('pool-draw-modal').style.display = 'none';
+            document.getElementById('tie-breaker-reveal-modal').style.display = 'none';
             document.getElementById('ledger-modal').style.display = 'none';
             document.getElementById('spectators-modal').style.display = 'none';
             document.getElementById('next-hand-overlay').style.display = 'none';
