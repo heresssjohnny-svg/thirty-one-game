@@ -1016,8 +1016,6 @@ function handleTurnAction(lobby, ws, actionType) {
                 if (hasAce && hasFaceOr10) {
                     let feeder = allParts.find(p => p.username === lobby.lastDiscarder);
                     if (feeder) {
-                        // Amended 21 out of 31 Rule Check:
-                        // The player who was fed must get 31 at any given point in the round for the feeder to lose all lives.
                         let fedPlayerScore = calculateScore(currentPlayer.cards);
                         if (fedPlayerScore === 31 || calculateSuitScore(currentPlayer.cards, card.suit) === 31) {
                             feeder.lives = 0;
@@ -1058,11 +1056,8 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
         lobby.fedCardsTracker[currentPlayer.username].push(discarded);
 
-        // Check amended 21 out of 31 rule upon discarding / hitting 31
         let currentScore = calculateScore(currentPlayer.cards);
         if (currentScore === 31 && lobby.lastDiscarder) {
-            // Check if any fed cards tracker involved an Ace and 10-value card of the same suit fed to this player
-            // Simplified check: If they hit 31 and were fed by someone, check the fed tracking
             for (let feederName in lobby.fedCardsTracker) {
                 if (feederName !== currentPlayer.username) {
                     let fedCards = lobby.fedCardsTracker[feederName];
