@@ -846,12 +846,23 @@ function resolveFirstToLoseBets(lobby, loserName) {
 
     let remainingBets = [];
     
-    // Evaluate every active bet and immediately extract ALL matching wagers targeting this loser
+    // Evaluate every active bet and handle both directions:
+    // 1. If pickUser === loserName (the target died first) -> Target owes Proposer.
+    // 2. If proposer === loserName (the proposer died before their pick) -> Proposer owes Target.
     lobby.activeBets.forEach(bet => {
-        if (bet.type === 'eliminate' && bet.pickUser === loserName) {
-            let debtor = bet.target; 
-            let creditor = bet.proposer;
-            addLedgerDebt(lobby.sideBetLedger, debtor, creditor, bet.wagerAmt);
+        if (bet.type === 'eliminate') {
+            let proposer = bet.proposer;
+            let target = bet.target;
+
+            if (bet.pickUser === loserName) {
+                // The picked player lost first -> Target owes Proposer
+                addLedgerDebt(lobby.sideBetLedger, target, proposer, bet.wagerAmt);
+            } else if (bet.proposer === loserName) {
+                // The Proposer died first before their pick -> Proposer owes Target
+                addLedgerDebt(lobby.sideBetLedger, proposer, target, bet.wagerAmt);
+            } else {
+                remainingBets.push(bet);
+            }
         } else {
             remainingBets.push(bet);
         }
@@ -1246,7 +1257,7 @@ function resolveRoundEnd(lobby) {
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // INSTANTLY SETTLE ALL SIDE BETS THE EXACT MILLISECOND A LIFE IS LOST:
+        // INSTANTLY SETTLE ALL SIDE BETS THE EXACT MILLISECOND A ROUND ENDS:
         resolveFirstToLoseBets(lobby, roundLoser);
 
         if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
