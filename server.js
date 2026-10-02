@@ -109,7 +109,7 @@ wss.on('connection', (ws) => {
                         
                         let existingPlayer = lobby.players.find(p => p.username === currentUsername);
                         if (existingPlayer) {
-                            existingPlayer.id = ws;
+                            existingPlayer.id = ws; // Always refresh live WebSocket reference socket ID
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -118,7 +118,7 @@ wss.on('connection', (ws) => {
 
                         let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
                         if (existingSpec) {
-                            existingSpec.id = ws;
+                            existingSpec.id = ws; // Refresh spectator socket ID
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -435,7 +435,10 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-                            handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
+                            // Resolve the sender's username safely using their active socket connection
+                            let activeSender = lobby.players.find(p => p.id === ws);
+                            let verifiedUsername = activeSender ? activeSender.username : currentUsername;
+                            handlePoolCardSelection(lobby, verifiedUsername, data.cardIndex);
                         }
                     }
                     break;
