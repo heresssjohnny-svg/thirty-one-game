@@ -144,6 +144,25 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
+                case 'STAND_UP':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let playerIdx = lobby.players.findIndex(p => p.id === ws);
+                        if (playerIdx !== -1) {
+                            let leavingPlayer = lobby.players.splice(playerIdx, 1)[0];
+                            lobby.spectators.push({
+                                username: leavingPlayer.username,
+                                idSocket: ws,
+                                inVC: leavingPlayer.inVC,
+                                isMuted: leavingPlayer.isMuted
+                            });
+                            lobby.phaseMessage = `🪑 ${leavingPlayer.username} stood up and moved to spectator mode.`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastLobbyList();
+                        }
+                    }
+                    break;
+
                 case 'REFRESH_LOBBIES':
                     ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
                     break;
@@ -1127,8 +1146,6 @@ function handleDiscardAction(lobby, ws, cardIndex) {
     if (currentPlayer.cards[cardIndex]) {
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
         
-        // ONLY clear the initial pickup modal if the card they are discarding 
-        // matches the specific initial card they picked up!
         if (lobby.lastDiscardPickup && 
             lobby.lastDiscardPickup.username === currentPlayer.username &&
             lobby.lastDiscardPickup.card.val === discarded.val &&
