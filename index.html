@@ -251,7 +251,6 @@
         .modal-content h3 { color: var(--accent-gold); font-size: 1.2rem; }
         .button-group { display: flex; flex-direction: column; gap: 8px; }
         
-        /* Auto-resizing compact card grid for dealer draw and tie breakers */
         .pool-cards-grid { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); 
@@ -509,13 +508,13 @@
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
         let isSidebarMinimized = false;
+        let lastGameState = ''; // Track previous game state to reset selection locks automatically
         
         let localAudioStream = null;
         let isMicMuted = false;
         let peerConnections = {};
         const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // Background Audio & Dynamic Volume Management with Logarithmic Taper Curve
         let isMusicMuted = false;
 
         function toggleMusicMute() {
@@ -1121,6 +1120,12 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
+            // Automatically reset local card choice lock if state transitioned
+            if (lobby.gameState !== lastGameState) {
+                hasChosenPoolCard = false;
+                lastGameState = lobby.gameState;
+            }
+
             clientState.gameState = lobby.gameState;
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
@@ -1268,7 +1273,7 @@
                             </div>
                         `;
                     } else {
-                        let clickable = !lobby.drawResults[activeUsername];
+                        let clickable = !lobby.drawResults[activeUsername] && !hasChosenPoolCard;
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
                                 ?
@@ -1316,7 +1321,7 @@
                         `;
                     } else {
                         let alreadyPicked = lobby.drawResults[activeUsername];
-                        let clickable = isAmITied && !alreadyPicked;
+                        let clickable = isAmITied && !alreadyPicked && !hasChosenPoolCard;
                         gridHtml += `
                             <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
                                 ?
