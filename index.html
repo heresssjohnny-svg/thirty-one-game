@@ -220,7 +220,7 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
             <h3>Rules</h3>
-            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Tap player seats to propose side bets after the game starts!</p>
+            <p style="font-size:0.85rem; color:#cbd5e1; text-align:left;">Collect 31 points in a suit. Custom proposals and accept/decline modals keep game flow smooth and interruption-free!</p>
             <button onclick="toggleModal('rules-modal')">Close</button>
         </div>
     </div>
@@ -794,12 +794,16 @@
             clientState.discardTop = lobby.discardTop;
             clientState.ledger = lobby.ledger || {};
 
+            // If there's an incoming proposal for me, and the bet modal isn't already showing an incoming proposal, display it cleanly
             if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0) {
                 lobby.pendingBetsForMe.forEach(bet => {
                     let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} wins round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
                     
+                    let modal = document.getElementById('bet-modal');
                     let modalTitle = document.getElementById('bet-modal-title');
                     let modalBody = document.getElementById('bet-modal-body');
+                    
+                    // Only open if not already proposing something else
                     modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
                     modalBody.innerHTML = `
                         <p style="font-size:0.85rem; color:#cbd5e1; margin-bottom:10px;">${label}</p>
@@ -808,7 +812,7 @@
                             <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
                         </div>
                     `;
-                    toggleModal('bet-modal');
+                    modal.style.display = 'flex';
                 });
                 lobby.pendingBetsForMe = [];
             }
