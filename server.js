@@ -109,7 +109,7 @@ wss.on('connection', (ws) => {
                         
                         let existingPlayer = lobby.players.find(p => p.username === currentUsername);
                         if (existingPlayer) {
-                            existingPlayer.id = ws; // Always refresh live WebSocket reference socket ID
+                            existingPlayer.id = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -118,7 +118,7 @@ wss.on('connection', (ws) => {
 
                         let existingSpec = lobby.spectators.find(s => s.username === currentUsername);
                         if (existingSpec) {
-                            existingSpec.id = ws; // Refresh spectator socket ID
+                            existingSpec.id = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
@@ -182,7 +182,7 @@ wss.on('connection', (ws) => {
                             p.isMuted = !!data.isMuted;
 
                             if (!wasInVC && p.inVC) {
-                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
+                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️️ ${currentUsername} joined the voice chat.` };
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
                                 lobby.spectators.forEach(s => { if (s.id && s.id.readyState === WebSocket.OPEN) s.id.send(JSON.stringify(chatPayload)); });
                             }
@@ -435,7 +435,6 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-                            // Resolve the sender's username safely using their active socket connection
                             let activeSender = lobby.players.find(p => p.id === ws);
                             let verifiedUsername = activeSender ? activeSender.username : currentUsername;
                             handlePoolCardSelection(lobby, verifiedUsername, data.cardIndex);
