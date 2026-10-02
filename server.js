@@ -846,7 +846,7 @@ function resolveFirstToLoseBets(lobby, loserName) {
 
     let remainingBets = [];
     
-    // Evaluate every active bet and immediately settle ALL matching multi-bets for the loser
+    // Evaluate every active bet and immediately extract ALL matching wagers targeting this loser
     lobby.activeBets.forEach(bet => {
         if (bet.type === 'eliminate' && bet.pickUser === loserName) {
             let debtor = bet.target; 
@@ -1120,7 +1120,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
         lobby.discardPile.push(discarded);
         
-        lobby.lastDiscardPickup = null; // Clear initial discard modal display
+        lobby.lastDiscardPickup = null;
 
         lobby.lastDiscarder = currentPlayer.username;
         if (!lobby.fedCardsTracker[currentPlayer.username]) lobby.fedCardsTracker[currentPlayer.username] = [];
@@ -1246,7 +1246,7 @@ function resolveRoundEnd(lobby) {
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
-        // INSTANTLY SETTLE SIDE BETS THE EXACT SECOND A ROUND ENDS AND A LIFE IS LOST:
+        // INSTANTLY SETTLE ALL SIDE BETS THE EXACT MILLISECOND A LIFE IS LOST:
         resolveFirstToLoseBets(lobby, roundLoser);
 
         if (loserPlayer.lives <= 0 && !loserPlayer.eliminated) {
