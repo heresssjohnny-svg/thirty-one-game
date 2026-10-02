@@ -226,7 +226,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_VC_STATUS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username === currentUsername);
+                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.idSocket === ws || s.username === currentUsername);
                         if (p) {
                             let wasInVC = p.inVC;
                             p.inVC = !!data.inVC;
@@ -457,13 +457,13 @@ wss.on('connection', (ws) => {
                 case 'REQUEST_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let activeSender = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws || s.username === currentUsername);
-                        let requesterName = activeSender ? activeSender.username : currentUsername;
+                        let requesterName = currentUsername;
                         
                         let targetPlayer = lobby.players.find(p => p.username === data.targetUsername);
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
                             if (!targetPlayer.peekIncoming) targetPlayer.peekIncoming = {};
                             targetPlayer.peekIncoming[requesterName] = true;
+                            console.log(`[Peek Request] ${requesterName} requested to peek at ${data.targetUsername}`);
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
