@@ -113,15 +113,16 @@
             height: 4px;
         }
 
-        .vc-btn-wrapper {
+        .vc-control-group {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            background: rgba(30, 41, 59, 0.8);
-            border: 1px solid rgba(255,255,255,0.12);
-            padding: 2px 6px;
+            gap: 5px;
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(255,255,255,0.15);
+            padding: 3px 8px;
             border-radius: 6px;
         }
+
         .led-indicator {
             width: 8px;
             height: 8px;
@@ -353,12 +354,13 @@
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             
-            <div class="vc-btn-wrapper">
+            <!-- RECREATED CROSS-PLATFORM VOICE CHAT COMPONENT -->
+            <div class="vc-control-group">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-btn" onclick="toggleVoiceChat()" style="background:transparent; border:none; box-shadow:none; padding:2px 4px;">VC: <span id="vc-status">Off</span></button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleUniversalVoiceChat()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" id="vc-mute-btn" onclick="toggleMicMuteState()" style="padding: 3px 6px; font-size: 0.7rem; display: none;">Mute</button>
             </div>
 
-            <button class="secondary" id="mute-btn" onclick="toggleMuteMic()" style="display:none;">Mute Mic</button>
             <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
             
             <div id="chat-container">
@@ -1048,61 +1050,68 @@
             box.scrollTop = box.scrollHeight;
         }
 
-        async function toggleVoiceChat() {
-            let status = document.getElementById('vc-status');
-            let muteBtn = document.getElementById('mute-btn');
-            let ledLight = document.getElementById('vc-led');
+        // FULLY RECREATED CROSS-PLATFORM VOICE CHAT LOGIC (CAPACITOR & WEBVIEW COMPATIBLE)
+        async function toggleUniversalVoiceChat() {
+            let btn = document.getElementById('vc-main-btn');
+            let muteBtn = document.getElementById('vc-mute-btn');
+            let led = document.getElementById('vc-led');
 
-            if (status.innerText === 'Off') {
-                try {
-                    localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                    status.innerText = 'On';
-                    ledLight.classList.add('active'); 
-                    muteBtn.style.display = 'inline-block';
-                    peerConnections = {};
-                    sendVCStatusUpdate();
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        refreshLobbies();
-                    }
-                } catch (e) {
-                    alert('Microphone access denied or unavailable.');
-                }
-            } else {
-                if (localAudioStream) {
-                    localAudioStream.getTracks().forEach(t => t.stop());
-                    localAudioStream = null;
-                }
+            if (localAudioStream) {
+                // Turn Off VC
+                localAudioStream.getTracks().forEach(track => track.stop());
+                localAudioStream = null;
                 for (let user in peerConnections) {
                     peerConnections[user].close();
                     delete peerConnections[user];
                 }
-                status.innerText = 'Off';
-                ledLight.classList.remove('active'); 
+                btn.innerText = '🎙️ Voice: Off';
                 muteBtn.style.display = 'none';
+                led.classList.remove('active');
                 isMicMuted = false;
-                muteBtn.innerText = 'Mute Mic';
-                sendVCStatusUpdate();
+                sendVCStatusInternal(false, false);
+                showCenterNotification("Voice Chat Disconnected");
+            } else {
+                // Turn On VC with Mobile WebView Permission Handlers
+                try {
+                    localAudioStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+                        video: false 
+                    });
+                    btn.innerText = '🎙️️ Voice: On';
+                    muteBtn.style.display = 'inline-block';
+                    muteBtn.innerText = 'Mute';
+                    led.classList.add('active');
+                    isMicMuted = false;
+                    peerConnections = {};
+                    sendVCStatusInternal(true, false);
+                    showCenterNotification("Voice Chat Connected!");
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        refreshLobbies();
+                    }
+                } catch (err) {
+                    console.error('Microphone permission error:', err);
+                    alert('Microphone permission required for Voice Chat. Please allow microphone access in your device settings.');
+                }
             }
         }
 
-        function toggleMuteMic() {
+        function toggleMicMuteState() {
             if (!localAudioStream) return;
             isMicMuted = !isMicMuted;
             localAudioStream.getAudioTracks().forEach(track => {
                 track.enabled = !isMicMuted;
             });
-            let muteBtn = document.getElementById('mute-btn');
-            muteBtn.innerText = isMicMuted ? 'Unmute Mic' : 'Mute Mic';
-            sendVCStatusUpdate();
+            let muteBtn = document.getElementById('vc-mute-btn');
+            muteBtn.innerText = isMicMuted ? 'Unmute' : 'Mute';
+            sendVCStatusInternal(true, isMicMuted);
         }
 
-        function sendVCStatusUpdate() {
-            let status = document.getElementById('vc-status').innerText === 'On';
+        function sendVCStatusInternal(inVC, isMuted) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'UPDATE_VC_STATUS',
-                    inVC: status,
-                    isMuted: isMicMuted
+                    inVC: inVC,
+                    isMuted: isMuted
                 }));
             }
         }
