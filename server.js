@@ -441,7 +441,7 @@ wss.on('connection', (ws) => {
                         touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
-                            player.ready = data.ready;
+                            player.ready = !!data.ready;
 
                             let activeParticipants = getActiveParticipants(lobby);
                             let allReady = activeParticipants.every(p => p.ready || lobby.bots.some(b => b.username === p.username));
