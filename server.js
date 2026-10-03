@@ -39,13 +39,14 @@ function createDeck() {
     return deck;
 }
 
+// Resets or initializes the 20-minute inactivity timer for a lobby
 function touchLobbyActivity(lobby) {
     if (lobby.inactivityTimer) {
         clearTimeout(lobby.inactivityTimer);
     }
     lobby.inactivityTimer = setTimeout(() => {
         closeInactiveLobby(lobby.code);
-    }, 2 * 60 * 1000); // 2 minutes inactivity timeout
+    }, 20 * 60 * 1000); // 20 minutes
 }
 
 function closeInactiveLobby(code) {
@@ -53,7 +54,7 @@ function closeInactiveLobby(code) {
     if (!lobby) return;
 
     console.log(`[Lobby Timeout] Closing inactive lobby: ${code}`);
-    let closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to 2 minutes of inactivity.' });
+    let closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to 20 minutes of inactivity.' });
 
     lobby.players.forEach(p => {
         if (p.id && p.id.readyState === WebSocket.OPEN) {
