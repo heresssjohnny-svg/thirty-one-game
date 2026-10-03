@@ -132,10 +132,7 @@ wss.on('connection', (ws) => {
                         fedCardsTracker: {},
                         endGameVotes: {},
                         chatHistory: [],
-                        playlist: [
-                            { title: "Lobby Chill Beats", url: "background-music.mp3" },
-                            { title: "Card Night Groove", url: "background-music.mp3" }
-                        ],
+                        playlist: [],
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
@@ -196,8 +193,8 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
                         let title = (data.title || '').trim();
-                        let url = (data.url || '').trim() || 'background-music.mp3';
-                        if (title) {
+                        let url = (data.url || '').trim();
+                        if (title && url) {
                             if (!lobby.playlist) lobby.playlist = [];
                             lobby.playlist.push({ title, url });
                             lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the playlist!`;
