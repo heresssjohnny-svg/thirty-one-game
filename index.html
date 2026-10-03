@@ -96,7 +96,7 @@
         button.secondary:hover { background: rgba(51, 65, 85, 0.95); }
         
         .vc-control-group {
-            display: inline-flex;
+            display: none; /* Hidden by default in main menu */
             align-items: center;
             gap: 4px;
             background: rgba(30, 41, 59, 0.85);
@@ -360,7 +360,7 @@
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
             
-            <div class="vc-control-group">
+            <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
                 <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
@@ -774,7 +774,7 @@
             if (vcUsers.length === 0) {
                 listDiv.innerHTML = 'No one currently in voice chat.';
             } else {
-                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️️ (Active)'}</li>`).join('') + '</ul>';
+                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
             }
             toggleModal('vc-participants-modal');
         }
@@ -1167,7 +1167,7 @@
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️ Voice: Off';
+                btn.innerText = '🎙️️ Voice: Off';
                 led.classList.remove('active');
                 peerConnections = {};
                 sendVCStatusInternal(true, true);
@@ -1624,6 +1624,7 @@
             document.getElementById('game-view').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'inline-block';
             document.getElementById('leave-lobby-btn').style.display = 'inline-block';
+            document.getElementById('vc-group-container').style.display = 'inline-flex'; // Show VC controls in lobby
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
@@ -2121,6 +2122,7 @@
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
+            document.getElementById('vc-group-container').style.display = 'none'; // Hide VC controls in main menu
             document.getElementById('pool-draw-modal').style.display = 'none';
             document.getElementById('tie-breaker-reveal-modal').style.display = 'none';
             document.getElementById('ledger-modal').style.display = 'none';
