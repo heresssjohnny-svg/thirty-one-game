@@ -1248,16 +1248,15 @@ function handleTurnAction(lobby, ws, actionType) {
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
         currentPlayer.cards.push(lobby.deck.pop());
-        // Reset immediate discard lock on deck draw
-        currentPlayer.lastPickedDiscardCard = null;
+        currentPlayer.pickedUpDiscardCard = null;
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
         broadcastLobbyUpdate(lobby.code);
     } else if (actionType === 'DRAW_DISCARD') {
         if (lobby.discardPile.length > 0) {
             let card = lobby.discardPile.pop();
             currentPlayer.cards.push(card);
-            // Track the exact card drawn from discard to prevent immediate discarding on the same turn
-            currentPlayer.lastPickedDiscardCard = { val: card.val, suit: card.suit };
+            // Record exact card drawn from discard pile
+            currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
 
             let isInitialDeal = lobby.initialDealCard && 
                                 card.val === lobby.initialDealCard.val && 
@@ -1315,28 +1314,28 @@ function handleDiscardAction(lobby, ws, cardIndex) {
     if (currentPlayer.cards.length !== 4) return;
 
     if (currentPlayer.cards[cardIndex]) {
-        let cardToDiscard = currentPlayer.cards[cardIndex];
+        let cardToPutDown = currentPlayer.cards[cardIndex];
 
-        // NEW RULE CHECK: If player tries to discard the exact same card they just picked up from discard on this turn
-        if (currentPlayer.lastPickedDiscardCard && 
-            cardToDiscard.val === currentPlayer.lastPickedDiscardCard.val && 
-            cardToDiscard.suit === currentPlayer.lastPickedDiscardCard.suit) {
+        // NEW RULE: If player puts back the exact same card they just drew from the discard pile in the same turn
+        if (currentPlayer.pickedUpDiscardCard && 
+            cardToPutDown.val === currentPlayer.pickedUpDiscardCard.val && 
+            cardToPutDown.suit === currentPlayer.pickedUpDiscardCard.suit) {
             
-            // Reject ending turn. Send error/warning message to player and force them to draw from deck instead or discard a different card.
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ 
-                    type: 'ERROR', 
-                    message: 'You cannot immediately discard the same card you just picked up from the discard pile! Draw from the deck or discard a different card.' 
-                }));
-            }
-            return;
+            // Remove the card from hand and push it back onto discard pile
+            let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
+            lobby.discardPile.push(discarded);
+            
+            // Clear the tracked card so they can't infinite loop, but DO NOT advance turn.
+            currentPlayer.pickedUpDiscardCard = null;
+            lobby.phaseMessage = `📢 ${currentPlayer.username} put the card back down into the discard pile. They must take another card to end their turn.`;
+            
+            broadcastLobbyUpdate(lobby.code);
+            return; // Turn continues! Player must draw again.
         }
 
         let discarded = currentPlayer.cards.splice(cardIndex, 1)[0];
+        currentPlayer.pickedUpDiscardCard = null;
         
-        // Clear the pickup lock once a valid legal discard is made
-        currentPlayer.lastPickedDiscardCard = null;
-
         if (lobby.lastDiscardPickup && 
             lobby.lastDiscardPickup.username === currentPlayer.username &&
             lobby.lastDiscardPickup.card.val === discarded.val &&
