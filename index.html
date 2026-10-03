@@ -259,9 +259,21 @@
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -15px; font-size: 0.65rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; }
+        .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; }
         .seat:hover { border-color: var(--accent-gold); }
-        .seat-0 { bottom: -5px; left: calc(50% - 55px); border-color: var(--accent-gold); }
+        
+        /* ILLUMINATING ACTIVE TURN SEAT */
+        .seat.current-turn-seat {
+            border: 2px solid var(--accent-gold);
+            box-shadow: 0 0 15px var(--accent-gold);
+            transform: scale(1.05);
+        }
+        .seat.current-turn-seat .seat-name-area b {
+            color: var(--accent-gold);
+            text-shadow: 0 0 6px rgba(250, 204, 21, 0.8);
+        }
+
+        .seat-0 { bottom: -5px; left: calc(50% - 55px); }
         .seat-1 { bottom: 25px; left: 6px; }
         .seat-2 { top: 25px; left: 8px; }
         .seat-3 { top: -10px; left: calc(50% - 55px); }
@@ -585,7 +597,16 @@
         let localAudioStream = null;
         let isMicMuted = false;
         let peerConnections = {};
-        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        
+        const rtcConfig = { 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun.stunprotocol.org:3478' }
+            ] 
+        };
 
         let isMusicMuted = false;
 
@@ -1057,7 +1078,11 @@
             } else {
                 try {
                     localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+                        audio: { 
+                            echoCancellation: true, 
+                            noiseSuppression: true, 
+                            autoGainControl: true 
+                        }, 
                         video: false 
                     });
                     btn.innerText = '🎙 Voice: On';
@@ -1110,13 +1135,17 @@
                     peerConnections[peerUser] = pc;
                     pc.pendingCandidates = [];
 
-                    localAudioStream.getTracks().forEach(track => pc.addTrack(track, localAudioStream));
+                    localAudioStream.getTracks().forEach(track => {
+                        pc.addTrack(track, localAudioStream);
+                    });
 
                     pc.ontrack = (event) => {
+                        console.log(`[Audio Stream Received] Connected with peer: ${peerUser}`);
                         let audioElem = new Audio();
                         audioElem.srcObject = event.streams[0];
                         audioElem.autoplay = true;
-                        audioElem.play().catch(e => {});
+                        audioElem.playsInline = true;
+                        audioElem.play().catch(e => console.error("Audio playback error:", e));
                     };
 
                     pc.onicecandidate = (event) => {
@@ -1129,6 +1158,10 @@
                         }
                     };
 
+                    pc.onconnectionstatechange = () => {
+                        console.log(`[WebRTC State -> ${peerUser}]: ${pc.connectionState}`);
+                    };
+
                     if (currentUsername < peerUser) {
                         pc.createOffer().then(offer => {
                             return pc.setLocalDescription(offer);
@@ -1138,7 +1171,7 @@
                                 target: peerUser,
                                 signal: { sdp: pc.localDescription }
                             }));
-                        });
+                        }).catch(err => console.error("Create offer error:", err));
                     }
                 }
             });
@@ -1151,13 +1184,17 @@
                 pc = new RTCPeerConnection(rtcConfig);
                 peerConnections[sender] = pc;
                 pc.pendingCandidates = [];
-                localAudioStream.getTracks().forEach(track => pc.addTrack(track, localAudioStream));
+                localAudioStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localAudioStream);
+                });
 
                 pc.ontrack = (event) => {
+                    console.log(`[Audio Stream Received] Connected with peer: ${sender}`);
                     let audioElem = new Audio();
                     audioElem.srcObject = event.streams[0];
                     audioElem.autoplay = true;
-                    audioElem.play().catch(e => {});
+                    audioElem.playsInline = true;
+                    audioElem.play().catch(e => console.error("Audio playback error:", e));
                 };
 
                 pc.onicecandidate = (event) => {
@@ -1169,32 +1206,40 @@
                         }));
                     }
                 };
+
+                pc.onconnectionstatechange = () => {
+                    console.log(`[WebRTC State -> ${sender}]: ${pc.connectionState}`);
+                };
             }
 
-            if (signal.sdp) {
-                await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-                if (signal.sdp.type === 'offer') {
-                    let answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    ws.send(JSON.stringify({
-                        type: 'WEBRTC_SIGNAL',
-                        target: sender,
-                        signal: { sdp: pc.localDescription }
-                    }));
-                }
-                if (pc.pendingCandidates) {
-                    while (pc.pendingCandidates.length > 0) {
-                        let cand = pc.pendingCandidates.shift();
-                        await pc.addIceCandidate(cand);
+            try {
+                if (signal.sdp) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+                    if (signal.sdp.type === 'offer') {
+                        let answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        ws.send(JSON.stringify({
+                            type: 'WEBRTC_SIGNAL',
+                            target: sender,
+                            signal: { sdp: pc.localDescription }
+                        }));
+                    }
+                    if (pc.pendingCandidates) {
+                        while (pc.pendingCandidates.length > 0) {
+                            let cand = pc.pendingCandidates.shift();
+                            await pc.addIceCandidate(cand);
+                        }
+                    }
+                } else if (signal.candidate) {
+                    let candidateObj = new RTCIceCandidate(signal.candidate);
+                    if (pc.remoteDescription && pc.remoteDescription.type) {
+                        await pc.addIceCandidate(candidateObj);
+                    } else {
+                        pc.pendingCandidates.push(candidateObj);
                     }
                 }
-            } else if (signal.candidate) {
-                let candidateObj = new RTCIceCandidate(signal.candidate);
-                if (pc.remoteDescription && pc.remoteDescription.type) {
-                    await pc.addIceCandidate(candidateObj);
-                } else {
-                    pc.pendingCandidates.push(candidateObj);
-                }
+            } catch (err) {
+                console.error("WebRTC signal handling error:", err);
             }
         }
 
@@ -1402,7 +1447,6 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Handle UI Reset for Ready Button when back in Lobby state
             if (lobby.gameState === 'lobby') {
                 clientState.isReady = false;
                 let readyBtn = document.getElementById('ready-btn');
@@ -1735,8 +1779,13 @@
                 if (p.inVC) {
                     micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
+
+                // Check if this seat belongs to the active turn user to illuminate it
+                let isCurrentTurnUserSeat = (p.username.trim().toLowerCase() === lobby.currentTurnUser.trim().toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+                let turnHighlightClass = isCurrentTurnUserSeat ? ' current-turn-seat' : '';
+
                 html += `
-                    <div class="seat seat-${p.seat}">
+                    <div class="seat seat-${p.seat}${turnHighlightClass}">
                         <div class="seat-name-area" onclick="tapSeat('${p.username}')">
                             <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
