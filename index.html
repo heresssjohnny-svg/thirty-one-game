@@ -1084,8 +1084,11 @@
                             chatBtn.classList.add('unread');
                             chatBtn.innerText = '💬 Chat❗';
                         }
-                    } else if (data.type === 'WEBRTC_SIGNAL') handleWebRTCSignal(data.sender, data.signal);
-                    else if (data.type === 'LEFT_LOBBY') {
+                    } else if (data.type === 'WEBRTC_SIGNAL') {
+                        if (data.lobbyCode === currentJoinedCode) {
+                            handleWebRTCSignal(data.sender, data.signal);
+                        }
+                    } else if (data.type === 'LEFT_LOBBY') {
                         currentJoinedCode = null;
                         resetToMainMenu();
                     }
@@ -1286,20 +1289,21 @@
             lobby.players.forEach(p => { if (p.inVC && p.username !== currentUsername) vcParticipants.push(p.username); });
             lobby.spectators.forEach(s => { if (s.inVC && s.username !== currentUsername) vcParticipants.push(s.username); });
 
+            // Re-evaluate connections when participant set changes
             vcParticipants.forEach(peerUser => {
                 if (!peerConnections[peerUser] || peerConnections[peerUser].connectionState === 'failed' || peerConnections[peerUser].connectionState === 'closed') {
                     if (peerConnections[peerUser]) {
                         peerConnections[peerUser].close();
                         delete peerConnections[peerUser];
                     }
-                    console.log(`[WebRTC] Re-establishing connection with participant: ${peerUser}`);
+                    console.log(`[WebRTC] Establishing connection with lobby participant: ${peerUser}`);
                     setupPeerConnection(peerUser, true);
                 }
             });
 
             Object.keys(peerConnections).forEach(peerUser => {
                 if (!vcParticipants.includes(peerUser)) {
-                    console.log(`[WebRTC] Participant left voice chat: ${peerUser}. Closing connection.`);
+                    console.log(`[WebRTC] Participant left lobby voice chat: ${peerUser}. Closing connection.`);
                     peerConnections[peerUser].close();
                     delete peerConnections[peerUser];
                 }
