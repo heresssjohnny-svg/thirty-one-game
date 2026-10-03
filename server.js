@@ -39,7 +39,7 @@ function createDeck() {
     return deck;
 }
 
-// Resets or initializes the 20-minute inactivity timer for a lobby
+// 20-minute inactivity timer reset by any user action
 function touchLobbyActivity(lobby) {
     if (lobby.inactivityTimer) {
         clearTimeout(lobby.inactivityTimer);
@@ -282,7 +282,7 @@ wss.on('connection', (ws) => {
                             p.isMuted = !!data.isMuted;
 
                             if (!wasInVC && p.inVC) {
-                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
+                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️️ ${currentUsername} joined the voice chat.` };
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
                                 lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
                             }
