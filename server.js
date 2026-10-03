@@ -931,6 +931,10 @@ function resolveFirstToLoseBets(lobby, loserName) {
     if (!lobby.activeBets || lobby.activeBets.length === 0) return;
     if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
 
+    let allParts = [...lobby.players, ...lobby.bots];
+    let loserObj = allParts.find(p => p.username.trim().toLowerCase() === loserName.trim().toLowerCase());
+    let loserLivesExhausted = loserObj && loserObj.lives <= 0;
+
     let remainingBets = [];
     
     lobby.activeBets.forEach(bet => {
@@ -938,12 +942,16 @@ function resolveFirstToLoseBets(lobby, loserName) {
             let proposer = bet.proposer;
             let target = bet.target;
 
-            // Strict rule: Paid out only if the targeted player loses before the proposer
-            if (bet.pickUser === loserName) {
-                addLedgerDebt(lobby.sideBetLedger, target, proposer, bet.wagerAmt);
-            } else if (bet.proposer === loserName) {
-                // If proposer loses first, target does NOT owe the proposer
-                // So we simply drop/expire the bet without transferring debt
+            // Strict rule: Paid out only if the target loses ALL lives before the proposer loses all lives
+            if (bet.pickUser.trim().toLowerCase() === loserName.trim().toLowerCase() && loserLivesExhausted) {
+                let proposerObj = allParts.find(p => p.username.trim().toLowerCase() === proposer.trim().toLowerCase());
+                let proposerAlive = proposerObj && proposerObj.lives > 0;
+
+                if (proposerAlive) {
+                    addLedgerDebt(lobby.sideBetLedger, target, proposer, bet.wagerAmt);
+                } else {
+                    // Proposer also lost all lives, so bet is voided/expired
+                }
             } else {
                 remainingBets.push(bet);
             }
@@ -997,7 +1005,6 @@ function awardTournamentWinner(lobby, winner) {
 
     broadcastLobbyUpdate(lobby.code);
 
-    // Automatically trigger return to lobby after announcing winner
     if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
     lobby.nextHandTimer = setTimeout(() => {
         if (lobbies[lobby.code]) {
@@ -1009,11 +1016,12 @@ function awardTournamentWinner(lobby, winner) {
             l.pendingBets = [];
             l.globalProposals = [];
             
+            // Explicitly reset player ready states to false so ready button resets
             l.players.forEach(p => {
                 p.lives = 2;
                 p.eliminated = false;
                 p.cards = [];
-                p.ready = false;
+                p.ready = false; 
                 p.nextHandReady = false;
                 p.peekRequests = {};
                 p.peekAllowed = {};
@@ -1451,7 +1459,7 @@ function triggerRoundOver(lobby, msg) {
 
 function rotateDealer(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
-    lobby.index = (lobby.dealerIndex + 1) % allParts.length;
+    lobby.dealerIndex = (lobby.dealerIndex + 1) % allParts.length;
 }
 
 function calculateScore(cards) {
