@@ -39,14 +39,13 @@ function createDeck() {
     return deck;
 }
 
-// Resets or initializes the 2-minute inactivity timer for a lobby
 function touchLobbyActivity(lobby) {
     if (lobby.inactivityTimer) {
         clearTimeout(lobby.inactivityTimer);
     }
     lobby.inactivityTimer = setTimeout(() => {
         closeInactiveLobby(lobby.code);
-    }, 2 * 60 * 1000); // 2 minutes
+    }, 2 * 60 * 1000); // 2 minutes inactivity timeout
 }
 
 function closeInactiveLobby(code) {
@@ -59,7 +58,6 @@ function closeInactiveLobby(code) {
     lobby.players.forEach(p => {
         if (p.id && p.id.readyState === WebSocket.OPEN) {
             p.id.send(closePayload);
-            // Optionally send forced leave command so client UI resets
             p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
         }
     });
@@ -89,7 +87,6 @@ wss.on('connection', (ws) => {
         }
 
         try {
-            // Touch lobby activity on any incoming user action
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 touchLobbyActivity(lobbies[currentLobbyCode]);
             }
@@ -483,7 +480,7 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠ Unanimous vote! Game ended, returning to lobby ready-up.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
