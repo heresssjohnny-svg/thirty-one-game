@@ -39,7 +39,6 @@ function createDeck() {
     return deck;
 }
 
-// 20-minute inactivity timer reset by any user action
 function touchLobbyActivity(lobby) {
     if (lobby.inactivityTimer) {
         clearTimeout(lobby.inactivityTimer);
@@ -282,7 +281,7 @@ wss.on('connection', (ws) => {
                             p.isMuted = !!data.isMuted;
 
                             if (!wasInVC && p.inVC) {
-                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️️ ${currentUsername} joined the voice chat.` };
+                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
                                 lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
                             }
@@ -799,6 +798,7 @@ function getSanitizedLobby(lobby, wsId) {
         drawPool: lobby.drawPool.map((c, idx) => ({ index: idx, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
+        knockedBy: lobby.knockedBy || null,
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
             
@@ -956,6 +956,7 @@ function startRound(lobby) {
     lobby.lastDiscardPickup = null;
     lobby.fedCardsTracker = {};
     lobby.tiedParticipantsList = [];
+    lobby.knockedBy = null;
     
     lobby.players.forEach(p => {
         p.peekRequests = {};
@@ -981,7 +982,6 @@ function startRound(lobby) {
 
     lobby.gameState = 'playing';
     lobby.phaseMessage = null;
-    lobby.knockedBy = null;
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
     
@@ -1086,6 +1086,7 @@ function awardTournamentWinner(lobby, winner) {
             l.activeBets = [];
             l.pendingBets = [];
             l.globalProposals = [];
+            l.knockedBy = null;
             
             l.players.forEach(p => {
                 p.lives = 2;
@@ -1149,7 +1150,7 @@ function checkAndRunBotTurn(lobby) {
                 }
 
                 let threshold = activeParts.length > 2 ? 21 : 25;
-                if (lobby.turnsTakenThisRound >= activeParts.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing') {
+                if (lobby.turnsTakenThisRound >= activeParts.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing' && !lobby.knockedBy) {
                     executeKnock(lobby, currentPlayer);
                     return;
                 }
@@ -1221,7 +1222,7 @@ function checkAndRunBotTurn(lobby) {
                     return;
                 }
 
-                if (lobby.turnsTakenThisRound >= activeParts.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing') {
+                if (lobby.turnsTakenThisRound >= activeParts.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing' && !lobby.knockedBy) {
                     executeKnock(lobby, currentPlayer);
                     return;
                 }
@@ -1400,6 +1401,7 @@ function handleKnock(lobby, ws) {
     let allParts = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParts[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws || currentPlayer.eliminated) return;
+    if (lobby.knockedBy) return; // already knocked
 
     let activeParts = getActiveParticipants(lobby);
     if (lobby.turnsTakenThisRound < activeParts.length) return;
