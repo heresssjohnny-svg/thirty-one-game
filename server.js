@@ -197,7 +197,20 @@ wss.on('connection', (ws) => {
                         if (title && url) {
                             if (!lobby.playlist) lobby.playlist = [];
                             lobby.playlist.push({ title, url });
-                            lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the playlist!`;
+                            lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the YouTube playlist!`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
+                    }
+                    break;
+
+                case 'REMOVE_PLAYLIST_SONG':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        let index = data.index;
+                        if (lobby.playlist && lobby.playlist[index]) {
+                            let removed = lobby.playlist.splice(index, 1)[0];
+                            lobby.phaseMessage = `🎵 ${currentUsername} removed "${removed.title}" from the playlist.`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
