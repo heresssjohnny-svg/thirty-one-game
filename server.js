@@ -654,6 +654,7 @@ wss.on('connection', (ws) => {
                         if (targetRec && targetRec.id && targetRec.id.readyState === WebSocket.OPEN) {
                             targetRec.id.send(JSON.stringify({
                                 type: 'WEBRTC_SIGNAL',
+                                lobbyCode: currentLobbyCode,
                                 sender: currentUsername,
                                 signal: data.signal
                             }));
