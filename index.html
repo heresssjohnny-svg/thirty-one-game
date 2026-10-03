@@ -370,12 +370,11 @@
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    <audio id="bg-audio" src="background-music.mp3" loop preload="auto"></audio>
+    <audio id="bg-audio" loop preload="auto"></audio>
 
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <!-- Music Player Button Toggle -->
             <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
 
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
@@ -504,7 +503,6 @@
         </div>
     </main>
 
-    <!-- Music Player Modal Window -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:340px;">
             <h3 style="color:var(--accent-gold);">🎵 Playlist & Music Player</h3>
@@ -519,12 +517,12 @@
 
             <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:4px;">Current Playlist Queue:</div>
             <div id="playlist-container" style="max-height:130px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
-                <div style="padding:4px; color:#64748b;">No songs in queue.</div>
+                <div style="padding:4px; color:#64748b;">No songs in queue. Add a song URL below.</div>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
                 <label style="text-align:left;">Add Song to Playlist</label>
-                <input type="text" id="new-song-title" placeholder="Song Title (e.g. Chill Lo-Fi Beat)" style="font-size:0.75rem; padding:6px;">
+                <input type="text" id="new-song-title" placeholder="Song Title (e.g. Card Night Track)" style="font-size:0.75rem; padding:6px;">
                 <input type="text" id="new-song-url" placeholder="Audio URL (.mp3 or stream link)" style="font-size:0.75rem; padding:6px;">
                 <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px;">Add to Queue</button>
             </div>
@@ -669,7 +667,7 @@
                 bgAudio.pause();
                 btnModal.innerText = 'Music: Off';
             } else {
-                bgAudio.play().catch(e => {});
+                if (bgAudio.src) bgAudio.play().catch(e => {});
                 btnModal.innerText = 'Music: On';
             }
         }
@@ -688,7 +686,7 @@
                 if (sliderVal > 0 && isMusicMuted) {
                     isMusicMuted = false;
                     localStorage.setItem('saved_music_muted', isMusicMuted);
-                    bgAudio.play().catch(e => {});
+                    if (bgAudio.src) bgAudio.play().catch(e => {});
                     document.getElementById('music-modal-mute-btn').innerText = 'Music: On';
                 }
             }
@@ -704,14 +702,14 @@
             let titleInput = document.getElementById('new-song-title');
             let urlInput = document.getElementById('new-song-url');
             let title = titleInput.value.trim();
-            let url = urlInput.value.trim() || 'background-music.mp3';
+            let url = urlInput.value.trim();
 
-            if (title && ws && ws.readyState === WebSocket.OPEN) {
+            if (title && url && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url }));
                 titleInput.value = '';
                 urlInput.value = '';
             } else {
-                alert("Please enter a song title.");
+                alert("Please provide both a song title and a valid audio URL.");
             }
         }
 
@@ -752,7 +750,6 @@
                     bgAudio.pause();
                     musicBtnModal.innerText = 'Music: Off';
                 } else {
-                    bgAudio.play().catch(() => {});
                     musicBtnModal.innerText = 'Music: On';
                 }
             }
@@ -788,7 +785,7 @@
 
         window.addEventListener('click', () => {
             let bgAudio = document.getElementById('bg-audio');
-            if (bgAudio && bgAudio.paused && !isMusicMuted) {
+            if (bgAudio && bgAudio.paused && !isMusicMuted && bgAudio.src) {
                 bgAudio.play().catch(e => {});
             }
         }, { once: true });
@@ -1632,7 +1629,6 @@
                 lastSyncedChatLength = lobby.chatHistory.length;
             }
 
-            // Render shared playlist inside music modal
             let playlistDiv = document.getElementById('playlist-container');
             if (lobby.playlist && lobby.playlist.length > 0) {
                 playlistDiv.innerHTML = lobby.playlist.map(song => `
@@ -1642,7 +1638,7 @@
                     </div>
                 `).join('');
             } else {
-                playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue.</div>';
+                playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a song URL below.</div>';
             }
 
             clientState.gameState = lobby.gameState;
