@@ -355,8 +355,8 @@
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <!-- Music Button opening YouTube Playlist Window -->
-            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 YouTube Playlist</button>
+            <!-- Music Button -->
+            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
 
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
@@ -494,19 +494,36 @@
         </div>
     </div>
 
-    <!-- YouTube Playlist & Player Modal Window -->
+    <!-- YouTube Playlist & Music Player Modal Window -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
-            <h3 style="color:var(--accent-gold);">🎵 YouTube Playlist & Player</h3>
+            <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Playlist</h3>
             
+            <!-- Embedded YouTube Player Frame -->
             <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
                 <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
                     No song playing
                 </div>
             </div>
 
+            <!-- Shared Play / Pause / Skip controls -->
+            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
+            </div>
+
+            <!-- Separate individual volume and mute controls -->
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
+                <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.7rem; color:var(--text-muted);">Personal Vol:</span>
+                    <input type="range" id="individual-volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="adjustIndividualVolume(this.value)" style="width:80px; accent-color:var(--accent-gold);">
+                </div>
+            </div>
+
             <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:2px;">Shared Lobby Queue:</div>
-            <div id="playlist-container" style="max-height:120px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
+            <div id="playlist-container" style="max-height:100px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
                 <div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>
             </div>
 
@@ -590,7 +607,7 @@
                     <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
                     <li><b>Amended 21 out of 31 Rule:</b> If a player feeds an opponent an Ace and a 10-value card from the discard pile, the feeder only loses all lives if that fed player achieves a full 31 points at any point during the round!</li>
                 </ul>
-                <p><b>Knocking:</b> Once every player has taken at least 1 turn, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
+                <p><b>Knocking:</b> Once every player has taken at least 1, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
                 <p><b>Side Betting & Review:</b></p>
                 <ul style="padding-left:14px;">
                     <li><b>3+ Players:</b> Tap any player's name to propose a First to Lose elimination bet.</li>
@@ -621,7 +638,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [], playlist: [] };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [], playlist: [], currentSongIndex: 0, isPlaying: false };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -634,7 +651,8 @@
         let peerConnections = {};
         let activePeerAudioElements = [];
         let latestLobbySnapshot = null;
-        let currentPlaylistQueue = [];
+        let individualVolume = 0.8;
+        let isIndividualMuted = false;
         
         const rtcConfig = { 
             iceServers: [
@@ -646,11 +664,12 @@
             ] 
         };
 
-        function parseYouTubeEmbedUrl(url) {
+        function parseYouTubeEmbedUrl(url, autoplay = true) {
             let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
             let match = url.match(regExp);
+            let autoStr = autoplay ? '1' : '0';
             if (match && match[2].length === 11) {
-                return `https://www.youtube.com/embed/${match[2]}?autoplay=1`;
+                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}`;
             }
             return url;
         }
@@ -666,7 +685,7 @@
                 return;
             }
 
-            let embedUrl = parseYouTubeEmbedUrl(rawUrl);
+            let embedUrl = parseYouTubeEmbedUrl(rawUrl, false);
 
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl }));
@@ -682,12 +701,42 @@
             }
         }
 
-        function playYouTubeSong(url, title) {
+        function sendMusicControl(action, index = null) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'CONTROL_MUSIC', action, index }));
+            }
+        }
+
+        function adjustIndividualVolume(val) {
+            individualVolume = parseFloat(val);
+            document.getElementById('individual-volume-slider').value = individualVolume;
             let container = document.getElementById('youtube-embed-container');
+            let iframe = container.querySelector('iframe');
+            if (iframe) {
+                // Note: Direct iframe volume manipulation is restricted by YouTube security unless using the YouTube IFrame API,
+                // but users can adjust iframe audio directly or via player controls.
+            }
+        }
+
+        function toggleIndividualMusicMute() {
+            isIndividualMuted = !isIndividualMuted;
+            let btn = document.getElementById('individual-mute-btn');
+            btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+        }
+
+        function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
+            let container = document.getElementById('youtube-embed-container');
+            if (!playlist || playlist.length === 0 || !isPlaying) {
+                container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing</div>';
+                return;
+            }
+
+            let currentSong = playlist[currentIndex] || playlist[0];
+            let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
+
             container.innerHTML = `
-                <iframe width="100%" height="100%" src="${url}" title="${title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
             `;
-            showCenterNotification(`Now Playing: ${title}`);
         }
 
         function openVcParticipantsModal() {
@@ -1596,7 +1645,7 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
                         <span>🎵 <b>${song.title}</b></span>
                         <div style="display:flex; gap:3px;">
-                            <button class="secondary" style="font-size:0.6rem; padding:2px 5px; background:#2563eb;" onclick="playYouTubeSong('${song.url}', '${song.title}')">Play</button>
+                            <button class="secondary" style="font-size:0.6rem; padding:2px 5px; background:#2563eb;" onclick="sendMusicControl('SELECT', ${idx})">Play</button>
                             <button class="danger" style="font-size:0.6rem; padding:2px 5px;" onclick="removeSongFromPlaylist(${idx})">X</button>
                         </div>
                     </div>
@@ -1604,6 +1653,8 @@
             } else {
                 playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>';
             }
+
+            renderYouTubePlayer(currentPlaylistQueue, lobby.currentSongIndex, lobby.isPlaying);
 
             clientState.gameState = lobby.gameState;
             clientState.playersList = lobby.players.map(p => p.username);
