@@ -902,7 +902,13 @@
         }
 
         function triggerVibration() {
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            try {
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200]);
+                }
+            } catch (e) {
+                console.log("Vibration not supported or blocked by WebView environment");
+            }
         }
 
         function showCenterNotification(msg) {
@@ -1126,11 +1132,23 @@
         function handleWebRTCConnections(lobby) {
             if (!localAudioStream) return;
             let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
-            let allOccupants = [...lobby.players, ...lobby.spectators].map(o => o.username).filter(u => u !== currentUsername);
             
-            allOccupants.forEach(peerUser => {
+            let vcParticipants = [];
+            lobby.players.forEach(p => { if (p.inVC && p.username !== currentUsername) vcParticipants.push(p.username); });
+            lobby.spectators.forEach(s => { if (s.inVC && s.username !== currentUsername) vcParticipants.push(s.username); });
+
+            vcParticipants.forEach(peerUser => {
                 if (!peerConnections[peerUser]) {
+                    console.log(`[WebRTC] New voice chat participant detected: ${peerUser}. Establishing connection...`);
                     setupPeerConnection(peerUser, true);
+                }
+            });
+
+            Object.keys(peerConnections).forEach(peerUser => {
+                if (!vcParticipants.includes(peerUser)) {
+                    console.log(`[WebRTC] Participant left voice chat: ${peerUser}. Closing connection.`);
+                    peerConnections[peerUser].close();
+                    delete peerConnections[peerUser];
                 }
             });
         }
@@ -1779,7 +1797,7 @@
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = '';
                 if (p.inVC) {
-                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️️';
+                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
 
                 let isCurrentTurnUserSeat = (p.username.trim().toLowerCase() === lobby.currentTurnUser.trim().toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
