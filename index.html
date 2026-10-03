@@ -1467,10 +1467,11 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            if (lobby.gameState === 'lobby') {
-                clientState.isReady = false;
+            // Sync ready state with server so button text toggles correctly between Ready Up and Unready
+            if (me) {
+                clientState.isReady = me.ready;
                 let readyBtn = document.getElementById('ready-btn');
-                readyBtn.innerText = 'Ready Up';
+                readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
             }
 
             if (me && me.peekIncoming) {
