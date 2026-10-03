@@ -1111,7 +1111,6 @@ function awardTournamentWinner(lobby, winner) {
             });
             l.spectators = [];
 
-            // Winner deals next game if seated
             let winnerSeatIdx = allParts.findIndex(p => p.username === winner.username);
             l.dealerIndex = winnerSeatIdx !== -1 ? winnerSeatIdx : 0;
 
@@ -1476,7 +1475,6 @@ function resolveRoundEnd(lobby) {
             return;
         }
         
-        // Winner of round deals next game if seated
         let winnerPart = activeParts.find(p => p.username === roundWinner);
         if (winnerPart) {
             let allParts = [...lobby.players, ...lobby.bots];
