@@ -297,7 +297,8 @@
         
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
         
-        #center-notification-banner { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(4, 78, 54, 0.98); border: 2px solid var(--accent-gold); color: var(--text-main); padding: 15px 30px; border-radius: 10px; font-weight: 800; font-size: 1.2rem; text-align: center; z-index: 4000; box-shadow: 0 10px 30px rgba(0,0,0,0.8); display: none; pointer-events: none; }
+        /* Repositioned above deck and draw piles so it never blocks cards */
+        #center-notification-banner { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(4, 78, 54, 0.98); border: 2px solid var(--accent-gold); color: var(--text-main); padding: 8px 20px; border-radius: 8px; font-weight: 800; font-size: 0.9rem; text-align: center; z-index: 4000; box-shadow: 0 6px 20px rgba(0,0,0,0.8); display: none; pointer-events: none; }
         
         #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
         #next-hand-btn { background: #10b981; color: #fff; font-size: 1rem; padding: 10px 20px; border-radius: 6px; font-weight: bold; border: 2px solid #34d399; }
@@ -354,8 +355,6 @@
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
     <audio id="bg-audio" src="background-music.mp3" loop preload="auto"></audio>
-
-    <div id="center-notification-banner">NOTIFICATION</div>
 
     <header>
         <div class="logo">31!</div>
@@ -439,6 +438,9 @@
         </div>
 
         <div id="game-view">
+            <!-- Repositioned notification banner placed above the table area -->
+            <div id="center-notification-banner">NOTIFICATION</div>
+
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
                 <div id="turn-banner">Turn: Waiting...</div>
@@ -888,7 +890,6 @@
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                // Realistic wooden table knock sound using filtered white noise and dual impact pulses
                 [0, 0.14].forEach(delay => {
                     let bufferSize = audioCtx.sampleRate * 0.05;
                     let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -1467,7 +1468,6 @@
             if (lobby.gameState !== lastGameState) {
                 hasChosenPoolCard = false;
                 lastGameState = lobby.gameState;
-                // Hide initial discard pickup modal when round ends
                 if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
                     document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
                 }
@@ -1640,7 +1640,6 @@
                 knockBtn.style.display = 'none';
             }
 
-            // Knock requirements: Must have taken at least 1 turn per active player, and score must meet threshold (25+ standard, 21+ for 3+ players)
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
             let threshold = activePartsCount > 2 ? 21 : 25;
             let myScore = me && me.cards ? calculateLocalScore(me.cards) : 0;
