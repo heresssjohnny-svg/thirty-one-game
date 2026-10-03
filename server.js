@@ -813,6 +813,113 @@ function broadcastLobbyUpdate(code) {
     }
 }
 
+function checkAndRunBotTurn(lobby) {
+    if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
+    let allParts = [...lobby.players, ...lobby.bots];
+    let currentParticipant = allParts[lobby.turnIndex];
+
+    if (currentParticipant && lobby.bots.some(b => b.username === currentParticipant.username) && !currentParticipant.eliminated) {
+        setTimeout(() => {
+            if (lobbies[lobby.code] && lobbies[lobby.code].turnIndex === lobby.turnIndex && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
+                executeBotTurn(lobby, currentParticipant);
+            }
+        }, 1200);
+    }
+}
+
+function executeBotTurn(lobby, bot) {
+    if (bot.cards.length >= 4) return;
+    let activeParts = getActiveParticipants(lobby);
+
+    // 7/10 Intelligence Strategy:
+    // 1. Evaluate current best suit score
+    let currentScore = calculateScore(bot.cards);
+    let threshold = activeParts.length > 2 ? 21 : 25;
+
+    // 2. Decide whether to knock if condition is met
+    if (!lobby.knockedBy && lobby.turnsTakenThisRound >= activeParts.length && currentScore >= threshold && Math.random() < 0.75) {
+        executeKnock(lobby, bot);
+        return;
+    }
+
+    // 3. Decide whether to draw from discard or deck
+    let topDiscard = lobby.discardPile[lobby.discardPile.length - 1];
+    let shouldTakeDiscard = false;
+    if (topDiscard) {
+        let tempHand = [...bot.cards, topDiscard];
+        let bestTempScore = calculateScore(tempHand);
+        if (bestTempScore > currentScore || topDiscard.val === 'A' || topDiscard.points >= 10) {
+            shouldTakeDiscard = Math.random() < 0.85; // 7/10 intelligent pickup assessment
+        }
+    }
+
+    if (shouldTakeDiscard && topDiscard) {
+        lobby.discardPile.pop();
+        bot.cards.push(topDiscard);
+        bot.pickedUpDiscardCard = { val: topDiscard.val, suit: topDiscard.suit };
+        lobby.phaseMessage = `🤖 ${bot.username} drew ${topDiscard.val}${topDiscard.suit} from the discard pile.`;
+    } else {
+        if (lobby.deck.length === 0) lobby.deck = createDeck();
+        let drawn = lobby.deck.pop();
+        bot.cards.push(drawn);
+        bot.pickedUpDiscardCard = null;
+        lobby.phaseMessage = `🤖 ${bot.username} drew a card from the deck.`;
+    }
+
+    // 4. Smart Discard: Drop the card that contributes least to the best suit sum
+    setTimeout(() => {
+        if (!lobbies[lobby.code]) return;
+        let worstIdx = findBotWorstCardIndex(bot.cards, bot.pickedUpDiscardCard);
+        let discarded = bot.cards.splice(worstIdx, 1)[0];
+        bot.pickedUpDiscardCard = null;
+        lobby.discardPile.push(discarded);
+        lobby.lastDiscarder = bot.username;
+
+        if (!lobby.fedCardsTracker[bot.username]) lobby.fedCardsTracker[bot.username] = [];
+        lobby.fedCardsTracker[bot.username].push(discarded);
+
+        lobby.turnsTakenThisRound++;
+
+        let newScore = calculateScore(bot.cards);
+        if (newScore === 31) {
+            allParts.forEach(p => { 
+                if (p !== bot && !p.eliminated) {
+                    p.lives--;
+                    resolveFirstToLoseBets(lobby, p.username);
+                    if (p.lives <= 0) {
+                        p.eliminated = true;
+                        lobby.spectators.push({ idSocket: p.id, username: p.username });
+                    }
+                }
+            });
+            triggerRoundOver(lobby, `Round Over! ${bot.username} hit 31 points! All hands revealed.`);
+        } else {
+            advanceTurnOrResolve(lobby);
+        }
+    }, 1000);
+}
+
+function findBotWorstCardIndex(cards, pickedUpCard) {
+    let suitCounts = {};
+    cards.forEach(c => {
+        if (pickedUpCard && c.val === pickedUpCard.val && c.suit === pickedUpCard.suit) return;
+        suitCounts[c.suit] = (suitCounts[c.suit] || 0) + c.points;
+    });
+
+    let bestSuit = Object.keys(suitCounts).reduce((a, b) => suitCounts[a] > suitCounts[b] ? a : b, cards[0].suit);
+
+    let lowestVal = 99;
+    let worstIdx = 0;
+    cards.forEach((c, idx) => {
+        let weight = c.suit === bestSuit ? c.points : 2;
+        if (weight < lowestVal) {
+            lowestVal = weight;
+            worstIdx = idx;
+        }
+    });
+    return worstIdx;
+}
+
 function getSanitizedLobby(lobby, wsId) {
     let activeParts = getActiveParticipants(lobby);
     let allParticipants = [...lobby.players, ...lobby.bots];
