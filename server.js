@@ -94,14 +94,10 @@ wss.on('connection', (ws) => {
             switch (data.type) {
                 case 'CREATE_LOBBY':
                     currentUsername = (data.username || 'Player').trim();
-                    for (let existingCode in lobbies) {
-                        let l = lobbies[existingCode];
-                        if (l.host.trim().toLowerCase() === currentUsername.toLowerCase() && l.gameState === 'lobby') {
-                            currentLobbyCode = existingCode;
-                            touchLobbyActivity(l);
-                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(l, ws) }));
-                            return;
-                        }
+                    
+                    // Leave existing lobby if any
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        leaveLobby(ws, currentLobbyCode);
                     }
 
                     currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -146,6 +142,10 @@ wss.on('connection', (ws) => {
                 case 'JOIN_LOBBY':
                     let code = (data.code || '').toUpperCase();
                     if (lobbies[code]) {
+                        if (currentLobbyCode && currentLobbyCode !== code) {
+                            leaveLobby(ws, currentLobbyCode);
+                        }
+
                         currentLobbyCode = code;
                         currentUsername = (data.username || 'Player').trim();
                         let lobby = lobbies[code];
@@ -480,12 +480,13 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠️ Unanimous vote! Game ended, returning to lobby ready-up.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
                             lobby.pendingBets = [];
                             lobby.globalProposals = [];
+                            lobby.knockedBy = null;
                             
                             lobby.players.forEach(p => {
                                 p.lives = 2;
@@ -1401,7 +1402,7 @@ function handleKnock(lobby, ws) {
     let allParts = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParts[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws || currentPlayer.eliminated) return;
-    if (lobby.knockedBy) return; // already knocked
+    if (lobby.knockedBy) return;
 
     let activeParts = getActiveParticipants(lobby);
     if (lobby.turnsTakenThisRound < activeParts.length) return;
