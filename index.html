@@ -901,7 +901,6 @@
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                // Slower, louder, realistic 3 knocks on a door/wood table
                 [0, 0.22, 0.44].forEach((delay, index) => {
                     let bufferSize = audioCtx.sampleRate * 0.08;
                     let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -927,6 +926,34 @@
 
                     noise.start(now + delay);
                     noise.stop(now + delay + 0.07);
+                });
+            } else if (type === 'vc_join') {
+                // Ascending two-tone chime for joining voice chat (plays ONLY on user's device)
+                [0, 0.12].forEach((delay, idx) => {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.setValueAtTime(idx === 0 ? 440 : 660, now + delay);
+                    gain.gain.setValueAtTime(0.15, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.2);
+                    osc.start(now + delay);
+                    osc.stop(now + delay + 0.2);
+                });
+            } else if (type === 'vc_leave') {
+                // Descending two-tone chime for disconnecting voice chat (plays ONLY on user's device)
+                [0, 0.12].forEach((delay, idx) => {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.setValueAtTime(idx === 0 ? 660 : 440, now + delay);
+                    gain.gain.setValueAtTime(0.15, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.2);
+                    osc.start(now + delay);
+                    osc.stop(now + delay + 0.2);
                 });
             }
         }
@@ -1115,6 +1142,9 @@
             let led = document.getElementById('vc-led');
 
             if (localAudioStream) {
+                // Play disconnect sound cue ONLY on local device
+                playSound('vc_leave');
+
                 localAudioStream.getTracks().forEach(track => track.stop());
                 localAudioStream = null;
                 for (let user in peerConnections) {
@@ -1137,6 +1167,10 @@
                         }, 
                         video: false 
                     });
+
+                    // Play join sound cue ONLY on local device
+                    playSound('vc_join');
+
                     btn.innerText = '🎙 Voice: On';
                     muteBtn.style.display = 'inline-block';
                     muteBtn.innerText = 'Mute';
@@ -1957,6 +1991,8 @@
         
         function leaveLobby() {
             if (localAudioStream) {
+                // Play disconnect sound cue on local device
+                playSound('vc_leave');
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
@@ -1966,6 +2002,7 @@
 
         function resetToMainMenu() {
             if (localAudioStream) {
+                playSound('vc_leave');
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
