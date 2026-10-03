@@ -132,6 +132,10 @@ wss.on('connection', (ws) => {
                         fedCardsTracker: {},
                         endGameVotes: {},
                         chatHistory: [],
+                        playlist: [
+                            { title: "Lobby Chill Beats", url: "background-music.mp3" },
+                            { title: "Card Night Groove", url: "background-music.mp3" }
+                        ],
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
@@ -184,6 +188,21 @@ wss.on('connection', (ws) => {
                         }
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
+                    }
+                    break;
+
+                case 'ADD_PLAYLIST_SONG':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        let title = (data.title || '').trim();
+                        let url = (data.url || '').trim() || 'background-music.mp3';
+                        if (title) {
+                            if (!lobby.playlist) lobby.playlist = [];
+                            lobby.playlist.push({ title, url });
+                            lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the playlist!`;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                        }
                     }
                     break;
 
@@ -805,6 +824,7 @@ function getSanitizedLobby(lobby, wsId) {
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         knockedBy: lobby.knockedBy || null,
         chatHistory: lobby.chatHistory || [],
+        playlist: lobby.playlist || [],
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
             
@@ -867,7 +887,7 @@ function startDealerDrawPhase(lobby) {
     let deck = createDeck();
     lobby.drawPool = deck.map(card => ({ card: card, chosenBy: null }));
     lobby.drawResults = {};
-    lobby.drawOrderSequence = []; // Track exact order cards were chosen in dealer draw
+    lobby.drawOrderSequence = [];
     lobby.tiedParticipantsList = [];
     lobby.phaseMessage = "Picking for Dealer (Lowest card deals, Ace highest)";
     lobby.gameState = 'dealerDraw';
@@ -946,14 +966,11 @@ function checkDealerDrawComplete(lobby) {
 
         let dealerWinner;
         if (tiedLowest.length > 1) {
-            // Check if the tied low card is a 2 (drawVal for '2' is 2)
             if (lowestDrawVal === 2) {
-                // Find whichever player among the tied set chose their 2 first chronologically
                 let firstTwoChooser = lobby.drawOrderSequence.find(item => item.card.drawVal === 2 && tiedLowest.some(t => t.username === item.username));
                 dealerWinner = firstTwoChooser ? { username: firstTwoChooser.username, card: firstTwoChooser.card } : tiedLowest[0];
                 lobby.phaseMessage = `🎉 ${dealerWinner.username} drew a 2 first and is the Dealer!`;
             } else {
-                // For any other card tie, they must pick again
                 lobby.phaseMessage = `⚠️ Tie for lowest card (${entries[0].card.val}). Picking again!`;
                 broadcastLobbyUpdate(lobby.code);
                 setTimeout(() => {
@@ -994,9 +1011,7 @@ function checkTieBreakerComplete(lobby) {
         let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
         if (tiedLowest.length > 1) {
-            // If there is still a tie for lowest card in the tie-breaker, the tied participants choose again until someone chooses a lower value card
             lobby.phaseMessage = `⚠️ Tie-breaker resulted in a tie! Tied players choose again.`;
-            // Reset draw results only for the tied participants
             tiedNames.forEach(uname => { delete lobby.drawResults[uname]; });
             autoPickForBots(lobby);
             broadcastLobbyUpdate(lobby.code);
