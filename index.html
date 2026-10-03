@@ -362,7 +362,7 @@
             
             <div class="vc-control-group">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceChatOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
             </div>
 
@@ -483,35 +483,35 @@
         </div>
     </main>
 
-    <!-- Voice Chat Participants Modal -->
+    <!-- Voice Chat Participants & Reconnect Modal -->
     <div id="vc-participants-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
             <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
-            <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:180px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
-            <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:6px;">Close</button>
+            <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
+            <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px;">🔄 Reconnect Voice Chat</button>
+            <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:4px;">Close</button>
         </div>
     </div>
 
-    <!-- YouTube Playlist & Music Player Modal Window -->
+    <!-- YouTube Playlist & Player Modal Window -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
             
-            <!-- Embedded YouTube Player Frame -->
             <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
                 <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
                     No song playing
                 </div>
             </div>
 
-            <!-- Shared Play / Pause / Skip controls -->
+            <!-- Play / Pause / Skip controls -->
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
-            <!-- Separate individual volume and mute controls placed under YouTube player -->
+            <!-- Separate individual volume and mute controls under YouTube player -->
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
                 <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
                 <div style="display:flex; align-items:center; gap:6px;">
@@ -650,7 +650,7 @@
         let activePeerAudioElements = [];
         let latestLobbySnapshot = null;
         let currentPlaylistQueue = [];
-        let lastActiveSongUrl = '';
+        let lastActiveSongKey = '';
         let individualVolume = 0.8;
         let isIndividualMuted = false;
         
@@ -742,16 +742,17 @@
         function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
             let container = document.getElementById('youtube-embed-container');
             if (!playlist || playlist.length === 0 || !isPlaying) {
-                container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing</div>';
-                lastActiveSongUrl = '';
+                container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
+                lastActiveSongKey = '';
                 return;
             }
 
             let currentSong = playlist[currentIndex] || playlist[0];
+            let songKey = `${currentIndex}_${currentSong.url}`;
             let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
 
-            if (lastActiveSongUrl !== embedUrl) {
-                lastActiveSongUrl = embedUrl;
+            if (lastActiveSongKey !== songKey) {
+                lastActiveSongKey = songKey;
                 container.innerHTML = `
                     <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 `;
@@ -776,6 +777,16 @@
                 listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
             }
             toggleModal('vc-participants-modal');
+        }
+
+        function triggerVoiceReconnect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'RECONNECT_VOICE' }));
+                peerConnections = {};
+                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+                showCenterNotification("Triggered Voice Chat Reconnect!");
+                toggleModal('vc-participants-modal');
+            }
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -1070,9 +1081,7 @@
                 if (navigator.vibrate) {
                     navigator.vibrate([200, 100, 200]);
                 }
-            } catch (e) {
-                console.log("Vibration not supported or blocked by WebView environment");
-            }
+            } catch (e) {}
         }
 
         function showCenterNotification(msg) {
@@ -1104,7 +1113,6 @@
                 ws.onopen = async () => {
                     isConnected = true;
                     ws.send(JSON.stringify(payload));
-                    // Auto connect voice chat muted upon joining lobby
                     setTimeout(() => {
                         autoConnectMutedVoiceChat();
                     }, 500);
@@ -1154,59 +1162,57 @@
                     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
                     video: false 
                 });
-                // Default to muted state upon joining
+                // Default to muted (Voice Off) upon joining
                 localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
                 isVoiceChatActive = true;
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️ Voice: On (Muted)';
-                led.classList.add('active');
+                btn.innerText = '🎙️ Voice: Off';
+                led.classList.remove('active');
                 peerConnections = {};
                 sendVCStatusInternal(true, true);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-            } catch (err) {
-                console.log("Auto voice chat mic permission prompt skipped or denied:", err);
-            }
+            } catch (err) {}
         }
 
-        async function toggleVoiceChatOnOff() {
+        async function toggleVoiceOnOff() {
             let btn = document.getElementById('vc-main-btn');
             let led = document.getElementById('vc-led');
 
-            if (localAudioStream) {
-                playSound('vc_leave');
-                localAudioStream.getTracks().forEach(track => track.stop());
-                localAudioStream = null;
-                isVoiceChatActive = false;
-                for (let user in peerConnections) {
-                    peerConnections[user].close();
-                    delete peerConnections[user];
-                }
-                btn.innerText = '🎙️ Voice: Off';
-                led.classList.remove('active');
-                sendVCStatusInternal(false, false);
-                showCenterNotification("Voice Chat Turned Off");
-            } else {
+            if (!localAudioStream) {
                 try {
                     localAudioStream = await navigator.mediaDevices.getUserMedia({ 
                         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
                         video: false 
                     });
-                    playSound('vc_join');
-                    // Default to unmuted when manually turned on
-                    localAudioStream.getAudioTracks().forEach(track => { track.enabled = true; });
                     isVoiceChatActive = true;
-                    btn.innerText = '🎙️ Voice: On (Active)';
-                    led.classList.add('active');
-                    peerConnections = {};
-                    sendVCStatusInternal(true, false);
-                    showCenterNotification("Voice Chat Turned On!");
-                    if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
                 } catch (err) {
                     alert('Microphone permission required for Voice Chat.');
+                    return;
                 }
             }
+
+            // Toggle mute state (Voice On = unmuted, Voice Off = muted)
+            let currentMutedState = !localAudioStream.getAudioTracks()[0].enabled;
+            let newMutedState = !currentMutedState; // if currently muted, turn on (unmuted). If unmuted, turn off (muted).
+
+            localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
+
+            if (newMutedState) {
+                playSound('vc_leave');
+                btn.innerText = '🎙️ Voice: Off';
+                led.classList.remove('active');
+                showCenterNotification("Voice Chat: Off (Muted)");
+            } else {
+                playSound('vc_join');
+                btn.innerText = '🎙️️ Voice: On';
+                led.classList.add('active');
+                showCenterNotification("Voice Chat: On (Unmuted)");
+            }
+
+            sendVCStatusInternal(true, newMutedState);
+            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
         }
 
         function refreshLobbies() {
@@ -1314,16 +1320,6 @@
             box.scrollTop = box.scrollHeight;
         }
 
-        function sendVCStatusInternal(inVC, isMuted) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'UPDATE_VC_STATUS',
-                    inVC: inVC,
-                    isMuted: isMuted
-                }));
-            }
-        }
-
         function handleWebRTCConnections(lobby) {
             if (!localAudioStream || !isVoiceChatActive) return;
             let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
@@ -1338,14 +1334,12 @@
                         peerConnections[peerUser].close();
                         delete peerConnections[peerUser];
                     }
-                    console.log(`[WebRTC] Establishing connection with lobby participant: ${peerUser}`);
                     setupPeerConnection(peerUser, true);
                 }
             });
 
             Object.keys(peerConnections).forEach(peerUser => {
                 if (!vcParticipants.includes(peerUser)) {
-                    console.log(`[WebRTC] Participant left lobby voice chat: ${peerUser}. Closing connection.`);
                     peerConnections[peerUser].close();
                     delete peerConnections[peerUser];
                 }
@@ -1368,7 +1362,6 @@
             }
 
             pc.ontrack = (event) => {
-                console.log(`[Audio Stream Received] Connected with peer: ${peerUser}`);
                 let audioElem = new Audio();
                 audioElem.srcObject = event.streams[0];
                 audioElem.autoplay = true;
@@ -1387,18 +1380,6 @@
                         target: peerUser,
                         signal: { candidate: event.candidate }
                     }));
-                }
-            };
-
-            pc.onconnectionstatechange = () => {
-                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                    setTimeout(() => {
-                        if (peerConnections[peerUser] === pc) {
-                            pc.close();
-                            delete peerConnections[peerUser];
-                            if (localAudioStream && isVoiceChatActive) setupPeerConnection(peerUser, true);
-                        }
-                    }, 2000);
                 }
             };
 
