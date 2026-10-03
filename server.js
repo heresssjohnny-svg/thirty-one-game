@@ -94,8 +94,6 @@ wss.on('connection', (ws) => {
             switch (data.type) {
                 case 'CREATE_LOBBY':
                     currentUsername = (data.username || 'Player').trim();
-                    
-                    // Leave existing lobby if any
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         leaveLobby(ws, currentLobbyCode);
                     }
@@ -132,6 +130,7 @@ wss.on('connection', (ws) => {
                         lastDiscarder: null,
                         fedCardsTracker: {},
                         endGameVotes: {},
+                        chatHistory: [],
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
@@ -282,6 +281,7 @@ wss.on('connection', (ws) => {
 
                             if (!wasInVC && p.inVC) {
                                 let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
+                                lobby.chatHistory.push(chatPayload);
                                 lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
                                 lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
                             }
@@ -619,6 +619,9 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
                         let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
+                        if (!lobby.chatHistory) lobby.chatHistory = [];
+                        lobby.chatHistory.push(chatPayload);
+
                         lobby.players.forEach(p => { if (p.id && p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify(chatPayload)); });
                         lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
                     }
@@ -800,6 +803,7 @@ function getSanitizedLobby(lobby, wsId) {
         drawResults: lobby.drawResults,
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         knockedBy: lobby.knockedBy || null,
+        chatHistory: lobby.chatHistory || [],
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
             
@@ -1107,8 +1111,9 @@ function awardTournamentWinner(lobby, winner) {
             });
             l.spectators = [];
 
-            let winnerIdx = allParts.findIndex(p => p.username === winner.username);
-            l.dealerIndex = winnerIdx !== -1 ? winnerIdx : 0;
+            // Winner deals next game if seated
+            let winnerSeatIdx = allParts.findIndex(p => p.username === winner.username);
+            l.dealerIndex = winnerSeatIdx !== -1 ? winnerSeatIdx : 0;
 
             broadcastLobbyUpdate(l.code);
             broadcastLobbyList();
@@ -1471,6 +1476,14 @@ function resolveRoundEnd(lobby) {
             return;
         }
         
+        // Winner of round deals next game if seated
+        let winnerPart = activeParts.find(p => p.username === roundWinner);
+        if (winnerPart) {
+            let allParts = [...lobby.players, ...lobby.bots];
+            let winIdx = allParts.findIndex(p => p.username === winnerPart.username);
+            if (winIdx !== -1) lobby.dealerIndex = winIdx;
+        }
+
         triggerRoundOver(lobby, `Round Over! ${roundLoser} had the lowest score and lost a life. All hands revealed.`);
     }
 }
@@ -1526,13 +1539,7 @@ function triggerRoundOver(lobby, msg) {
 
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
-    rotateDealer(lobby);
     broadcastLobbyUpdate(lobby.code);
-}
-
-function rotateDealer(lobby) {
-    let allParts = [...lobby.players, ...lobby.bots];
-    lobby.dealerIndex = (lobby.dealerIndex + 1) % allParts.length;
 }
 
 function calculateScore(cards) {
