@@ -297,7 +297,6 @@
         
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
         
-        /* Larger, bolder notification banner */
         #center-notification-banner { 
             position: absolute; 
             top: 15px; 
@@ -376,10 +375,8 @@
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <div class="music-control-group">
-                <button class="secondary" onclick="toggleMusicMute()" id="music-toggle-btn" style="padding: 3px 6px; font-size: 0.65rem;">Music: On</button>
-                <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" oninput="adjustVolume(this.value)" title="Volume Control">
-            </div>
+            <!-- Music Player Button Toggle -->
+            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
 
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
@@ -507,6 +504,35 @@
         </div>
     </main>
 
+    <!-- Music Player Modal Window -->
+    <div id="music-modal" class="modal">
+        <div class="modal-content" style="max-width:340px;">
+            <h3 style="color:var(--accent-gold);">🎵 Playlist & Music Player</h3>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.8); padding:8px; border-radius:6px; margin-bottom:4px;">
+                <button class="secondary" onclick="toggleMusicMute()" id="music-modal-mute-btn" style="padding: 4px 8px; font-size:0.75rem;">Music: On</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.75rem; color:var(--text-muted);">Vol:</span>
+                    <input type="range" id="music-modal-volume" min="0" max="1" step="0.01" value="0.5" oninput="adjustVolume(this.value)" style="width:80px; accent-color:var(--accent-gold);">
+                </div>
+            </div>
+
+            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:4px;">Current Playlist Queue:</div>
+            <div id="playlist-container" style="max-height:130px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
+                <div style="padding:4px; color:#64748b;">No songs in queue.</div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
+                <label style="text-align:left;">Add Song to Playlist</label>
+                <input type="text" id="new-song-title" placeholder="Song Title (e.g. Chill Lo-Fi Beat)" style="font-size:0.75rem; padding:6px;">
+                <input type="text" id="new-song-url" placeholder="Audio URL (.mp3 or stream link)" style="font-size:0.75rem; padding:6px;">
+                <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px;">Add to Queue</button>
+            </div>
+
+            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:6px;">Close</button>
+        </div>
+    </div>
+
     <div id="bet-modal" class="modal">
         <div class="modal-content">
             <h3 id="bet-modal-title">Propose Bet</h3>
@@ -607,7 +633,7 @@
     <script>
         let ws = null;
         let isConnected = false;
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [] };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [], playlist: [] };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -635,16 +661,16 @@
         function toggleMusicMute() {
             isMusicMuted = !isMusicMuted;
             let bgAudio = document.getElementById('bg-audio');
-            let btn = document.getElementById('music-toggle-btn');
+            let btnModal = document.getElementById('music-modal-mute-btn');
             
             localStorage.setItem('saved_music_muted', isMusicMuted);
 
             if (isMusicMuted) {
                 bgAudio.pause();
-                btn.innerText = 'Music: Off';
+                btnModal.innerText = 'Music: Off';
             } else {
                 bgAudio.play().catch(e => {});
-                btn.innerText = 'Music: On';
+                btnModal.innerText = 'Music: On';
             }
         }
 
@@ -653,6 +679,8 @@
             let sliderVal = parseFloat(val);
             
             localStorage.setItem('saved_volume_slider', sliderVal);
+            document.getElementById('music-modal-volume').value = sliderVal;
+
             let adjustedVolume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
 
             if (bgAudio) {
@@ -661,7 +689,7 @@
                     isMusicMuted = false;
                     localStorage.setItem('saved_music_muted', isMusicMuted);
                     bgAudio.play().catch(e => {});
-                    document.getElementById('music-toggle-btn').innerText = 'Music: On';
+                    document.getElementById('music-modal-mute-btn').innerText = 'Music: On';
                 }
             }
 
@@ -670,6 +698,30 @@
                     audioElem.volume = sliderVal;
                 }
             });
+        }
+
+        function addNewSongToPlaylist() {
+            let titleInput = document.getElementById('new-song-title');
+            let urlInput = document.getElementById('new-song-url');
+            let title = titleInput.value.trim();
+            let url = urlInput.value.trim() || 'background-music.mp3';
+
+            if (title && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url }));
+                titleInput.value = '';
+                urlInput.value = '';
+            } else {
+                alert("Please enter a song title.");
+            }
+        }
+
+        function playPlaylistSong(url, title) {
+            let bgAudio = document.getElementById('bg-audio');
+            if (bgAudio) {
+                bgAudio.src = url;
+                bgAudio.play().catch(e => console.log("Audio playback error:", e));
+                showCenterNotification(`Now Playing: ${title}`);
+            }
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -682,8 +734,8 @@
             refreshLobbies();
 
             let bgAudio = document.getElementById('bg-audio');
-            let volumeSlider = document.getElementById('volume-slider');
-            let musicBtn = document.getElementById('music-toggle-btn');
+            let volumeSlider = document.getElementById('music-modal-volume');
+            let musicBtnModal = document.getElementById('music-modal-mute-btn');
 
             if (bgAudio) {
                 let savedSlider = localStorage.getItem('saved_volume_slider');
@@ -698,10 +750,10 @@
 
                 if (isMusicMuted) {
                     bgAudio.pause();
-                    musicBtn.innerText = 'Music: Off';
+                    musicBtnModal.innerText = 'Music: Off';
                 } else {
                     bgAudio.play().catch(() => {});
-                    musicBtn.innerText = 'Music: On';
+                    musicBtnModal.innerText = 'Music: On';
                 }
             }
 
@@ -1279,7 +1331,7 @@
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
                 
-                let currentSliderVal = parseFloat(document.getElementById('volume-slider').value) || 0.5;
+                let currentSliderVal = parseFloat(document.getElementById('music-modal-volume').value) || 0.5;
                 audioElem.volume = currentSliderVal;
                 activePeerAudioElements.push(audioElem);
 
@@ -1578,6 +1630,19 @@
                 });
                 msgBox.scrollTop = msgBox.scrollHeight;
                 lastSyncedChatLength = lobby.chatHistory.length;
+            }
+
+            // Render shared playlist inside music modal
+            let playlistDiv = document.getElementById('playlist-container');
+            if (lobby.playlist && lobby.playlist.length > 0) {
+                playlistDiv.innerHTML = lobby.playlist.map(song => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <span>🎵 <b>${song.title}</b></span>
+                        <button class="secondary" style="font-size:0.6rem; padding:2px 5px;" onclick="playPlaylistSong('${song.url}', '${song.title}')">Play</button>
+                    </div>
+                `).join('');
+            } else {
+                playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue.</div>';
             }
 
             clientState.gameState = lobby.gameState;
@@ -2046,13 +2111,13 @@
             document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
             document.getElementById('peek-request-modal').style.display = 'none';
             document.getElementById('seat-action-modal').style.display = 'none';
+            document.getElementById('music-modal').style.display = 'none';
             document.getElementById('vc-led').classList.remove('active');
             clientState.isReady = false;
             hasChosenPoolCard = false;
             isMicMuted = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
             document.getElementById('ready-btn').style.display = 'inline-block';
-            document.getElementById('vc-status').innerText = 'Off';
             refreshLobbies();
         }
 
