@@ -533,7 +533,7 @@
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
                 <label style="text-align:left;">Add Song to Playlist</label>
                 <input type="text" id="new-song-title" placeholder="Song Title (e.g. Card Night Track)" style="font-size:0.75rem; padding:6px;">
-                <input type="text" id="new-song-url" placeholder="Audio URL (.mp3 or stream link)" style="font-size:0.75rem; padding:6px;">
+                <input type="text" id="new-song-url" placeholder="Audio URL or YouTube link" style="font-size:0.75rem; padding:6px;">
                 <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px;">Add to Queue</button>
             </div>
 
@@ -715,12 +715,20 @@
             let title = titleInput.value.trim();
             let url = urlInput.value.trim();
 
-            if (title && url && ws && ws.readyState === WebSocket.OPEN) {
+            if (!title || !url) {
+                alert("Please provide both a song title and a valid link/URL.");
+                return;
+            }
+
+            if (url.includes('youtube.com/watch?v=') || url.includes('youtu.be/')) {
+                console.log("YouTube link added to queue:", url);
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url }));
                 titleInput.value = '';
                 urlInput.value = '';
-            } else {
-                alert("Please provide both a song title and a valid audio URL.");
+                showCenterNotification(`Added "${title}" to queue!`);
             }
         }
 
