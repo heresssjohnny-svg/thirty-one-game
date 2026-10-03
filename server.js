@@ -202,7 +202,7 @@ wss.on('connection', (ws) => {
                                 lobby.currentSongIndex = 0;
                                 lobby.isPlaying = true;
                             }
-                            lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the YouTube playlist!`;
+                            lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the queue!`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -243,6 +243,15 @@ wss.on('connection', (ws) => {
                                 lobby.isPlaying = true;
                             }
                         }
+                        broadcastLobbyUpdate(currentLobbyCode);
+                    }
+                    break;
+
+                case 'RECONNECT_VOICE':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        lobby.phaseMessage = `🎙️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
@@ -336,17 +345,8 @@ wss.on('connection', (ws) => {
                         touchLobbyActivity(lobby);
                         let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (p) {
-                            let wasInVC = p.inVC;
                             p.inVC = !!data.inVC;
                             p.isMuted = !!data.isMuted;
-
-                            if (!wasInVC && p.inVC) {
-                                let chatPayload = { type: 'CHAT_MESSAGE', username: 'System', message: `🎙️ ${currentUsername} joined the voice chat.` };
-                                lobby.chatHistory.push(chatPayload);
-                                lobby.players.forEach(pl => { if (pl.id && pl.id.readyState === WebSocket.OPEN) pl.id.send(JSON.stringify(chatPayload)); });
-                                lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
-                            }
-
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
