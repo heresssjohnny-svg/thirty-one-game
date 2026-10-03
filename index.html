@@ -681,7 +681,6 @@
                 }
             }
 
-            // Automatic reconnection & resync when returning to window/app tab
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) {
                     refreshLobbies();
@@ -996,7 +995,6 @@
                 };
                 ws.onclose = () => { 
                     isConnected = false; 
-                    // Attempt automatic socket reconnection after 3 seconds if inside a lobby
                     setTimeout(() => {
                         if (!isConnected && currentJoinedCode) {
                             initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
@@ -1186,14 +1184,13 @@
             lobby.players.forEach(p => { if (p.inVC && p.username !== currentUsername) vcParticipants.push(p.username); });
             lobby.spectators.forEach(s => { if (s.inVC && s.username !== currentUsername) vcParticipants.push(s.username); });
 
-            // Ensure connection handshake is re-established with any active VC participant
             vcParticipants.forEach(peerUser => {
                 if (!peerConnections[peerUser] || peerConnections[peerUser].connectionState === 'failed' || peerConnections[peerUser].connectionState === 'closed') {
                     if (peerConnections[peerUser]) {
                         peerConnections[peerUser].close();
                         delete peerConnections[peerUser];
                     }
-                    console.log(`[WebRTC] Establishing connection with active voice chat participant: ${peerUser}`);
+                    console.log(`[WebRTC] Re-establishing connection with participant: ${peerUser}`);
                     setupPeerConnection(peerUser, true);
                 }
             });
@@ -1515,7 +1512,6 @@
                 }
             }
 
-            // Sync full chat history for the life of the lobby
             if (lobby.chatHistory && lobby.chatHistory.length !== lastSyncedChatLength) {
                 let msgBox = document.getElementById('chat-messages');
                 msgBox.innerHTML = '';
