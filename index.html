@@ -507,7 +507,7 @@
             <!-- Play / Pause / Skip controls -->
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
@@ -743,7 +743,7 @@
             let container = document.getElementById('youtube-embed-container');
             if (!playlist || playlist.length === 0 || !isPlaying) {
                 container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
-                activeSyncedSongUrl = '';
+                activeSyncedSongKey = '';
                 return;
             }
 
@@ -751,8 +751,8 @@
             let songUniqueKey = `${currentIndex}_${currentSong.url}_${isPlaying}`;
             let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
 
-            if (activeSyncedSongUrl !== songUniqueKey) {
-                activeSyncedSongUrl = songUniqueKey;
+            if (activeSyncedSongKey !== songUniqueKey) {
+                activeSyncedSongKey = songUniqueKey;
                 container.innerHTML = `
                     <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 `;
@@ -774,7 +774,7 @@
             if (vcUsers.length === 0) {
                 listDiv.innerHTML = 'No one currently in voice chat.';
             } else {
-                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
+                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️️ (Active)'}</li>`).join('') + '</ul>';
             }
             toggleModal('vc-participants-modal');
         }
