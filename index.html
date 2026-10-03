@@ -355,7 +355,6 @@
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <!-- Music Button -->
             <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
 
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
@@ -363,8 +362,7 @@
             
             <div class="vc-control-group">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleUniversalVoiceChat()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
-                <button class="secondary" id="vc-mute-btn" onclick="toggleMicMuteState()" style="padding: 3px 6px; font-size: 0.7rem; display: none;">Mute</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceChatOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
             </div>
 
@@ -497,7 +495,7 @@
     <!-- YouTube Playlist & Music Player Modal Window -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
-            <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Playlist</h3>
+            <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
             
             <!-- Embedded YouTube Player Frame -->
             <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
@@ -513,7 +511,7 @@
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
-            <!-- Separate individual volume and mute controls -->
+            <!-- Separate individual volume and mute controls placed under YouTube player -->
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
                 <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
                 <div style="display:flex; align-items:center; gap:6px;">
@@ -607,7 +605,7 @@
                     <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
                     <li><b>Amended 21 out of 31 Rule:</b> If a player feeds an opponent an Ace and a 10-value card from the discard pile, the feeder only loses all lives if that fed player achieves a full 31 points at any point during the round!</li>
                 </ul>
-                <p><b>Knocking:</b> Once every player has taken at least 1, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
+                <p><b>Knocking:</b> Once every player has taken at least 1 turn, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
                 <p><b>Side Betting & Review:</b></p>
                 <ul style="padding-left:14px;">
                     <li><b>3+ Players:</b> Tap any player's name to propose a First to Lose elimination bet.</li>
@@ -647,10 +645,12 @@
         let currentJoinedCode = null;
         
         let localAudioStream = null;
-        let isMicMuted = false;
+        let isVoiceChatActive = false;
         let peerConnections = {};
         let activePeerAudioElements = [];
         let latestLobbySnapshot = null;
+        let currentPlaylistQueue = [];
+        let lastActiveSongUrl = '';
         let individualVolume = 0.8;
         let isIndividualMuted = false;
         
@@ -669,7 +669,7 @@
             let match = url.match(regExp);
             let autoStr = autoplay ? '1' : '0';
             if (match && match[2].length === 11) {
-                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}`;
+                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}&enablejsapi=1`;
             }
             return url;
         }
@@ -685,13 +685,13 @@
                 return;
             }
 
-            let embedUrl = parseYouTubeEmbedUrl(rawUrl, false);
+            let embedUrl = parseYouTubeEmbedUrl(rawUrl, true);
 
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl }));
                 titleInput.value = '';
                 urlInput.value = '';
-                showCenterNotification(`Added "${title}" to YouTube queue!`);
+                showCenterNotification(`Added "${title}" to queue!`);
             }
         }
 
@@ -710,11 +710,15 @@
         function adjustIndividualVolume(val) {
             individualVolume = parseFloat(val);
             document.getElementById('individual-volume-slider').value = individualVolume;
-            let container = document.getElementById('youtube-embed-container');
-            let iframe = container.querySelector('iframe');
-            if (iframe) {
-                // Note: Direct iframe volume manipulation is restricted by YouTube security unless using the YouTube IFrame API,
-                // but users can adjust iframe audio directly or via player controls.
+            let iframe = document.querySelector('#youtube-embed-container iframe');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: 'setVolume',
+                        args: [individualVolume * 100]
+                    }), '*');
+                } catch (e) {}
             }
         }
 
@@ -722,21 +726,36 @@
             isIndividualMuted = !isIndividualMuted;
             let btn = document.getElementById('individual-mute-btn');
             btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+            let iframe = document.querySelector('#youtube-embed-container iframe');
+            if (iframe && iframe.contentWindow) {
+                try {
+                    let funcName = isIndividualMuted ? 'mute' : 'unMute';
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: funcName,
+                        args: []
+                    }), '*');
+                } catch (e) {}
+            }
         }
 
         function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
             let container = document.getElementById('youtube-embed-container');
             if (!playlist || playlist.length === 0 || !isPlaying) {
                 container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing</div>';
+                lastActiveSongUrl = '';
                 return;
             }
 
             let currentSong = playlist[currentIndex] || playlist[0];
             let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
 
-            container.innerHTML = `
-                <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-            `;
+            if (lastActiveSongUrl !== embedUrl) {
+                lastActiveSongUrl = embedUrl;
+                container.innerHTML = `
+                    <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                `;
+            }
         }
 
         function openVcParticipantsModal() {
@@ -780,6 +799,11 @@
                     } else if (currentJoinedCode) {
                         ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' }));
                     }
+                    if (isVoiceChatActive && localAudioStream) {
+                        setTimeout(() => {
+                            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+                        }, 500);
+                    }
                 }
             });
 
@@ -793,6 +817,11 @@
                     }
                 } else if (currentJoinedCode) {
                     ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' }));
+                }
+                if (isVoiceChatActive && localAudioStream) {
+                    setTimeout(() => {
+                        if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+                    }, 500);
                 }
             });
         });
@@ -1075,6 +1104,10 @@
                 ws.onopen = async () => {
                     isConnected = true;
                     ws.send(JSON.stringify(payload));
+                    // Auto connect voice chat muted upon joining lobby
+                    setTimeout(() => {
+                        autoConnectMutedVoiceChat();
+                    }, 500);
                 };
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
@@ -1111,6 +1144,68 @@
                         }
                     }, 3000);
                 };
+            }
+        }
+
+        async function autoConnectMutedVoiceChat() {
+            if (localAudioStream) return;
+            try {
+                localAudioStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+                    video: false 
+                });
+                // Default to muted state upon joining
+                localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
+                isVoiceChatActive = true;
+                
+                let btn = document.getElementById('vc-main-btn');
+                let led = document.getElementById('vc-led');
+                btn.innerText = '🎙️ Voice: On (Muted)';
+                led.classList.add('active');
+                peerConnections = {};
+                sendVCStatusInternal(true, true);
+                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+            } catch (err) {
+                console.log("Auto voice chat mic permission prompt skipped or denied:", err);
+            }
+        }
+
+        async function toggleVoiceChatOnOff() {
+            let btn = document.getElementById('vc-main-btn');
+            let led = document.getElementById('vc-led');
+
+            if (localAudioStream) {
+                playSound('vc_leave');
+                localAudioStream.getTracks().forEach(track => track.stop());
+                localAudioStream = null;
+                isVoiceChatActive = false;
+                for (let user in peerConnections) {
+                    peerConnections[user].close();
+                    delete peerConnections[user];
+                }
+                btn.innerText = '🎙️ Voice: Off';
+                led.classList.remove('active');
+                sendVCStatusInternal(false, false);
+                showCenterNotification("Voice Chat Turned Off");
+            } else {
+                try {
+                    localAudioStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+                        video: false 
+                    });
+                    playSound('vc_join');
+                    // Default to unmuted when manually turned on
+                    localAudioStream.getAudioTracks().forEach(track => { track.enabled = true; });
+                    isVoiceChatActive = true;
+                    btn.innerText = '🎙️ Voice: On (Active)';
+                    led.classList.add('active');
+                    peerConnections = {};
+                    sendVCStatusInternal(true, false);
+                    showCenterNotification("Voice Chat Turned On!");
+                    if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+                } catch (err) {
+                    alert('Microphone permission required for Voice Chat.');
+                }
             }
         }
 
@@ -1219,67 +1314,6 @@
             box.scrollTop = box.scrollHeight;
         }
 
-        async function toggleUniversalVoiceChat() {
-            let btn = document.getElementById('vc-main-btn');
-            let muteBtn = document.getElementById('vc-mute-btn');
-            let led = document.getElementById('vc-led');
-
-            if (localAudioStream) {
-                playSound('vc_leave');
-                localAudioStream.getTracks().forEach(track => track.stop());
-                localAudioStream = null;
-                for (let user in peerConnections) {
-                    peerConnections[user].close();
-                    delete peerConnections[user];
-                }
-                btn.innerText = '🎙️ Voice: Off';
-                muteBtn.style.display = 'none';
-                led.classList.remove('active');
-                isMicMuted = false;
-                sendVCStatusInternal(false, false);
-                showCenterNotification("Voice Chat Disconnected");
-            } else {
-                try {
-                    localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { 
-                            echoCancellation: true, 
-                            noiseSuppression: true, 
-                            autoGainControl: true 
-                        }, 
-                        video: false 
-                    });
-                    
-                    playSound('vc_join');
-
-                    btn.innerText = '🎙 Voice: On';
-                    muteBtn.style.display = 'inline-block';
-                    muteBtn.innerText = 'Mute';
-                    led.classList.add('active');
-                    isMicMuted = false;
-                    peerConnections = {};
-                    sendVCStatusInternal(true, false);
-                    showCenterNotification("Voice Chat Connected!");
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        refreshLobbies();
-                    }
-                } catch (err) {
-                    console.error('Microphone permission error:', err);
-                    alert('Microphone permission required for Voice Chat. Please allow microphone access in your device settings.');
-                }
-            }
-        }
-
-        function toggleMicMuteState() {
-            if (!localAudioStream) return;
-            isMicMuted = !isMicMuted;
-            localAudioStream.getAudioTracks().forEach(track => {
-                track.enabled = !isMicMuted;
-            });
-            let muteBtn = document.getElementById('vc-mute-btn');
-            muteBtn.innerText = isMicMuted ? 'Unmute' : 'Mute';
-            sendVCStatusInternal(true, isMicMuted);
-        }
-
         function sendVCStatusInternal(inVC, isMuted) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
@@ -1291,7 +1325,7 @@
         }
 
         function handleWebRTCConnections(lobby) {
-            if (!localAudioStream) return;
+            if (!localAudioStream || !isVoiceChatActive) return;
             let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
             
             let vcParticipants = [];
@@ -1342,7 +1376,6 @@
                 activePeerAudioElements.push(audioElem);
 
                 audioElem.play().catch(e => {
-                    console.error("iOS Audio autoplay error, retrying on touch:", e);
                     document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
                 });
             };
@@ -1358,14 +1391,12 @@
             };
 
             pc.onconnectionstatechange = () => {
-                console.log(`[WebRTC State -> ${peerUser}]: ${pc.connectionState}`);
                 if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                    console.log(`[WebRTC] Connection dropped with ${peerUser}, attempting recovery...`);
                     setTimeout(() => {
                         if (peerConnections[peerUser] === pc) {
                             pc.close();
                             delete peerConnections[peerUser];
-                            if (localAudioStream) setupPeerConnection(peerUser, true);
+                            if (localAudioStream && isVoiceChatActive) setupPeerConnection(peerUser, true);
                         }
                     }, 2000);
                 }
@@ -1383,14 +1414,14 @@
                                 target: peerUser,
                                 signal: { sdp: pc.localDescription }
                             }));
-                        }).catch(err => console.error("Create offer error:", err));
+                        }).catch(err => {});
                     }
                 }, 400);
             }
         }
 
         async function handleWebRTCSignal(sender, signal) {
-            if (!localAudioStream) return;
+            if (!localAudioStream || !isVoiceChatActive) return;
             
             if (!peerConnections[sender] || peerConnections[sender].connectionState === 'failed' || peerConnections[sender].connectionState === 'closed') {
                 if (peerConnections[sender]) {
@@ -1429,9 +1460,7 @@
                         pc.pendingCandidates.push(candidateObj);
                     }
                 }
-            } catch (err) {
-                console.error("WebRTC signal handling error:", err);
-            }
+            } catch (err) {}
         }
 
         function requestPeekFromModal(targetUsername) {
@@ -2095,6 +2124,7 @@
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
+            isVoiceChatActive = false;
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
             else resetToMainMenu();
         }
@@ -2105,6 +2135,7 @@
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
+            isVoiceChatActive = false;
             currentJoinedCode = null;
             latestLobbySnapshot = null;
             document.getElementById('game-view').style.display = 'none';
@@ -2128,7 +2159,6 @@
             document.getElementById('vc-led').classList.remove('active');
             clientState.isReady = false;
             hasChosenPoolCard = false;
-            isMicMuted = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
             document.getElementById('ready-btn').style.display = 'inline-block';
             refreshLobbies();
