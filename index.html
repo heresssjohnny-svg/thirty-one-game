@@ -262,7 +262,6 @@
         .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; }
         .seat:hover { border-color: var(--accent-gold); }
         
-        /* ILLUMINATING ACTIVE TURN SEAT */
         .seat.current-turn-seat {
             border: 2px solid var(--accent-gold);
             box-shadow: 0 0 15px var(--accent-gold);
@@ -368,7 +367,7 @@
             
             <div class="vc-control-group">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleUniversalVoiceChat()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleUniversalVoiceChat()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
                 <button class="secondary" id="vc-mute-btn" onclick="toggleMicMuteState()" style="padding: 3px 6px; font-size: 0.7rem; display: none;">Mute</button>
             </div>
 
@@ -1139,13 +1138,20 @@
                         pc.addTrack(track, localAudioStream);
                     });
 
+                    if (!pc.getTransceivers().find(t => t.kind === 'audio')) {
+                        pc.addTransceiver('audio', { direction: 'sendrecv' });
+                    }
+
                     pc.ontrack = (event) => {
                         console.log(`[Audio Stream Received] Connected with peer: ${peerUser}`);
                         let audioElem = new Audio();
                         audioElem.srcObject = event.streams[0];
                         audioElem.autoplay = true;
                         audioElem.playsInline = true;
-                        audioElem.play().catch(e => console.error("Audio playback error:", e));
+                        audioElem.play().catch(e => {
+                            console.error("iOS Audio autoplay error, retrying on touch:", e);
+                            document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
+                        });
                     };
 
                     pc.onicecandidate = (event) => {
@@ -1184,9 +1190,14 @@
                 pc = new RTCPeerConnection(rtcConfig);
                 peerConnections[sender] = pc;
                 pc.pendingCandidates = [];
+                
                 localAudioStream.getTracks().forEach(track => {
                     pc.addTrack(track, localAudioStream);
                 });
+
+                if (!pc.getTransceivers().find(t => t.kind === 'audio')) {
+                    pc.addTransceiver('audio', { direction: 'sendrecv' });
+                }
 
                 pc.ontrack = (event) => {
                     console.log(`[Audio Stream Received] Connected with peer: ${sender}`);
@@ -1194,7 +1205,10 @@
                     audioElem.srcObject = event.streams[0];
                     audioElem.autoplay = true;
                     audioElem.playsInline = true;
-                    audioElem.play().catch(e => console.error("Audio playback error:", e));
+                    audioElem.play().catch(e => {
+                        console.error("iOS Audio autoplay error:", e);
+                        document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
+                    });
                 };
 
                 pc.onicecandidate = (event) => {
@@ -1780,7 +1794,6 @@
                     micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
                 }
 
-                // Check if this seat belongs to the active turn user to illuminate it
                 let isCurrentTurnUserSeat = (p.username.trim().toLowerCase() === lobby.currentTurnUser.trim().toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
                 let turnHighlightClass = isCurrentTurnUserSeat ? ' current-turn-seat' : '';
 
