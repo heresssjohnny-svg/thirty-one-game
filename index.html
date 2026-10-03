@@ -507,7 +507,7 @@
             <!-- Play / Pause / Skip controls -->
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
@@ -650,7 +650,7 @@
         let activePeerAudioElements = [];
         let latestLobbySnapshot = null;
         let currentPlaylistQueue = [];
-        let activeSyncedSongUrl = '';
+        let activeSyncedSongKey = '';
         let individualVolume = 0.8;
         let isIndividualMuted = false;
         
@@ -1167,7 +1167,7 @@
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️️ Voice: Off';
+                btn.innerText = '🎙️ Voice: Off';
                 led.classList.remove('active');
                 peerConnections = {};
                 sendVCStatusInternal(true, true);
