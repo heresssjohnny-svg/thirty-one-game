@@ -888,18 +888,32 @@
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                [0, 0.12, 0.24].forEach(delay => {
-                    let osc = audioCtx.createOscillator();
+                // Realistic wooden table knock sound using filtered white noise and dual impact pulses
+                [0, 0.14].forEach(delay => {
+                    let bufferSize = audioCtx.sampleRate * 0.05;
+                    let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                    let data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+
+                    let noise = audioCtx.createBufferSource();
+                    noise.buffer = buffer;
+
+                    let filter = audioCtx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(320, now + delay);
+
                     let gain = audioCtx.createGain();
-                    osc.type = 'square';
-                    osc.connect(gain);
+                    gain.gain.setValueAtTime(0.7, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.05);
+
+                    noise.connect(filter);
+                    filter.connect(gain);
                     gain.connect(audioCtx.destination);
-                    osc.frequency.setValueAtTime(140, now + delay);
-                    osc.frequency.exponentialRampToValueAtTime(50, now + delay + 0.08);
-                    gain.gain.setValueAtTime(0.4, now + delay);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.08);
-                    osc.start(now + delay);
-                    osc.stop(now + delay + 0.08);
+
+                    noise.start(now + delay);
+                    noise.stop(now + delay + 0.05);
                 });
             }
         }
@@ -1453,6 +1467,10 @@
             if (lobby.gameState !== lastGameState) {
                 hasChosenPoolCard = false;
                 lastGameState = lobby.gameState;
+                // Hide initial discard pickup modal when round ends
+                if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
+                    document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
+                }
             }
 
             clientState.gameState = lobby.gameState;
@@ -1609,7 +1627,7 @@
 
             let topleftModal = document.getElementById('discard-pickup-topleft-modal');
             let topleftCardContent = document.getElementById('discard-pickup-card-content');
-            if (lobby.lastDiscardPickup) {
+            if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver') {
                 let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
                 topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b> picked up:</span> ${cardHtml}`;
                 topleftModal.style.display = 'flex';
@@ -1622,9 +1640,25 @@
                 knockBtn.style.display = 'none';
             }
 
-            knockBtn.disabled = !lobby.canKnock;
-
+            // Knock requirements: Must have taken at least 1 turn per active player, and score must meet threshold (25+ standard, 21+ for 3+ players)
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
+            let threshold = activePartsCount > 2 ? 21 : 25;
+            let myScore = me && me.cards ? calculateLocalScore(me.cards) : 0;
+            let turnsConditionMet = lobby.canKnock;
+            let scoreConditionMet = myScore >= threshold;
+            let isMyTurnPlaying = (lobby.currentTurnUser === activeUsername) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+
+            if (lobby.knockedBy) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `${lobby.knockedBy} has already knocked!`;
+            } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = 'Knock';
+            } else {
+                knockBtn.disabled = false;
+                knockBtn.innerText = 'Knock';
+            }
+
             let nextHandOverlay = document.getElementById('next-hand-overlay');
             if (lobby.gameState === 'roundOver' && !isSpectatorOnly && !lobby.phaseMessage.includes('TOURNAMENT WINNER') && activePartsCount > 1) {
                 nextHandOverlay.style.display = 'block';
