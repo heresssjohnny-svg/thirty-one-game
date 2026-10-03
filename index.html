@@ -362,7 +362,7 @@
             
             <div class="vc-control-group">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
             </div>
 
@@ -488,12 +488,12 @@
         <div class="modal-content" style="max-width:320px;">
             <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
             <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
-            <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px;">🔄 Reconnect Voice Chat</button>
+            <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px; padding:6px; font-size:0.75rem;">🔄 Reconnect Voice Chat</button>
             <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:4px;">Close</button>
         </div>
     </div>
 
-    <!-- YouTube Playlist & Player Modal Window -->
+    <!-- YouTube Playlist & Music Player Modal Window -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -507,7 +507,7 @@
             <!-- Play / Pause / Skip controls -->
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
@@ -650,7 +650,7 @@
         let activePeerAudioElements = [];
         let latestLobbySnapshot = null;
         let currentPlaylistQueue = [];
-        let lastActiveSongKey = '';
+        let activeSyncedSongUrl = '';
         let individualVolume = 0.8;
         let isIndividualMuted = false;
         
@@ -743,16 +743,16 @@
             let container = document.getElementById('youtube-embed-container');
             if (!playlist || playlist.length === 0 || !isPlaying) {
                 container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
-                lastActiveSongKey = '';
+                activeSyncedSongUrl = '';
                 return;
             }
 
             let currentSong = playlist[currentIndex] || playlist[0];
-            let songKey = `${currentIndex}_${currentSong.url}`;
+            let songUniqueKey = `${currentIndex}_${currentSong.url}_${isPlaying}`;
             let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
 
-            if (lastActiveSongKey !== songKey) {
-                lastActiveSongKey = songKey;
+            if (activeSyncedSongUrl !== songUniqueKey) {
+                activeSyncedSongUrl = songUniqueKey;
                 container.innerHTML = `
                     <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 `;
@@ -1162,13 +1162,12 @@
                     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
                     video: false 
                 });
-                // Default to muted (Voice Off) upon joining
                 localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
                 isVoiceChatActive = true;
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️ Voice: Off';
+                btn.innerText = '🎙️️ Voice: Off';
                 led.classList.remove('active');
                 peerConnections = {};
                 sendVCStatusInternal(true, true);
@@ -1193,9 +1192,8 @@
                 }
             }
 
-            // Toggle mute state (Voice On = unmuted, Voice Off = muted)
             let currentMutedState = !localAudioStream.getAudioTracks()[0].enabled;
-            let newMutedState = !currentMutedState; // if currently muted, turn on (unmuted). If unmuted, turn off (muted).
+            let newMutedState = !currentMutedState; 
 
             localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
 
@@ -1206,7 +1204,7 @@
                 showCenterNotification("Voice Chat: Off (Muted)");
             } else {
                 playSound('vc_join');
-                btn.innerText = '🎙️️ Voice: On';
+                btn.innerText = '🎙 Voice: On';
                 led.classList.add('active');
                 showCenterNotification("Voice Chat: On (Unmuted)");
             }
