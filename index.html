@@ -367,7 +367,7 @@
             
             <div class="vc-control-group">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleUniversalVoiceChat()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleUniversalVoiceChat()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
                 <button class="secondary" id="vc-mute-btn" onclick="toggleMicMuteState()" style="padding: 3px 6px; font-size: 0.7rem; display: none;">Mute</button>
             </div>
 
@@ -1130,45 +1130,66 @@
             
             allOccupants.forEach(peerUser => {
                 if (!peerConnections[peerUser]) {
-                    let pc = new RTCPeerConnection(rtcConfig);
-                    peerConnections[peerUser] = pc;
-                    pc.pendingCandidates = [];
+                    setupPeerConnection(peerUser, true);
+                }
+            });
+        }
 
-                    localAudioStream.getTracks().forEach(track => {
-                        pc.addTrack(track, localAudioStream);
-                    });
+        function setupPeerConnection(peerUser, shouldInitiateOffer) {
+            if (peerConnections[peerUser]) return;
 
-                    if (!pc.getTransceivers().find(t => t.kind === 'audio')) {
-                        pc.addTransceiver('audio', { direction: 'sendrecv' });
-                    }
+            let pc = new RTCPeerConnection(rtcConfig);
+            peerConnections[peerUser] = pc;
+            pc.pendingCandidates = [];
 
-                    pc.ontrack = (event) => {
-                        console.log(`[Audio Stream Received] Connected with peer: ${peerUser}`);
-                        let audioElem = new Audio();
-                        audioElem.srcObject = event.streams[0];
-                        audioElem.autoplay = true;
-                        audioElem.playsInline = true;
-                        audioElem.play().catch(e => {
-                            console.error("iOS Audio autoplay error, retrying on touch:", e);
-                            document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
-                        });
-                    };
+            localAudioStream.getTracks().forEach(track => {
+                pc.addTrack(track, localAudioStream);
+            });
 
-                    pc.onicecandidate = (event) => {
-                        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'WEBRTC_SIGNAL',
-                                target: peerUser,
-                                signal: { candidate: event.candidate }
-                            }));
+            if (!pc.getTransceivers().find(t => t.kind === 'audio')) {
+                pc.addTransceiver('audio', { direction: 'sendrecv' });
+            }
+
+            pc.ontrack = (event) => {
+                console.log(`[Audio Stream Received] Connected with peer: ${peerUser}`);
+                let audioElem = new Audio();
+                audioElem.srcObject = event.streams[0];
+                audioElem.autoplay = true;
+                audioElem.playsInline = true;
+                audioElem.play().catch(e => {
+                    console.error("iOS Audio autoplay error, retrying on touch:", e);
+                    document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
+                });
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'WEBRTC_SIGNAL',
+                        target: peerUser,
+                        signal: { candidate: event.candidate }
+                    }));
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                console.log(`[WebRTC State -> ${peerUser}]: ${pc.connectionState}`);
+                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    console.log(`[WebRTC] Connection dropped with ${peerUser}, attempting recovery...`);
+                    setTimeout(() => {
+                        if (peerConnections[peerUser] === pc) {
+                            pc.close();
+                            delete peerConnections[peerUser];
+                            if (localAudioStream) setupPeerConnection(peerUser, true);
                         }
-                    };
+                    }, 2000);
+                }
+            };
 
-                    pc.onconnectionstatechange = () => {
-                        console.log(`[WebRTC State -> ${peerUser}]: ${pc.connectionState}`);
-                    };
-
-                    if (currentUsername < peerUser) {
+            let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            if (shouldInitiateOffer && currentUsername < peerUser) {
+                setTimeout(() => {
+                    if (peerConnections[peerUser] === pc && pc.signalingState === 'stable') {
                         pc.createOffer().then(offer => {
                             return pc.setLocalDescription(offer);
                         }).then(() => {
@@ -1179,52 +1200,19 @@
                             }));
                         }).catch(err => console.error("Create offer error:", err));
                     }
-                }
-            });
+                }, 400);
+            }
         }
 
         async function handleWebRTCSignal(sender, signal) {
             if (!localAudioStream) return;
-            let pc = peerConnections[sender];
-            if (!pc) {
-                pc = new RTCPeerConnection(rtcConfig);
-                peerConnections[sender] = pc;
-                pc.pendingCandidates = [];
-                
-                localAudioStream.getTracks().forEach(track => {
-                    pc.addTrack(track, localAudioStream);
-                });
-
-                if (!pc.getTransceivers().find(t => t.kind === 'audio')) {
-                    pc.addTransceiver('audio', { direction: 'sendrecv' });
-                }
-
-                pc.ontrack = (event) => {
-                    console.log(`[Audio Stream Received] Connected with peer: ${sender}`);
-                    let audioElem = new Audio();
-                    audioElem.srcObject = event.streams[0];
-                    audioElem.autoplay = true;
-                    audioElem.playsInline = true;
-                    audioElem.play().catch(e => {
-                        console.error("iOS Audio autoplay error:", e);
-                        document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
-                    });
-                };
-
-                pc.onicecandidate = (event) => {
-                    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'WEBRTC_SIGNAL',
-                            target: sender,
-                            signal: { candidate: event.candidate }
-                        }));
-                    }
-                };
-
-                pc.onconnectionstatechange = () => {
-                    console.log(`[WebRTC State -> ${sender}]: ${pc.connectionState}`);
-                };
+            
+            if (!peerConnections[sender]) {
+                setupPeerConnection(sender, false);
             }
+            
+            let pc = peerConnections[sender];
+            if (!pc) return;
 
             try {
                 if (signal.sdp) {
@@ -1791,7 +1779,7 @@
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = '';
                 if (p.inVC) {
-                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
+                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️️';
                 }
 
                 let isCurrentTurnUserSeat = (p.username.trim().toLowerCase() === lobby.currentTurnUser.trim().toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
