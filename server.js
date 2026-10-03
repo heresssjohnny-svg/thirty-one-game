@@ -45,7 +45,7 @@ function touchLobbyActivity(lobby) {
     }
     lobby.inactivityTimer = setTimeout(() => {
         closeInactiveLobby(lobby.code);
-    }, 20 * 60 * 1000); // 20 minutes
+    }, 20 * 60 * 1000);
 }
 
 function closeInactiveLobby(code) {
@@ -331,8 +331,8 @@ wss.on('connection', (ws) => {
                         if (lobby.host.trim().toLowerCase() === currentUsername.toLowerCase() && lobby.gameState === 'lobby') {
                             if (data.lives) {
                                 let l = parseInt(data.lives);
-                                lobby.players.forEach(p => p.lives = l);
-                                lobby.bots.forEach(b => b.lives = l);
+                                lobby.players.forEach(p => p.lives = Math.max(0, l));
+                                lobby.bots.forEach(b => b.lives = Math.max(0, l));
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -862,13 +862,12 @@ function executeBotTurn(lobby, bot) {
         lobby.phaseMessage = `🤖 ${bot.username} drew a card from the deck.`;
     }
 
-    // Check 31 instantly on draw
     let fourCardScore = calculateBestFourCardScore(bot.cards);
     if (fourCardScore === 31) {
         let allParts = [...lobby.players, ...lobby.bots];
         allParts.forEach(p => { 
             if (p !== bot && !p.eliminated) {
-                p.lives--;
+                p.lives = Math.max(0, p.lives - 1);
                 resolveFirstToLoseBets(lobby, p.username);
                 if (p.lives <= 0) {
                     p.eliminated = true;
@@ -898,7 +897,7 @@ function executeBotTurn(lobby, bot) {
         if (newScore === 31) {
             allParts.forEach(p => { 
                 if (p !== bot && !p.eliminated) {
-                    p.lives--;
+                    p.lives = Math.max(0, p.lives - 1);
                     resolveFirstToLoseBets(lobby, p.username);
                     if (p.lives <= 0) {
                         p.eliminated = true;
@@ -1024,7 +1023,7 @@ function getSanitizedLobby(lobby, wsId) {
             let sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
                 username: p.username,
-                lives: p.lives,
+                lives: Math.max(0, p.lives),
                 wager: p.wager || 5,
                 cardCount: p.cards.length,
                 ready: p.ready,
@@ -1042,7 +1041,7 @@ function getSanitizedLobby(lobby, wsId) {
             let sortedRef = sortedParticipants.find(sp => sp.username === b.username);
             return {
                 username: b.username,
-                lives: b.lives,
+                lives: Math.max(0, b.lives),
                 wager: b.wager || 5,
                 cardCount: b.cards.length,
                 seat: sortedRef ? sortedRef.seat : b.seat,
@@ -1201,7 +1200,7 @@ function checkTieBreakerComplete(lobby) {
         let activeParts = getActiveParticipants(lobby);
         let targetParticipant = activeParts.find(p => p.username === loserEntry.username);
         if (targetParticipant) {
-            targetParticipant.lives--;
+            targetParticipant.lives = Math.max(0, targetParticipant.lives - 1);
             resolveFirstToLoseBets(lobby, targetParticipant.username);
 
             if (targetParticipant.lives <= 0 && !targetParticipant.eliminated) {
@@ -1306,7 +1305,7 @@ function handleTurnAction(lobby, ws, actionType) {
     if (fourCardScore === 31) {
         allParts.forEach(p => { 
             if (p !== currentPlayer && !p.eliminated) {
-                p.lives--;
+                p.lives = Math.max(0, p.lives - 1);
                 resolveFirstToLoseBets(lobby, p.username);
                 if (p.lives <= 0) {
                     p.eliminated = true;
@@ -1396,7 +1395,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         if (currentScore === 31) {
             allParts.forEach(p => { 
                 if (p !== currentPlayer && !p.eliminated) {
-                    p.lives--;
+                    p.lives = Math.max(0, p.lives - 1);
                     resolveFirstToLoseBets(lobby, p.username);
                     if (p.lives <= 0) {
                         p.eliminated = true;
@@ -1490,7 +1489,7 @@ function resolveRoundEnd(lobby) {
         }
     } else {
         let loserPlayer = scores[0].player;
-        loserPlayer.lives--;
+        loserPlayer.lives = Math.max(0, loserPlayer.lives - 1);
         let roundLoser = loserPlayer.username;
         let roundWinner = scores[scores.length - 1].player.username;
         
