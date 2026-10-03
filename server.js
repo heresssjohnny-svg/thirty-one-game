@@ -52,7 +52,6 @@ function closeInactiveLobby(code) {
     let lobby = lobbies[code];
     if (!lobby) return;
 
-    console.log(`[Lobby Timeout] Closing inactive lobby: ${code}`);
     let closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to 20 minutes of inactivity.' });
 
     lobby.players.forEach(p => {
@@ -104,7 +103,7 @@ wss.on('connection', (ws) => {
                         name: data.lobbyName || `${currentUsername}'s Lobby`,
                         host: currentUsername,
                         isPrivate: !!data.isPrivate,
-                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, inVC: false, isMuted: false, peekRequests: {}, peekAllowed: {} }],
+                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, inVC: true, isMuted: true, peekRequests: {}, peekAllowed: {} }],
                         bots: [],
                         spectators: [],
                         deck: [],
@@ -175,12 +174,12 @@ wss.on('connection', (ws) => {
                         let totalOccupants = lobby.players.length + lobby.bots.length;
                         if (totalOccupants < 6 && lobby.gameState === 'lobby') {
                             let availableSeat = findOpenSeat(lobby);
-                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false, inVC: false, isMuted: false, peekRequests: {}, peekAllowed: {} });
+                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false, inVC: true, isMuted: true, peekRequests: {}, peekAllowed: {} });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
                         } else {
-                            lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: false, isMuted: false });
+                            lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyList();
