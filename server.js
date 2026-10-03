@@ -460,7 +460,7 @@ wss.on('connection', (ws) => {
                         let requesterName = currentUsername;
                         let rawTarget = (data.targetUsername || '').trim().toLowerCase();
 
-                        // Enforce 1-hand peek limit: Clear any existing peek requests or permissions this spectator has anywhere else
+                        // Enforce 1-hand peek limit
                         lobby.players.forEach(pl => {
                             if (pl.peekRequests) {
                                 Object.keys(pl.peekRequests).forEach(k => {
@@ -482,10 +482,7 @@ wss.on('connection', (ws) => {
                         if (targetPlayer && targetPlayer.id && targetPlayer.id.readyState === WebSocket.OPEN) {
                             if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
                             targetPlayer.peekRequests[requesterName] = true;
-                            console.log(`[Peek Request Success] Spectator '${requesterName}' requested to peek at player '${targetPlayer.username}'`);
                             broadcastLobbyUpdate(currentLobbyCode);
-                        } else {
-                            console.log(`[Peek Request Failed] Target player '${data.targetUsername}' not found or inactive.`);
                         }
                     }
                     break;
@@ -505,9 +502,6 @@ wss.on('connection', (ws) => {
                             if (data.allow) {
                                 if (!player.peekAllowed) player.peekAllowed = {};
                                 player.peekAllowed[data.spectatorUsername] = true;
-                                console.log(`[Peek Allowed] Player '${player.username}' granted peek permission to '${data.spectatorUsername}'.`);
-                            } else {
-                                console.log(`[Peek Denied] Player '${player.username}' denied peek permission to '${data.spectatorUsername}'.`);
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -944,10 +938,12 @@ function resolveFirstToLoseBets(lobby, loserName) {
             let proposer = bet.proposer;
             let target = bet.target;
 
+            // Strict rule: Paid out only if the targeted player loses before the proposer
             if (bet.pickUser === loserName) {
                 addLedgerDebt(lobby.sideBetLedger, target, proposer, bet.wagerAmt);
             } else if (bet.proposer === loserName) {
-                addLedgerDebt(lobby.sideBetLedger, proposer, target, bet.wagerAmt);
+                // If proposer loses first, target does NOT owe the proposer
+                // So we simply drop/expire the bet without transferring debt
             } else {
                 remainingBets.push(bet);
             }
@@ -1001,7 +997,9 @@ function awardTournamentWinner(lobby, winner) {
 
     broadcastLobbyUpdate(lobby.code);
 
-    setTimeout(() => {
+    // Automatically trigger return to lobby after announcing winner
+    if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
+    lobby.nextHandTimer = setTimeout(() => {
         if (lobbies[lobby.code]) {
             let l = lobbies[lobby.code];
             l.gameState = 'lobby';
@@ -1035,7 +1033,7 @@ function awardTournamentWinner(lobby, winner) {
             broadcastLobbyUpdate(l.code);
             broadcastLobbyList();
         }
-    }, 5000);
+    }, 6000);
 }
 
 function checkNextHandReady(lobby) {
@@ -1067,6 +1065,11 @@ function checkAndRunBotTurn(lobby) {
             if (currentTurnCheck && currentTurnCheck.username === currentPlayer.username) {
                 
                 let activeParts = getActiveParticipants(lobby);
+                if (activeParts.length === 1) {
+                    awardTournamentWinner(lobby, activeParts[0]);
+                    return;
+                }
+
                 let threshold = activeParts.length > 2 ? 21 : 25;
                 if (lobby.turnsTakenThisRound >= activeParts.length && calculateScore(currentPlayer.cards) >= threshold && lobby.gameState === 'playing') {
                     executeKnock(lobby, currentPlayer);
@@ -1129,6 +1132,12 @@ function checkAndRunBotTurn(lobby) {
                             }
                         }
                     });
+
+                    let remainingActive = getActiveParticipants(lobby);
+                    if (remainingActive.length === 1) {
+                        awardTournamentWinner(lobby, remainingActive[0]);
+                        return;
+                    }
 
                     triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
                     return;
@@ -1260,6 +1269,12 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         lobby.turnsTakenThisRound++;
 
+        let remainingActiveAfterDiscard = getActiveParticipants(lobby);
+        if (remainingActiveAfterDiscard.length === 1) {
+            awardTournamentWinner(lobby, remainingActiveAfterDiscard[0]);
+            return;
+        }
+
         if (currentScore === 31) {
             allParts.forEach(p => { 
                 if (p !== currentPlayer && !p.eliminated) {
@@ -1271,6 +1286,13 @@ function handleDiscardAction(lobby, ws, cardIndex) {
                     }
                 }
             });
+
+            let remainingActive = getActiveParticipants(lobby);
+            if (remainingActive.length === 1) {
+                awardTournamentWinner(lobby, remainingActive[0]);
+                return;
+            }
+
             triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
         } else {
             advanceTurnOrResolve(lobby);
@@ -1361,6 +1383,12 @@ function resolveRoundEnd(lobby) {
         }
         
         resolveWinSideBets(lobby, roundWinner);
+
+        let remainingActive = getActiveParticipants(lobby);
+        if (remainingActive.length === 1) {
+            awardTournamentWinner(lobby, remainingActive[0]);
+            return;
+        }
         
         triggerRoundOver(lobby, `Round Over! ${roundLoser} had the lowest score and lost a life. All hands revealed.`);
     }
@@ -1391,6 +1419,12 @@ function checkTieBreakerComplete(lobby) {
             resolveWinSideBets(lobby, roundWinner);
         }
 
+        let remainingActive = getActiveParticipants(lobby);
+        if (remainingActive.length === 1) {
+            awardTournamentWinner(lobby, remainingActive[0]);
+            return;
+        }
+
         lobby.phaseMessage = `Tie-breaker results:\n` + entries.map(e => `${e.username}: ${e.card.val}${e.card.suit}`).join('\n') + `\n\n${loserEntry.username} drew the lowest card and lost a life!`;
         broadcastLobbyUpdate(lobby.code);
 
@@ -1403,6 +1437,12 @@ function checkTieBreakerComplete(lobby) {
 }
 
 function triggerRoundOver(lobby, msg) {
+    let remainingActive = getActiveParticipants(lobby);
+    if (remainingActive.length === 1) {
+        awardTournamentWinner(lobby, remainingActive[0]);
+        return;
+    }
+
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
     rotateDealer(lobby);
@@ -1411,7 +1451,7 @@ function triggerRoundOver(lobby, msg) {
 
 function rotateDealer(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
-    lobby.dealerIndex = (lobby.dealerIndex + 1) % allParts.length;
+    lobby.index = (lobby.dealerIndex + 1) % allParts.length;
 }
 
 function calculateScore(cards) {
