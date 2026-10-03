@@ -39,6 +39,43 @@ function createDeck() {
     return deck;
 }
 
+// Resets or initializes the 2-minute inactivity timer for a lobby
+function touchLobbyActivity(lobby) {
+    if (lobby.inactivityTimer) {
+        clearTimeout(lobby.inactivityTimer);
+    }
+    lobby.inactivityTimer = setTimeout(() => {
+        closeInactiveLobby(lobby.code);
+    }, 2 * 60 * 1000); // 2 minutes
+}
+
+function closeInactiveLobby(code) {
+    let lobby = lobbies[code];
+    if (!lobby) return;
+
+    console.log(`[Lobby Timeout] Closing inactive lobby: ${code}`);
+    let closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to 2 minutes of inactivity.' });
+
+    lobby.players.forEach(p => {
+        if (p.id && p.id.readyState === WebSocket.OPEN) {
+            p.id.send(closePayload);
+            // Optionally send forced leave command so client UI resets
+            p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
+        }
+    });
+
+    lobby.spectators.forEach(s => {
+        if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) {
+            s.idSocket.send(closePayload);
+            s.idSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
+        }
+    });
+
+    if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
+    delete lobbies[code];
+    broadcastLobbyList();
+}
+
 wss.on('connection', (ws) => {
     let currentLobbyCode = null;
     let currentUsername = null;
@@ -52,6 +89,11 @@ wss.on('connection', (ws) => {
         }
 
         try {
+            // Touch lobby activity on any incoming user action
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                touchLobbyActivity(lobbies[currentLobbyCode]);
+            }
+
             switch (data.type) {
                 case 'CREATE_LOBBY':
                     currentUsername = (data.username || 'Player').trim();
@@ -59,6 +101,7 @@ wss.on('connection', (ws) => {
                         let l = lobbies[existingCode];
                         if (l.host.trim().toLowerCase() === currentUsername.toLowerCase() && l.gameState === 'lobby') {
                             currentLobbyCode = existingCode;
+                            touchLobbyActivity(l);
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(l, ws) }));
                             return;
                         }
@@ -95,8 +138,10 @@ wss.on('connection', (ws) => {
                         nextHandTimer: null,
                         lastDiscarder: null,
                         fedCardsTracker: {},
-                        endGameVotes: {}
+                        endGameVotes: {},
+                        inactivityTimer: null
                     };
+                    touchLobbyActivity(lobbies[currentLobbyCode]);
                     ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws) }));
                     broadcastLobbyList();
                     break;
@@ -107,6 +152,7 @@ wss.on('connection', (ws) => {
                         currentLobbyCode = code;
                         currentUsername = (data.username || 'Player').trim();
                         let lobby = lobbies[code];
+                        touchLobbyActivity(lobby);
                         
                         let existingPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
@@ -147,6 +193,7 @@ wss.on('connection', (ws) => {
                 case 'STAND_UP':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let playerIdx = lobby.players.findIndex(p => p.id === ws);
                         if (playerIdx !== -1) {
                             let leavingPlayer = lobby.players.splice(playerIdx, 1)[0];
@@ -166,6 +213,7 @@ wss.on('connection', (ws) => {
                 case 'SIT_DOWN':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         let totalOccupants = lobby.players.length + lobby.bots.length;
 
@@ -201,6 +249,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_WAGER':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'lobby') {
                             player.wager = parseInt(data.wager) || 5;
@@ -212,6 +261,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_SETTINGS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         if (lobby.host.trim().toLowerCase() === currentUsername.toLowerCase() && lobby.gameState === 'lobby') {
                             if (data.lives) {
                                 let l = parseInt(data.lives);
@@ -226,6 +276,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_VC_STATUS':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (p) {
                             let wasInVC = p.inVC;
@@ -246,6 +297,7 @@ wss.on('connection', (ws) => {
                 case 'CLEAR_DEBT':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let targetUser = data.targetUser;
                         let category = data.category; 
                         let targetLedger = category === 'main' ? lobby.mainGameLedger : lobby.sideBetLedger;
@@ -260,6 +312,7 @@ wss.on('connection', (ws) => {
                 case 'PROPOSE_ELIMINATION_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let activeParts = getActiveParticipants(lobby);
                         let isSpec = lobby.spectators.some(s => s.username.trim().toLowerCase() === currentUsername.toLowerCase());
                         if (!isSpec && lobby.gameState !== 'lobby' && activeParts.length >= 3) {
@@ -284,6 +337,7 @@ wss.on('connection', (ws) => {
                 case 'PROPOSE_GLOBAL_SIDE_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let activeParts = getActiveParticipants(lobby);
                         if (lobby.gameState !== 'lobby' && activeParts.length === 2) {
                             let proposalId = Math.random().toString(36).substring(2, 8);
@@ -303,6 +357,7 @@ wss.on('connection', (ws) => {
                 case 'ACCEPT_GLOBAL_PROPOSAL':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId);
                         if (prop && !prop.acceptedBy.includes(currentUsername) && prop.proposer !== currentUsername) {
                             prop.acceptedBy.push(currentUsername);
@@ -315,6 +370,7 @@ wss.on('connection', (ws) => {
                 case 'CONFIRM_GLOBAL_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId && gp.proposer === currentUsername);
                         if (prop && prop.acceptedBy.includes(data.acceptedUser)) {
                             if (data.confirm) {
@@ -342,6 +398,7 @@ wss.on('connection', (ws) => {
                 case 'RESPOND_BET':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let betIdx = lobby.pendingBets.findIndex(b => b.id === data.betId);
                         if (betIdx !== -1) {
                             let bet = lobby.pendingBets.splice(betIdx, 1)[0];
@@ -359,6 +416,7 @@ wss.on('connection', (ws) => {
                 case 'ADD_BOT':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         if (lobby.players.length + lobby.bots.length < 6 && lobby.gameState === 'lobby') {
                             let botName = 'Bot_' + Math.floor(Math.random() * 900 + 100);
                             lobby.bots.push({ username: botName, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], seat: findOpenSeat(lobby), ready: true, nextHandReady: true, eliminated: false });
@@ -371,6 +429,7 @@ wss.on('connection', (ws) => {
                 case 'REMOVE_BOT':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         if (lobby.bots.length > 0 && lobby.gameState === 'lobby') {
                             lobby.bots.pop();
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -382,6 +441,7 @@ wss.on('connection', (ws) => {
                 case 'SET_READY':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
                             player.ready = data.ready;
@@ -401,6 +461,7 @@ wss.on('connection', (ws) => {
                 case 'NEXT_HAND':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'roundOver' && !player.eliminated) {
                             player.nextHandReady = true;
@@ -413,6 +474,7 @@ wss.on('connection', (ws) => {
                 case 'END_GAME_PROPOSAL':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         if (!lobby.endGameVotes) lobby.endGameVotes = {};
                         lobby.endGameVotes[currentUsername] = true;
                         lobby.bots.forEach(b => { lobby.endGameVotes[b.username] = true; });
@@ -421,7 +483,7 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠️️ Unanimous vote! Game ended, returning to lobby ready-up.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
@@ -457,6 +519,7 @@ wss.on('connection', (ws) => {
                 case 'REQUEST_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let requesterName = currentUsername;
                         let rawTarget = (data.targetUsername || '').trim().toLowerCase();
 
@@ -489,6 +552,7 @@ wss.on('connection', (ws) => {
                 case 'RESPOND_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
                             if (player.peekRequests) {
@@ -510,6 +574,7 @@ wss.on('connection', (ws) => {
                 case 'STOP_PEEK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         lobby.players.forEach(pl => {
                             if (pl.peekAllowed) {
                                 Object.keys(pl.peekAllowed).forEach(k => {
@@ -526,6 +591,7 @@ wss.on('connection', (ws) => {
                 case 'KICK_PEEKER':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && player.peekAllowed) {
                             Object.keys(player.peekAllowed).forEach(k => {
@@ -541,6 +607,7 @@ wss.on('connection', (ws) => {
                 case 'CHOOSE_POOL_CARD':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
                             let activeSender = lobby.players.find(p => p.id === ws);
                             let verifiedUsername = activeSender ? activeSender.username : currentUsername;
@@ -552,6 +619,7 @@ wss.on('connection', (ws) => {
                 case 'CHAT_MESSAGE':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
                         lobby.players.forEach(p => { if (p.id && p.id.readyState === WebSocket.OPEN) p.id.send(JSON.stringify(chatPayload)); });
                         lobby.spectators.forEach(s => { if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(JSON.stringify(chatPayload)); });
@@ -561,6 +629,7 @@ wss.on('connection', (ws) => {
                 case 'WEBRTC_SIGNAL':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
                         let targetUser = data.target;
                         let allRecipients = [...lobby.players, ...lobby.spectators.map(s => ({ username: s.username, id: s.idSocket }))];
                         let targetRec = allRecipients.find(r => r.username === targetUser);
@@ -577,19 +646,25 @@ wss.on('connection', (ws) => {
                 case 'DRAW_DECK':
                 case 'DRAW_DISCARD':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        handleTurnAction(lobby, ws, data.type);
                     }
                     break;
 
                 case 'DISCARD_CARD':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        handleDiscardAction(lobbies[currentLobbyCode], ws, data.cardIndex);
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        handleDiscardAction(lobby, ws, data.cardIndex);
                     }
                     break;
 
                 case 'KNOCK':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        handleKnock(lobbies[currentLobbyCode], ws);
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        handleKnock(lobby, ws);
                     }
                     break;
 
@@ -625,8 +700,10 @@ function leaveLobby(ws, code) {
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
     if (lobby.players.length === 0 && lobby.bots.length === 0) {
         if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
+        if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
         delete lobbies[code];
     } else {
+        touchLobbyActivity(lobby);
         broadcastLobbyUpdate(code);
     }
     broadcastLobbyList();
@@ -941,7 +1018,6 @@ function resolveFirstToLoseBets(lobby, loserName) {
             let proposer = bet.proposer;
             let target = bet.target;
 
-            // Strict rule: Paid out only if the target loses ALL lives before the proposer loses all lives
             if (bet.pickUser.trim().toLowerCase() === loserName.trim().toLowerCase() && loserLivesExhausted) {
                 let proposerObj = allParts.find(p => p.username.trim().toLowerCase() === proposer.trim().toLowerCase());
                 let proposerAlive = proposerObj && proposerObj.lives > 0;
