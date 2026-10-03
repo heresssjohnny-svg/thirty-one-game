@@ -831,25 +831,21 @@ function executeBotTurn(lobby, bot) {
     if (bot.cards.length >= 4) return;
     let activeParts = getActiveParticipants(lobby);
 
-    // 7/10 Intelligence Strategy:
-    // 1. Evaluate current best suit score
     let currentScore = calculateScore(bot.cards);
     let threshold = activeParts.length > 2 ? 21 : 25;
 
-    // 2. Decide whether to knock if condition is met
     if (!lobby.knockedBy && lobby.turnsTakenThisRound >= activeParts.length && currentScore >= threshold && Math.random() < 0.75) {
         executeKnock(lobby, bot);
         return;
     }
 
-    // 3. Decide whether to draw from discard or deck
     let topDiscard = lobby.discardPile[lobby.discardPile.length - 1];
     let shouldTakeDiscard = false;
     if (topDiscard) {
         let tempHand = [...bot.cards, topDiscard];
         let bestTempScore = calculateScore(tempHand);
         if (bestTempScore > currentScore || topDiscard.val === 'A' || topDiscard.points >= 10) {
-            shouldTakeDiscard = Math.random() < 0.85; // 7/10 intelligent pickup assessment
+            shouldTakeDiscard = Math.random() < 0.85;
         }
     }
 
@@ -866,7 +862,24 @@ function executeBotTurn(lobby, bot) {
         lobby.phaseMessage = `🤖 ${bot.username} drew a card from the deck.`;
     }
 
-    // 4. Smart Discard: Drop the card that contributes least to the best suit sum
+    // Check 31 instantly on draw
+    let fourCardScore = calculateBestFourCardScore(bot.cards);
+    if (fourCardScore === 31) {
+        let allParts = [...lobby.players, ...lobby.bots];
+        allParts.forEach(p => { 
+            if (p !== bot && !p.eliminated) {
+                p.lives--;
+                resolveFirstToLoseBets(lobby, p.username);
+                if (p.lives <= 0) {
+                    p.eliminated = true;
+                    lobby.spectators.push({ idSocket: p.id, username: p.username });
+                }
+            }
+        });
+        triggerRoundOver(lobby, `Round Over! ${bot.username} hit 31 points! All hands revealed.`);
+        return;
+    }
+
     setTimeout(() => {
         if (!lobbies[lobby.code]) return;
         let worstIdx = findBotWorstCardIndex(bot.cards, bot.pickedUpDiscardCard);
@@ -881,6 +894,7 @@ function executeBotTurn(lobby, bot) {
         lobby.turnsTakenThisRound++;
 
         let newScore = calculateScore(bot.cards);
+        let allParts = [...lobby.players, ...lobby.bots];
         if (newScore === 31) {
             allParts.forEach(p => { 
                 if (p !== bot && !p.eliminated) {
@@ -897,6 +911,20 @@ function executeBotTurn(lobby, bot) {
             advanceTurnOrResolve(lobby);
         }
     }, 1000);
+}
+
+function calculateBestFourCardScore(cards) {
+    if (!cards || cards.length < 3) return 0;
+    if (cards.length === 4) {
+        let scores = [
+            calculateScore([cards[0], cards[1], cards[2]]),
+            calculateScore([cards[0], cards[1], cards[3]]),
+            calculateScore([cards[0], cards[2], cards[3]]),
+            calculateScore([cards[1], cards[2], cards[3]])
+        ];
+        return Math.max(...scores);
+    }
+    return calculateScore(cards);
 }
 
 function findBotWorstCardIndex(cards, pickedUpCard) {
@@ -1265,53 +1293,32 @@ function handleTurnAction(lobby, ws, actionType) {
         currentPlayer.cards.push(lobby.deck.pop());
         currentPlayer.pickedUpDiscardCard = null;
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
-        broadcastLobbyUpdate(lobby.code);
     } else if (actionType === 'DRAW_DISCARD') {
         if (lobby.discardPile.length > 0) {
             let card = lobby.discardPile.pop();
             currentPlayer.cards.push(card);
             currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
-
-            let isInitialDeal = lobby.initialDealCard && 
-                                card.val === lobby.initialDealCard.val && 
-                                card.suit === lobby.initialDealCard.suit;
-
-            if (isInitialDeal) {
-                lobby.lastDiscardPickup = { username: currentPlayer.username, card: card };
-                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up initial deal card ${card.val}${card.suit} from the discard pile!`;
-            } else {
-                lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
-            }
-
-            if (lobby.lastDiscarder && lobby.lastDiscarder !== currentPlayer.username) {
-                let fedCards = lobby.fedCardsTracker[lobby.lastDiscarder] || [];
-                fedCards.push(card);
-                
-                let hasAce = fedCards.some(c => c.val === 'A');
-                let hasFaceOr10 = fedCards.some(c => ['10', 'J', 'Q', 'K'].includes(c.val));
-
-                if (hasAce && hasFaceOr10) {
-                    let feeder = allParts.find(p => p.username === lobby.lastDiscarder);
-                    if (feeder) {
-                        let fedPlayerScore = calculateScore(currentPlayer.cards);
-                        if (fedPlayerScore === 31 || calculateSuitScore(currentPlayer.cards, card.suit) === 31) {
-                            feeder.lives = 0;
-                            allParts.forEach(p => {
-                                if (p.lives <= 0 && !p.eliminated) {
-                                    p.eliminated = true;
-                                    resolveFirstToLoseBets(lobby, p.username);
-                                    lobby.spectators.push({ idSocket: p.id, username: p.username });
-                                }
-                            });
-                            lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and a 10-value card, and ${currentPlayer.username} hit 31! ${feeder.username} loses ALL lives!`;
-                        }
-                    }
-                }
-            }
-
-            broadcastLobbyUpdate(lobby.code);
+            lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
         }
     }
+
+    let fourCardScore = calculateBestFourCardScore(currentPlayer.cards);
+    if (fourCardScore === 31) {
+        allParts.forEach(p => { 
+            if (p !== currentPlayer && !p.eliminated) {
+                p.lives--;
+                resolveFirstToLoseBets(lobby, p.username);
+                if (p.lives <= 0) {
+                    p.eliminated = true;
+                    lobby.spectators.push({ idSocket: p.id, username: p.username });
+                }
+            }
+        });
+        triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points! All hands revealed.`);
+        return;
+    }
+
+    broadcastLobbyUpdate(lobby.code);
 }
 
 function handleDiscardAction(lobby, ws, cardIndex) {
