@@ -133,6 +133,8 @@ wss.on('connection', (ws) => {
                         endGameVotes: {},
                         chatHistory: [],
                         playlist: [],
+                        currentSongIndex: 0,
+                        isPlaying: false,
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
@@ -197,6 +199,10 @@ wss.on('connection', (ws) => {
                         if (title && url) {
                             if (!lobby.playlist) lobby.playlist = [];
                             lobby.playlist.push({ title, url });
+                            if (lobby.playlist.length === 1) {
+                                lobby.currentSongIndex = 0;
+                                lobby.isPlaying = true;
+                            }
                             lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to the YouTube playlist!`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -210,9 +216,35 @@ wss.on('connection', (ws) => {
                         let index = data.index;
                         if (lobby.playlist && lobby.playlist[index]) {
                             let removed = lobby.playlist.splice(index, 1)[0];
+                            if (lobby.currentSongIndex >= lobby.playlist.length) {
+                                lobby.currentSongIndex = Math.max(0, lobby.playlist.length - 1);
+                            }
                             lobby.phaseMessage = `🎵 ${currentUsername} removed "${removed.title}" from the playlist.`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
+                    }
+                    break;
+
+                case 'CONTROL_MUSIC':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        touchLobbyActivity(lobby);
+                        if (data.action === 'PLAY') {
+                            lobby.isPlaying = true;
+                        } else if (data.action === 'PAUSE') {
+                            lobby.isPlaying = false;
+                        } else if (data.action === 'SKIP') {
+                            if (lobby.playlist && lobby.playlist.length > 0) {
+                                lobby.currentSongIndex = (lobby.currentSongIndex + 1) % lobby.playlist.length;
+                                lobby.isPlaying = true;
+                            }
+                        } else if (data.action === 'SELECT' && typeof data.index === 'number') {
+                            if (lobby.playlist && lobby.playlist[data.index]) {
+                                lobby.currentSongIndex = data.index;
+                                lobby.isPlaying = true;
+                            }
+                        }
+                        broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
 
@@ -836,6 +868,8 @@ function getSanitizedLobby(lobby, wsId) {
         knockedBy: lobby.knockedBy || null,
         chatHistory: lobby.chatHistory || [],
         playlist: lobby.playlist || [],
+        currentSongIndex: lobby.currentSongIndex || 0,
+        isPlaying: !!lobby.isPlaying,
         players: lobby.players.map(p => {
             let canSeeCards = isRoundOver || p.username === myUsername;
             
