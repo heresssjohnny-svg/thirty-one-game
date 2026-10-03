@@ -262,7 +262,6 @@
         .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; }
         .seat:hover { border-color: var(--accent-gold); }
         
-        /* Entire player status background turns bright yellow on their turn */
         .seat.current-turn-seat {
             background: rgba(250, 204, 21, 0.95) !important;
             border: 2px solid #ffffff !important;
@@ -1471,7 +1470,6 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Sync ready state with server so button toggles correctly between Ready Up and Unready
             if (me) {
                 clientState.isReady = me.ready;
                 let readyBtn = document.getElementById('ready-btn');
