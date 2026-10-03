@@ -370,12 +370,10 @@
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    <audio id="bg-audio" loop preload="auto"></audio>
-
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
+            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 YouTube Playlist</button>
 
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
@@ -513,38 +511,27 @@
         </div>
     </div>
 
-    <!-- Music Player Modal Window with Play, Pause, Skip, Volume, and Queue -->
+    <!-- YouTube Playlist & Music Player Modal Window -->
     <div id="music-modal" class="modal">
-        <div class="modal-content" style="max-width:340px;">
-            <h3 style="color:var(--accent-gold);">🎵 Music Player & Playlist</h3>
+        <div class="modal-content" style="max-width:360px;">
+            <h3 style="color:var(--accent-gold);">🎵 YouTube Playlist & Player</h3>
             
-            <!-- Now Playing & Controls Box -->
-            <div style="background:rgba(15,23,42,0.85); padding:10px; border-radius:8px; border:1px solid rgba(250,204,21,0.2); display:flex; flex-direction:column; gap:6px;">
-                <div id="now-playing-title" style="font-size:0.8rem; font-weight:bold; color:var(--accent-cyan); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Now Playing: None</div>
-                
-                <div style="display:flex; justify-content:center; gap:6px; align-items:center;">
-                    <button class="secondary" onclick="togglePlayPause()" id="play-pause-btn" style="padding:4px 10px; font-size:0.75rem;">⏸️ Pause</button>
-                    <button class="secondary" onclick="skipSong()" style="padding:4px 10px; font-size:0.75rem;">⏭️ Skip</button>
-                </div>
-
-                <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; margin-top:2px;">
-                    <button class="secondary" onclick="toggleMusicMute()" id="music-modal-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Music: On</button>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                        <span style="font-size:0.7rem; color:var(--text-muted);">Vol:</span>
-                        <input type="range" id="music-modal-volume" min="0" max="1" step="0.01" value="0.5" oninput="adjustVolume(this.value)" style="width:75px; accent-color:var(--accent-gold);">
-                    </div>
+            <!-- Embedded YouTube Player Frame -->
+            <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
+                <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
+                    No song playing
                 </div>
             </div>
 
-            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold); text-align:left; margin-top:4px;">Playlist Queue:</div>
-            <div id="playlist-container" style="max-height:110px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
-                <div style="padding:4px; color:#64748b;">No songs in queue. Add a song below.</div>
+            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:2px;">Shared Lobby Queue:</div>
+            <div id="playlist-container" style="max-height:120px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
+                <div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
-                <label style="text-align:left;">Add Song (Audio URL / YouTube)</label>
-                <input type="text" id="new-song-title" placeholder="Song Title (e.g. Card Night Beat)" style="font-size:0.75rem; padding:5px;">
-                <input type="text" id="new-song-url" placeholder="Direct Audio URL (.mp3) or Stream Link" style="font-size:0.75rem; padding:5px;">
+                <label style="text-align:left;">Add YouTube Song</label>
+                <input type="text" id="new-song-title" placeholder="Song Title (e.g. Card Night Lo-Fi)" style="font-size:0.75rem; padding:5px;">
+                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
                 <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
             </div>
 
@@ -666,7 +653,6 @@
         let activePeerAudioElements = [];
         let latestLobbySnapshot = null;
         let currentPlaylistQueue = [];
-        let currentPlaylistIndex = 0;
         
         const rtcConfig = { 
             iceServers: [
@@ -678,107 +664,48 @@
             ] 
         };
 
-        let isMusicMuted = false;
-
-        function toggleMusicMute() {
-            isMusicMuted = !isMusicMuted;
-            let bgAudio = document.getElementById('bg-audio');
-            let btnModal = document.getElementById('music-modal-mute-btn');
-            
-            localStorage.setItem('saved_music_muted', isMusicMuted);
-
-            if (isMusicMuted) {
-                bgAudio.pause();
-                btnModal.innerText = 'Music: Off';
-            } else {
-                if (bgAudio.src) bgAudio.play().catch(e => {});
-                btnModal.innerText = 'Music: On';
+        function parseYouTubeEmbedUrl(url) {
+            let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            let match = url.match(regExp);
+            if (match && match[2].length === 11) {
+                return `https://www.youtube.com/embed/${match[2]}?autoplay=1`;
             }
-        }
-
-        function togglePlayPause() {
-            let bgAudio = document.getElementById('bg-audio');
-            let btn = document.getElementById('play-pause-btn');
-            if (!bgAudio.src) {
-                if (currentPlaylistQueue.length > 0) {
-                    playPlaylistSong(currentPlaylistQueue[0].url, currentPlaylistQueue[0].title, 0);
-                } else {
-                    alert("No songs in the playlist queue to play.");
-                    return;
-                }
-            }
-
-            if (bgAudio.paused) {
-                bgAudio.play().catch(e => {});
-                btn.innerText = '⏸️ Pause';
-            } else {
-                bgAudio.pause();
-                btn.innerText = '▶️ Play';
-            }
-        }
-
-        function skipSong() {
-            if (currentPlaylistQueue.length === 0) return;
-            currentPlaylistIndex = (currentPlaylistIndex + 1) % currentPlaylistQueue.length;
-            let nextSong = currentPlaylistQueue[currentPlaylistIndex];
-            playPlaylistSong(nextSong.url, nextSong.title, currentPlaylistIndex);
-        }
-
-        function adjustVolume(val) {
-            let bgAudio = document.getElementById('bg-audio');
-            let sliderVal = parseFloat(val);
-            
-            localStorage.setItem('saved_volume_slider', sliderVal);
-            document.getElementById('music-modal-volume').value = sliderVal;
-
-            let adjustedVolume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
-
-            if (bgAudio) {
-                bgAudio.volume = adjustedVolume;
-                if (sliderVal > 0 && isMusicMuted) {
-                    isMusicMuted = false;
-                    localStorage.setItem('saved_music_muted', isMusicMuted);
-                    if (bgAudio.src) bgAudio.play().catch(e => {});
-                    document.getElementById('music-modal-mute-btn').innerText = 'Music: On';
-                }
-            }
-
-            activePeerAudioElements.forEach(audioElem => {
-                if (audioElem) {
-                    audioElem.volume = sliderVal;
-                }
-            });
+            return url;
         }
 
         function addNewSongToPlaylist() {
             let titleInput = document.getElementById('new-song-title');
             let urlInput = document.getElementById('new-song-url');
             let title = titleInput.value.trim();
-            let url = urlInput.value.trim();
+            let rawUrl = urlInput.value.trim();
 
-            if (!title || !url) {
-                alert("Please provide both a song title and a valid link/URL.");
+            if (!title || !rawUrl) {
+                alert("Please provide both a song title and a valid YouTube link.");
                 return;
             }
 
+            let embedUrl = parseYouTubeEmbedUrl(rawUrl);
+
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url }));
+                ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl }));
                 titleInput.value = '';
                 urlInput.value = '';
-                showCenterNotification(`Added "${title}" to queue!`);
+                showCenterNotification(`Added "${title}" to YouTube queue!`);
             }
         }
 
-        function playPlaylistSong(url, title, index = 0) {
-            let bgAudio = document.getElementById('bg-audio');
-            if (bgAudio) {
-                currentPlaylistIndex = index;
-                bgAudio.src = url;
-                bgAudio.play().catch(e => console.log("Audio playback error:", e));
-                document.getElementById('now-playing-title').innerText = `Now Playing: ${title}`;
-                document.getElementById('play-pause-btn').innerText = '⏸️ Pause';
-                showCenterNotification(`Now Playing: ${title}`);
+        function removeSongFromPlaylist(index) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'REMOVE_PLAYLIST_SONG', index }));
             }
+        }
+
+        function playYouTubeSong(url, title) {
+            let container = document.getElementById('youtube-embed-container');
+            container.innerHTML = `
+                <iframe width="100%" height="100%" src="${url}" title="${title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            `;
+            showCenterNotification(`Now Playing: ${title}`);
         }
 
         function openVcParticipantsModal() {
@@ -810,33 +737,6 @@
             }
             refreshLobbies();
 
-            let bgAudio = document.getElementById('bg-audio');
-            let volumeSlider = document.getElementById('music-modal-volume');
-            let musicBtnModal = document.getElementById('music-modal-mute-btn');
-
-            if (bgAudio) {
-                let savedSlider = localStorage.getItem('saved_volume_slider');
-                let sliderVal = savedSlider !== null ? parseFloat(savedSlider) : 0.5;
-                volumeSlider.value = sliderVal;
-                bgAudio.volume = sliderVal === 0 ? 0 : Math.pow(sliderVal, 3);
-
-                let savedMuted = localStorage.getItem('saved_music_muted');
-                if (savedMuted !== null) {
-                    isMusicMuted = (savedMuted === 'true');
-                }
-
-                if (isMusicMuted) {
-                    bgAudio.pause();
-                    musicBtnModal.innerText = 'Music: Off';
-                } else {
-                    musicBtnModal.innerText = 'Music: On';
-                }
-
-                bgAudio.onended = () => {
-                    skipSong();
-                };
-            }
-
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) {
                     refreshLobbies();
@@ -865,13 +765,6 @@
                 }
             });
         });
-
-        window.addEventListener('click', () => {
-            let bgAudio = document.getElementById('bg-audio');
-            if (bgAudio && bgAudio.paused && !isMusicMuted && bgAudio.src) {
-                bgAudio.play().catch(e => {});
-            }
-        }, { once: true });
 
         function saveInputs() {
             localStorage.setItem('saved_username', document.getElementById('username-input').value);
@@ -1415,9 +1308,6 @@
                 audioElem.srcObject = event.streams[0];
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
-                
-                let currentSliderVal = parseFloat(document.getElementById('music-modal-volume').value) || 0.5;
-                audioElem.volume = currentSliderVal;
                 activePeerAudioElements.push(audioElem);
 
                 audioElem.play().catch(e => {
@@ -1723,11 +1613,14 @@
                 playlistDiv.innerHTML = currentPlaylistQueue.map((song, idx) => `
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
                         <span>🎵 <b>${song.title}</b></span>
-                        <button class="secondary" style="font-size:0.6rem; padding:2px 5px;" onclick="playPlaylistSong('${song.url}', '${song.title}', ${idx})">Play</button>
+                        <div style="display:flex; gap:3px;">
+                            <button class="secondary" style="font-size:0.6rem; padding:2px 5px; background:#2563eb;" onclick="playYouTubeSong('${song.url}', '${song.title}')">Play</button>
+                            <button class="danger" style="font-size:0.6rem; padding:2px 5px;" onclick="removeSongFromPlaylist(${idx})">X</button>
+                        </div>
                     </div>
                 `).join('');
             } else {
-                playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a song below.</div>';
+                playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>';
             }
 
             clientState.gameState = lobby.gameState;
