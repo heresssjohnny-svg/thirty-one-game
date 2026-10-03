@@ -297,7 +297,6 @@
         
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
         
-        /* Repositioned above deck and draw piles so it never blocks cards */
         #center-notification-banner { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(4, 78, 54, 0.98); border: 2px solid var(--accent-gold); color: var(--text-main); padding: 8px 20px; border-radius: 8px; font-weight: 800; font-size: 0.9rem; text-align: center; z-index: 4000; box-shadow: 0 6px 20px rgba(0,0,0,0.8); display: none; pointer-events: none; }
         
         #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
@@ -438,7 +437,6 @@
         </div>
 
         <div id="game-view">
-            <!-- Repositioned notification banner placed above the table area -->
             <div id="center-notification-banner">NOTIFICATION</div>
 
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
@@ -597,6 +595,7 @@
         let lastPhaseMessage = '';
         let isSidebarMinimized = false;
         let lastGameState = '';
+        let currentJoinedCode = null;
         
         let localAudioStream = null;
         let isMicMuted = false;
@@ -682,11 +681,18 @@
                 }
             }
 
+            // Automatic reconnection & resync when returning to window/app tab
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) {
                     refreshLobbies();
                     if (!ws || ws.readyState !== WebSocket.OPEN) {
-                        initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+                        if (currentJoinedCode) {
+                            initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
+                        } else {
+                            initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+                        }
+                    } else if (currentJoinedCode) {
+                        ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' }));
                     }
                 }
             });
@@ -694,7 +700,13 @@
             window.addEventListener('focus', () => {
                 refreshLobbies();
                 if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+                    if (currentJoinedCode) {
+                        initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
+                    } else {
+                        initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+                    }
+                } else if (currentJoinedCode) {
+                    ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' }));
                 }
             });
         });
@@ -890,8 +902,9 @@
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                [0, 0.14].forEach(delay => {
-                    let bufferSize = audioCtx.sampleRate * 0.05;
+                // Slower, louder, realistic 3 knocks on a door/wood table
+                [0, 0.22, 0.44].forEach((delay, index) => {
+                    let bufferSize = audioCtx.sampleRate * 0.08;
                     let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
                     let data = buffer.getChannelData(0);
                     for (let i = 0; i < bufferSize; i++) {
@@ -903,18 +916,18 @@
 
                     let filter = audioCtx.createBiquadFilter();
                     filter.type = 'lowpass';
-                    filter.frequency.setValueAtTime(320, now + delay);
+                    filter.frequency.setValueAtTime(index === 2 ? 380 : 300, now + delay);
 
                     let gain = audioCtx.createGain();
-                    gain.gain.setValueAtTime(0.7, now + delay);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.05);
+                    gain.gain.setValueAtTime(0.9, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.07);
 
                     noise.connect(filter);
                     filter.connect(gain);
                     gain.connect(audioCtx.destination);
 
                     noise.start(now + delay);
-                    noise.stop(now + delay + 0.05);
+                    noise.stop(now + delay + 0.07);
                 });
             }
         }
@@ -945,6 +958,11 @@
         function initSocketAndSend(payload) {
             saveInputs();
             clientState.username = document.getElementById('username-input').value.trim() || 'Player1';
+            
+            if (payload.type === 'CREATE_LOBBY' || payload.type === 'JOIN_LOBBY') {
+                if (payload.code) currentJoinedCode = payload.code;
+            }
+
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(payload));
             } else {
@@ -958,6 +976,7 @@
                     let data = JSON.parse(event.data);
                     if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
                     else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                        if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
                         updateUIFromLobby(data.lobby);
                         handleWebRTCConnections(data.lobby);
                     } else if (data.type === 'CHAT_MESSAGE') {
@@ -969,10 +988,21 @@
                             chatBtn.innerText = '💬 Chat❗';
                         }
                     } else if (data.type === 'WEBRTC_SIGNAL') handleWebRTCSignal(data.sender, data.signal);
-                    else if (data.type === 'LEFT_LOBBY') resetToMainMenu();
+                    else if (data.type === 'LEFT_LOBBY') {
+                        currentJoinedCode = null;
+                        resetToMainMenu();
+                    }
                     else if (data.type === 'ERROR') alert(data.message);
                 };
-                ws.onclose = () => { isConnected = false; };
+                ws.onclose = () => { 
+                    isConnected = false; 
+                    // Attempt automatic socket reconnection after 3 seconds if inside a lobby
+                    setTimeout(() => {
+                        if (!isConnected && currentJoinedCode) {
+                            initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
+                        }
+                    }, 3000);
+                };
             }
         }
 
@@ -1011,6 +1041,7 @@
         }
 
         function joinLobbyCode(code) {
+            currentJoinedCode = code;
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
@@ -1155,9 +1186,14 @@
             lobby.players.forEach(p => { if (p.inVC && p.username !== currentUsername) vcParticipants.push(p.username); });
             lobby.spectators.forEach(s => { if (s.inVC && s.username !== currentUsername) vcParticipants.push(s.username); });
 
+            // Ensure connection handshake is re-established with any active VC participant
             vcParticipants.forEach(peerUser => {
-                if (!peerConnections[peerUser]) {
-                    console.log(`[WebRTC] New voice chat participant detected: ${peerUser}. Establishing connection...`);
+                if (!peerConnections[peerUser] || peerConnections[peerUser].connectionState === 'failed' || peerConnections[peerUser].connectionState === 'closed') {
+                    if (peerConnections[peerUser]) {
+                        peerConnections[peerUser].close();
+                        delete peerConnections[peerUser];
+                    }
+                    console.log(`[WebRTC] Establishing connection with active voice chat participant: ${peerUser}`);
                     setupPeerConnection(peerUser, true);
                 }
             });
@@ -1243,7 +1279,11 @@
         async function handleWebRTCSignal(sender, signal) {
             if (!localAudioStream) return;
             
-            if (!peerConnections[sender]) {
+            if (!peerConnections[sender] || peerConnections[sender].connectionState === 'failed' || peerConnections[sender].connectionState === 'closed') {
+                if (peerConnections[sender]) {
+                    peerConnections[sender].close();
+                    delete peerConnections[sender];
+                }
                 setupPeerConnection(sender, false);
             }
             
@@ -1456,6 +1496,8 @@
             modal.style.display = 'flex';
         }
 
+        let lastSyncedChatLength = 0;
+
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('game-view').style.display = 'flex';
@@ -1471,6 +1513,17 @@
                 if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
                     document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
                 }
+            }
+
+            // Sync full chat history for the life of the lobby
+            if (lobby.chatHistory && lobby.chatHistory.length !== lastSyncedChatLength) {
+                let msgBox = document.getElementById('chat-messages');
+                msgBox.innerHTML = '';
+                lobby.chatHistory.forEach(ch => {
+                    msgBox.innerHTML += `<div><b>${ch.username}:</b> ${ch.message}</div>`;
+                });
+                msgBox.scrollTop = msgBox.scrollHeight;
+                lastSyncedChatLength = lobby.chatHistory.length;
             }
 
             clientState.gameState = lobby.gameState;
@@ -1920,6 +1973,7 @@
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
+            currentJoinedCode = null;
             document.getElementById('game-view').style.display = 'none';
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'none';
