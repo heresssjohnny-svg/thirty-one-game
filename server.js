@@ -460,7 +460,6 @@ wss.on('connection', (ws) => {
                         let requesterName = currentUsername;
                         let rawTarget = (data.targetUsername || '').trim().toLowerCase();
 
-                        // Enforce 1-hand peek limit
                         lobby.players.forEach(pl => {
                             if (pl.peekRequests) {
                                 Object.keys(pl.peekRequests).forEach(k => {
@@ -949,8 +948,6 @@ function resolveFirstToLoseBets(lobby, loserName) {
 
                 if (proposerAlive) {
                     addLedgerDebt(lobby.sideBetLedger, target, proposer, bet.wagerAmt);
-                } else {
-                    // Proposer also lost all lives, so bet is voided/expired
                 }
             } else {
                 remainingBets.push(bet);
@@ -1016,12 +1013,11 @@ function awardTournamentWinner(lobby, winner) {
             l.pendingBets = [];
             l.globalProposals = [];
             
-            // Explicitly reset player ready states to false so ready button resets
             l.players.forEach(p => {
                 p.lives = 2;
                 p.eliminated = false;
                 p.cards = [];
-                p.ready = false; 
+                p.ready = false;
                 p.nextHandReady = false;
                 p.peekRequests = {};
                 p.peekAllowed = {};
