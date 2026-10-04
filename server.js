@@ -116,6 +116,8 @@ wss.on('connection', (ws) => {
                         playlist: [],
                         currentSongIndex: 0,
                         isPlaying: false,
+                        songStartedAt: null,
+                        songPausedAtOffset: 0,
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
@@ -180,6 +182,8 @@ wss.on('connection', (ws) => {
                             if (lobby.playlist.length === 1) {
                                 lobby.currentSongIndex = 0;
                                 lobby.isPlaying = true;
+                                lobby.songStartedAt = Date.now();
+                                lobby.songPausedAtOffset = 0;
                             }
                             lobby.phaseMessage = `🎵 ${currentUsername} added "${title}" to queue!`;
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -194,8 +198,17 @@ wss.on('connection', (ws) => {
                         let index = data.index;
                         if (lobby.playlist?.[index]) {
                             let removed = lobby.playlist.splice(index, 1)[0];
-                            if (lobby.currentSongIndex >= lobby.playlist.length) {
-                                lobby.currentSongIndex = Math.max(0, lobby.playlist.length - 1);
+                            if (lobby.playlist.length === 0) {
+                                lobby.isPlaying = false;
+                                lobby.songStartedAt = null;
+                                lobby.songPausedAtOffset = 0;
+                            } else if (lobby.currentSongIndex >= lobby.playlist.length) {
+                                lobby.currentSongIndex = 0;
+                                lobby.songStartedAt = Date.now();
+                                lobby.songPausedAtOffset = 0;
+                            } else if (lobby.currentSongIndex === index) {
+                                lobby.songStartedAt = Date.now();
+                                lobby.songPausedAtOffset = 0;
                             }
                             lobby.phaseMessage = `🎵 ${currentUsername} removed "${removed.title}".`;
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -207,14 +220,27 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
-                        if (data.action === 'PLAY') lobby.isPlaying = true;
-                        else if (data.action === 'PAUSE') lobby.isPlaying = false;
-                        else if (data.action === 'SKIP' && lobby.playlist?.length > 0) {
+                        if (data.action === 'PLAY') {
+                            if (!lobby.isPlaying) {
+                                lobby.isPlaying = true;
+                                lobby.songStartedAt = Date.now() - (lobby.songPausedAtOffset * 1000);
+                            }
+                        } else if (data.action === 'PAUSE') {
+                            if (lobby.isPlaying) {
+                                lobby.isPlaying = false;
+                                let elapsed = lobby.songStartedAt ? Math.floor((Date.now() - lobby.songStartedAt) / 1000) : 0;
+                                lobby.songPausedAtOffset = Math.max(0, elapsed);
+                            }
+                        } else if (data.action === 'SKIP' && lobby.playlist?.length > 0) {
                             lobby.currentSongIndex = (lobby.currentSongIndex + 1) % lobby.playlist.length;
                             lobby.isPlaying = true;
+                            lobby.songStartedAt = Date.now();
+                            lobby.songPausedAtOffset = 0;
                         } else if (data.action === 'SELECT' && typeof data.index === 'number' && lobby.playlist?.[data.index]) {
                             lobby.currentSongIndex = data.index;
                             lobby.isPlaying = true;
+                            lobby.songStartedAt = Date.now();
+                            lobby.songPausedAtOffset = 0;
                         }
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
@@ -602,6 +628,14 @@ function getSanitizedLobby(lobby, wsId) {
         }
     }
 
+    // Technique 1: Calculate live timestamp offset in seconds for synchronization
+    let elapsedSeconds = 0;
+    if (lobby.isPlaying && lobby.songStartedAt) {
+        elapsedSeconds = Math.max(0, Math.floor((Date.now() - lobby.songStartedAt) / 1000));
+    } else {
+        elapsedSeconds = lobby.songPausedAtOffset || 0;
+    }
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -634,6 +668,7 @@ function getSanitizedLobby(lobby, wsId) {
         playlist: lobby.playlist || [],
         currentSongIndex: lobby.currentSongIndex || 0,
         isPlaying: !!lobby.isPlaying,
+        currentSongElapsedSeconds: elapsedSeconds,
         players: lobby.players.map(p => {
             let canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
             let specAllowed = requestingSpectator && p.peekAllowed?.[requestingSpectator.username];
@@ -1033,7 +1068,7 @@ function calculateScore(cards) {
     if (!scoringCards || scoringCards.length === 0) return 0;
     let sums = {};
     scoringCards.forEach(c => sums[c.suit] = (sums[c.suit] || 0) + c.points);
-    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
+    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoring2 = scoringCards[2].val) return 30.5;
     return Math.max(...Object.values(sums), 0);
 }
 
