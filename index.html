@@ -1408,6 +1408,22 @@
                 clientState.isReady = me.ready;
                 let readyBtn = document.getElementById('ready-btn');
                 readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
+
+                // Check and pop incoming peek requests
+                if (me.peekIncoming && Object.keys(me.peekIncoming).length > 0) {
+                    let requester = Object.keys(me.peekIncoming)[0];
+                    let peekModal = document.getElementById('peek-request-modal');
+                    document.getElementById('peek-modal-msg').innerText = `${requester} wants to peek at your hand.`;
+                    document.getElementById('peek-allow-btn').onclick = () => {
+                        initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: true });
+                        toggleModal('peek-request-modal');
+                    };
+                    document.getElementById('peek-deny-btn').onclick = () => {
+                        initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: false });
+                        toggleModal('peek-request-modal');
+                    };
+                    peekModal.style.display = 'flex';
+                }
             }
 
             let standUpBtn = document.getElementById('stand-up-btn');
@@ -1584,6 +1600,29 @@
                 });
                 document.getElementById('pool-cards-container').innerHTML = gridHtml;
                 turnBanner.innerText = 'Dealer Draw Phase';
+            } else if (lobby.gameState === 'tieBreaker') {
+                poolModal.style.display = 'none';
+                revealModal.style.display = 'flex';
+                let isTiedParticipant = lobby.tiedParticipantsList.includes(activeUsername);
+                document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
+                
+                let streamHtml = '';
+                if (isTiedParticipant && !lobby.drawResults[activeUsername]) {
+                    streamHtml += `<div style="width:100%; display:grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap:4px; margin-bottom:8px;">`;
+                    lobby.drawPool.forEach((slot) => {
+                        if (!slot.chosenBy) {
+                            streamHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
+                        }
+                    });
+                    streamHtml += `</div>`;
+                }
+
+                lobby.tiedParticipantsList.forEach(uname => {
+                    let card = lobby.drawResults[uname];
+                    streamHtml += `<div style="text-align:center; padding:4px;"><b>${uname}</b>: ${card ? formatCardHtml(card, true) : '<i>Choosing...</i>'}</div>`;
+                });
+                document.getElementById('tie-breaker-stream-grid').innerHTML = streamHtml;
+                turnBanner.innerText = 'Tie-Breaker Draw';
             } else {
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
