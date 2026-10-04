@@ -1259,8 +1259,14 @@ function startRound(lobby) {
     activeParts.forEach(p => { 
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()]; 
         p.nextHandReady = false;
+        p.pickedUpDiscardCard = null;
     });
-    lobby.bots.forEach(b => { if (!b.eliminated) b.nextHandReady = true; });
+    lobby.bots.forEach(b => { 
+        if (!b.eliminated) {
+            b.nextHandReady = true;
+            b.pickedUpDiscardCard = null;
+        }
+    });
 
     let firstDiscard = lobby.deck.pop();
     lobby.discardPile.push(firstDiscard);
