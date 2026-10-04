@@ -820,6 +820,7 @@ function getSanitizedLobby(lobby, wsId) {
             }
 
             let allowedPeekMap = p.peekAllowed || {};
+
             let sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
                 username: p.username,
