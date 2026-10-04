@@ -1190,7 +1190,7 @@ function checkTieBreakerComplete(lobby) {
         let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
         if (tiedLowest.length > 1) {
-            lobby.phaseMessage = `⚠️ Tie-breaker resulted in a tie! Tied players choose again.`;
+            lobby.phaseMessage = `⚠️️ Tie-breaker resulted in a tie! Tied players choose again.`;
             tiedNames.forEach(uname => { delete lobby.drawResults[uname]; });
             autoPickForBots(lobby);
             broadcastLobbyUpdate(lobby.code);
