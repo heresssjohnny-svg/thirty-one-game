@@ -5,13 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>31! Card Game</title>
 
+    <!-- PWA Configuration with Self-Contained Vector Data URI for iOS -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#044e36">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="31!">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%23065f46'/><circle cx='256' cy='256' r='180' fill='%23044e36' stroke='%23facc15' stroke-width='16'/><text x='256' y='295' font-family='sans-serif' font-weight='900' font-size='120' fill='%23facc15' text-anchor='middle'>31!</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%23065f46'/><circle cx='256' cy='256' r='180' fill='%23044e36' stroke='%23facc15' stroke-width='16'/><text x='256' y='295' font-family='sans-serif' font-weight='900' font-size='120' fill='%23facc15' text-anchor='middle'>31!</text></svg>">
 
     <style>
         :root {
@@ -903,7 +905,6 @@
             let container = document.getElementById('youtube-embed-container');
             let queueContainer = document.getElementById('playlist-container');
 
-            // Render the live shared queue inside the modal
             if (queueContainer) {
                 if (!playlist || playlist.length === 0) {
                     queueContainer.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>';
@@ -1910,10 +1911,9 @@
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️️') : '';
+                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
-                // Kick Peeker badges for players actively being peeked
                 let peekerBadgesHtml = '';
                 if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
                     let peekers = Object.keys(p.peekAllowed);
