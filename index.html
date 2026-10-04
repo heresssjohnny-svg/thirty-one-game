@@ -732,13 +732,23 @@
         let isIndividualMuted = false;
         let audioCtx = null;
         
+        const audioMediaConstraints = {
+            audio: {
+                echoCancellation: { ideal: true },
+                noiseSuppression: { ideal: true },
+                autoGainControl: { ideal: true },
+                channelCount: 1
+            },
+            video: false
+        };
+
         const rtcConfig = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun.stunprotocol.org:3478' }
+                { urls: 'stun:stun4.l.google.com:19302' }
             ] 
         };
 
@@ -767,21 +777,21 @@
                     gain1.connect(ctx.destination);
                     osc1.type = 'sine';
                     osc1.frequency.setValueAtTime(698.46, now);
-                    gain1.gain.setValueAtTime(0.18, now);
-                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+                    gain1.gain.setValueAtTime(0.7, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
                     osc1.start(now);
-                    osc1.stop(now + 0.16);
+                    osc1.stop(now + 0.18);
 
                     let osc2 = ctx.createOscillator();
                     let gain2 = ctx.createGain();
                     osc2.connect(gain2);
                     gain2.connect(ctx.destination);
                     osc2.type = 'sine';
-                    osc2.frequency.setValueAtTime(1046.50, now + 0.09);
-                    gain2.gain.setValueAtTime(0.22, now + 0.09);
-                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
-                    osc2.start(now + 0.09);
-                    osc2.stop(now + 0.32);
+                    osc2.frequency.setValueAtTime(1046.50, now + 0.1);
+                    gain2.gain.setValueAtTime(0.75, now + 0.1);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc2.start(now + 0.1);
+                    osc2.stop(now + 0.35);
                     return;
                 }
 
@@ -794,7 +804,7 @@
                     osc.type = 'triangle';
                     osc.frequency.setValueAtTime(150, now);
                     osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
-                    gain.gain.setValueAtTime(0.45, now);
+                    gain.gain.setValueAtTime(0.85, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
                     osc.start(now);
                     osc.stop(now + 0.12);
@@ -802,22 +812,22 @@
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(420, now);
                     osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
-                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.setValueAtTime(0.6, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
                     osc.start(now);
                     osc.stop(now + 0.08);
                 } else if (type === 'ding') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(587.33, now);
-                    gain.gain.setValueAtTime(0.18, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    gain.gain.setValueAtTime(0.7, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
                     osc.start(now);
-                    osc.stop(now + 0.3);
+                    osc.stop(now + 0.35);
                 } else if (type === 'thud') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(80, now);
                     osc.frequency.exponentialRampToValueAtTime(40, now + 0.09);
-                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.setValueAtTime(0.8, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
                     osc.start(now);
                     osc.stop(now + 0.09);
@@ -978,16 +988,27 @@
             if (vcUsers.length === 0) {
                 listDiv.innerHTML = 'No one currently in voice chat.';
             } else {
-                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
+                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙 (Active)'}</li>`).join('') + '</ul>';
             }
             toggleModal('vc-participants-modal');
         }
 
         function triggerVoiceReconnect() {
             initSocketAndSend({ type: 'RECONNECT_VOICE' });
+
+            // Clean up detached audio elements to clear OS hardware attenuation
+            activePeerAudioElements.forEach(elem => {
+                elem.pause();
+                elem.srcObject = null;
+            });
+            activePeerAudioElements = [];
+
+            // Reset peer connections
+            Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
+
             if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-            showCenterNotification("Triggered Voice Chat Reconnect!");
+            showCenterNotification("Voice chat reconnected!");
             toggleModal('vc-participants-modal');
         }
 
@@ -999,7 +1020,6 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
 
-            // Universal touch unlock: Keeps AudioContext running on user taps
             const unlockAudio = () => {
                 let ctx = getAudioContext();
                 if (ctx.state === 'suspended') ctx.resume();
@@ -1294,8 +1314,96 @@
         }
 
         function saveLedgerScreenshot() {
-            alert("Ledger snapshot saved.");
-            toggleModal('ledger-modal');
+            const myName = document.getElementById('username-input').value.trim() || clientState.username;
+            const now = new Date();
+            const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const readableDate = now.toLocaleString();
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 600;
+            canvas.height = 700;
+
+            ctx.fillStyle = '#065f46';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 24px system-ui, sans-serif';
+            ctx.fillText("31! Game Ledger Snapshot", 30, 50);
+
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '14px system-ui, sans-serif';
+            ctx.fillText(`Player: ${myName}  |  Captured: ${readableDate}`, 30, 80);
+
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(30, 95);
+            ctx.lineTo(570, 95);
+            ctx.stroke();
+
+            const sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, clientState.playersList || []);
+            const mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, clientState.playersList || []);
+            const grandTotal = sideCalc.totalNet + mainCalc.totalNet;
+
+            ctx.fillStyle = grandTotal >= 0 ? '#34d399' : '#f87171';
+            ctx.font = 'bold 20px system-ui, sans-serif';
+            ctx.fillText(`Total Net Balance: $${grandTotal.toFixed(2)}`, 30, 130);
+
+            let y = 170;
+
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 16px system-ui, sans-serif';
+            ctx.fillText("🤝 Side Bets", 30, y);
+            y += 25;
+
+            ctx.font = '15px system-ui, sans-serif';
+            if (Object.keys(sideCalc.records).length === 0) {
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText("No active side bet balances.", 45, y);
+                y += 25;
+            } else {
+                for (let [user, netAmt] of Object.entries(sideCalc.records)) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillText(`• ${user}: `, 45, y);
+                    ctx.fillStyle = netAmt > 0 ? '#34d399' : '#f87171';
+                    ctx.fillText(netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`, 160, y);
+                    y += 25;
+                }
+            }
+
+            y += 15;
+
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 16px system-ui, sans-serif';
+            ctx.fillText("🎮 Main Game Pot Ledger", 30, y);
+            y += 25;
+
+            ctx.font = '15px system-ui, sans-serif';
+            if (Object.keys(mainCalc.records).length === 0) {
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText("No main game balances recorded.", 45, y);
+            } else {
+                for (let [user, netAmt] of Object.entries(mainCalc.records)) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillText(`• ${user}: `, 45, y);
+                    ctx.fillStyle = netAmt > 0 ? '#34d399' : '#f87171';
+                    ctx.fillText(netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`, 160, y);
+                    y += 25;
+                }
+            }
+
+            const link = document.createElement('a');
+            link.download = `31-ledger-${dateStr}.png`;
+            link.href = canvas.toDataURL('image/png');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showCenterNotification("Ledger snapshot saved!");
         }
 
         function formatCardHtml(card, isMini = false) {
@@ -1323,71 +1431,65 @@
         }
 
         async function autoConnectMutedVoiceChat() {
+            isVoiceChatActive = true;
             if (localAudioStream) {
-                isVoiceChatActive = true;
-                let btn = document.getElementById('vc-main-btn');
-                let led = document.getElementById('vc-led');
-                if (btn) btn.innerText = '🎙️ Voice: Off';
-                if (led) led.classList.remove('active');
-                localAudioStream.getAudioTracks().forEach(t => { t.enabled = false; });
-                sendVCStatusInternal(true, true);
-                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-                return;
+                localAudioStream.getTracks().forEach(t => t.stop());
+                localAudioStream = null;
             }
-            try {
-                localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { 
-                        echoCancellation: true, 
-                        noiseSuppression: true, 
-                        autoGainControl: true 
-                    }, 
-                    video: false 
-                });
-                // Hard mute microphone immediately so device doesn't pick up ambient/speaker YouTube sound
-                localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
-                isVoiceChatActive = true;
-                
-                let btn = document.getElementById('vc-main-btn');
-                let led = document.getElementById('vc-led');
-                if (btn) btn.innerText = '🎙️ Voice: Off';
-                if (led) led.classList.remove('active');
-                sendVCStatusInternal(true, true);
-                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-            } catch (err) {}
+            
+            let btn = document.getElementById('vc-main-btn');
+            let led = document.getElementById('vc-led');
+            if (btn) btn.innerText = '🎙️ Voice: Off';
+            if (led) led.classList.remove('active');
+            
+            sendVCStatusInternal(true, true);
+            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
         }
 
         async function toggleVoiceOnOff() {
             let btn = document.getElementById('vc-main-btn');
             let led = document.getElementById('vc-led');
 
-            if (!localAudioStream) {
-                try {
-                    localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
-                        video: false 
+            if (localAudioStream && localAudioStream.getAudioTracks().some(t => t.readyState === 'live')) {
+                localAudioStream.getTracks().forEach(t => t.stop());
+                localAudioStream = null;
+
+                Object.values(peerConnections).forEach(pc => {
+                    pc.getSenders().forEach(sender => {
+                        if (sender.track && sender.track.kind === 'audio') {
+                            sender.replaceTrack(null).catch(() => {});
+                        }
                     });
-                    isVoiceChatActive = true;
-                } catch (err) {
-                    alert('Microphone permission required.');
-                    return;
-                }
-            }
+                });
 
-            let currentMutedState = !localAudioStream.getAudioTracks()[0].enabled;
-            let newMutedState = !currentMutedState; 
-
-            localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
-
-            if (newMutedState) {
                 if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
-            } else {
-                if (btn) btn.innerText = '🎙️ Voice: On';
-                if (led) led.classList.add('active');
+                sendVCStatusInternal(true, true);
+                return;
             }
 
-            sendVCStatusInternal(true, newMutedState);
-            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+            try {
+                localAudioStream = await navigator.mediaDevices.getUserMedia(audioMediaConstraints);
+                let newTrack = localAudioStream.getAudioTracks()[0];
+                newTrack.enabled = true;
+
+                Object.values(peerConnections).forEach(pc => {
+                    let audioSender = pc.getSenders().find(s => s.track && s.track.kind === 'audio') 
+                                   || pc.getSenders().find(s => !s.track);
+                    if (audioSender) {
+                        audioSender.replaceTrack(newTrack).catch(() => {});
+                    } else {
+                        pc.addTrack(newTrack, localAudioStream);
+                    }
+                });
+
+                if (btn) btn.innerText = '🎙️ Voice: On';
+                if (led) led.classList.add('active');
+                sendVCStatusInternal(true, false);
+                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+            } catch (err) {
+                alert('Microphone permission required.');
+            }
         }
 
         function connectSocket() {
@@ -1397,6 +1499,15 @@
 
             ws.onopen = () => {
                 isConnected = true;
+                
+                if (currentJoinedCode) {
+                    ws.send(JSON.stringify({ 
+                        type: 'JOIN_LOBBY', 
+                        code: currentJoinedCode, 
+                        username: clientState.username 
+                    }));
+                }
+
                 while (pendingQueue.length > 0) {
                     let msg = pendingQueue.shift();
                     ws.send(JSON.stringify(msg));
@@ -1536,7 +1647,7 @@
         }
 
         function handleWebRTCConnections(lobby) {
-            if (!localAudioStream || !isVoiceChatActive) return;
+            if (!isVoiceChatActive) return;
             let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
             
             let vcParticipants = [];
@@ -1560,8 +1671,10 @@
             peerConnections[peerUser] = pc;
             pc.pendingCandidates = [];
 
-            if (localAudioStream) {
-                localAudioStream.getTracks().forEach(track => { pc.addTrack(track, localAudioStream); });
+            if (localAudioStream && localAudioStream.getAudioTracks().length > 0) {
+                localAudioStream.getTracks().forEach(track => pc.addTrack(track, localAudioStream));
+            } else {
+                pc.addTransceiver('audio', { direction: 'sendrecv' });
             }
 
             pc.ontrack = (event) => {
@@ -1569,6 +1682,7 @@
                 audioElem.srcObject = event.streams[0];
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
+                audioElem.volume = 1.0;
                 activePeerAudioElements.push(audioElem);
                 audioElem.play().catch(e => {});
             };
@@ -1592,7 +1706,7 @@
         }
 
         async function handleWebRTCSignal(sender, signal) {
-            if (!localAudioStream || !isVoiceChatActive) return;
+            if (!isVoiceChatActive) return;
             if (!peerConnections[sender]) setupPeerConnection(sender, false);
             let pc = peerConnections[sender];
             if (!pc) return;
@@ -1632,7 +1746,6 @@
                 }
             }
 
-            // Knock Alert Modal
             let knockAlertModal = document.getElementById('knock-alert-modal');
             if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
                 knockAlertModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
@@ -1648,7 +1761,6 @@
                 lastKnownKnockedBy = null;
             }
 
-            // Top-Left Initial Discard Pickup Display
             let topleftModal = document.getElementById('discard-pickup-topleft-modal');
             let topleftCardContent = document.getElementById('discard-pickup-card-content');
             if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
@@ -1659,7 +1771,6 @@
                 topleftModal.style.display = 'none';
             }
 
-            // Private Fed Card Modal
             let fedModal = document.getElementById('fed-card-topright-modal');
             let fedContent = document.getElementById('fed-card-content');
             let fedLabel = document.getElementById('fed-card-label');
@@ -1671,7 +1782,6 @@
                 fedModal.style.display = 'none';
             }
 
-            // Central In-Game Notifications
             if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
                 showCenterNotification(lobby.phaseMessage);
                 lastPhaseMessage = lobby.phaseMessage;
@@ -1765,7 +1875,6 @@
                 }
             }
 
-            // Turn Detection & Display
             let turnBanner = document.getElementById('turn-banner');
             let centerTurnIndicator = document.getElementById('center-turn-indicator');
             let isMyTurnPlaying = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
@@ -1783,7 +1892,6 @@
                 turnBanner.innerText = (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') ? `Turn: ${lobby.currentTurnUser}` : 'Turn: Waiting...';
             }
 
-            // Knock Button Validation Logic
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length;
             let threshold = activePartsCount > 2 ? 21 : 25;
             let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
@@ -1805,7 +1913,6 @@
             clientState.sideBetLedger = lobby.sideBetLedger || {};
             clientState.mainGameLedger = lobby.mainGameLedger || {};
 
-            // Global Side Bets Sidebar Handling
             let sidebar = document.getElementById('global-side-bets-sidebar');
             let sidebarList = document.getElementById('global-side-bets-list');
             let globalProps = lobby.globalProposals || [];
@@ -1844,7 +1951,6 @@
                 sidebar.style.display = 'none';
             }
 
-            // Incoming Bet Proposals
             let modal = document.getElementById('bet-modal');
             let isModalOpen = modal.style.display === 'flex';
 
@@ -2047,7 +2153,16 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
+
+            activePeerAudioElements.forEach(elem => {
+                elem.pause();
+                elem.srcObject = null;
+            });
+            activePeerAudioElements = [];
+
+            Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
+
             initSocketAndSend({ type: 'LEAVE_LOBBY' });
         }
 
@@ -2057,7 +2172,16 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
+
+            activePeerAudioElements.forEach(elem => {
+                elem.pause();
+                elem.srcObject = null;
+            });
+            activePeerAudioElements = [];
+
+            Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
+
             currentJoinedCode = null;
             latestLobbySnapshot = null;
             document.getElementById('game-view').style.display = 'none';
