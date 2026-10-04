@@ -1006,7 +1006,7 @@
             sideHtml += '</ul>';
             html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
 
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger (Full Game)</div>`;
             let hasMainEntries = false;
             let mainHtml = '<ul>';
             for (let [user, netAmt] of Object.entries(mainCalc.records)) {
@@ -1016,7 +1016,7 @@
                 mainHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
             mainHtml += '</ul>';
-            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No main game balances.</div>`;
+            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No main game balances recorded yet.</div>`;
 
             ledgerDiv.innerHTML = html;
             toggleModal('ledger-modal');
@@ -1136,7 +1136,7 @@
             localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
 
             if (newMutedState) {
-                if (btn) btn.innerText = '🎙️ Voice: Off';
+                if (btn) btn.innerText = '🎙️️ Voice: Off';
                 if (led) led.classList.remove('active');
             } else {
                 if (btn) btn.innerText = '🎙️ Voice: On';
