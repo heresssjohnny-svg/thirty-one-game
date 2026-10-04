@@ -1356,17 +1356,24 @@
                     let msg = pendingQueue.shift();
                     ws.send(JSON.stringify(msg));
                 }
-                setTimeout(() => { autoConnectMutedVoiceChat(); }, 500);
+                // Do not auto-connect voice chat on initial socket open in the main menu
             };
 
             ws.onmessage = (event) => {
                 let data = JSON.parse(event.data);
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
                 else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                    let wasInMenu = !currentJoinedCode;
                     if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
                     latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
-                    handleWebRTCConnections(data.lobby);
+                    
+                    // Only start muted voice chat when entering a lobby
+                    if (wasInMenu && currentJoinedCode) {
+                        autoConnectMutedVoiceChat();
+                    } else if (isVoiceChatActive) {
+                        handleWebRTCConnections(data.lobby);
+                    }
                 } else if (data.type === 'CHAT_MESSAGE') {
                     appendChatMessage(data.username, data.message);
                 } else if (data.type === 'WEBRTC_SIGNAL') {
@@ -1606,7 +1613,7 @@
                 topleftModal.style.display = 'none';
             }
 
-            // Private Fed Card Modal for the Discarder Only
+            // Private Fed Card Modal: Displays on the right only if recipient still holds that card
             let fedModal = document.getElementById('fed-card-topright-modal');
             let fedContent = document.getElementById('fed-card-content');
             let fedLabel = document.getElementById('fed-card-label');
