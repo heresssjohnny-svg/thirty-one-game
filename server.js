@@ -1421,7 +1421,7 @@ function advanceTurnOrResolve(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
     if (lobby.gameState === 'finalTurn') {
         lobby.finalTurnsRemaining--;
-        if (lobby.finalTurnsRemaining <= 0) {
+        if (lobby.finalTurnsRemaining < 0) {
             resolveRoundEnd(lobby);
             return;
         }
