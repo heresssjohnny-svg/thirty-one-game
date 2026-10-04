@@ -249,7 +249,7 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
-                        lobby.phaseMessage = `🎙️️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
+                        lobby.phaseMessage = `🎙️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
@@ -511,7 +511,7 @@ wss.on('connection', (ws) => {
                         let allVotedYes = activeParts.every(p => lobby.endGameVotes[p.username]);
                         
                         if (allVotedYes) {
-                            lobby.phaseMessage = "⚠️ Unanimous vote! Game ended, returning to lobby ready-up.";
+                            lobby.phaseMessage = "⚠️ Game ended! Returning to lobby.";
                             lobby.gameState = 'lobby';
                             lobby.endGameVotes = {};
                             lobby.activeBets = [];
@@ -992,9 +992,11 @@ function checkTieBreakerComplete(lobby) {
                 lobby.spectators.push({ idSocket: targetParticipant.id, username: targetParticipant.username });
             }
 
-            let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) })).sort((a,b) => a.s - b.s);
+            let activeScores = activeParts.map(p => ({ p: p, s: calculateScore(p.cards) }));
+            activeScores.sort((a,b) => a.s - b.s);
             let roundWinner = activeScores[activeScores.length - 1].p.username;
             resolveWinSideBets(lobby, roundWinner);
+            resolveMainGameLedger(lobby, roundWinner, targetParticipant.username);
         }
 
         let remainingActive = getActiveParticipants(lobby);
@@ -1090,6 +1092,7 @@ function handleTurnAction(lobby, ws, actionType) {
             if (p !== currentPlayer && !p.eliminated) {
                 p.lives = Math.max(0, p.lives - 1);
                 resolveFirstToLoseBets(lobby, p.username);
+                resolveMainGameLedger(lobby, currentPlayer.username, p.username);
                 if (p.lives <= 0) {
                     p.eliminated = true;
                     lobby.spectators.push({ idSocket: p.id, username: p.username });
@@ -1156,6 +1159,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
                                 if (p.lives <= 0 && !p.eliminated) {
                                     p.eliminated = true;
                                     resolveFirstToLoseBets(lobby, p.username);
+                                    resolveMainGameLedger(lobby, currentPlayer.username, p.username);
                                     lobby.spectators.push({ idSocket: p.id, username: p.username });
                                 }
                             });
@@ -1170,7 +1174,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         let remainingActiveAfterDiscard = getActiveParticipants(lobby);
         if (remainingActiveAfterDiscard.length === 1) {
-            awardTournamentWinner(lobby, remainingActive[0]);
+            awardTournamentWinner(lobby, remainingActiveAfterDiscard[0]);
             return;
         }
 
@@ -1179,6 +1183,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
                 if (p !== currentPlayer && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     resolveFirstToLoseBets(lobby, p.username);
+                    resolveMainGameLedger(lobby, currentPlayer.username, p.username);
                     if (p.lives <= 0) {
                         p.eliminated = true;
                         lobby.spectators.push({ idSocket: p.id, username: p.username });
