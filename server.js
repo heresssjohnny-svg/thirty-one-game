@@ -958,7 +958,7 @@ function checkDealerDrawComplete(lobby) {
             if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'dealerDraw') {
                 startRound(lobbies[lobby.code]);
             }
-        }, 5000);
+        }, 4000);
     }
 }
 
