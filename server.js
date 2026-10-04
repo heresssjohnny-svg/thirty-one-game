@@ -249,7 +249,7 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
-                        lobby.phaseMessage = `🎙️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
+                        lobby.phaseMessage = `🎙️️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
@@ -1170,7 +1170,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         let remainingActiveAfterDiscard = getActiveParticipants(lobby);
         if (remainingActiveAfterDiscard.length === 1) {
-            awardTournamentWinner(lobby, remainingActiveAfterDiscard[0]);
+            awardTournamentWinner(lobby, remainingActive[0]);
             return;
         }
 
@@ -1361,6 +1361,20 @@ function checkNextHandReady(lobby) {
     } else {
         broadcastLobbyUpdate(lobby.code);
     }
+}
+
+function calculateBestFourCardScore(cards) {
+    if (!cards || cards.length < 3) return 0;
+    if (cards.length === 4) {
+        let scores = [
+            calculateScore([cards[0], cards[1], cards[2]]),
+            calculateScore([cards[0], cards[1], cards[3]]),
+            calculateScore([cards[0], cards[2], cards[3]]),
+            calculateScore([cards[1], cards[2], cards[3]])
+        ];
+        return Math.max(...scores);
+    }
+    return calculateScore(cards);
 }
 
 function calculateScore(cards) {
