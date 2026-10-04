@@ -1280,8 +1280,11 @@ function startRound(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
     lobby.turnIndex = (lobby.dealerIndex + 1) % allParts.length;
     
-    while (allParts[lobby.turnIndex].eliminated) {
+    // Ensure we start on an active participant
+    let safetyCounter = 0;
+    while (allParts[lobby.turnIndex].eliminated && safetyCounter < allParts.length) {
         lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
+        safetyCounter++;
     }
 
     broadcastLobbyUpdate(lobby.code);
@@ -1434,10 +1437,15 @@ function advanceTurnOrResolve(lobby) {
         }
     }
     
-    lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
-    while (allParts[lobby.turnIndex].eliminated) {
-        lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
+    // Safely advance to the next non-eliminated participant
+    let nextIdx = (lobby.turnIndex + 1) % allParts.length;
+    let safetyCounter = 0;
+    while (allParts[nextIdx].eliminated && safetyCounter < allParts.length) {
+        nextIdx = (nextIdx + 1) % allParts.length;
+        safetyCounter++;
     }
+    lobby.turnIndex = nextIdx;
+
     broadcastLobbyUpdate(lobby.code);
 }
 
@@ -1466,10 +1474,14 @@ function executeKnock(lobby, player) {
     lobby.finalTurnsRemaining = activeParts.length - 1;
     lobby.phaseMessage = `🔔 KNOCK! ${player.username} knocked! Every other player gets 1 final turn.`;
     
-    lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
-    while (allParts[lobby.turnIndex].eliminated) {
-        lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
+    let nextIdx = (lobby.turnIndex + 1) % allParts.length;
+    let safetyCounter = 0;
+    while (allParts[nextIdx].eliminated && safetyCounter < allParts.length) {
+        nextIdx = (nextIdx + 1) % allParts.length;
+        safetyCounter++;
     }
+    lobby.turnIndex = nextIdx;
+
     broadcastLobbyUpdate(lobby.code);
 }
 
