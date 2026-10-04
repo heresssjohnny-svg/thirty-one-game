@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#065f46"/>
+      <stop offset="100%" stop-color="#022c22"/>
+    </radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  
+  <!-- Outer Gold Border -->
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="none" stroke="#facc15" stroke-width="8" stroke-opacity="0.5"/>
+
+  <!-- Tilted Card Behind -->
+  <g transform="rotate(-12 256 256)" filter="url(#shadow)">
+    <rect x="146" y="116" width="220" height="310" rx="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="4"/>
+    <text x="170" y="170" font-family="system-ui, sans-serif" font-weight="900" font-size="38" fill="#dc2626">A♥</text>
+  </g>
+
+  <!-- Foreground Main Card -->
+  <g transform="rotate(6 256 256)" filter="url(#shadow)">
+    <rect x="146" y="116" width="220" height="310" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+    <text x="170" y="170" font-family="system-ui, sans-serif" font-weight="900" font-size="38" fill="#0f172a">A♠</text>
+    <!-- Center Spade Symbol -->
+    <path d="M256,200 C270,165 315,190 315,225 C315,255 270,285 256,305 C242,285 197,255 197,225 C197,190 242,165 256,200 Z" fill="#0f172a"/>
+    <path d="M251,295 L261,295 L270,330 L242,330 Z" fill="#0f172a"/>
+  </g>
+
+  <!-- Gold 31! Emblem Badge -->
+  <circle cx="360" cy="380" r="76" fill="#044e36" stroke="#facc15" stroke-width="8" filter="url(#shadow)"/>
+  <text x="360" y="398" font-family="system-ui, sans-serif" font-weight="900" font-size="52" fill="#facc15" text-anchor="middle" letter-spacing="1">31!</text>
+</svg>
