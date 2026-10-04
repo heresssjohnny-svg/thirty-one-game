@@ -1,15 +1,30 @@
 {
   "name": "31! Card Game",
   "short_name": "31!",
+  "description": "Multiplayer 31! Card Game with live lobby, side bets, and audio feedback.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "background_color": "#044e36",
+  "theme_color": "#044e36",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
