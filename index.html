@@ -96,7 +96,7 @@
         button.secondary:hover { background: rgba(51, 65, 85, 0.95); }
         
         .vc-control-group {
-            display: none; /* Hidden by default in main menu */
+            display: none; 
             align-items: center;
             gap: 4px;
             background: rgba(30, 41, 59, 0.85);
@@ -1167,7 +1167,7 @@
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️️ Voice: Off';
+                btn.innerText = '🎙️ Voice: Off';
                 led.classList.remove('active');
                 peerConnections = {};
                 sendVCStatusInternal(true, true);
@@ -1204,7 +1204,7 @@
                 showCenterNotification("Voice Chat: Off (Muted)");
             } else {
                 playSound('vc_join');
-                btn.innerText = '🎙 Voice: On';
+                btn.innerText = '🎙️ Voice: On';
                 led.classList.add('active');
                 showCenterNotification("Voice Chat: On (Unmuted)");
             }
@@ -1624,7 +1624,7 @@
             document.getElementById('game-view').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'inline-block';
             document.getElementById('leave-lobby-btn').style.display = 'inline-block';
-            document.getElementById('vc-group-container').style.display = 'inline-flex'; // Show VC controls in lobby
+            document.getElementById('vc-group-container').style.display = 'inline-flex';
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
@@ -2122,7 +2122,7 @@
             document.getElementById('main-menu').style.display = 'flex';
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
-            document.getElementById('vc-group-container').style.display = 'none'; // Hide VC controls in main menu
+            document.getElementById('vc-group-container').style.display = 'none';
             document.getElementById('pool-draw-modal').style.display = 'none';
             document.getElementById('tie-breaker-reveal-modal').style.display = 'none';
             document.getElementById('ledger-modal').style.display = 'none';
