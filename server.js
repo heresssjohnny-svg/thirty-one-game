@@ -88,7 +88,7 @@ wss.on('connection', (ws) => {
                         initialDealCard: null,
                         lastDiscardPickup: null,
                         lastDiscardDonor: null,
-                        fedCardReminders: {}, // tracks { [discarer]: { target: recipient, card: cardObj } }
+                        fedCardReminders: {}, // donor -> { target, card }
                         turnIndex: 0,
                         dealerIndex: 0,
                         lastGameWinner: null,
@@ -579,8 +579,17 @@ function getSanitizedLobby(lobby, wsId) {
     let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.delivered[myUsername]);
     myUnrespondedBets.forEach(b => b.delivered[myUsername] = true);
 
-    // Private modal reminder: check if the person following me picked up my discarded card
-    let myFedReminder = (myUsername && lobby.fedCardReminders?.[myUsername]) ? lobby.fedCardReminders[myUsername] : null;
+    // Private Fed Reminder Verification
+    let myFedReminder = null;
+    if (myUsername && lobby.fedCardReminders?.[myUsername] && lobby.gameState !== 'roundOver') {
+        let rem = lobby.fedCardReminders[myUsername];
+        let targetPlayer = lobby.players.find(p => p.username === rem.target);
+        if (targetPlayer && targetPlayer.cards && targetPlayer.cards.some(c => c.val === rem.card.val && c.suit === rem.card.suit)) {
+            myFedReminder = rem;
+        } else {
+            delete lobby.fedCardReminders[myUsername];
+        }
+    }
 
     return {
         code: lobby.code,
@@ -716,7 +725,7 @@ function startRound(lobby) {
     let firstDiscard = lobby.deck.pop();
     lobby.discardPile.push(firstDiscard);
     lobby.initialDealCard = { val: firstDiscard.val, suit: firstDiscard.suit };
-    lobby.lastDiscardDonor = null; // Came from deck
+    lobby.lastDiscardDonor = null;
 
     lobby.turnIndex = (lobby.dealerIndex + 1) % lobby.players.length;
     while (lobby.players[lobby.turnIndex].eliminated) lobby.turnIndex = (lobby.turnIndex + 1) % lobby.players.length;
@@ -741,7 +750,7 @@ function handleTurnAction(lobby, ws, actionType) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
-        // Check if the card was discarded by the immediately preceding player
+        // Overwrites/refreshes any previous card Player A gave to Player B
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
@@ -789,7 +798,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
     currentPlayer.pickedUpDiscardCard = null;
     lobby.discardPile.push(discarded);
 
-    // If currentPlayer discards the card they previously took from someone else, clear that donor's reminder
+    // If currentPlayer discards the card they took from Player A, clear the modal reminder
     if (lobby.fedCardReminders) {
         for (let donor in lobby.fedCardReminders) {
             if (lobby.fedCardReminders[donor].target === currentPlayer.username) {
@@ -801,7 +810,6 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         }
     }
 
-    // Set donor for the next turn
     lobby.lastDiscardDonor = currentPlayer.username;
 
     if (lobby.lastDiscardPickup?.username === currentPlayer.username && lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
@@ -850,11 +858,9 @@ function handleKnock(lobby, ws) {
 
     lobby.gameState = 'finalTurn';
     lobby.knockedBy = p.username;
-    // Exactly every other active participant receives 1 final turn
     lobby.finalTurnsRemaining = active.length - 1;
     lobby.phaseMessage = `🔔 KNOCK! ${p.username} knocked! 1 final turn each.`;
 
-    // Advance clockwise to the NEXT player without deducting turn count prematurely
     let next = (lobby.turnIndex + 1) % lobby.players.length;
     while (lobby.players[next].eliminated) next = (next + 1) % lobby.players.length;
     lobby.turnIndex = next;
@@ -894,6 +900,7 @@ function resolveRoundEnd(lobby) {
 }
 
 function triggerRoundOver(lobby, msg) {
+    lobby.fedCardReminders = {}; // Hide reminder modals on round conclusion
     let active = getActiveParticipants(lobby);
     if (active.length === 1) { awardTournamentWinner(lobby, active[0]); return; }
     lobby.gameState = 'roundOver';
