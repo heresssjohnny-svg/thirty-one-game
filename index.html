@@ -239,7 +239,6 @@
             animation: slideInTopLeft 0.3s ease-out; 
         }
 
-        /* Private top-right modal reminder for cards taken from you */
         #fed-card-topright-modal {
             position: absolute;
             top: 36px;
@@ -511,7 +510,6 @@
                 <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
                 <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
                     <div id="turn-banner">Turn: Waiting...</div>
-                    <!-- Private Fed Card Modal for Discarder Only -->
                     <div id="fed-card-topright-modal">
                         <span style="font-size:0.65rem; color:var(--text-muted);" id="fed-card-label">Next player took:</span>
                         <div id="fed-card-content" style="display:flex; align-items:center; gap:4px;"></div>
@@ -578,6 +576,7 @@
         </div>
     </div>
 
+    <!-- YouTube Music Player Modal -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -589,7 +588,7 @@
 
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
@@ -609,7 +608,7 @@
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
                 <label style="text-align:left;">Add YouTube Song</label>
                 <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
-                <input type="text" id="new-song-url" placeholder="YouTube Link (youtu.be or youtube.com)" style="font-size:0.75rem; padding:5px;">
+                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. youtu.be/...)" style="font-size:0.75rem; padding:5px;">
                 <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
             </div>
 
@@ -829,15 +828,10 @@
             setTimeout(() => playSound('thud'), 100);
         }
 
-        function parseYouTubeEmbedUrl(url, autoplay = true) {
-            let autoStr = autoplay ? '1' : '0';
-            // Handles youtu.be/ID, youtube.com/watch?v=ID, youtube.com/embed/ID, and shorts
+        function extractYouTubeVideoId(url) {
             let regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
             let match = url.match(regExp);
-            if (match && match[1]) {
-                return `https://www.youtube.com/embed/${match[1]}?autoplay=${autoStr}&enablejsapi=1`;
-            }
-            return url;
+            return (match && match[1]) ? match[1] : null;
         }
 
         function addNewSongToPlaylist() {
@@ -851,8 +845,14 @@
                 return;
             }
 
-            let embedUrl = parseYouTubeEmbedUrl(rawUrl, true);
-            initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl });
+            let videoId = extractYouTubeVideoId(rawUrl);
+            if (!videoId) {
+                alert("Could not recognize YouTube URL. Please paste a standard link from youtu.be or youtube.com");
+                return;
+            }
+
+            let cleanEmbedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+            initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: cleanEmbedUrl });
             titleInput.value = '';
             urlInput.value = '';
             showCenterNotification(`Added "${title}" to queue!`);
@@ -901,6 +901,22 @@
 
         function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
             let container = document.getElementById('youtube-embed-container');
+            let queueContainer = document.getElementById('playlist-container');
+
+            // Render the live shared queue inside the modal
+            if (queueContainer) {
+                if (!playlist || playlist.length === 0) {
+                    queueContainer.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>';
+                } else {
+                    queueContainer.innerHTML = playlist.map((s, i) => `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:3px; ${i === currentIndex ? 'color:var(--accent-gold); font-weight:bold; background:rgba(250,204,21,0.1); border-radius:4px;' : ''}">
+                            <span onclick="sendMusicControl('SELECT', ${i})" style="cursor:pointer; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${i + 1}. ${s.title}</span>
+                            <button class="secondary" style="font-size:0.6rem; padding:1px 5px; margin-left:4px;" onclick="removeSongFromPlaylist(${i})">✕</button>
+                        </div>
+                    `).join('');
+                }
+            }
+
             if (!container) return;
             if (!playlist || playlist.length === 0 || !isPlaying) {
                 container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
@@ -910,12 +926,12 @@
 
             let currentSong = playlist[currentIndex] || playlist[0];
             let songUniqueKey = `${currentIndex}_${currentSong.url}_${isPlaying}`;
-            let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
 
             if (activeSyncedSongKey !== songUniqueKey) {
                 activeSyncedSongKey = songUniqueKey;
+                let autoUrl = currentSong.url.includes('?') ? `${currentSong.url}&autoplay=1` : `${currentSong.url}?autoplay=1`;
                 container.innerHTML = `
-                    <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <iframe width="100%" height="100%" src="${autoUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 `;
             }
         }
@@ -1551,6 +1567,8 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
+            renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
+
             if (lobby.gameState !== lastGameState) {
                 hasChosenPoolCard = false;
                 lastGameState = lobby.gameState;
@@ -1892,9 +1910,10 @@
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
+                // Kick Peeker badges for players actively being peeked
                 let peekerBadgesHtml = '';
                 if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
                     let peekers = Object.keys(p.peekAllowed);
