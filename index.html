@@ -594,12 +594,6 @@
                     <li>Aces are worth 11 points.</li>
                     <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
                 </ul>
-                <p><b>Gameplay Loop & Amended 21 out of 31 Rule:</b></p>
-                <ul style="padding-left:14px;">
-                    <li>Each player starts with 3 cards and 2 or more lives.</li>
-                    <li>On your turn, draw 1 card from either the <b>Deck</b> or the <b>Discard Pile</b>, then discard 1 card from your hand.</li>
-                    <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
-                </ul>
             </div>
             <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
         </div>
@@ -803,254 +797,60 @@
             }
         }
 
-        function openActiveBetsModal() {
-            let myName = document.getElementById('username-input').value.trim() || clientState.username;
-            let contentDiv = document.getElementById('active-bets-content');
-            let active = clientState.activeBetsList || [];
-            let pending = clientState.pendingBetsList || [];
-
-            let myActive = active.filter(b => b.proposer === myName || b.target === myName || b.pickUser === myName);
-            let myPending = pending.filter(b => b.proposer === myName || b.target === myName || b.pickUser === myName);
-
-            let html = `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Active Side Bets (${myActive.length})</div>`;
-            if (myActive.length === 0) {
-                html += `<div style="margin-left:8px; margin-bottom:8px; color:var(--text-muted);">None currently active.</div>`;
-            } else {
-                html += '<ul style="margin-left:14px; margin-bottom:8px;">';
-                myActive.forEach(b => {
-                    let desc = b.type === 'eliminate' ? `Bet with ${b.proposer === myName ? b.target : b.proposer}: $${b.wagerAmt} on ${b.pickUser} to lose first` : `Global Bet: $${b.wagerAmt} on ${b.pickUser}`;
-                    html += `<li style="margin-bottom:3px;">${desc}</li>`;
-                });
-                html += '</ul>';
-            }
-
-            contentDiv.innerHTML = html;
-            toggleModal('active-bets-modal');
-        }
-
-        function calculatePairwiseNet(ledgerData, myName, allUsers) {
-            let totalNet = 0;
-            let records = {};
-            let ledgerKeys = new Set([...Object.keys(ledgerData), ...allUsers]);
+        function initSocketAndSend(payload) {
+            saveInputs();
+            clientState.username = document.getElementById('username-input').value.trim() || 'Player1';
             
-            for (let debtorKey in ledgerData) {
-                ledgerKeys.add(debtorKey);
-                if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
-                    for (let creditorKey in ledgerData[debtorKey]) {
-                        ledgerKeys.add(creditorKey);
-                    }
-                }
+            if (payload.type === 'CREATE_LOBBY' || payload.type === 'JOIN_LOBBY') {
+                if (payload.code) currentJoinedCode = payload.code;
             }
 
-            ledgerKeys.forEach(otherUser => {
-                if (otherUser === myName) return;
-                let theyOweMe = (ledgerData[otherUser] && ledgerData[otherUser][myName]) || 0;
-                let iOweThem = (ledgerData[myName] && ledgerData[myName][otherUser]) || 0;
-                
-                let net = theyOweMe - iOweThem;
-                if (net !== 0) {
-                    records[otherUser] = net;
-                    totalNet += net;
-                }
-            });
-
-            return { totalNet, records };
-        }
-
-        function openLedgerModal() {
-            let ledgerDiv = document.getElementById('ledger-content');
-            let myName = document.getElementById('username-input').value.trim() || clientState.username;
-            
-            let sideLedgerData = clientState.sideBetLedger || {};
-            let mainLedgerData = clientState.mainGameLedger || {};
-            let allUsers = new Set([
-                ...Object.keys(sideLedgerData), 
-                ...Object.keys(mainLedgerData), 
-                ...(clientState.playersList || [])
-            ]);
-
-            let sideCalc = calculatePairwiseNet(sideLedgerData, myName, allUsers);
-            let mainCalc = calculatePairwiseNet(mainLedgerData, myName, allUsers);
-            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
-
-            let html = `<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 5px; color: ${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net Balance: $${grandTotal.toFixed(2)}</div>`;
-            html += `<hr style="border-color:#475569; margin-bottom:5px;">`;
-
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🤝 Side Bets</div>`;
-            let hasSideEntries = false;
-            let sideHtml = '<ul style="margin-bottom: 5px;">';
-            for (let [user, netAmt] of Object.entries(sideCalc.records)) {
-                hasSideEntries = true;
-                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
-                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'side')">Clear</button>` : '';
-                sideHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
-            }
-            sideHtml += '</ul>';
-            html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
-
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
-            let hasMainEntries = false;
-            let mainHtml = '<ul>';
-            for (let [user, netAmt] of Object.entries(mainCalc.records)) {
-                hasMainEntries = true;
-                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
-                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'main')">Clear</button>` : '';
-                mainHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
-            }
-            mainHtml += '</ul>';
-            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No main game balances.</div>`;
-
-            ledgerDiv.innerHTML = html;
-            toggleModal('ledger-modal');
-        }
-
-        function clearDebtCategory(targetUser, category) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CLEAR_DEBT', targetUser, category }));
-                setTimeout(() => openLedgerModal(), 200);
-            }
-        }
-
-        function openSpectatorListModal() {
-            let content = document.getElementById('spectators-list-content');
-            let specs = clientState.spectatorsList || [];
-            if (specs.length === 0) {
-                content.innerHTML = 'No spectators.';
-            } else {
-                content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
-            }
-            toggleModal('spectators-modal');
-        }
-
-        function saveLedgerScreenshot() {
-            alert("Ledger snapshot saved.");
-            toggleModal('ledger-modal');
-        }
-
-        function formatCardHtml(card, isMini = false) {
-            if (!card) return '';
-            let isRed = ['♥', '♦'].includes(card.suit);
-            let suitClass = isRed ? 'red-suit' : 'black-suit';
-            if (isMini) {
-                return `<div class="mini-card ${suitClass}"><span>${card.val}</span><span>${card.suit}</span></div>`;
-            } else {
-                return `<div class="my-card ${suitClass}" style="width:60px; height:85px; font-size:1.1rem;"><span>${card.val}</span><span style="font-size:1.4rem;">${card.suit}</span></div>`;
-            }
-        }
-
-        function playSound(type) {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            let now = audioCtx.currentTime;
-
-            if (type === 'ding') {
-                let osc = audioCtx.createOscillator();
-                let gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(587.33, now);
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                osc.start(now);
-                osc.stop(now + 0.4);
-            } else if (type === 'knock') {
-                let osc = audioCtx.createOscillator();
-                let gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(300, now);
-                gain.gain.setValueAtTime(0.5, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                osc.start(now);
-                osc.stop(now + 0.2);
-            }
-        }
-
-        function showCenterNotification(msg) {
-            let banner = document.getElementById('center-notification-banner');
-            banner.innerText = msg;
-            banner.style.display = 'block';
-            setTimeout(() => { banner.style.display = 'none'; }, 2500);
-        }
-
-        function sendVCStatusInternal(inVC, isMuted) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'UPDATE_VC_STATUS', inVC, isMuted }));
-            }
-        }
-
-        async function autoConnectMutedVoiceChat() {
-            if (localAudioStream) return;
-            try {
-                localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
-                    video: false 
-                });
-                localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
-                isVoiceChatActive = true;
-                
-                let btn = document.getElementById('vc-main-btn');
-                let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️ Voice: Off';
-                led.classList.remove('active');
-                sendVCStatusInternal(true, true);
-                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-            } catch (err) {}
-        }
-
-        async function toggleVoiceOnOff() {
-            let btn = document.getElementById('vc-main-btn');
-            let led = document.getElementById('vc-led');
-
-            if (!localAudioStream) {
-                try {
-                    localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
-                        video: false 
-                    });
-                    isVoiceChatActive = true;
-                } catch (err) {
-                    alert('Microphone permission required.');
-                    return;
-                }
-            }
-
-            let currentMutedState = !localAudioStream.getAudioTracks()[0].enabled;
-            let newMutedState = !currentMutedState; 
-
-            localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
-
-            if (newMutedState) {
-                btn.innerText = '🎙️ Voice: Off';
-                led.classList.remove('active');
-            } else {
-                btn.innerText = '🎙️ Voice: On';
-                led.classList.add('active');
-            }
-
-            sendVCStatusInternal(true, newMutedState);
-            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-        }
-
-        function refreshLobbies() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'REFRESH_LOBBIES' }));
+                ws.send(JSON.stringify(payload));
             } else {
                 const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-                let tempWs = new WebSocket(protocol + location.host);
-                tempWs.onopen = () => { tempWs.send(JSON.stringify({ type: 'REFRESH_LOBBIES' })); };
-                tempWs.onmessage = (e) => {
-                    let data = JSON.parse(e.data);
+                ws = new WebSocket(protocol + location.host);
+                ws.onopen = async () => {
+                    isConnected = true;
+                    ws.send(JSON.stringify(payload));
+                    setTimeout(() => { autoConnectMutedVoiceChat(); }, 500);
+                };
+                ws.onmessage = (event) => {
+                    let data = JSON.parse(event.data);
                     if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                    tempWs.close();
+                    else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                        if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
+                        latestLobbySnapshot = data.lobby;
+                        updateUIFromLobby(data.lobby);
+                        handleWebRTCConnections(data.lobby);
+                    } else if (data.type === 'CHAT_MESSAGE') {
+                        appendChatMessage(data.username, data.message);
+                        let win = document.getElementById('chat-window');
+                        if (win.style.display !== 'flex') {
+                            let chatBtn = document.getElementById('chat-toggle-btn');
+                            chatBtn.classList.add('unread');
+                            chatBtn.innerText = '💬 Chat❗';
+                        }
+                    } else if (data.type === 'WEBRTC_SIGNAL') {
+                        if (data.lobbyCode === currentJoinedCode) {
+                            handleWebRTCSignal(data.sender, data.signal);
+                        }
+                    } else if (data.type === 'LEFT_LOBBY') {
+                        currentJoinedCode = null;
+                        latestLobbySnapshot = null;
+                        resetToMainMenu();
+                    }
+                    else if (data.type === 'ERROR') alert(data.message);
+                };
+                ws.onclose = () => { 
+                    isConnected = false; 
+                    setTimeout(() => {
+                        if (!isConnected && currentJoinedCode) {
+                            initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
+                        }
+                    }, 3000);
                 };
             }
-        }
-
-        function renderLobbyList(lobbies) {
-            let container = document.getElementById('lobby-list');
-            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
-            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
         function createLobby() {
@@ -1067,379 +867,6 @@
         function joinLobbyCode(code) {
             currentJoinedCode = code;
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
-        }
-
-        function standUp() {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'STAND_UP' }));
-        }
-
-        function sitDown() {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SIT_DOWN' }));
-        }
-
-        function updateWager() {
-            let wager = document.getElementById('config-wager').value;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_WAGER', wager }));
-        }
-
-        function updateSettings() {
-            let lives = document.getElementById('config-lives').value;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_SETTINGS', lives }));
-        }
-
-        function toggleReady() {
-            clientState.isReady = !clientState.isReady;
-            document.getElementById('ready-btn').innerText = clientState.isReady ? 'Unready' : 'Ready Up';
-            hasChosenPoolCard = false;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SET_READY', ready: clientState.isReady }));
-        }
-
-        function clickNextHand() {
-            let btn = document.getElementById('next-hand-btn');
-            btn.innerText = 'Waiting...';
-            btn.disabled = true;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'NEXT_HAND' }));
-        }
-
-        function proposeEndGame() {
-            if (confirm("Propose ending the game?")) {
-                if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'END_GAME_PROPOSAL' }));
-            }
-        }
-
-        function sendChatMessage() {
-            let input = document.getElementById('chat-input');
-            let text = input.value.trim();
-            if (text && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CHAT_MESSAGE', message: text }));
-                input.value = '';
-            }
-        }
-
-        function appendChatMessage(user, msg) {
-            let box = document.getElementById('chat-messages');
-            box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
-            box.scrollTop = box.scrollHeight;
-        }
-
-        function handleWebRTCConnections(lobby) {
-            if (!localAudioStream || !isVoiceChatActive) return;
-            let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
-            
-            let vcParticipants = [];
-            lobby.players.forEach(p => { if (p.inVC && p.username !== currentUsername) vcParticipants.push(p.username); });
-            lobby.spectators.forEach(s => { if (s.inVC && s.username !== currentUsername) vcParticipants.push(s.username); });
-
-            vcParticipants.forEach(peerUser => {
-                if (!peerConnections[peerUser] || peerConnections[peerUser].connectionState === 'failed' || peerConnections[peerUser].connectionState === 'closed') {
-                    if (peerConnections[peerUser]) {
-                        peerConnections[peerUser].close();
-                        delete peerConnections[peerUser];
-                    }
-                    setupPeerConnection(peerUser, true);
-                }
-            });
-        }
-
-        function setupPeerConnection(peerUser, shouldInitiateOffer) {
-            if (peerConnections[peerUser]) return;
-            let pc = new RTCPeerConnection(rtcConfig);
-            peerConnections[peerUser] = pc;
-            pc.pendingCandidates = [];
-
-            localAudioStream.getTracks().forEach(track => { pc.addTrack(track, localAudioStream); });
-
-            pc.ontrack = (event) => {
-                let audioElem = new Audio();
-                audioElem.srcObject = event.streams[0];
-                audioElem.autoplay = true;
-                audioElem.playsInline = true;
-                activePeerAudioElements.push(audioElem);
-                audioElem.play().catch(e => {});
-            };
-
-            pc.onicecandidate = (event) => {
-                if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { candidate: event.candidate } }));
-                }
-            };
-
-            let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
-            if (shouldInitiateOffer && currentUsername < peerUser) {
-                setTimeout(() => {
-                    if (peerConnections[peerUser] === pc && pc.signalingState === 'stable') {
-                        pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
-                            ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { sdp: pc.localDescription } }));
-                        }).catch(e => {});
-                    }
-                }, 400);
-            }
-        }
-
-        async function handleWebRTCSignal(sender, signal) {
-            if (!localAudioStream || !isVoiceChatActive) return;
-            if (!peerConnections[sender]) setupPeerConnection(sender, false);
-            let pc = peerConnections[sender];
-            if (!pc) return;
-
-            try {
-                if (signal.sdp) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-                    if (signal.sdp.type === 'offer') {
-                        let answer = await pc.createAnswer();
-                        await pc.setLocalDescription(answer);
-                        ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: sender, signal: { sdp: pc.localDescription } }));
-                    }
-                } else if (signal.candidate) {
-                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-                }
-            } catch (e) {}
-        }
-
-        function updateUIFromLobby(lobby) {
-            document.getElementById('main-menu').style.display = 'none';
-            document.getElementById('game-view').style.display = 'flex';
-            document.getElementById('end-game-btn').style.display = 'inline-block';
-            document.getElementById('leave-lobby-btn').style.display = 'inline-block';
-            document.getElementById('vc-group-container').style.display = 'inline-flex';
-            document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
-
-            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
-
-            if (lobby.gameState !== lastGameState) {
-                hasChosenPoolCard = false;
-                lastGameState = lobby.gameState;
-                if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
-                    document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
-                }
-            }
-
-            if (lobby.chatHistory && lobby.chatHistory.length !== lastSyncedChatLength) {
-                let msgBox = document.getElementById('chat-messages');
-                msgBox.innerHTML = '';
-                lobby.chatHistory.forEach(ch => {
-                    msgBox.innerHTML += `<div><b>${ch.username}:</b> ${ch.message}</div>`;
-                });
-                msgBox.scrollTop = msgBox.scrollHeight;
-                lastSyncedChatLength = lobby.chatHistory.length;
-            }
-
-            currentPlaylistQueue = lobby.playlist || [];
-            renderYouTubePlayer(currentPlaylistQueue, lobby.currentSongIndex, lobby.isPlaying);
-
-            clientState.gameState = lobby.gameState;
-            clientState.playersList = lobby.players.map(p => p.username);
-            clientState.spectatorsList = lobby.spectators || [];
-            clientState.activeParticipantsCount = lobby.activeParticipantsCount || 3;
-            clientState.tiedParticipantsList = lobby.tiedParticipantsList || [];
-            clientState.activeBetsList = lobby.activeBets || [];
-            clientState.pendingBetsList = lobby.pendingBets || [];
-            document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
-
-            let me = lobby.players.find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
-            let isSpecUser = lobby.spectators.some(s => s.username.trim().toLowerCase() === activeUsername.toLowerCase());
-            let isEliminated = me && me.eliminated;
-            let isSpectatorOnly = !me || isEliminated || isSpecUser;
-            clientState.isSpectator = isSpectatorOnly;
-
-            if (me) {
-                clientState.isReady = me.ready;
-                let readyBtn = document.getElementById('ready-btn');
-                readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
-            }
-
-            let standUpBtn = document.getElementById('stand-up-btn');
-            let sitBtn = document.getElementById('sit-btn');
-            let readyBtn = document.getElementById('ready-btn');
-            let knockBtn = document.getElementById('knock-btn');
-
-            if (lobby.gameState === 'lobby') {
-                if (me && !isEliminated) {
-                    standUpBtn.style.display = 'inline-block';
-                    sitBtn.style.display = 'none';
-                    readyBtn.style.display = 'inline-block';
-                    knockBtn.style.display = 'none';
-                } else {
-                    standUpBtn.style.display = 'none';
-                    readyBtn.style.display = 'none';
-                    knockBtn.style.display = 'none';
-                    if (isSpecUser) {
-                        sitBtn.style.display = 'inline-block';
-                        sitBtn.disabled = lobby.players.length >= 6;
-                    } else {
-                        sitBtn.style.display = 'none';
-                    }
-                }
-            } else {
-                sitBtn.style.display = 'none';
-                if (isSpectatorOnly) {
-                    standUpBtn.style.display = 'none';
-                    readyBtn.style.display = 'none';
-                    knockBtn.style.display = 'none';
-                } else {
-                    standUpBtn.style.display = 'none';
-                    readyBtn.style.display = 'none';
-                    knockBtn.style.display = 'inline-block';
-                }
-            }
-
-            clientState.discardTop = lobby.discardTop;
-            clientState.sideBetLedger = lobby.sideBetLedger || {};
-            clientState.mainGameLedger = lobby.mainGameLedger || {};
-
-            document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
-            document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
-
-            let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
-                nextHandOverlay.style.display = 'block';
-                let nextBtn = document.getElementById('next-hand-btn');
-                if (me && me.nextHandReady) {
-                    nextBtn.innerText = 'Waiting...';
-                    nextBtn.disabled = true;
-                } else {
-                    nextBtn.innerText = 'Next Hand';
-                    nextBtn.disabled = false;
-                }
-            } else {
-                nextHandOverlay.style.display = 'none';
-            }
-
-            let poolModal = document.getElementById('pool-draw-modal');
-            let revealModal = document.getElementById('tie-breaker-reveal-modal');
-            let turnBanner = document.getElementById('turn-banner');
-
-            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
-                showCenterNotification(lobby.phaseMessage);
-                lastPhaseMessage = lobby.phaseMessage;
-            }
-
-            if (lobby.gameState === 'dealerDraw') {
-                poolModal.style.display = 'flex';
-                revealModal.style.display = 'none';
-                document.getElementById('pool-modal-title').innerText = 'Picking for Dealer';
-                document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
-                
-                let gridHtml = '';
-                lobby.drawPool.forEach((slot) => {
-                    if (slot.chosenBy) {
-                        let revealedCard = lobby.drawResults[slot.chosenBy];
-                        let cardHtmlStr = revealedCard ? formatCardHtml(revealedCard, true) : '';
-                        gridHtml += `<div class="pool-card-item revealed"><span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>${cardHtmlStr}</div>`;
-                    } else {
-                        let clickable = !lobby.drawResults[activeUsername] && !hasChosenPoolCard;
-                        gridHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">?</div>`;
-                    }
-                });
-                document.getElementById('pool-cards-container').innerHTML = gridHtml;
-                turnBanner.innerText = 'Dealer Draw Phase';
-            } else {
-                poolModal.style.display = 'none';
-                revealModal.style.display = 'none';
-                if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-                    let isMyTurn = (lobby.currentTurnUser === activeUsername);
-                    turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                } else if (lobby.gameState === 'roundOver') {
-                    turnBanner.innerText = lobby.phaseMessage || 'Round Over';
-                }
-            }
-
-            let container = document.getElementById('table-oval-container');
-            let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
-
-            let html = `
-                <div class="pots-container">
-                    <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
-                </div>
-                <div class="deck-center">
-                    <div class="card-slot back" onclick="drawCard('deck')">DECK<div class="deck-counter">${lobby.deckCount || 0} left</div></div>
-                    <div class="card-slot" onclick="drawCard('discard')">${discardTopHtml}</div>
-                </div>
-            `;
-
-            lobby.players.forEach(p => {
-                let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
-                let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
-                let readyStatusIcon = p.ready ? '✅' : '❌';
-                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
-                let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-
-                html += `
-                    <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
-                        <div class="seat-name-area">
-                            <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
-                        </div>
-                        ${revealedCardsHtml}
-                    </div>
-                `;
-            });
-
-            container.innerHTML = html;
-            container.appendChild(nextHandOverlay);
-
-            if (me && me.cards) {
-                let cardsHtml = me.cards.map((c, i) => `
-                    <div class="my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}" onclick="discardCard(${i})">
-                        <span>${c.val}</span><span style="font-size:1.1rem;">${c.suit}</span>
-                    </div>
-                `).join('');
-                document.getElementById('my-cards-container').innerHTML = cardsHtml;
-                document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
-            }
-        }
-
-        function choosePoolCard(cardIndex) {
-            if (hasChosenPoolCard) return;
-            hasChosenPoolCard = true;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CHOOSE_POOL_CARD', cardIndex }));
-        }
-
-        function calculateLocalScore(cards) {
-            let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
-            if (!scoringCards || scoringCards.length === 0) return 0;
-            let sums = {};
-            scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
-            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
-            return Math.max(...Object.values(sums), 0);
-        }
-
-        function drawCard(type) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' })); }
-        function discardCard(cardIndex) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'DISCARD_CARD', cardIndex })); }
-        
-        function knockRound() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'KNOCK' }));
-                playSound('knock');
-            }
-        }
-        
-        function leaveLobby() {
-            if (localAudioStream) {
-                localAudioStream.getTracks().forEach(t => t.stop());
-                localAudioStream = null;
-            }
-            isVoiceChatActive = false;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
-            else resetToMainMenu();
-        }
-
-        function resetToMainMenu() {
-            if (localAudioStream) {
-                localAudioStream.getTracks().forEach(t => t.stop());
-                localAudioStream = null;
-            }
-            isVoiceChatActive = false;
-            currentJoinedCode = null;
-            latestLobbySnapshot = null;
-            document.getElementById('game-view').style.display = 'none';
-            document.getElementById('main-menu').style.display = 'flex';
-            document.getElementById('end-game-btn').style.display = 'none';
-            document.getElementById('leave-lobby-btn').style.display = 'none';
-            document.getElementById('vc-group-container').style.display = 'none';
-            clientState.isReady = false;
-            hasChosenPoolCard = false;
-            document.getElementById('ready-btn').innerText = 'Ready Up';
-            refreshLobbies();
         }
 
         function toggleModal(id) {
