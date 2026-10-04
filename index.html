@@ -926,7 +926,6 @@
             }
         }
 
-        // Technique 1: Syncs player position across all clients via elapsed time seeking
         function renderYouTubePlayer(playlist, currentIndex, isPlaying, elapsedSeconds = 0) {
             let container = document.getElementById('youtube-embed-container');
             let queueContainer = document.getElementById('playlist-container');
@@ -956,14 +955,12 @@
 
             if (activeSyncedSongKey !== songUniqueKey) {
                 activeSyncedSongKey = songUniqueKey;
-                // technique 1: Embed directly at the synchronized elapsed second marker
                 let separator = currentSong.url.includes('?') ? '&' : '?';
                 let syncedUrl = `${currentSong.url}${separator}start=${elapsedSeconds}&autoplay=1`;
                 container.innerHTML = `
                     <iframe width="100%" height="100%" src="${syncedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 `;
             } else {
-                // If already playing, send seek command if out of sync
                 let iframe = document.querySelector('#youtube-embed-container iframe');
                 if (iframe && iframe.contentWindow && elapsedSeconds > 0) {
                     try {
@@ -1333,7 +1330,16 @@
         }
 
         async function autoConnectMutedVoiceChat() {
-            if (localAudioStream) return;
+            if (localAudioStream) {
+                isVoiceChatActive = true;
+                let btn = document.getElementById('vc-main-btn');
+                let led = document.getElementById('vc-led');
+                if (btn) btn.innerText = '🎙️ Voice: Off';
+                if (led) led.classList.remove('active');
+                sendVCStatusInternal(true, true);
+                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+                return;
+            }
             try {
                 localAudioStream = await navigator.mediaDevices.getUserMedia({ 
                     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
@@ -1377,7 +1383,7 @@
                 if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
             } else {
-                if (btn) btn.innerText = '🎙️️ Voice: On';
+                if (btn) btn.innerText = '🎙️ Voice: On';
                 if (led) led.classList.add('active');
             }
 
@@ -1404,14 +1410,11 @@
                 else if (data.type === 'PLAY_SOUND') {
                     playSound(data.sound);
                 } else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
-                    let wasInMenu = !currentJoinedCode;
                     if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
                     latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
                     
-                    if (wasInMenu && currentJoinedCode) {
-                        autoConnectMutedVoiceChat();
-                    } else if (isVoiceChatActive) {
+                    if (isVoiceChatActive) {
                         handleWebRTCConnections(data.lobby);
                     }
                 } else if (data.type === 'CHAT_MESSAGE') {
@@ -1464,6 +1467,7 @@
             let username = document.getElementById('username-input').value.trim() || 'Player1';
             let lobbyName = document.getElementById('lobby-name-input').value.trim() || 'My Table';
             let isPrivate = document.getElementById('private-lobby-checkbox').checked;
+            autoConnectMutedVoiceChat(); // Grab mic within active user gesture
             initSocketAndSend({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
         }
 
@@ -1474,6 +1478,7 @@
 
         function joinLobbyCode(code) {
             currentJoinedCode = code;
+            autoConnectMutedVoiceChat(); // Grab mic within active user gesture
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
