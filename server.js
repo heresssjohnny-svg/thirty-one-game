@@ -534,13 +534,6 @@ wss.on('connection', (ws) => {
                                     }
                                 });
                             }
-                            if (pl.peekAllowed) {
-                                Object.keys(pl.peekAllowed).forEach(k => {
-                                    if (k.trim().toLowerCase() === requesterName.toLowerCase()) {
-                                        delete pl.peekAllowed[k];
-                                    }
-                                });
-                            }
                         });
 
                         let targetPlayer = lobby.players.find(p => p.username.trim().toLowerCase() === rawTarget);
@@ -558,16 +551,16 @@ wss.on('connection', (ws) => {
                         touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player) {
+                            let specName = data.spectatorUsername;
                             if (player.peekRequests) {
-                                Object.keys(player.peekRequests).forEach(k => {
-                                    if (k.trim().toLowerCase() === (data.spectatorUsername || '').trim().toLowerCase()) {
-                                        delete player.peekRequests[k];
-                                    }
-                                });
+                                delete player.peekRequests[specName];
                             }
                             if (data.allow) {
                                 if (!player.peekAllowed) player.peekAllowed = {};
-                                player.peekAllowed[data.spectatorUsername] = true;
+                                player.peekAllowed[specName] = true;
+                                lobby.phaseMessage = `👀 ${player.username} permitted ${specName} to peek at their hand!`;
+                            } else {
+                                lobby.phaseMessage = `❌ ${player.username} denied ${specName}'s request to peek.`;
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -597,11 +590,7 @@ wss.on('connection', (ws) => {
                         touchLobbyActivity(lobby);
                         let player = lobby.players.find(p => p.id === ws);
                         if (player && player.peekAllowed) {
-                            Object.keys(player.peekAllowed).forEach(k => {
-                                if (k.trim().toLowerCase() === (data.spectatorUsername || '').trim().toLowerCase()) {
-                                    delete player.peekAllowed[k];
-                                }
-                            });
+                            delete player.peekAllowed[data.spectatorUsername];
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
@@ -915,7 +904,7 @@ function checkDealerDrawComplete(lobby) {
                 dealerWinner = firstTwoChooser ? { username: firstTwoChooser.username, card: firstTwoChooser.card } : tiedLowest[0];
                 lobby.phaseMessage = `🎉 ${dealerWinner.username} drew a 2 first and is the Dealer!`;
             } else {
-                lobby.phaseMessage = `⚠️ Tie for lowest card (${entries[0].card.val}). Picking again!`;
+                lobby.phaseMessage = `⚠️️ Tie for lowest card (${entries[0].card.val}). Picking again!`;
                 broadcastLobbyUpdate(lobby.code);
                 setTimeout(() => {
                     if (lobbies[lobby.code] && lobbies[lobby.code].gameState === 'dealerDraw') {
@@ -1299,8 +1288,8 @@ function triggerRoundOver(lobby, msg) {
 
 function resolveMainGameLedger(lobby, winnerUsername, loserUsername) {
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
-    let winnerObj = lobby.players.find(p => p.username === winnerUsername);
-    let amount = winnerObj ? (winnerObj.wager || 5) : 5;
+    let loserObj = lobby.players.find(p => p.username === loserUsername);
+    let amount = loserObj ? (loserObj.wager || 5) : 5;
 
     if (!lobby.mainGameLedger[loserUsername]) lobby.mainGameLedger[loserUsername] = {};
     lobby.mainGameLedger[loserUsername][winnerUsername] = (lobby.mainGameLedger[loserUsername][winnerUsername] || 0) + amount;
