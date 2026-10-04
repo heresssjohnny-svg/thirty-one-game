@@ -461,7 +461,7 @@
                 <div id="turn-banner">Turn: Waiting...</div>
             </div>
 
-            <!-- Conspicuous knock alert modal positioned cleanly beneath the turn banner -->
+            <!-- Non-blocking knock alert modal positioned cleanly beneath the top row -->
             <div id="knock-alert-modal">🔔 Knock Alert</div>
 
             <!-- Spectator active peek control banner -->
@@ -698,7 +698,6 @@
                 gain.connect(ctx.destination);
 
                 if (type === 'knock') {
-                    // Double rap knock tone
                     osc.type = 'triangle';
                     osc.frequency.setValueAtTime(150, now);
                     osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
@@ -734,7 +733,6 @@
                     osc.start(now);
                     osc.stop(now + 0.45);
                 } else if (type === 'thud') {
-                    // Deep low-end acoustic haptic thud for devices that lack navigator.vibrate (e.g. iOS)
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(80, now);
                     osc.frequency.exponentialRampToValueAtTime(40, now + 0.09);
@@ -747,14 +745,11 @@
         }
 
         function triggerVibration(pattern) {
-            // Android / Desktop Chrome support
             if ('vibrate' in navigator) {
                 try {
                     navigator.vibrate(pattern);
                 } catch (e) {}
             }
-            
-            // WebKit / iOS physical haptic tap fallback
             let iosTrigger = document.getElementById('ios-haptic-trigger');
             if (iosTrigger) {
                 try {
@@ -764,7 +759,6 @@
         }
 
         function triggerFastTurnPulses() {
-            // 2 short fast hard vibration pulses
             triggerVibration([40, 60, 40]);
             playSound('thud');
             setTimeout(() => playSound('thud'), 100);
@@ -1861,7 +1855,7 @@
             if (!scoringCards || scoringCards.length === 0) return 0;
             let sums = {};
             scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
-            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoring2 = scoringCards[2].val) return 30.5;
+            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
             return Math.max(...Object.values(sums), 0);
         }
 
@@ -1880,7 +1874,7 @@
         function knockRound() {
             playSound('knock');
             triggerVibration([180, 110, 180, 110, 180]);
-            initSocketAndSend({ type: 'KNOCK' }); 
+            initSocketAndSend({ type: 'KNOCK' });
         }
         
         function leaveLobby() {
