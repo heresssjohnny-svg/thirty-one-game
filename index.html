@@ -713,7 +713,7 @@
         let ws = null;
         let isConnected = false;
         let pendingQueue = [];
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [], playlist: [], currentSongIndex: 0, isPlaying: false };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [], playlist: [], currentSongIndex: 0, isPlaying: false, currentSongElapsedSeconds: 0 };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
@@ -926,7 +926,8 @@
             }
         }
 
-        function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
+        // Technique 1: Syncs player position across all clients via elapsed time seeking
+        function renderYouTubePlayer(playlist, currentIndex, isPlaying, elapsedSeconds = 0) {
             let container = document.getElementById('youtube-embed-container');
             let queueContainer = document.getElementById('playlist-container');
 
@@ -955,10 +956,24 @@
 
             if (activeSyncedSongKey !== songUniqueKey) {
                 activeSyncedSongKey = songUniqueKey;
-                let autoUrl = currentSong.url.includes('?') ? `${currentSong.url}&autoplay=1` : `${currentSong.url}?autoplay=1`;
+                // technique 1: Embed directly at the synchronized elapsed second marker
+                let separator = currentSong.url.includes('?') ? '&' : '?';
+                let syncedUrl = `${currentSong.url}${separator}start=${elapsedSeconds}&autoplay=1`;
                 container.innerHTML = `
-                    <iframe width="100%" height="100%" src="${autoUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <iframe width="100%" height="100%" src="${syncedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 `;
+            } else {
+                // If already playing, send seek command if out of sync
+                let iframe = document.querySelector('#youtube-embed-container iframe');
+                if (iframe && iframe.contentWindow && elapsedSeconds > 0) {
+                    try {
+                        iframe.contentWindow.postMessage(JSON.stringify({
+                            event: 'command',
+                            func: 'seekTo',
+                            args: [elapsedSeconds, true]
+                        }), '*');
+                    } catch (e) {}
+                }
             }
         }
 
@@ -1362,7 +1377,7 @@
                 if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
             } else {
-                if (btn) btn.innerText = '🎙️ Voice: On';
+                if (btn) btn.innerText = '🎙️️ Voice: On';
                 if (led) led.classList.add('active');
             }
 
@@ -1600,7 +1615,7 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
-            renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
+            renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying, lobby.currentSongElapsedSeconds || 0);
 
             if (lobby.gameState !== lastGameState) {
                 hasChosenPoolCard = false;
@@ -1657,6 +1672,7 @@
             clientState.tiedParticipantsList = lobby.tiedParticipantsList || [];
             clientState.activeBetsList = lobby.activeBets || [];
             clientState.pendingBetsList = lobby.pendingBets || [];
+            clientState.currentSongElapsedSeconds = lobby.currentSongElapsedSeconds || 0;
             document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
             let me = lobby.players.find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
