@@ -720,7 +720,6 @@
         let lastGameState = '';
         let currentJoinedCode = null;
         let lastKnownKnockedBy = null;
-        let previousLobbyPlayers = [];
         
         let localAudioStream = null;
         let isVoiceChatActive = false;
@@ -759,7 +758,6 @@
                 let now = ctx.currentTime;
 
                 if (type === 'join') {
-                    // Two-tone connection chime (F5 -> C6)
                     let osc1 = ctx.createOscillator();
                     let gain1 = ctx.createGain();
                     osc1.connect(gain1);
@@ -1388,7 +1386,9 @@
             ws.onmessage = (event) => {
                 let data = JSON.parse(event.data);
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                else if (data.type === 'PLAY_SOUND') {
+                    playSound(data.sound);
+                } else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
                     let wasInMenu = !currentJoinedCode;
                     if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
                     latestLobbySnapshot = data.lobby;
@@ -1600,16 +1600,6 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
-            // Player connected sound detection
-            let currentRoster = (lobby.players || []).map(p => p.username.toLowerCase());
-            if (previousLobbyPlayers.length > 0) {
-                let hasNewPlayer = currentRoster.some(u => !previousLobbyPlayers.includes(u));
-                if (hasNewPlayer) {
-                    playSound('join');
-                }
-            }
-            previousLobbyPlayers = currentRoster;
-
             renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
 
             if (lobby.gameState !== lastGameState) {
@@ -1648,7 +1638,7 @@
                 topleftModal.style.display = 'none';
             }
 
-            // Private Fed Card Modal: Displays on the right only if recipient still holds that card
+            // Private Fed Card Modal
             let fedModal = document.getElementById('fed-card-topright-modal');
             let fedContent = document.getElementById('fed-card-content');
             let fedLabel = document.getElementById('fed-card-label');
@@ -1952,7 +1942,7 @@
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️️') : '';
+                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
                 let peekerBadgesHtml = '';
@@ -2035,7 +2025,6 @@
             }
             isVoiceChatActive = false;
             peerConnections = {};
-            previousLobbyPlayers = [];
             initSocketAndSend({ type: 'LEAVE_LOBBY' });
         }
 
@@ -2046,7 +2035,6 @@
             }
             isVoiceChatActive = false;
             peerConnections = {};
-            previousLobbyPlayers = [];
             currentJoinedCode = null;
             latestLobbySnapshot = null;
             document.getElementById('game-view').style.display = 'none';
