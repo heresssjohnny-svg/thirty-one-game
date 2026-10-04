@@ -193,7 +193,7 @@
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.75rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 1; } 100% { opacity: 1; } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         
         #chat-window { position: absolute; top: 45px; left: calc(50% - 120px); width: 240px; height: 160px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 6px; z-index: 3000; font-size: 0.7rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
         .chat-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; border-bottom: 1px solid #334155; padding-bottom: 3px; color: #38bdf8; font-weight: bold; }
@@ -493,7 +493,7 @@
             </div>
 
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
-                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️️ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
@@ -1106,7 +1106,7 @@
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                if (btn) btn.innerText = '🎙️️ Voice: Off';
+                if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
                 sendVCStatusInternal(true, true);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
@@ -1376,6 +1376,17 @@
                 if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
                     document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
                 }
+            }
+
+            // Top-Left Initial Discard Pickup Display
+            let topleftModal = document.getElementById('discard-pickup-topleft-modal');
+            let topleftCardContent = document.getElementById('discard-pickup-card-content');
+            if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+                let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
+                topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b>:</span> ${cardHtml}`;
+                topleftModal.style.display = 'flex';
+            } else {
+                topleftModal.style.display = 'none';
             }
 
             clientState.gameState = lobby.gameState;
