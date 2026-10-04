@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>31! Card Game</title>
 
-    <!-- PWA Configuration with Self-Contained Vector Data URI for iOS -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#044e36">
     <meta name="mobile-web-app-capable" content="yes">
@@ -721,6 +720,7 @@
         let lastGameState = '';
         let currentJoinedCode = null;
         let lastKnownKnockedBy = null;
+        let previousLobbyPlayers = [];
         
         let localAudioStream = null;
         let isVoiceChatActive = false;
@@ -757,6 +757,33 @@
             try {
                 let ctx = getAudioContext();
                 let now = ctx.currentTime;
+
+                if (type === 'join') {
+                    // Two-tone connection chime (F5 -> C6)
+                    let osc1 = ctx.createOscillator();
+                    let gain1 = ctx.createGain();
+                    osc1.connect(gain1);
+                    gain1.connect(ctx.destination);
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(698.46, now);
+                    gain1.gain.setValueAtTime(0.3, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    osc1.start(now);
+                    osc1.stop(now + 0.2);
+
+                    let osc2 = ctx.createOscillator();
+                    let gain2 = ctx.createGain();
+                    osc2.connect(gain2);
+                    gain2.connect(ctx.destination);
+                    osc2.type = 'sine';
+                    osc2.frequency.setValueAtTime(1046.50, now + 0.12);
+                    gain2.gain.setValueAtTime(0.35, now + 0.12);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                    osc2.start(now + 0.12);
+                    osc2.stop(now + 0.45);
+                    return;
+                }
+
                 let osc = ctx.createOscillator();
                 let gain = ctx.createGain();
                 osc.connect(gain);
@@ -1356,7 +1383,6 @@
                     let msg = pendingQueue.shift();
                     ws.send(JSON.stringify(msg));
                 }
-                // Do not auto-connect voice chat on initial socket open in the main menu
             };
 
             ws.onmessage = (event) => {
@@ -1368,7 +1394,6 @@
                     latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
                     
-                    // Only start muted voice chat when entering a lobby
                     if (wasInMenu && currentJoinedCode) {
                         autoConnectMutedVoiceChat();
                     } else if (isVoiceChatActive) {
@@ -1575,6 +1600,16 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
+            // Player connected sound detection
+            let currentRoster = (lobby.players || []).map(p => p.username.toLowerCase());
+            if (previousLobbyPlayers.length > 0) {
+                let hasNewPlayer = currentRoster.some(u => !previousLobbyPlayers.includes(u));
+                if (hasNewPlayer) {
+                    playSound('join');
+                }
+            }
+            previousLobbyPlayers = currentRoster;
+
             renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
 
             if (lobby.gameState !== lastGameState) {
@@ -1640,7 +1675,6 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Check if spectator is actively viewing someone's hand
             let peekingBanner = document.getElementById('active-peeking-banner');
             let activelyPeekingTarget = null;
             if (isSpectatorOnly) {
@@ -1918,7 +1952,7 @@
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
                 let peekerBadgesHtml = '';
@@ -1991,7 +2025,7 @@
         function knockRound() {
             playSound('knock');
             triggerVibration([180, 110, 180, 110, 180]);
-            initSocketAndSend({ type: 'KNOCK' });
+            initSocketAndSend({ type: 'KNOCK' }); 
         }
         
         function leaveLobby() {
@@ -2000,6 +2034,8 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
+            peerConnections = {};
+            previousLobbyPlayers = [];
             initSocketAndSend({ type: 'LEAVE_LOBBY' });
         }
 
@@ -2009,6 +2045,8 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
+            peerConnections = {};
+            previousLobbyPlayers = [];
             currentJoinedCode = null;
             latestLobbySnapshot = null;
             document.getElementById('game-view').style.display = 'none';
