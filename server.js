@@ -861,6 +861,7 @@ function executeBotTurn(lobby, bot) {
         bot.pickedUpDiscardCard = null;
         lobby.phaseMessage = `🤖 ${bot.username} drew a card from the deck.`;
     }
+    broadcastLobbyUpdate(lobby.code);
 
     let fourCardScore = calculateBestFourCardScore(bot.cards);
     if (fourCardScore === 31) {
@@ -1189,7 +1190,7 @@ function checkTieBreakerComplete(lobby) {
         let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
         if (tiedLowest.length > 1) {
-            lobby.phaseMessage = `⚠️ Tie-breaker resulted in a tie! Tied players choose again.`;
+            lobby.phaseMessage = `⚠️️ Tie-breaker resulted in a tie! Tied players choose again.`;
             tiedNames.forEach(uname => { delete lobby.drawResults[uname]; });
             autoPickForBots(lobby);
             broadcastLobbyUpdate(lobby.code);
@@ -1421,7 +1422,7 @@ function advanceTurnOrResolve(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
     if (lobby.gameState === 'finalTurn') {
         lobby.finalTurnsRemaining--;
-        if (lobby.finalTurnsRemaining < 0) {
+        if (lobby.finalTurnsRemaining <= 0) {
             resolveRoundEnd(lobby);
             return;
         }
