@@ -367,6 +367,9 @@
 </head>
 <body>
 
+    <!-- Hidden iOS Switch Element for WebKit Physical Haptic Taps -->
+    <input type="checkbox" id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
+
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
@@ -382,7 +385,7 @@
             
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
             </div>
 
@@ -458,8 +461,14 @@
                 <div id="turn-banner">Turn: Waiting...</div>
             </div>
 
-            <!-- Non-blocking knock alert modal positioned cleanly beneath the top row -->
+            <!-- Conspicuous knock alert modal positioned cleanly beneath the turn banner -->
             <div id="knock-alert-modal">🔔 Knock Alert</div>
+
+            <!-- Spectator active peek control banner -->
+            <div id="active-peeking-banner" style="display:none; background:rgba(30,58,138,0.95); border:1px solid var(--accent-cyan); padding:4px 12px; border-radius:14px; font-size:0.75rem; color:#fff; align-items:center; gap:8px; margin-top:2px;">
+                <span>👀 Viewing Player Hand</span>
+                <button class="secondary" onclick="stopPeekingAction()" style="padding:2px 6px; font-size:0.65rem; background:#ef4444;">Stop Peeking</button>
+            </div>
 
             <div id="lobby-config-bar" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
                 <select id="config-wager" onchange="updateWager()" style="padding:3px; font-size:0.75rem;">
@@ -523,7 +532,7 @@
             </div>
 
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
-                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️️ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
@@ -724,16 +733,41 @@
                     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
                     osc.start(now);
                     osc.stop(now + 0.45);
+                } else if (type === 'thud') {
+                    // Deep low-end acoustic haptic thud for devices that lack navigator.vibrate (e.g. iOS)
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(80, now);
+                    osc.frequency.exponentialRampToValueAtTime(40, now + 0.09);
+                    gain.gain.setValueAtTime(0.7, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
                 }
             } catch (err) {}
         }
 
         function triggerVibration(pattern) {
+            // Android / Desktop Chrome support
             if ('vibrate' in navigator) {
                 try {
                     navigator.vibrate(pattern);
                 } catch (e) {}
             }
+            
+            // WebKit / iOS physical haptic tap fallback
+            let iosTrigger = document.getElementById('ios-haptic-trigger');
+            if (iosTrigger) {
+                try {
+                    iosTrigger.checked = !iosTrigger.checked;
+                } catch (e) {}
+            }
+        }
+
+        function triggerFastTurnPulses() {
+            // 2 short fast hard vibration pulses
+            triggerVibration([40, 60, 40]);
+            playSound('thud');
+            setTimeout(() => playSound('thud'), 100);
         }
 
         function parseYouTubeEmbedUrl(url, autoplay = true) {
@@ -944,6 +978,16 @@
             showCenterNotification(`Peek request sent to ${targetUsername}!`);
         }
 
+        function stopPeekingAction() {
+            initSocketAndSend({ type: 'STOP_PEEK' });
+            showCenterNotification(`Stopped peeking.`);
+        }
+
+        function kickPeekerAction(spectatorUsername) {
+            initSocketAndSend({ type: 'KICK_PEEKER', spectatorUsername });
+            showCenterNotification(`Removed ${spectatorUsername} from peeking your hand.`);
+        }
+
         function betOnHimFromModal(targetUsername) {
             toggleModal('seat-action-modal');
             let modalTitle = document.getElementById('bet-modal-title');
@@ -1105,7 +1149,7 @@
             sideHtml += '</ul>';
             html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
 
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger (Full Game)</div>`;
             let hasMainEntries = false;
             let mainHtml = '<ul>';
             for (let [user, netAmt] of Object.entries(mainCalc.records)) {
@@ -1492,6 +1536,23 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
+            // Check if current spectator is actively viewing someone's hand
+            let peekingBanner = document.getElementById('active-peeking-banner');
+            let activelyPeekingTarget = null;
+            if (isSpectatorOnly) {
+                lobby.players.forEach(pl => {
+                    if (pl.peekAllowed && Object.keys(pl.peekAllowed).some(k => k.toLowerCase() === activeUsername.toLowerCase())) {
+                        activelyPeekingTarget = pl.username;
+                    }
+                });
+            }
+            if (activelyPeekingTarget) {
+                peekingBanner.style.display = 'inline-flex';
+                peekingBanner.querySelector('span').innerText = `👀 Viewing ${activelyPeekingTarget}'s Hand`;
+            } else {
+                peekingBanner.style.display = 'none';
+            }
+
             if (me) {
                 clientState.isReady = me.ready;
                 let readyBtn = document.getElementById('ready-btn');
@@ -1549,13 +1610,27 @@
                 }
             }
 
+            // Turn Detection & 2 Fast Hard Vibration Pulses on Your Turn
+            let turnBanner = document.getElementById('turn-banner');
+            let isMyTurnPlaying = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+
+            if (isMyTurnPlaying) {
+                turnBanner.innerText = "YOUR TURN!";
+                if (lastTurnUser !== activeUsername) {
+                    lastTurnUser = activeUsername;
+                    triggerFastTurnPulses();
+                }
+            } else {
+                lastTurnUser = lobby.currentTurnUser;
+                turnBanner.innerText = (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') ? `Turn: ${lobby.currentTurnUser}` : 'Turn: Waiting...';
+            }
+
             // Knock Button Validation Logic
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length;
             let threshold = activePartsCount > 2 ? 21 : 25;
             let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
             let turnsConditionMet = !!lobby.canKnock;
             let scoreConditionMet = myScore >= threshold;
-            let isMyTurnPlaying = (lobby.currentTurnUser === activeUsername) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
             if (lobby.knockedBy) {
                 knockBtn.disabled = true;
@@ -1662,7 +1737,6 @@
 
             let poolModal = document.getElementById('pool-draw-modal');
             let revealModal = document.getElementById('tie-breaker-reveal-modal');
-            let turnBanner = document.getElementById('turn-banner');
 
             if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
                 showCenterNotification(lobby.phaseMessage);
@@ -1714,10 +1788,7 @@
             } else {
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
-                if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-                    let isMyTurn = (lobby.currentTurnUser === activeUsername);
-                    turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                } else if (lobby.gameState === 'roundOver') {
+                if (lobby.gameState === 'roundOver') {
                     turnBanner.innerText = lobby.phaseMessage || 'Round Over';
                 }
             }
@@ -1743,12 +1814,24 @@
                 let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
+                // Kick Peeker badges for players actively being peeked
+                let peekerBadgesHtml = '';
+                if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
+                    let peekers = Object.keys(p.peekAllowed);
+                    if (peekers.length > 0) {
+                        peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">` +
+                            peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('') +
+                            `</div>`;
+                    }
+                }
+
                 html += `
                     <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
                         <div class="seat-name-area" onclick="tapSeat('${p.username}')">
                             <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
+                        ${peekerBadgesHtml}
                     </div>
                 `;
             });
@@ -1778,7 +1861,7 @@
             if (!scoringCards || scoringCards.length === 0) return 0;
             let sums = {};
             scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
-            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
+            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoring2 = scoringCards[2].val) return 30.5;
             return Math.max(...Object.values(sums), 0);
         }
 
@@ -1797,7 +1880,7 @@
         function knockRound() {
             playSound('knock');
             triggerVibration([180, 110, 180, 110, 180]);
-            initSocketAndSend({ type: 'KNOCK' });
+            initSocketAndSend({ type: 'KNOCK' }); 
         }
         
         function leaveLobby() {
