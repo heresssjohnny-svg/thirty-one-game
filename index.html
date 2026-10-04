@@ -474,7 +474,6 @@
         </div>
     </main>
 
-    <!-- Voice Chat Participants & Reconnect Modal -->
     <div id="vc-participants-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
             <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
@@ -484,11 +483,9 @@
         </div>
     </div>
 
-    <!-- YouTube Playlist & Music Player Modal Window -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
-            
             <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
                 <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
                     No song playing
@@ -498,7 +495,7 @@
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
-                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️️ Skip</button>
+                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
@@ -529,13 +526,6 @@
         <div class="modal-content">
             <h3 id="bet-modal-title">Propose Bet</h3>
             <div id="bet-modal-body" class="button-group"></div>
-        </div>
-    </div>
-
-    <div id="seat-action-modal" class="modal">
-        <div class="modal-content" style="max-width:300px;">
-            <h3 id="seat-action-title" style="color:var(--accent-gold);">Player Actions</h3>
-            <div id="seat-action-body" class="button-group" style="margin-top:4px;"></div>
         </div>
     </div>
 
@@ -612,6 +602,7 @@
     <script>
         let ws = null;
         let isConnected = false;
+        let pendingQueue = [];
         let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], discardTop: null, sideBetLedger: {}, mainGameLedger: {}, lastDiscardPickup: null, pendingBetsForMe: [], gameState: 'lobby', activeParticipantsCount: 3, isSpectator: false, tiedParticipantsList: [], activeBetsList: [], pendingBetsList: [], playlist: [], currentSongIndex: 0, isPlaying: false };
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
@@ -661,30 +652,24 @@
             }
 
             let embedUrl = parseYouTubeEmbedUrl(rawUrl, true);
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl }));
-                titleInput.value = '';
-                urlInput.value = '';
-                showCenterNotification(`Added "${title}" to queue!`);
-            }
+            initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl });
+            titleInput.value = '';
+            urlInput.value = '';
+            showCenterNotification(`Added "${title}" to queue!`);
         }
 
         function removeSongFromPlaylist(index) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'REMOVE_PLAYLIST_SONG', index }));
-            }
+            initSocketAndSend({ type: 'REMOVE_PLAYLIST_SONG', index });
         }
 
         function sendMusicControl(action, index = null) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CONTROL_MUSIC', action, index }));
-            }
+            initSocketAndSend({ type: 'CONTROL_MUSIC', action, index });
         }
 
         function adjustIndividualVolume(val) {
             individualVolume = parseFloat(val);
-            document.getElementById('individual-volume-slider').value = individualVolume;
+            let slider = document.getElementById('individual-volume-slider');
+            if (slider) slider.value = individualVolume;
             let iframe = document.querySelector('#youtube-embed-container iframe');
             if (iframe && iframe.contentWindow) {
                 try {
@@ -700,7 +685,7 @@
         function toggleIndividualMusicMute() {
             isIndividualMuted = !isIndividualMuted;
             let btn = document.getElementById('individual-mute-btn');
-            btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+            if (btn) btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
             let iframe = document.querySelector('#youtube-embed-container iframe');
             if (iframe && iframe.contentWindow) {
                 try {
@@ -716,6 +701,7 @@
 
         function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
             let container = document.getElementById('youtube-embed-container');
+            if (!container) return;
             if (!playlist || playlist.length === 0 || !isPlaying) {
                 container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
                 activeSyncedSongKey = '';
@@ -755,13 +741,11 @@
         }
 
         function triggerVoiceReconnect() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'RECONNECT_VOICE' }));
-                peerConnections = {};
-                if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-                showCenterNotification("Triggered Voice Chat Reconnect!");
-                toggleModal('vc-participants-modal');
-            }
+            initSocketAndSend({ type: 'RECONNECT_VOICE' });
+            peerConnections = {};
+            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+            showCenterNotification("Triggered Voice Chat Reconnect!");
+            toggleModal('vc-participants-modal');
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -771,6 +755,7 @@
             if (localStorage.getItem('saved_lobby_name')) {
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
+            connectSocket();
             refreshLobbies();
         });
 
@@ -785,14 +770,16 @@
             win.style.display = isVisible ? 'none' : 'flex';
             if (!isVisible) {
                 let chatBtn = document.getElementById('chat-toggle-btn');
-                chatBtn.classList.remove('unread');
-                chatBtn.innerText = '💬 Chat';
+                if (chatBtn) {
+                    chatBtn.classList.remove('unread');
+                    chatBtn.innerText = '💬 Chat';
+                }
             }
         }
 
         function toggleGlobalSidebar() {
             let sidebar = document.getElementById('global-side-bets-sidebar');
-            sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
+            if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
         }
 
         function openActiveBetsModal() {
@@ -908,10 +895,8 @@
         }
 
         function clearDebtCategory(targetUser, category) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CLEAR_DEBT', targetUser, category }));
-                setTimeout(() => openLedgerModal(), 200);
-            }
+            initSocketAndSend({ type: 'CLEAR_DEBT', targetUser, category });
+            setTimeout(() => openLedgerModal(), 200);
         }
 
         function openSpectatorListModal() {
@@ -971,15 +956,14 @@
 
         function showCenterNotification(msg) {
             let banner = document.getElementById('center-notification-banner');
+            if (!banner) return;
             banner.innerText = msg;
             banner.style.display = 'block';
             setTimeout(() => { banner.style.display = 'none'; }, 2500);
         }
 
         function sendVCStatusInternal(inVC, isMuted) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'UPDATE_VC_STATUS', inVC, isMuted }));
-            }
+            initSocketAndSend({ type: 'UPDATE_VC_STATUS', inVC, isMuted });
         }
 
         async function autoConnectMutedVoiceChat() {
@@ -994,8 +978,8 @@
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                btn.innerText = '🎙️ Voice: Off';
-                led.classList.remove('active');
+                if (btn) btn.innerText = '🎙️ Voice: Off';
+                if (led) led.classList.remove('active');
                 sendVCStatusInternal(true, true);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
             } catch (err) {}
@@ -1024,36 +1008,56 @@
             localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
 
             if (newMutedState) {
-                btn.innerText = '🎙️ Voice: Off';
-                led.classList.remove('active');
+                if (btn) btn.innerText = '🎙️ Voice: Off';
+                if (led) led.classList.remove('active');
             } else {
-                btn.innerText = '🎙️ Voice: On';
-                led.classList.add('active');
+                if (btn) btn.innerText = '🎙️ Voice: On';
+                if (led) led.classList.add('active');
             }
 
             sendVCStatusInternal(true, newMutedState);
             if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
         }
 
-        function refreshLobbies() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'REFRESH_LOBBIES' }));
-            } else {
-                const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-                let tempWs = new WebSocket(protocol + location.host);
-                tempWs.onopen = () => { tempWs.send(JSON.stringify({ type: 'REFRESH_LOBBIES' })); };
-                tempWs.onmessage = (e) => {
-                    let data = JSON.parse(e.data);
-                    if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                    tempWs.close();
-                };
-            }
-        }
+        function connectSocket() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+            const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+            ws = new WebSocket(protocol + location.host);
 
-        function renderLobbyList(lobbies) {
-            let container = document.getElementById('lobby-list');
-            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
-            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
+            ws.onopen = () => {
+                isConnected = true;
+                while (pendingQueue.length > 0) {
+                    let msg = pendingQueue.shift();
+                    ws.send(JSON.stringify(msg));
+                }
+                setTimeout(() => { autoConnectMutedVoiceChat(); }, 500);
+            };
+
+            ws.onmessage = (event) => {
+                let data = JSON.parse(event.data);
+                if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
+                else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                    if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
+                    latestLobbySnapshot = data.lobby;
+                    updateUIFromLobby(data.lobby);
+                    handleWebRTCConnections(data.lobby);
+                } else if (data.type === 'CHAT_MESSAGE') {
+                    appendChatMessage(data.username, data.message);
+                } else if (data.type === 'WEBRTC_SIGNAL') {
+                    if (data.lobbyCode === currentJoinedCode) {
+                        handleWebRTCSignal(data.sender, data.signal);
+                    }
+                } else if (data.type === 'LEFT_LOBBY') {
+                    currentJoinedCode = null;
+                    latestLobbySnapshot = null;
+                    resetToMainMenu();
+                } else if (data.type === 'ERROR') alert(data.message);
+            };
+
+            ws.onclose = () => {
+                isConnected = false;
+                setTimeout(() => { connectSocket(); }, 3000);
+            };
         }
 
         function initSocketAndSend(payload) {
@@ -1067,43 +1071,27 @@
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(payload));
             } else {
-                const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-                ws = new WebSocket(protocol + location.host);
-                ws.onopen = () => {
-                    isConnected = true;
-                    ws.send(JSON.stringify(payload));
-                    setTimeout(() => { autoConnectMutedVoiceChat(); }, 500);
-                };
-                ws.onmessage = (event) => {
-                    let data = JSON.parse(event.data);
-                    if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                    else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
-                        if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
-                        latestLobbySnapshot = data.lobby;
-                        updateUIFromLobby(data.lobby);
-                        handleWebRTCConnections(data.lobby);
-                    } else if (data.type === 'CHAT_MESSAGE') {
-                        appendChatMessage(data.username, data.message);
-                    } else if (data.type === 'WEBRTC_SIGNAL') {
-                        if (data.lobbyCode === currentJoinedCode) {
-                            handleWebRTCSignal(data.sender, data.signal);
-                        }
-                    } else if (data.type === 'LEFT_LOBBY') {
-                        currentJoinedCode = null;
-                        latestLobbySnapshot = null;
-                        resetToMainMenu();
-                    } else if (data.type === 'ERROR') alert(data.message);
-                };
-                ws.onclose = () => { 
-                    isConnected = false; 
-                };
+                pendingQueue.push(payload);
+                connectSocket();
             }
         }
 
+        function refreshLobbies() {
+            initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+        }
+
+        function renderLobbyList(lobbies) {
+            let container = document.getElementById('lobby-list');
+            if (!container) return;
+            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
+            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
+        }
+
         function createLobby() {
+            let username = document.getElementById('username-input').value.trim() || 'Player1';
             let lobbyName = document.getElementById('lobby-name-input').value.trim() || 'My Table';
             let isPrivate = document.getElementById('private-lobby-checkbox').checked;
-            initSocketAndSend({ type: 'CREATE_LOBBY', username: document.getElementById('username-input').value.trim() || 'Player1', lobbyName, isPrivate });
+            initSocketAndSend({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
         }
 
         function joinLobby() {
@@ -1117,54 +1105,55 @@
         }
 
         function standUp() {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'STAND_UP' }));
+            initSocketAndSend({ type: 'STAND_UP' });
         }
 
         function sitDown() {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SIT_DOWN' }));
+            initSocketAndSend({ type: 'SIT_DOWN' });
         }
 
         function updateWager() {
             let wager = document.getElementById('config-wager').value;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_WAGER', wager }));
+            initSocketAndSend({ type: 'UPDATE_WAGER', wager });
         }
 
         function updateSettings() {
             let lives = document.getElementById('config-lives').value;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_SETTINGS', lives }));
+            initSocketAndSend({ type: 'UPDATE_SETTINGS', lives });
         }
 
         function toggleReady() {
             clientState.isReady = !clientState.isReady;
             document.getElementById('ready-btn').innerText = clientState.isReady ? 'Unready' : 'Ready Up';
             hasChosenPoolCard = false;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SET_READY', ready: clientState.isReady }));
+            initSocketAndSend({ type: 'SET_READY', ready: clientState.isReady });
         }
 
         function clickNextHand() {
             let btn = document.getElementById('next-hand-btn');
             btn.innerText = 'Waiting...';
             btn.disabled = true;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'NEXT_HAND' }));
+            initSocketAndSend({ type: 'NEXT_HAND' });
         }
 
         function proposeEndGame() {
             if (confirm("Propose ending the game?")) {
-                if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'END_GAME_PROPOSAL' }));
+                initSocketAndSend({ type: 'END_GAME_PROPOSAL' });
             }
         }
 
         function sendChatMessage() {
             let input = document.getElementById('chat-input');
             let text = input.value.trim();
-            if (text && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CHAT_MESSAGE', message: text }));
+            if (text) {
+                initSocketAndSend({ type: 'CHAT_MESSAGE', message: text });
                 input.value = '';
             }
         }
 
         function appendChatMessage(user, msg) {
             let box = document.getElementById('chat-messages');
+            if (!box) return;
             box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
             box.scrollTop = box.scrollHeight;
         }
@@ -1206,8 +1195,8 @@
             };
 
             pc.onicecandidate = (event) => {
-                if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { candidate: event.candidate } }));
+                if (event.candidate) {
+                    initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { candidate: event.candidate } });
                 }
             };
 
@@ -1216,7 +1205,7 @@
                 setTimeout(() => {
                     if (peerConnections[peerUser] === pc && pc.signalingState === 'stable') {
                         pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
-                            ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { sdp: pc.localDescription } }));
+                            initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { sdp: pc.localDescription } });
                         }).catch(e => {});
                     }
                 }, 400);
@@ -1235,7 +1224,7 @@
                     if (signal.sdp.type === 'offer') {
                         let answer = await pc.createAnswer();
                         await pc.setLocalDescription(answer);
-                        ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: sender, signal: { sdp: pc.localDescription } }));
+                        initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: sender, signal: { sdp: pc.localDescription } });
                     }
                 } else if (signal.candidate) {
                     await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
@@ -1425,7 +1414,7 @@
         function choosePoolCard(cardIndex) {
             if (hasChosenPoolCard) return;
             hasChosenPoolCard = true;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CHOOSE_POOL_CARD', cardIndex }));
+            initSocketAndSend({ type: 'CHOOSE_POOL_CARD', cardIndex });
         }
 
         function calculateLocalScore(cards) {
@@ -1437,14 +1426,12 @@
             return Math.max(...Object.values(sums), 0);
         }
 
-        function drawCard(type) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' })); }
-        function discardCard(cardIndex) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'DISCARD_CARD', cardIndex })); }
+        function drawCard(type) { initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); }
+        function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
         
         function knockRound() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'KNOCK' }));
-                playSound('knock');
-            }
+            initSocketAndSend({ type: 'KNOCK' });
+            playSound('knock');
         }
         
         function leaveLobby() {
@@ -1453,8 +1440,7 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
-            else resetToMainMenu();
+            initSocketAndSend({ type: 'LEAVE_LOBBY' });
         }
 
         function resetToMainMenu() {
@@ -1472,12 +1458,14 @@
             document.getElementById('vc-group-container').style.display = 'none';
             clientState.isReady = false;
             hasChosenPoolCard = false;
-            document.getElementById('ready-btn').innerText = 'Ready Up';
+            let readyBtn = document.getElementById('ready-btn');
+            if (readyBtn) readyBtn.innerText = 'Ready Up';
             refreshLobbies();
         }
 
         function toggleModal(id) {
             let m = document.getElementById(id);
+            if (!m) return;
             m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
     </script>
