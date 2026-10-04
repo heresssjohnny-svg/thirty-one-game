@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>31! Card Game</title>
 
-    <!-- PWA Configuration -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#044e36">
     <meta name="mobile-web-app-capable" content="yes">
@@ -240,6 +239,26 @@
             animation: slideInTopLeft 0.3s ease-out; 
         }
 
+        /* Private top-right modal reminder for cards taken from you */
+        #fed-card-topright-modal {
+            position: absolute;
+            top: 36px;
+            right: 10px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: #facc15;
+            z-index: 2500;
+            display: none;
+            flex-direction: column;
+            gap: 3px;
+            align-items: flex-end;
+            background: rgba(15, 23, 42, 0.95);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--accent-cyan);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+        }
+
         @keyframes slideInTopLeft {
             from { opacity: 0; transform: translateY(-5px); }
             to { opacity: 1; transform: translateY(0); }
@@ -250,7 +269,6 @@
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -15px; font-size: 0.65rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
 
-        /* Big "Your Turn!" indicator above the center table felt */
         #center-turn-indicator {
             position: absolute;
             top: -34px;
@@ -401,7 +419,6 @@
 </head>
 <body>
 
-    <!-- Hidden iOS Switch Element for WebKit Physical Haptic Taps -->
     <input type="checkbox" switch id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
 
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
@@ -492,7 +509,14 @@
 
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
-                <div id="turn-banner">Turn: Waiting...</div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
+                    <div id="turn-banner">Turn: Waiting...</div>
+                    <!-- Private Fed Card Modal for Discarder Only -->
+                    <div id="fed-card-topright-modal">
+                        <span style="font-size:0.65rem; color:var(--text-muted);" id="fed-card-label">Next player took:</span>
+                        <div id="fed-card-content" style="display:flex; align-items:center; gap:4px;"></div>
+                    </div>
+                </div>
             </div>
 
             <div id="knock-alert-modal">🔔 Knock Alert</div>
@@ -565,7 +589,7 @@
 
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
@@ -584,8 +608,8 @@
 
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
                 <label style="text-align:left;">Add YouTube Song</label>
-                <input type="text" id="new-song-title" placeholder="Song Title (e.g. Card Night Lo-Fi)" style="font-size:0.75rem; padding:5px;">
-                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
+                <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
+                <input type="text" id="new-song-url" placeholder="YouTube Link (youtu.be or youtube.com)" style="font-size:0.75rem; padding:5px;">
                 <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
             </div>
 
@@ -678,6 +702,14 @@
     </div>
 
     <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('Service Worker registered with scope:', reg.scope))
+                    .catch(err => console.log('Service Worker registration skipped/failed:', err));
+            });
+        }
+
         let ws = null;
         let isConnected = false;
         let pendingQueue = [];
@@ -798,11 +830,12 @@
         }
 
         function parseYouTubeEmbedUrl(url, autoplay = true) {
-            let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-            let match = url.match(regExp);
             let autoStr = autoplay ? '1' : '0';
-            if (match && match[2].length === 11) {
-                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}&enablejsapi=1`;
+            // Handles youtu.be/ID, youtube.com/watch?v=ID, youtube.com/embed/ID, and shorts
+            let regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+            let match = url.match(regExp);
+            if (match && match[1]) {
+                return `https://www.youtube.com/embed/${match[1]}?autoplay=${autoStr}&enablejsapi=1`;
             }
             return url;
         }
@@ -1523,10 +1556,11 @@
                 lastGameState = lobby.gameState;
                 if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
                     document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
+                    document.getElementById('fed-card-topright-modal').style.display = 'none';
                 }
             }
 
-            // Dedicated Knock Alert Modal and 3-Pulse Mediocre Rhythmic Vibration
+            // Knock Alert Modal
             let knockAlertModal = document.getElementById('knock-alert-modal');
             if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
                 knockAlertModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
@@ -1553,6 +1587,18 @@
                 topleftModal.style.display = 'none';
             }
 
+            // Private Fed Card Modal for the Discarder Only
+            let fedModal = document.getElementById('fed-card-topright-modal');
+            let fedContent = document.getElementById('fed-card-content');
+            let fedLabel = document.getElementById('fed-card-label');
+            if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+                fedLabel.innerText = `${lobby.myFedCardReminder.target} took your:`;
+                fedContent.innerHTML = formatCardHtml(lobby.myFedCardReminder.card, true);
+                fedModal.style.display = 'flex';
+            } else {
+                fedModal.style.display = 'none';
+            }
+
             clientState.gameState = lobby.gameState;
             clientState.playersList = lobby.players.map(p => p.username);
             clientState.spectatorsList = lobby.spectators || [];
@@ -1568,7 +1614,7 @@
             let isSpectatorOnly = !me || isEliminated || isSpecUser;
             clientState.isSpectator = isSpectatorOnly;
 
-            // Check if current spectator is actively viewing someone's hand
+            // Check if spectator is actively viewing someone's hand
             let peekingBanner = document.getElementById('active-peeking-banner');
             let activelyPeekingTarget = null;
             if (isSpectatorOnly) {
@@ -1590,7 +1636,6 @@
                 let readyBtn = document.getElementById('ready-btn');
                 readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
 
-                // Check and pop incoming peek requests
                 if (me.peekIncoming && Object.keys(me.peekIncoming).length > 0) {
                     let requester = Object.keys(me.peekIncoming)[0];
                     let peekModal = document.getElementById('peek-request-modal');
@@ -1850,7 +1895,6 @@
                 let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
-                // Kick Peeker badges for players actively being peeked
                 let peekerBadgesHtml = '';
                 if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
                     let peekers = Object.keys(p.peekAllowed);
@@ -1875,7 +1919,6 @@
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
 
-            // Re-apply center turn visibility state after rebuilding table DOM
             let updatedIndicator = document.getElementById('center-turn-indicator');
             if (updatedIndicator) {
                 updatedIndicator.style.display = isMyTurnPlaying ? 'block' : 'none';
