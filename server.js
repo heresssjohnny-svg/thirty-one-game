@@ -1189,7 +1189,7 @@ function checkTieBreakerComplete(lobby) {
         let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
         if (tiedLowest.length > 1) {
-            lobby.phaseMessage = `⚠️ Tie-breaker resulted in a tie! Tied players choose again.`;
+            lobby.phaseMessage = `⚠️️ Tie-breaker resulted in a tie! Tied players choose again.`;
             tiedNames.forEach(uname => { delete lobby.drawResults[uname]; });
             autoPickForBots(lobby);
             broadcastLobbyUpdate(lobby.code);
@@ -1285,19 +1285,19 @@ function handleTurnAction(lobby, ws, actionType) {
     let allParts = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParts[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws || currentPlayer.eliminated) return;
-    if (currentPlayer.cards.length >= 4) return;
+    if (currentPlayer.cards.length >= 4) return; // Prevent drawing if already holding 4 cards
 
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
         currentPlayer.cards.push(lobby.deck.pop());
         currentPlayer.pickedUpDiscardCard = null;
-        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile.`;
+        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the draw pile. Now discard 1 card.`;
     } else if (actionType === 'DRAW_DISCARD') {
         if (lobby.discardPile.length > 0) {
             let card = lobby.discardPile.pop();
             currentPlayer.cards.push(card);
             currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
-            lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
+            lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile! Now discard 1 card.`;
         }
     }
 
@@ -1325,7 +1325,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
     let allParts = [...lobby.players, ...lobby.bots];
     let currentPlayer = allParts[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== ws || currentPlayer.eliminated) return;
-    if (currentPlayer.cards.length !== 4) return;
+    if (currentPlayer.cards.length !== 4) return; // Must have 4 cards to discard
 
     if (currentPlayer.cards[cardIndex]) {
         let cardToPutDown = currentPlayer.cards[cardIndex];
@@ -1544,4 +1544,3 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`31! Game Server running on port ${PORT}`);
 });
- 
