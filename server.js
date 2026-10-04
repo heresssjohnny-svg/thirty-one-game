@@ -248,7 +248,7 @@ wss.on('connection', (ws) => {
 
                 case 'RECONNECT_VOICE':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        lobbies[currentLobbyCode].phaseMessage = `🎙️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
+                        lobbies[currentLobbyCode].phaseMessage = `🎙️️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
@@ -728,8 +728,11 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             let loser = lobby.players.find(p => p.username === entries[0].username);
             if (loser) {
                 loser.lives = Math.max(0, loser.lives - 1);
-                resolveFirstToLoseBets(lobby, loser.username);
-                if (loser.lives <= 0) { loser.eliminated = true; lobby.spectators.push({ idSocket: loser.id, username: loser.username }); }
+                if (loser.lives <= 0 && !loser.eliminated) {
+                    loser.eliminated = true;
+                    resolveFirstToLoseBets(lobby, loser.username);
+                    lobby.spectators.push({ idSocket: loser.id, username: loser.username });
+                }
             }
             if (getActiveParticipants(lobby).length === 1) awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
             else {
@@ -759,7 +762,6 @@ function startRound(lobby) {
     lobby.fedCardsTracker = {};
     lobby.knockedBy = null;
     lobby.gameState = 'playing';
-    lobby.phaseMessage = null;
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
 
@@ -808,8 +810,11 @@ function handleTurnAction(lobby, ws, actionType) {
         lobby.players.forEach(p => {
             if (p !== currentPlayer && !p.eliminated) {
                 p.lives = Math.max(0, p.lives - 1);
-                resolveFirstToLoseBets(lobby, p.username);
-                if (p.lives <= 0) { p.eliminated = true; lobby.spectators.push({ idSocket: p.id, username: p.username }); }
+                if (p.lives <= 0) { 
+                    p.eliminated = true; 
+                    resolveFirstToLoseBets(lobby, p.username);
+                    lobby.spectators.push({ idSocket: p.id, username: p.username }); 
+                }
             }
         });
         resolveWinSideBets(lobby, currentPlayer.username);
@@ -865,8 +870,11 @@ function handleDiscardAction(lobby, ws, cardIndex) {
         lobby.players.forEach(p => {
             if (p !== currentPlayer && !p.eliminated) {
                 p.lives = Math.max(0, p.lives - 1);
-                resolveFirstToLoseBets(lobby, p.username);
-                if (p.lives <= 0) { p.eliminated = true; lobby.spectators.push({ idSocket: p.id, username: p.username }); }
+                if (p.lives <= 0) { 
+                    p.eliminated = true; 
+                    resolveFirstToLoseBets(lobby, p.username);
+                    lobby.spectators.push({ idSocket: p.id, username: p.username }); 
+                }
             }
         });
         resolveWinSideBets(lobby, currentPlayer.username);
@@ -929,10 +937,16 @@ function resolveRoundEnd(lobby) {
         let loser = scores[0].p;
         let winner = scores[scores.length - 1].p;
         loser.lives = Math.max(0, loser.lives - 1);
-        resolveFirstToLoseBets(lobby, loser.username);
+        
+        // Critical: Only resolve first-to-lose bet if participant loses ALL lives (knockout)
+        if (loser.lives <= 0 && !loser.eliminated) {
+            loser.eliminated = true;
+            resolveFirstToLoseBets(lobby, loser.username);
+            lobby.spectators.push({ idSocket: loser.id, username: loser.username });
+        }
+
         resolveWinSideBets(lobby, winner.username);
 
-        if (loser.lives <= 0) { loser.eliminated = true; lobby.spectators.push({ idSocket: loser.id, username: loser.username }); }
         if (getActiveParticipants(lobby).length === 1) {
             awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
         } else {
