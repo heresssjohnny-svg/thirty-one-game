@@ -628,7 +628,6 @@ function getSanitizedLobby(lobby, wsId) {
         }
     }
 
-    // Technique 1: Calculate live timestamp offset in seconds for synchronization
     let elapsedSeconds = 0;
     if (lobby.isPlaying && lobby.songStartedAt) {
         elapsedSeconds = Math.max(0, Math.floor((Date.now() - lobby.songStartedAt) / 1000));
@@ -1068,7 +1067,7 @@ function calculateScore(cards) {
     if (!scoringCards || scoringCards.length === 0) return 0;
     let sums = {};
     scoringCards.forEach(c => sums[c.suit] = (sums[c.suit] || 0) + c.points);
-    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoring2 = scoringCards[2].val) return 30.5;
+    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
     return Math.max(...Object.values(sums), 0);
 }
 
