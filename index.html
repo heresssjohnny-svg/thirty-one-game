@@ -445,8 +445,6 @@
                 <select id="config-lives" onchange="updateSettings()" style="padding:3px; font-size:0.75rem;">
                     <option value="2">2 Lives</option><option value="3">3 Lives</option><option value="5">5 Lives</option>
                 </select>
-                <button class="secondary" style="padding:3px 6px;" onclick="addBot()">+Bot</button>
-                <button class="secondary" style="padding:3px 6px;" onclick="removeBot()">-Bot</button>
             </div>
             
             <div class="table-oval" id="table-oval-container">
@@ -504,14 +502,12 @@
                 </div>
             </div>
 
-            <!-- Play / Pause / Skip controls -->
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
-            <!-- Separate individual volume and mute controls under YouTube player -->
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
                 <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
                 <div style="display:flex; align-items:center; gap:6px;">
@@ -603,13 +599,6 @@
                     <li>Each player starts with 3 cards and 2 or more lives.</li>
                     <li>On your turn, draw 1 card from either the <b>Deck</b> or the <b>Discard Pile</b>, then discard 1 card from your hand.</li>
                     <li>If you hit exactly 31 points, the round ends immediately, and all opponents lose a life!</li>
-                    <li><b>Amended 21 out of 31 Rule:</b> If a player feeds an opponent an Ace and a 10-value card from the discard pile, the feeder only loses all lives if that fed player achieves a full 31 points at any point during the round!</li>
-                </ul>
-                <p><b>Knocking:</b> Once every player has taken at least 1 turn, if you are satisfied with your score (25+ in standard play, or 21+ in 3+ player games), you can click <b>Knock</b>. Every other player gets 1 final turn before hands are revealed. The lowest score loses a life!</p>
-                <p><b>Side Betting & Review:</b></p>
-                <ul style="padding-left:14px;">
-                    <li><b>3+ Players:</b> Tap any player's name to propose a First to Lose elimination bet.</li>
-                    <li><b>Heads-Up:</b> Tap any name for a Global Side Bet. When players accept via the right sidebar, review their acceptance to either <b>Confirm</b> or <b>Decline</b>!</li>
                 </ul>
             </div>
             <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
@@ -640,7 +629,6 @@
         let lastTurnUser = '';
         let hasChosenPoolCard = false;
         let lastPhaseMessage = '';
-        let isSidebarMinimized = false;
         let lastGameState = '';
         let currentJoinedCode = null;
         
@@ -774,7 +762,7 @@
             if (vcUsers.length === 0) {
                 listDiv.innerHTML = 'No one currently in voice chat.';
             } else {
-                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️️ (Active)'}</li>`).join('') + '</ul>';
+                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
             }
             toggleModal('vc-participants-modal');
         }
@@ -797,44 +785,6 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
             refreshLobbies();
-
-            document.addEventListener("visibilitychange", () => {
-                if (!document.hidden) {
-                    refreshLobbies();
-                    if (!ws || ws.readyState !== WebSocket.OPEN) {
-                        if (currentJoinedCode) {
-                            initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
-                        } else {
-                            initSocketAndSend({ type: 'REFRESH_LOBBIES' });
-                        }
-                    } else if (currentJoinedCode) {
-                        ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' }));
-                    }
-                    if (isVoiceChatActive && localAudioStream) {
-                        setTimeout(() => {
-                            if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-                        }, 500);
-                    }
-                }
-            });
-
-            window.addEventListener('focus', () => {
-                refreshLobbies();
-                if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    if (currentJoinedCode) {
-                        initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
-                    } else {
-                        initSocketAndSend({ type: 'REFRESH_LOBBIES' });
-                    }
-                } else if (currentJoinedCode) {
-                    ws.send(JSON.stringify({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' }));
-                }
-                if (isVoiceChatActive && localAudioStream) {
-                    setTimeout(() => {
-                        if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
-                    }, 500);
-                }
-            });
         });
 
         function saveInputs() {
@@ -851,10 +801,6 @@
                 chatBtn.classList.remove('unread');
                 chatBtn.innerText = '💬 Chat';
             }
-        }
-
-        function toggleGlobalSidebar() {
-            isSidebarMinimized = !isSidebarMinimized;
         }
 
         function openActiveBetsModal() {
@@ -874,17 +820,6 @@
                 myActive.forEach(b => {
                     let desc = b.type === 'eliminate' ? `Bet with ${b.proposer === myName ? b.target : b.proposer}: $${b.wagerAmt} on ${b.pickUser} to lose first` : `Global Bet: $${b.wagerAmt} on ${b.pickUser}`;
                     html += `<li style="margin-bottom:3px;">${desc}</li>`;
-                });
-                html += '</ul>';
-            }
-
-            html += `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Pending Side Bets (${myPending.length})</div>`;
-            if (myPending.length === 0) {
-                html += `<div style="margin-left:8px; color:var(--text-muted);">None currently pending.</div>`;
-            } else {
-                html += '<ul style="margin-left:14px;">';
-                myPending.forEach(b => {
-                    html += `<li style="margin-bottom:3px;">Proposal from ${b.proposer}: $${b.wagerAmt}</li>`;
                 });
                 html += '</ul>';
             }
@@ -941,7 +876,7 @@
             let html = `<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 5px; color: ${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net Balance: $${grandTotal.toFixed(2)}</div>`;
             html += `<hr style="border-color:#475569; margin-bottom:5px;">`;
 
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🤝 Side Bets (Peer-to-Peer)</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🤝 Side Bets</div>`;
             let hasSideEntries = false;
             let sideHtml = '<ul style="margin-bottom: 5px;">';
             for (let [user, netAmt] of Object.entries(sideCalc.records)) {
@@ -951,9 +886,9 @@
                 sideHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
             sideHtml += '</ul>';
-            html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No active side bet balances.</div>`;
+            html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
 
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Bets (Peer-to-Peer)</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
             let hasMainEntries = false;
             let mainHtml = '<ul>';
             for (let [user, netAmt] of Object.entries(mainCalc.records)) {
@@ -963,7 +898,7 @@
                 mainHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
             mainHtml += '</ul>';
-            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No active main game balances.</div>`;
+            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No main game balances.</div>`;
 
             ledgerDiv.innerHTML = html;
             toggleModal('ledger-modal');
@@ -980,7 +915,7 @@
             let content = document.getElementById('spectators-list-content');
             let specs = clientState.spectatorsList || [];
             if (specs.length === 0) {
-                content.innerHTML = 'No spectators in this room.';
+                content.innerHTML = 'No spectators.';
             } else {
                 content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
             }
@@ -988,9 +923,7 @@
         }
 
         function saveLedgerScreenshot() {
-            let now = new Date();
-            let timestamp = now.toLocaleString();
-            alert(`--- LEDGER SNAPSHOT ---\nTimestamp: ${timestamp}\nLedger status saved successfully.`);
+            alert("Ledger snapshot saved.");
             toggleModal('ledger-modal');
         }
 
@@ -1021,137 +954,28 @@
                 osc.start(now);
                 osc.stop(now + 0.4);
             } else if (type === 'knock') {
-                [0, 0.22, 0.44].forEach((delay, index) => {
-                    let bufferSize = audioCtx.sampleRate * 0.08;
-                    let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-                    let data = buffer.getChannelData(0);
-                    for (let i = 0; i < bufferSize; i++) {
-                        data[i] = Math.random() * 2 - 1;
-                    }
-
-                    let noise = audioCtx.createBufferSource();
-                    noise.buffer = buffer;
-
-                    let filter = audioCtx.createBiquadFilter();
-                    filter.type = 'lowpass';
-                    filter.frequency.setValueAtTime(index === 2 ? 380 : 300, now + delay);
-
-                    let gain = audioCtx.createGain();
-                    gain.gain.setValueAtTime(0.9, now + delay);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.07);
-
-                    noise.connect(filter);
-                    filter.connect(gain);
-                    gain.connect(audioCtx.destination);
-
-                    noise.start(now + delay);
-                    noise.stop(now + delay + 0.07);
-                });
-            } else if (type === 'vc_join') {
-                [0, 0.12].forEach((delay, idx) => {
-                    let osc = audioCtx.createOscillator();
-                    let gain = audioCtx.createGain();
-                    osc.type = 'sine';
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.frequency.setValueAtTime(idx === 0 ? 440 : 660, now + delay);
-                    gain.gain.setValueAtTime(0.15, now + delay);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.2);
-                    osc.start(now + delay);
-                    osc.stop(now + delay + 0.2);
-                });
-            } else if (type === 'vc_leave') {
-                [0, 0.12].forEach((delay, idx) => {
-                    let osc = audioCtx.createOscillator();
-                    let gain = audioCtx.createGain();
-                    osc.type = 'sine';
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.frequency.setValueAtTime(idx === 0 ? 660 : 440, now + delay);
-                    gain.gain.setValueAtTime(0.15, now + delay);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.2);
-                    osc.start(now + delay);
-                    osc.stop(now + delay + 0.2);
-                });
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.frequency.setValueAtTime(300, now);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
             }
-        }
-
-        function triggerVibration() {
-            try {
-                if (navigator.vibrate) {
-                    navigator.vibrate([200, 100, 200]);
-                }
-            } catch (e) {}
         }
 
         function showCenterNotification(msg) {
             let banner = document.getElementById('center-notification-banner');
             banner.innerText = msg;
             banner.style.display = 'block';
-            if (msg.includes('KNOCK') || msg.includes('TOURNAMENT WINNER')) {
-                playSound('knock');
-            } else {
-                playSound('ding');
-            }
-            triggerVibration();
-            setTimeout(() => { banner.style.display = 'none'; }, 2000);
+            setTimeout(() => { banner.style.display = 'none'; }, 2500);
         }
 
-        function initSocketAndSend(payload) {
-            saveInputs();
-            clientState.username = document.getElementById('username-input').value.trim() || 'Player1';
-            
-            if (payload.type === 'CREATE_LOBBY' || payload.type === 'JOIN_LOBBY') {
-                if (payload.code) currentJoinedCode = payload.code;
-            }
-
+        function sendVCStatusInternal(inVC, isMuted) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(payload));
-            } else {
-                const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-                ws = new WebSocket(protocol + location.host);
-                ws.onopen = async () => {
-                    isConnected = true;
-                    ws.send(JSON.stringify(payload));
-                    setTimeout(() => {
-                        autoConnectMutedVoiceChat();
-                    }, 500);
-                };
-                ws.onmessage = (event) => {
-                    let data = JSON.parse(event.data);
-                    if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                    else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
-                        if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
-                        latestLobbySnapshot = data.lobby;
-                        updateUIFromLobby(data.lobby);
-                        handleWebRTCConnections(data.lobby);
-                    } else if (data.type === 'CHAT_MESSAGE') {
-                        appendChatMessage(data.username, data.message);
-                        let win = document.getElementById('chat-window');
-                        if (win.style.display !== 'flex') {
-                            let chatBtn = document.getElementById('chat-toggle-btn');
-                            chatBtn.classList.add('unread');
-                            chatBtn.innerText = '💬 Chat❗';
-                        }
-                    } else if (data.type === 'WEBRTC_SIGNAL') {
-                        if (data.lobbyCode === currentJoinedCode) {
-                            handleWebRTCSignal(data.sender, data.signal);
-                        }
-                    } else if (data.type === 'LEFT_LOBBY') {
-                        currentJoinedCode = null;
-                        latestLobbySnapshot = null;
-                        resetToMainMenu();
-                    }
-                    else if (data.type === 'ERROR') alert(data.message);
-                };
-                ws.onclose = () => { 
-                    isConnected = false; 
-                    setTimeout(() => {
-                        if (!isConnected && currentJoinedCode) {
-                            initSocketAndSend({ type: 'JOIN_LOBBY', code: currentJoinedCode, username: document.getElementById('username-input').value.trim() || 'Player1' });
-                        }
-                    }, 3000);
-                };
+                ws.send(JSON.stringify({ type: 'UPDATE_VC_STATUS', inVC, isMuted }));
             }
         }
 
@@ -1169,7 +993,6 @@
                 let led = document.getElementById('vc-led');
                 btn.innerText = '🎙️ Voice: Off';
                 led.classList.remove('active');
-                peerConnections = {};
                 sendVCStatusInternal(true, true);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
             } catch (err) {}
@@ -1187,7 +1010,7 @@
                     });
                     isVoiceChatActive = true;
                 } catch (err) {
-                    alert('Microphone permission required for Voice Chat.');
+                    alert('Microphone permission required.');
                     return;
                 }
             }
@@ -1198,15 +1021,11 @@
             localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
 
             if (newMutedState) {
-                playSound('vc_leave');
                 btn.innerText = '🎙️ Voice: Off';
                 led.classList.remove('active');
-                showCenterNotification("Voice Chat: Off (Muted)");
             } else {
-                playSound('vc_join');
                 btn.innerText = '🎙️ Voice: On';
                 led.classList.add('active');
-                showCenterNotification("Voice Chat: On (Unmuted)");
             }
 
             sendVCStatusInternal(true, newMutedState);
@@ -1219,9 +1038,7 @@
             } else {
                 const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
                 let tempWs = new WebSocket(protocol + location.host);
-                tempWs.onopen = () => {
-                    tempWs.send(JSON.stringify({ type: 'REFRESH_LOBBIES' }));
-                };
+                tempWs.onopen = () => { tempWs.send(JSON.stringify({ type: 'REFRESH_LOBBIES' })); };
                 tempWs.onmessage = (e) => {
                     let data = JSON.parse(e.data);
                     if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
@@ -1253,31 +1070,22 @@
         }
 
         function standUp() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'STAND_UP' }));
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'STAND_UP' }));
         }
 
         function sitDown() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'SIT_DOWN' }));
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SIT_DOWN' }));
         }
 
         function updateWager() {
             let wager = document.getElementById('config-wager').value;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'UPDATE_WAGER', wager }));
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_WAGER', wager }));
         }
 
         function updateSettings() {
             let lives = document.getElementById('config-lives').value;
             if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'UPDATE_SETTINGS', lives }));
         }
-
-        function addBot() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ADD_BOT' })); }
-        function removeBot() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'REMOVE_BOT' })); }
 
         function toggleReady() {
             clientState.isReady = !clientState.isReady;
@@ -1290,16 +1098,12 @@
             let btn = document.getElementById('next-hand-btn');
             btn.innerText = 'Waiting...';
             btn.disabled = true;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'NEXT_HAND' }));
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'NEXT_HAND' }));
         }
 
         function proposeEndGame() {
-            if (confirm("Propose ending the game and returning everyone to the ready-up lobby?")) {
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'END_GAME_PROPOSAL' }));
-                }
+            if (confirm("Propose ending the game?")) {
+                if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'END_GAME_PROPOSAL' }));
             }
         }
 
@@ -1335,29 +1139,15 @@
                     setupPeerConnection(peerUser, true);
                 }
             });
-
-            Object.keys(peerConnections).forEach(peerUser => {
-                if (!vcParticipants.includes(peerUser)) {
-                    peerConnections[peerUser].close();
-                    delete peerConnections[peerUser];
-                }
-            });
         }
 
         function setupPeerConnection(peerUser, shouldInitiateOffer) {
             if (peerConnections[peerUser]) return;
-
             let pc = new RTCPeerConnection(rtcConfig);
             peerConnections[peerUser] = pc;
             pc.pendingCandidates = [];
 
-            localAudioStream.getTracks().forEach(track => {
-                pc.addTrack(track, localAudioStream);
-            });
-
-            if (!pc.getTransceivers().find(t => t.kind === 'audio')) {
-                pc.addTransceiver('audio', { direction: 'sendrecv' });
-            }
+            localAudioStream.getTracks().forEach(track => { pc.addTrack(track, localAudioStream); });
 
             pc.ontrack = (event) => {
                 let audioElem = new Audio();
@@ -1365,19 +1155,12 @@
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
                 activePeerAudioElements.push(audioElem);
-
-                audioElem.play().catch(e => {
-                    document.addEventListener('click', () => { audioElem.play().catch(err => {}); }, { once: true });
-                });
+                audioElem.play().catch(e => {});
             };
 
             pc.onicecandidate = (event) => {
                 if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'WEBRTC_SIGNAL',
-                        target: peerUser,
-                        signal: { candidate: event.candidate }
-                    }));
+                    ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { candidate: event.candidate } }));
                 }
             };
 
@@ -1385,15 +1168,9 @@
             if (shouldInitiateOffer && currentUsername < peerUser) {
                 setTimeout(() => {
                     if (peerConnections[peerUser] === pc && pc.signalingState === 'stable') {
-                        pc.createOffer().then(offer => {
-                            return pc.setLocalDescription(offer);
-                        }).then(() => {
-                            ws.send(JSON.stringify({
-                                type: 'WEBRTC_SIGNAL',
-                                target: peerUser,
-                                signal: { sdp: pc.localDescription }
-                            }));
-                        }).catch(err => {});
+                        pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
+                            ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { sdp: pc.localDescription } }));
+                        }).catch(e => {});
                     }
                 }, 400);
             }
@@ -1401,15 +1178,7 @@
 
         async function handleWebRTCSignal(sender, signal) {
             if (!localAudioStream || !isVoiceChatActive) return;
-            
-            if (!peerConnections[sender] || peerConnections[sender].connectionState === 'failed' || peerConnections[sender].connectionState === 'closed') {
-                if (peerConnections[sender]) {
-                    peerConnections[sender].close();
-                    delete peerConnections[sender];
-                }
-                setupPeerConnection(sender, false);
-            }
-            
+            if (!peerConnections[sender]) setupPeerConnection(sender, false);
             let pc = peerConnections[sender];
             if (!pc) return;
 
@@ -1419,205 +1188,13 @@
                     if (signal.sdp.type === 'offer') {
                         let answer = await pc.createAnswer();
                         await pc.setLocalDescription(answer);
-                        ws.send(JSON.stringify({
-                            type: 'WEBRTC_SIGNAL',
-                            target: sender,
-                            signal: { sdp: pc.localDescription }
-                        }));
-                    }
-                    if (pc.pendingCandidates) {
-                        while (pc.pendingCandidates.length > 0) {
-                            let cand = pc.pendingCandidates.shift();
-                            await pc.addIceCandidate(cand);
-                        }
+                        ws.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', target: sender, signal: { sdp: pc.localDescription } }));
                     }
                 } else if (signal.candidate) {
-                    let candidateObj = new RTCIceCandidate(signal.candidate);
-                    if (pc.remoteDescription && pc.remoteDescription.type) {
-                        await pc.addIceCandidate(candidateObj);
-                    } else {
-                        pc.pendingCandidates.push(candidateObj);
-                    }
+                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
                 }
-            } catch (err) {}
+            } catch (e) {}
         }
-
-        function requestPeekFromModal(targetUsername) {
-            toggleModal('seat-action-modal');
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'REQUEST_PEEK', targetUsername }));
-                showCenterNotification(`Peek request sent to ${targetUsername}!`);
-            }
-        }
-
-        function betOnHimFromModal(targetUsername) {
-            toggleModal('seat-action-modal');
-            let modalTitle = document.getElementById('bet-modal-title');
-            let modalBody = document.getElementById('bet-modal-body');
-            modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
-            modalBody.innerHTML = `
-                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
-                <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
-                <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
-                <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
-                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
-            `;
-            toggleModal('bet-modal');
-        }
-
-        function stopPeek(targetUsername) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'STOP_PEEK', targetUsername }));
-            }
-        }
-
-        function respondPeek(spectatorUsername, allow) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'RESPOND_PEEK', spectatorUsername, allow }));
-                document.getElementById('peek-request-modal').style.display = 'none';
-            }
-        }
-
-        function kickPeeker(spectatorUsername) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'KICK_PEEKER', spectatorUsername }));
-            }
-        }
-
-        function tapSeat(targetUsername) {
-            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
-            if (clientState.gameState === 'lobby') {
-                return;
-            }
-
-            let isSpecOnly = clientState.isSpectator;
-            let activeCount = clientState.activeParticipantsCount;
-
-            if (isSpecOnly) {
-                let modalTitle = document.getElementById('seat-action-title');
-                let modalBody = document.getElementById('seat-action-body');
-                modalTitle.innerText = `Actions for ${targetUsername}`;
-
-                let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${targetUsername}')">🔍 Peek Hand</button>`;
-                
-                if (activeCount === 2) {
-                    actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on ${targetUsername}</button>`;
-                }
-
-                actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
-                modalBody.innerHTML = actionsHtml;
-                toggleModal('seat-action-modal');
-                return;
-            }
-
-            if (activeCount >= 3) {
-                if (targetUsername === activeUsername) return;
-                let modalTitle = document.getElementById('bet-modal-title');
-                let modalBody = document.getElementById('bet-modal-body');
-                modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
-                modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount ($5, $10, $20) that ${targetUsername} loses before you:</p>
-                    <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
-                    <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
-                    <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
-                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
-                `;
-                toggleModal('bet-modal');
-            } else if (activeCount === 2) {
-                let modalTitle = document.getElementById('bet-modal-title');
-                let modalBody = document.getElementById('bet-modal-body');
-                modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
-                modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
-                    <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
-                    <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
-                    <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
-                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
-                `;
-                toggleModal('bet-modal');
-            }
-        }
-
-        function submitEliminationProposal(target, wagerAmt) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'PROPOSE_ELIMINATION_BET',
-                    target: target,
-                    wagerAmt: wagerAmt
-                }));
-                let modalTitle = document.getElementById('bet-modal-title');
-                let modalBody = document.getElementById('bet-modal-body');
-                modalTitle.innerText = 'First to Lose Bet Proposed';
-                modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">First to Lose bet proposed to ${target}! Waiting for their acceptance.</p>
-                    <button onclick="toggleModal('bet-modal')">OK</button>
-                `;
-            }
-        }
-
-        function submitGlobalProposal(pickUser, wagerAmt) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'PROPOSE_GLOBAL_SIDE_BET',
-                    pickUser: pickUser,
-                    wagerAmt: wagerAmt
-                }));
-                let modalTitle = document.getElementById('bet-modal-title');
-                let modalBody = document.getElementById('bet-modal-body');
-                modalTitle.innerText = 'Global Bet Offered';
-                modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Your global proposal ("I like ${pickUser} for $${wagerAmt}") is now active on the right sidebar!</p>
-                    <button onclick="toggleModal('bet-modal')">OK</button>
-                `;
-            }
-        }
-
-        function acceptGlobalProposal(proposalId) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'ACCEPT_GLOBAL_PROPOSAL',
-                    proposalId: proposalId
-                }));
-            }
-        }
-
-        function confirmGlobalBet(proposalId, acceptedUser, confirm) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'CONFIRM_GLOBAL_BET',
-                    proposalId: proposalId,
-                    acceptedUser: acceptedUser,
-                    confirm: confirm
-                }));
-                toggleModal('bet-modal');
-            }
-        }
-
-        function openConfirmModal(proposalId, proposer, pickUser, acceptedUsers) {
-            let modal = document.getElementById('bet-modal');
-            let modalTitle = document.getElementById('bet-modal-title');
-            let modalBody = document.getElementById('bet-modal-body');
-            modalTitle.innerText = `Confirm Global Side Bet (${pickUser})`;
-            
-            let listHtml = acceptedUsers.map(acc => `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
-                    <span><b>${acc}</b> accepted</span>
-                    <div style="display:flex; gap:4px;">
-                        <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
-                        <button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="confirmGlobalBet('${proposalId}', '${acc}', false)">Decline</button>
-                    </div>
-                </div>
-            `).join('');
-
-            modalBody.innerHTML = `
-                <p style="font-size:0.80rem; color:var(--text-muted); margin-bottom:6px;">Players who accepted your proposal:</p>
-                ${listHtml}
-                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:8px;">Close</button>
-            `;
-            modal.style.display = 'flex';
-        }
-
-        let lastSyncedChatLength = 0;
 
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
@@ -1648,21 +1225,6 @@
             }
 
             currentPlaylistQueue = lobby.playlist || [];
-            let playlistDiv = document.getElementById('playlist-container');
-            if (currentPlaylistQueue.length > 0) {
-                playlistDiv.innerHTML = currentPlaylistQueue.map((song, idx) => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
-                        <span>🎵 <b>${song.title}</b></span>
-                        <div style="display:flex; gap:3px;">
-                            <button class="secondary" style="font-size:0.6rem; padding:2px 5px; background:#2563eb;" onclick="sendMusicControl('SELECT', ${idx})">Play</button>
-                            <button class="danger" style="font-size:0.6rem; padding:2px 5px;" onclick="removeSongFromPlaylist(${idx})">X</button>
-                        </div>
-                    </div>
-                `).join('');
-            } else {
-                playlistDiv.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>';
-            }
-
             renderYouTubePlayer(currentPlaylistQueue, lobby.currentSongIndex, lobby.isPlaying);
 
             clientState.gameState = lobby.gameState;
@@ -1686,18 +1248,6 @@
                 readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
             }
 
-            if (me && me.peekIncoming) {
-                let incomingSpecs = Object.keys(me.peekIncoming);
-                let peekModal = document.getElementById('peek-request-modal');
-                if (incomingSpecs.length > 0 && peekModal.style.display !== 'flex') {
-                    let requestingSpec = incomingSpecs[0];
-                    document.getElementById('peek-modal-msg').innerHTML = `<b>${requestingSpec}</b> is requesting permission to peek at your hand.`;
-                    document.getElementById('peek-allow-btn').onclick = () => respondPeek(requestingSpec, true);
-                    document.getElementById('peek-deny-btn').onclick = () => respondPeek(requestingSpec, false);
-                    peekModal.style.display = 'flex';
-                }
-            }
-
             let standUpBtn = document.getElementById('stand-up-btn');
             let sitBtn = document.getElementById('sit-btn');
             let readyBtn = document.getElementById('ready-btn');
@@ -1713,17 +1263,9 @@
                     standUpBtn.style.display = 'none';
                     readyBtn.style.display = 'none';
                     knockBtn.style.display = 'none';
-                    
                     if (isSpecUser) {
                         sitBtn.style.display = 'inline-block';
-                        let totalOccupants = lobby.players.length + lobby.bots.length;
-                        if (totalOccupants >= 6) {
-                            sitBtn.disabled = true;
-                            sitBtn.innerText = 'Table Full';
-                        } else {
-                            sitBtn.disabled = false;
-                            sitBtn.innerText = 'Sit';
-                        }
+                        sitBtn.disabled = lobby.players.length >= 6;
                     } else {
                         sitBtn.style.display = 'none';
                     }
@@ -1745,113 +1287,11 @@
             clientState.sideBetLedger = lobby.sideBetLedger || {};
             clientState.mainGameLedger = lobby.mainGameLedger || {};
 
-            let sidebar = document.getElementById('global-side-bets-sidebar');
-            let sidebarList = document.getElementById('global-side-bets-list');
-            let globalProps = lobby.globalProposals || [];
-
-            if (globalProps.length > 0 && lobby.gameState !== 'lobby') {
-                sidebar.style.display = 'flex';
-                let sidebarHtml = '';
-                globalProps.forEach(gp => {
-                    let isMyProp = (gp.proposer === activeUsername);
-                    let alreadyAccepted = gp.acceptedBy.includes(activeUsername);
-
-                    let actionHtml = '';
-                    if (isMyProp) {
-                        if (gp.acceptedBy.length > 0) {
-                            actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${gp.proposer}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
-                        } else {
-                            actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
-                        }
-                    } else {
-                        if (!alreadyAccepted) {
-                            actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
-                        } else if (alreadyAccepted) {
-                            actionHtml = `<span style="color:#34d399; font-size:0.65rem;">Accepted ("You got it")</span>`;
-                        }
-                    }
-
-                    sidebarHtml += `
-                        <div class="global-bet-item">
-                            <span>I like <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b> (${gp.proposer})</span>
-                            ${actionHtml}
-                        </div>
-                    `;
-                });
-                sidebarList.innerHTML = sidebarHtml;
-            } else {
-                sidebar.style.display = 'none';
-            }
-
-            let modal = document.getElementById('bet-modal');
-            let isModalOpen = modal.style.display === 'flex';
-
-            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
-                lobby.pendingBetsForMe.forEach(bet => {
-                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that you win round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
-                    
-                    let modalTitle = document.getElementById('bet-modal-title');
-                    let modalBody = document.getElementById('bet-modal-body');
-                    modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
-                    modalBody.innerHTML = `
-                        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">${label}</p>
-                        <div style="display: flex; gap: 8px; justify-content: center;">
-                            <button onclick="respondToBet('${bet.id}', true)">Accept</button>
-                            <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
-                        </div>
-                    `;
-                    modal.style.display = 'flex';
-                });
-                lobby.pendingBetsForMe = [];
-            }
-
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
-
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
-            
-            let sidePotBanner = document.getElementById('side-pot-total-banner');
-            if (lobby.sidePotTotal && lobby.sidePotTotal > 0) {
-                sidePotBanner.innerText = `Side Pots: $${lobby.sidePotTotal}`;
-                sidePotBanner.style.display = 'block';
-            } else {
-                sidePotBanner.style.display = 'none';
-            }
-
-            let topleftModal = document.getElementById('discard-pickup-topleft-modal');
-            let topleftCardContent = document.getElementById('discard-pickup-card-content');
-            if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver') {
-                let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
-                topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b> picked up:</span> ${cardHtml}`;
-                topleftModal.style.display = 'flex';
-            } else {
-                topleftModal.style.display = 'none';
-            }
-
-            if (isEliminated) {
-                readyBtn.style.display = 'none';
-                knockBtn.style.display = 'none';
-            }
-
-            let activePartsCount = lobby.players.filter(p => !p.eliminated).length + lobby.bots.filter(b => !b.eliminated).length;
-            let threshold = activePartsCount > 2 ? 21 : 25;
-            let myScore = me && me.cards ? calculateLocalScore(me.cards) : 0;
-            let turnsConditionMet = lobby.canKnock;
-            let scoreConditionMet = myScore >= threshold;
-            let isMyTurnPlaying = (lobby.currentTurnUser === activeUsername) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-
-            if (lobby.knockedBy) {
-                knockBtn.disabled = true;
-                knockBtn.innerText = `${lobby.knockedBy} has already knocked!`;
-            } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying) {
-                knockBtn.disabled = true;
-                knockBtn.innerText = 'Knock';
-            } else {
-                knockBtn.disabled = false;
-                knockBtn.innerText = 'Knock';
-            }
 
             let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver' && !isSpectatorOnly && !lobby.phaseMessage.includes('TOURNAMENT WINNER') && activePartsCount > 1) {
+            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
                 nextHandOverlay.style.display = 'block';
                 let nextBtn = document.getElementById('next-hand-btn');
                 if (me && me.nextHandReady) {
@@ -1879,169 +1319,61 @@
                 revealModal.style.display = 'none';
                 document.getElementById('pool-modal-title').innerText = 'Picking for Dealer';
                 document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
-
+                
                 let gridHtml = '';
                 lobby.drawPool.forEach((slot) => {
                     if (slot.chosenBy) {
                         let revealedCard = lobby.drawResults[slot.chosenBy];
                         let cardHtmlStr = revealedCard ? formatCardHtml(revealedCard, true) : '';
-                        gridHtml += `
-                            <div class="pool-card-item revealed">
-                                <span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>
-                                ${cardHtmlStr}
-                            </div>
-                        `;
+                        gridHtml += `<div class="pool-card-item revealed"><span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>${cardHtmlStr}</div>`;
                     } else {
                         let clickable = !lobby.drawResults[activeUsername] && !hasChosenPoolCard;
-                        gridHtml += `
-                            <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
-                                ?
-                            </div>
-                        `;
+                        gridHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">?</div>`;
                     }
                 });
-
                 document.getElementById('pool-cards-container').innerHTML = gridHtml;
-                document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
                 turnBanner.innerText = 'Dealer Draw Phase';
-            } else if (lobby.gameState === 'tieBreaker') {
-                let isAmITied = clientState.tiedParticipantsList.some(t => t.trim().toLowerCase() === activeUsername.trim().toLowerCase());
-                
-                if (isAmITied) {
-                    poolModal.style.display = 'flex';
-                    revealModal.style.display = 'none';
-                } else {
-                    poolModal.style.display = 'none';
-                    revealModal.style.display = 'flex';
-
-                    let streamGridHtml = '';
-                    clientState.tiedParticipantsList.forEach(tiedUser => {
-                        let pickedCard = lobby.drawResults[tiedUser];
-                        if (pickedCard) {
-                            streamGridHtml += `<div style="display:flex; flex-direction:column; align-items:center;"><b>${tiedUser}</b>${formatCardHtml(pickedCard, true)}</div>`;
-                        } else {
-                            streamGridHtml += `<div style="display:flex; flex-direction:column; align-items:center;"><b>${tiedUser}</b><div class="mini-card" style="background:#1e3a8a; color:#fff; width:22px; height:32px;">?</div></div>`;
-                        }
-                    });
-                    document.getElementById('tie-breaker-stream-grid').innerHTML = streamGridHtml;
-                    document.getElementById('tie-breaker-stream-msg').innerText = lobby.phaseMessage || 'Tie-Breaker Phase';
-                }
-
-                let gridHtml = '';
-                lobby.drawPool.forEach((slot) => {
-                    if (slot.chosenBy) {
-                        let revealedCard = lobby.drawResults[slot.chosenBy];
-                        let cardHtmlStr = revealedCard ? formatCardHtml(revealedCard, true) : '';
-                        gridHtml += `
-                            <div class="pool-card-item revealed">
-                                <span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>
-                                ${cardHtmlStr}
-                            </div>
-                        `;
-                    } else {
-                        let alreadyPicked = lobby.drawResults[activeUsername];
-                        let clickable = isAmITied && !alreadyPicked && !hasChosenPoolCard;
-                        gridHtml += `
-                            <div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">
-                                ?
-                            </div>
-                        `;
-                    }
-                });
-
-                document.getElementById('pool-cards-container').innerHTML = gridHtml;
-                document.getElementById('pool-announcement').innerText = lobby.phaseMessage || '';
-                turnBanner.innerText = 'Tie-Breaker Phase';
             } else {
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
                 if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
                     let isMyTurn = (lobby.currentTurnUser === activeUsername);
                     turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                    if (isMyTurn && lastTurnUser !== activeUsername && !isSpectatorOnly) {
-                        showCenterNotification("YOUR TURN!");
-                    }
-                    lastTurnUser = lobby.currentTurnUser;
                 } else if (lobby.gameState === 'roundOver') {
-                    turnBanner.innerText = lobby.phaseMessage || 'Round Over - Hands Revealed';
-                } else {
-                    turnBanner.innerText = "Lobby Waiting Room";
+                    turnBanner.innerText = lobby.phaseMessage || 'Round Over';
                 }
             }
 
             let container = document.getElementById('table-oval-container');
-            let allSeats = [...lobby.players, ...lobby.bots];
-            
             let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
 
             let html = `
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
-                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
                 </div>
                 <div class="deck-center">
-                    <div class="card-slot back" onclick="drawCard('deck')">
-                        DECK
-                        <div class="deck-counter">${lobby.deckCount || 0} left</div>
-                    </div>
-                    <div class="card-slot" onclick="drawCard('discard')" style="display:flex; align-items:center; justify-content:center;">${discardTopHtml}</div>
+                    <div class="card-slot back" onclick="drawCard('deck')">DECK<div class="deck-counter">${lobby.deckCount || 0} left</div></div>
+                    <div class="card-slot" onclick="drawCard('discard')">${discardTopHtml}</div>
                 </div>
             `;
-            allSeats.forEach(p => {
-                let revealedCardsHtml = '';
-                let peekBtnHtml = '';
-                if (p.cards && p.cards.length > 0) {
-                    revealedCardsHtml = `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>`;
-                } else if (isSpectatorOnly && p.username !== activeUsername && lobby.gameState !== 'lobby' && lobby.gameState !== 'dealerDraw') {
-                    let isCurrentlyPeeking = p.peekAllowed && Object.keys(p.peekAllowed).some(k => k.trim().toLowerCase() === activeUsername.trim().toLowerCase());
-                    if (isCurrentlyPeeking) {
-                        peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
-                    }
-                }
-                
-                let activePeekersHtml = '';
-                let myActivePeek = false;
-                if (p.peekAllowed) {
-                    for (let peekerName in p.peekAllowed) {
-                        if (p.peekAllowed[peekerName] && peekerName.trim().toLowerCase() === activeUsername.trim().toLowerCase()) {
-                            myActivePeek = true;
-                        }
-                        if (p.peekAllowed[peekerName] && p.username.trim().toLowerCase() === activeUsername.trim().toLowerCase()) {
-                            activePeekersHtml += `
-                                <div style="background:rgba(185,28,28,0.85); border-radius:4px; padding:1px 3px; margin-top:2px; font-size:0.5rem; display:flex; justify-content:space-between; align-items:center;">
-                                    <span>👀 ${peekerName}</span>
-                                    <button class="danger" style="font-size:0.4rem; padding:1px 2px;" onclick="kickPeeker('${peekerName}')">Kick</button>
-                                </div>
-                            `;
-                        }
-                    }
-                }
 
-                if (isSpectatorOnly && myActivePeek) {
-                    peekBtnHtml = `<div style="margin-top:4px;"><button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="stopPeek('${p.username}')">Stop Peeking</button></div>`;
-                }
-
+            lobby.players.forEach(p => {
+                let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
-                let micIcon = '';
-                if (p.inVC) {
-                    micIcon = p.isMuted ? ' 🔇' : ' 🎙️';
-                }
-
-                let isCurrentTurnUserSeat = (p.username.trim().toLowerCase() === lobby.currentTurnUser.trim().toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-                let turnHighlightClass = isCurrentTurnUserSeat ? ' current-turn-seat' : '';
+                let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+                let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
                 html += `
-                    <div class="seat seat-${p.seat}${turnHighlightClass}">
-                        <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                    <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
+                        <div class="seat-name-area">
                             <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
-                        ${peekBtnHtml}
-                        ${activePeekersHtml}
                     </div>
                 `;
             });
+
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
 
@@ -2056,19 +1388,10 @@
             }
         }
 
-        function respondToBet(betId, accept) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'RESPOND_BET', betId, accept }));
-                toggleModal('bet-modal');
-            }
-        }
-
         function choosePoolCard(cardIndex) {
             if (hasChosenPoolCard) return;
             hasChosenPoolCard = true;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'CHOOSE_POOL_CARD', cardIndex }));
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CHOOSE_POOL_CARD', cardIndex }));
         }
 
         function calculateLocalScore(cards) {
@@ -2084,14 +1407,6 @@
         function discardCard(cardIndex) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'DISCARD_CARD', cardIndex })); }
         
         function knockRound() {
-            if (clientState.discardTop) {
-                let topVal = clientState.discardTop.val;
-                if (topVal === 'A' || ['10', 'J', 'Q', 'K'].includes(topVal)) {
-                    if (!confirm(`Warning: An Ace or face card (${topVal}) is currently showing in the discard pile! Are you sure you want to knock?`)) {
-                        return;
-                    }
-                }
-            }
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'KNOCK' }));
                 playSound('knock');
@@ -2100,7 +1415,6 @@
         
         function leaveLobby() {
             if (localAudioStream) {
-                playSound('vc_leave');
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
@@ -2111,7 +1425,6 @@
 
         function resetToMainMenu() {
             if (localAudioStream) {
-                playSound('vc_leave');
                 localAudioStream.getTracks().forEach(t => t.stop());
                 localAudioStream = null;
             }
@@ -2123,25 +1436,9 @@
             document.getElementById('end-game-btn').style.display = 'none';
             document.getElementById('leave-lobby-btn').style.display = 'none';
             document.getElementById('vc-group-container').style.display = 'none';
-            document.getElementById('pool-draw-modal').style.display = 'none';
-            document.getElementById('tie-breaker-reveal-modal').style.display = 'none';
-            document.getElementById('ledger-modal').style.display = 'none';
-            document.getElementById('spectators-modal').style.display = 'none';
-            document.getElementById('active-bets-modal').style.display = 'none';
-            document.getElementById('next-hand-overlay').style.display = 'none';
-            document.getElementById('chat-window').style.display = 'none';
-            document.getElementById('mute-btn').style.display = 'none';
-            document.getElementById('global-side-bets-sidebar').style.display = 'none';
-            document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
-            document.getElementById('peek-request-modal').style.display = 'none';
-            document.getElementById('seat-action-modal').style.display = 'none';
-            document.getElementById('music-modal').style.display = 'none';
-            document.getElementById('vc-participants-modal').style.display = 'none';
-            document.getElementById('vc-led').classList.remove('active');
             clientState.isReady = false;
             hasChosenPoolCard = false;
             document.getElementById('ready-btn').innerText = 'Ready Up';
-            document.getElementById('ready-btn').style.display = 'inline-block';
             refreshLobbies();
         }
 
