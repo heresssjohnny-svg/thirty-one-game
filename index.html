@@ -720,6 +720,7 @@
         let lastGameState = '';
         let currentJoinedCode = null;
         let lastKnownKnockedBy = null;
+        let notificationTimer = null;
         
         let localAudioStream = null;
         let isVoiceChatActive = false;
@@ -738,7 +739,7 @@
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun.stunprotocol.org:3478' }
+                { urls: 'stun:stun3.l.google.com:19302' }
             ] 
         };
 
@@ -764,21 +765,21 @@
                     gain1.connect(ctx.destination);
                     osc1.type = 'sine';
                     osc1.frequency.setValueAtTime(698.46, now);
-                    gain1.gain.setValueAtTime(0.3, now);
-                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    gain1.gain.setValueAtTime(0.2, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
                     osc1.start(now);
-                    osc1.stop(now + 0.2);
+                    osc1.stop(now + 0.18);
 
                     let osc2 = ctx.createOscillator();
                     let gain2 = ctx.createGain();
                     osc2.connect(gain2);
                     gain2.connect(ctx.destination);
                     osc2.type = 'sine';
-                    osc2.frequency.setValueAtTime(1046.50, now + 0.12);
-                    gain2.gain.setValueAtTime(0.35, now + 0.12);
-                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-                    osc2.start(now + 0.12);
-                    osc2.stop(now + 0.45);
+                    osc2.frequency.setValueAtTime(1046.50, now + 0.1);
+                    gain2.gain.setValueAtTime(0.25, now + 0.1);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc2.start(now + 0.1);
+                    osc2.stop(now + 0.35);
                     return;
                 }
 
@@ -791,42 +792,30 @@
                     osc.type = 'triangle';
                     osc.frequency.setValueAtTime(150, now);
                     osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
-                    gain.gain.setValueAtTime(0.8, now);
+                    gain.gain.setValueAtTime(0.6, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
                     osc.start(now);
                     osc.stop(now + 0.12);
-
-                    let osc2 = ctx.createOscillator();
-                    let gain2 = ctx.createGain();
-                    osc2.connect(gain2);
-                    gain2.connect(ctx.destination);
-                    osc2.type = 'triangle';
-                    osc2.frequency.setValueAtTime(140, now + 0.14);
-                    osc2.frequency.exponentialRampToValueAtTime(65, now + 0.28);
-                    gain2.gain.setValueAtTime(0.8, now + 0.14);
-                    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
-                    osc2.start(now + 0.14);
-                    osc2.stop(now + 0.28);
                 } else if (type === 'card') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(420, now);
                     osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
-                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.setValueAtTime(0.18, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
                     osc.start(now);
                     osc.stop(now + 0.08);
                 } else if (type === 'ding') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(587.33, now);
-                    gain.gain.setValueAtTime(0.25, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
                     osc.start(now);
-                    osc.stop(now + 0.45);
+                    osc.stop(now + 0.35);
                 } else if (type === 'thud') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(80, now);
                     osc.frequency.exponentialRampToValueAtTime(40, now + 0.09);
-                    gain.gain.setValueAtTime(0.7, now);
+                    gain.gain.setValueAtTime(0.5, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
                     osc.start(now);
                     osc.stop(now + 0.09);
@@ -1070,7 +1059,7 @@
                 let modalBody = document.getElementById('bet-modal-body');
                 modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
                 modalBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount that ${targetUsername} loses before you:</p>
+                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount that ${targetUsername} loses all lives before you:</p>
                     <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
                     <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
                     <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
@@ -1188,7 +1177,7 @@
             } else {
                 html += '<ul style="margin-left:14px; margin-bottom:8px;">';
                 myActive.forEach(b => {
-                    let desc = b.type === 'eliminate' ? `Bet with ${b.proposer === myName ? b.target : b.proposer}: $${b.wagerAmt} on ${b.pickUser} to lose first` : `Global Bet: $${b.wagerAmt} on ${b.pickUser}`;
+                    let desc = b.type === 'eliminate' ? `Bet with ${b.proposer === myName ? b.target : b.proposer}: $${b.wagerAmt} on ${b.pickUser} to lose all lives first` : `Global Bet: $${b.wagerAmt} on ${b.pickUser}`;
                     html += `<li style="margin-bottom:3px;">${desc}</li>`;
                 });
                 html += '</ul>';
@@ -1322,7 +1311,8 @@
             if (!banner) return;
             banner.innerText = msg;
             banner.style.display = 'block';
-            setTimeout(() => { banner.style.display = 'none'; }, 2500);
+            if (notificationTimer) clearTimeout(notificationTimer);
+            notificationTimer = setTimeout(() => { banner.style.display = 'none'; }, 3000);
         }
 
         function sendVCStatusInternal(inVC, isMuted) {
@@ -1342,7 +1332,11 @@
             }
             try {
                 localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+                    audio: { 
+                        echoCancellation: true, 
+                        noiseSuppression: true, 
+                        autoGainControl: true 
+                    }, 
                     video: false 
                 });
                 localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
@@ -1467,7 +1461,7 @@
             let username = document.getElementById('username-input').value.trim() || 'Player1';
             let lobbyName = document.getElementById('lobby-name-input').value.trim() || 'My Table';
             let isPrivate = document.getElementById('private-lobby-checkbox').checked;
-            autoConnectMutedVoiceChat(); // Grab mic within active user gesture
+            autoConnectMutedVoiceChat();
             initSocketAndSend({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
         }
 
@@ -1478,7 +1472,7 @@
 
         function joinLobbyCode(code) {
             currentJoinedCode = code;
-            autoConnectMutedVoiceChat(); // Grab mic within active user gesture
+            autoConnectMutedVoiceChat();
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
@@ -1837,6 +1831,12 @@
                 sidebar.style.display = 'none';
             }
 
+            // Notifications
+            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
+                showCenterNotification(lobby.phaseMessage);
+                lastPhaseMessage = lobby.phaseMessage;
+            }
+
             // Incoming Bet Proposals
             let modal = document.getElementById('bet-modal');
             let isModalOpen = modal.style.display === 'flex';
@@ -1888,11 +1888,6 @@
 
             let poolModal = document.getElementById('pool-draw-modal');
             let revealModal = document.getElementById('tie-breaker-reveal-modal');
-
-            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
-                showCenterNotification(lobby.phaseMessage);
-                lastPhaseMessage = lobby.phaseMessage;
-            }
 
             if (lobby.gameState === 'dealerDraw') {
                 poolModal.style.display = 'flex';
