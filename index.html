@@ -193,7 +193,7 @@
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.75rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 1; } 100% { opacity: 1; } }
         
         #chat-window { position: absolute; top: 45px; left: calc(50% - 120px); width: 240px; height: 160px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 6px; z-index: 3000; font-size: 0.7rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
         .chat-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; border-bottom: 1px solid #334155; padding-bottom: 3px; color: #38bdf8; font-weight: bold; }
@@ -493,7 +493,7 @@
             </div>
 
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
-                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️️ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
@@ -526,6 +526,13 @@
         <div class="modal-content">
             <h3 id="bet-modal-title">Propose Bet</h3>
             <div id="bet-modal-body" class="button-group"></div>
+        </div>
+    </div>
+
+    <div id="seat-action-modal" class="modal">
+        <div class="modal-content" style="max-width:300px;">
+            <h3 id="seat-action-title" style="color:var(--accent-gold);">Player Actions</h3>
+            <div id="seat-action-body" class="button-group" style="margin-top:4px;"></div>
         </div>
     </div>
 
@@ -782,6 +789,127 @@
             if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
         }
 
+        function tapSeat(targetUsername) {
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            if (clientState.gameState === 'lobby') return;
+
+            let isSpecOnly = clientState.isSpectator;
+            let activeCount = clientState.activeParticipantsCount;
+
+            if (isSpecOnly) {
+                let modalTitle = document.getElementById('seat-action-title');
+                let modalBody = document.getElementById('seat-action-body');
+                modalTitle.innerText = `Actions for ${targetUsername}`;
+
+                let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${targetUsername}')">🔍 Peek Hand</button>`;
+                if (activeCount === 2) {
+                    actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on ${targetUsername}</button>`;
+                }
+                actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
+                modalBody.innerHTML = actionsHtml;
+                toggleModal('seat-action-modal');
+                return;
+            }
+
+            if (activeCount >= 3) {
+                if (targetUsername === activeUsername) return;
+                let modalTitle = document.getElementById('bet-modal-title');
+                let modalBody = document.getElementById('bet-modal-body');
+                modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
+                modalBody.innerHTML = `
+                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount that ${targetUsername} loses before you:</p>
+                    <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
+                    <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
+                    <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+                `;
+                toggleModal('bet-modal');
+            } else if (activeCount === 2) {
+                let modalTitle = document.getElementById('bet-modal-title');
+                let modalBody = document.getElementById('bet-modal-body');
+                modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+                modalBody.innerHTML = `
+                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+                    <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+                    <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+                    <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+                `;
+                toggleModal('bet-modal');
+            }
+        }
+
+        function requestPeekFromModal(targetUsername) {
+            toggleModal('seat-action-modal');
+            initSocketAndSend({ type: 'REQUEST_PEEK', targetUsername });
+            showCenterNotification(`Peek request sent to ${targetUsername}!`);
+        }
+
+        function betOnHimFromModal(targetUsername) {
+            toggleModal('seat-action-modal');
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+            modalBody.innerHTML = `
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+                <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+            `;
+            toggleModal('bet-modal');
+        }
+
+        function submitEliminationProposal(target, wagerAmt) {
+            initSocketAndSend({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt });
+            toggleModal('bet-modal');
+            showCenterNotification(`First to lose bet proposed to ${target}!`);
+        }
+
+        function submitGlobalProposal(pickUser, wagerAmt) {
+            initSocketAndSend({ type: 'PROPOSE_GLOBAL_SIDE_BET', pickUser, wagerAmt });
+            toggleModal('bet-modal');
+            showCenterNotification(`Global bet offered on ${pickUser}!`);
+        }
+
+        function acceptGlobalProposal(proposalId) {
+            initSocketAndSend({ type: 'ACCEPT_GLOBAL_PROPOSAL', proposalId });
+        }
+
+        function confirmGlobalBet(proposalId, acceptedUser, confirm) {
+            initSocketAndSend({ type: 'CONFIRM_GLOBAL_BET', proposalId, acceptedUser, confirm });
+            toggleModal('bet-modal');
+        }
+
+        function openConfirmModal(proposalId, proposer, pickUser, acceptedUsers) {
+            let modal = document.getElementById('bet-modal');
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Confirm Global Side Bet (${pickUser})`;
+            
+            let listHtml = acceptedUsers.map(acc => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
+                    <span><b>${acc}</b> accepted</span>
+                    <div style="display:flex; gap:4px;">
+                        <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
+                        <button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="confirmGlobalBet('${proposalId}', '${acc}', false)">Decline</button>
+                    </div>
+                </div>
+            `).join('');
+
+            modalBody.innerHTML = `
+                <p style="font-size:0.80rem; color:var(--text-muted); margin-bottom:6px;">Players who accepted your proposal:</p>
+                ${listHtml}
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:8px;">Close</button>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function respondToBet(betId, accept) {
+            initSocketAndSend({ type: 'RESPOND_BET', betId, accept });
+            toggleModal('bet-modal');
+        }
+
         function openActiveBetsModal() {
             let myName = document.getElementById('username-input').value.trim() || clientState.username;
             let contentDiv = document.getElementById('active-bets-content');
@@ -978,7 +1106,7 @@
                 
                 let btn = document.getElementById('vc-main-btn');
                 let led = document.getElementById('vc-led');
-                if (btn) btn.innerText = '🎙️ Voice: Off';
+                if (btn) btn.innerText = '🎙️️ Voice: Off';
                 if (led) led.classList.remove('active');
                 sendVCStatusInternal(true, true);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
@@ -1306,12 +1434,101 @@
                 }
             }
 
+            // Knock Button Validation Logic
+            let activePartsCount = lobby.players.filter(p => !p.eliminated).length;
+            let threshold = activePartsCount > 2 ? 21 : 25;
+            let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
+            let turnsConditionMet = !!lobby.canKnock;
+            let scoreConditionMet = myScore >= threshold;
+            let isMyTurnPlaying = (lobby.currentTurnUser === activeUsername) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+
+            if (lobby.knockedBy) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `${lobby.knockedBy} knocked!`;
+            } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `Knock (${threshold}+)`;
+            } else {
+                knockBtn.disabled = false;
+                knockBtn.innerText = 'Knock!';
+            }
+
             clientState.discardTop = lobby.discardTop;
             clientState.sideBetLedger = lobby.sideBetLedger || {};
             clientState.mainGameLedger = lobby.mainGameLedger || {};
 
+            // Global Side Bets Sidebar Handling
+            let sidebar = document.getElementById('global-side-bets-sidebar');
+            let sidebarList = document.getElementById('global-side-bets-list');
+            let globalProps = lobby.globalProposals || [];
+
+            if (globalProps.length > 0 && lobby.gameState !== 'lobby') {
+                sidebar.style.display = 'flex';
+                let sidebarHtml = '';
+                globalProps.forEach(gp => {
+                    let isMyProp = (gp.proposer === activeUsername);
+                    let alreadyAccepted = gp.acceptedBy.includes(activeUsername);
+
+                    let actionHtml = '';
+                    if (isMyProp) {
+                        if (gp.acceptedBy.length > 0) {
+                            actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${gp.proposer}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
+                        } else {
+                            actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
+                        }
+                    } else {
+                        if (!alreadyAccepted) {
+                            actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
+                        } else {
+                            actionHtml = `<span style="color:#34d399; font-size:0.65rem;">Accepted ("You got it")</span>`;
+                        }
+                    }
+
+                    sidebarHtml += `
+                        <div class="global-bet-item">
+                            <span>I like <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b> (${gp.proposer})</span>
+                            ${actionHtml}
+                        </div>
+                    `;
+                });
+                sidebarList.innerHTML = sidebarHtml;
+            } else {
+                sidebar.style.display = 'none';
+            }
+
+            // Incoming Bet Proposals
+            let modal = document.getElementById('bet-modal');
+            let isModalOpen = modal.style.display === 'flex';
+
+            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
+                lobby.pendingBetsForMe.forEach(bet => {
+                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that you win round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
+                    
+                    let modalTitle = document.getElementById('bet-modal-title');
+                    let modalBody = document.getElementById('bet-modal-body');
+                    modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
+                    modalBody.innerHTML = `
+                        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">${label}</p>
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            <button onclick="respondToBet('${bet.id}', true)">Accept</button>
+                            <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
+                        </div>
+                    `;
+                    modal.style.display = 'flex';
+                });
+                lobby.pendingBetsForMe = [];
+            }
+
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
+
+            let sidePotBanner = document.getElementById('side-pot-total-banner');
+            if (lobby.sidePotTotal && lobby.sidePotTotal > 0) {
+                sidePotBanner.innerText = `Side Pots: $${lobby.sidePotTotal}`;
+                sidePotBanner.style.display = 'block';
+            } else {
+                sidePotBanner.style.display = 'none';
+            }
 
             let nextHandOverlay = document.getElementById('next-hand-overlay');
             if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
@@ -1373,6 +1590,7 @@
             let html = `
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
                 </div>
                 <div class="deck-center">
                     <div class="card-slot back" onclick="drawCard('deck')">DECK<div class="deck-counter">${lobby.deckCount || 0} left</div></div>
@@ -1389,7 +1607,7 @@
 
                 html += `
                     <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
-                        <div class="seat-name-area">
+                        <div class="seat-name-area" onclick="tapSeat('${p.username}')">
                             <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
