@@ -51,6 +51,14 @@ function closeInactiveLobby(code) {
     broadcastLobbyList();
 }
 
+function broadcastLobbyEvent(code, payload) {
+    let lobby = lobbies[code];
+    if (!lobby) return;
+    let msg = JSON.stringify(payload);
+    lobby.players.forEach(p => { if (p.id?.readyState === WebSocket.OPEN) p.id.send(msg); });
+    lobby.spectators.forEach(s => { if (s.idSocket?.readyState === WebSocket.OPEN) s.idSocket.send(msg); });
+}
+
 wss.on('connection', (ws) => {
     let currentLobbyCode = null;
     let currentUsername = null;
@@ -129,6 +137,7 @@ wss.on('connection', (ws) => {
                             existingPlayer.id = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
+                            broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
                             broadcastLobbyList();
                             return;
                         }
@@ -138,6 +147,7 @@ wss.on('connection', (ws) => {
                             existingSpec.idSocket = ws;
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
+                            broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
                             broadcastLobbyList();
                             return;
                         }
@@ -148,8 +158,10 @@ wss.on('connection', (ws) => {
                         } else {
                             lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                         }
+
                         ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                         broadcastLobbyUpdate(code);
+                        broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
                         broadcastLobbyList();
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
