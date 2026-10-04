@@ -273,6 +273,33 @@
         
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
         
+        /* Conspicuous, non-blocking knock alert modal */
+        #knock-alert-modal { 
+            position: absolute; 
+            top: 40px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: rgba(15, 23, 42, 0.96); 
+            border: 2px solid #ef4444; 
+            color: var(--accent-gold); 
+            padding: 6px 18px; 
+            border-radius: 20px; 
+            font-weight: 900; 
+            font-size: 0.85rem; 
+            box-shadow: 0 4px 18px rgba(239, 68, 68, 0.6); 
+            display: none; 
+            z-index: 250; 
+            pointer-events: none;
+            letter-spacing: 0.5px;
+            animation: pulseKnock 1.5s infinite;
+        }
+
+        @keyframes pulseKnock {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+            100% { transform: translateX(-50%) scale(1); }
+        }
+
         #center-notification-banner { 
             position: absolute; 
             top: 15px; 
@@ -355,7 +382,7 @@
             
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
             </div>
 
@@ -431,6 +458,9 @@
                 <div id="turn-banner">Turn: Waiting...</div>
             </div>
 
+            <!-- Non-blocking knock alert modal positioned cleanly beneath the top row -->
+            <div id="knock-alert-modal">🔔 Knock Alert</div>
+
             <div id="lobby-config-bar" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
                 <select id="config-wager" onchange="updateWager()" style="padding:3px; font-size:0.75rem;">
                     <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
@@ -493,7 +523,7 @@
             </div>
 
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
-                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶️️ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
@@ -616,6 +646,7 @@
         let lastPhaseMessage = '';
         let lastGameState = '';
         let currentJoinedCode = null;
+        let lastKnownKnockedBy = null;
         
         let localAudioStream = null;
         let isVoiceChatActive = false;
@@ -626,6 +657,7 @@
         let activeSyncedSongKey = '';
         let individualVolume = 0.8;
         let isIndividualMuted = false;
+        let audioCtx = null;
         
         const rtcConfig = { 
             iceServers: [
@@ -636,6 +668,73 @@
                 { urls: 'stun:stun.stunprotocol.org:3478' }
             ] 
         };
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function playSound(type) {
+            try {
+                let ctx = getAudioContext();
+                let now = ctx.currentTime;
+                let osc = ctx.createOscillator();
+                let gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (type === 'knock') {
+                    // Double rap knock tone
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
+                    gain.gain.setValueAtTime(0.8, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+
+                    let osc2 = ctx.createOscillator();
+                    let gain2 = ctx.createGain();
+                    osc2.connect(gain2);
+                    gain2.connect(ctx.destination);
+                    osc2.type = 'triangle';
+                    osc2.frequency.setValueAtTime(140, now + 0.14);
+                    osc2.frequency.exponentialRampToValueAtTime(65, now + 0.28);
+                    gain2.gain.setValueAtTime(0.8, now + 0.14);
+                    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+                    osc2.start(now + 0.14);
+                    osc2.stop(now + 0.28);
+                } else if (type === 'card') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(420, now);
+                    osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'ding') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(587.33, now);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                    osc.start(now);
+                    osc.stop(now + 0.45);
+                }
+            } catch (err) {}
+        }
+
+        function triggerVibration(pattern) {
+            if ('vibrate' in navigator) {
+                try {
+                    navigator.vibrate(pattern);
+                } catch (e) {}
+            }
+        }
 
         function parseYouTubeEmbedUrl(url, autoplay = true) {
             let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -1006,7 +1105,7 @@
             sideHtml += '</ul>';
             html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
 
-            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger (Full Game)</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
             let hasMainEntries = false;
             let mainHtml = '<ul>';
             for (let [user, netAmt] of Object.entries(mainCalc.records)) {
@@ -1051,34 +1150,6 @@
                 return `<div class="mini-card ${suitClass}"><span>${card.val}</span><span>${card.suit}</span></div>`;
             } else {
                 return `<div class="my-card ${suitClass}" style="width:60px; height:85px; font-size:1.1rem;"><span>${card.val}</span><span style="font-size:1.4rem;">${card.suit}</span></div>`;
-            }
-        }
-
-        function playSound(type) {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            let now = audioCtx.currentTime;
-
-            if (type === 'ding') {
-                let osc = audioCtx.createOscillator();
-                let gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(587.33, now);
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                osc.start(now);
-                osc.stop(now + 0.4);
-            } else if (type === 'knock') {
-                let osc = audioCtx.createOscillator();
-                let gain = audioCtx.createGain();
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(300, now);
-                gain.gain.setValueAtTime(0.5, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                osc.start(now);
-                osc.stop(now + 0.2);
             }
         }
 
@@ -1136,7 +1207,7 @@
             localAudioStream.getAudioTracks().forEach(track => { track.enabled = !newMutedState; });
 
             if (newMutedState) {
-                if (btn) btn.innerText = '🎙️️ Voice: Off';
+                if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
             } else {
                 if (btn) btn.innerText = '🎙️ Voice: On';
@@ -1376,6 +1447,23 @@
                 if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
                     document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
                 }
+            }
+
+            // Dedicated Knock Alert Modal and 3-Pulse Mediocre Rhythmic Vibration
+            let knockAlertModal = document.getElementById('knock-alert-modal');
+            if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
+                knockAlertModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
+                knockAlertModal.style.display = 'block';
+
+                if (lastKnownKnockedBy !== lobby.knockedBy) {
+                    lastKnownKnockedBy = lobby.knockedBy;
+                    playSound('knock');
+                    // 3 rhythmic vibrations: 180ms pulse, 110ms gap, 180ms pulse, 110ms gap, 180ms pulse
+                    triggerVibration([180, 110, 180, 110, 180]);
+                }
+            } else {
+                knockAlertModal.style.display = 'none';
+                lastKnownKnockedBy = null;
             }
 
             // Top-Left Initial Discard Pickup Display
@@ -1694,12 +1782,22 @@
             return Math.max(...Object.values(sums), 0);
         }
 
-        function drawCard(type) { initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); }
-        function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
+        function drawCard(type) { 
+            playSound('card');
+            triggerVibration(40);
+            initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); 
+        }
+
+        function discardCard(cardIndex) { 
+            playSound('card');
+            triggerVibration(30);
+            initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); 
+        }
         
         function knockRound() {
-            initSocketAndSend({ type: 'KNOCK' });
             playSound('knock');
+            triggerVibration([180, 110, 180, 110, 180]);
+            initSocketAndSend({ type: 'KNOCK' });
         }
         
         function leaveLobby() {
