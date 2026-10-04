@@ -88,7 +88,7 @@ wss.on('connection', (ws) => {
                         initialDealCard: null,
                         lastDiscardPickup: null,
                         lastDiscardDonor: null,
-                        fedCardReminders: {}, // donor -> { target, card }
+                        fedCardReminders: {},
                         turnIndex: 0,
                         dealerIndex: 0,
                         lastGameWinner: null,
@@ -579,7 +579,6 @@ function getSanitizedLobby(lobby, wsId) {
     let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.delivered[myUsername]);
     myUnrespondedBets.forEach(b => b.delivered[myUsername] = true);
 
-    // Private Fed Reminder Verification
     let myFedReminder = null;
     if (myUsername && lobby.fedCardReminders?.[myUsername] && lobby.gameState !== 'roundOver') {
         let rem = lobby.fedCardReminders[myUsername];
@@ -750,7 +749,6 @@ function handleTurnAction(lobby, ws, actionType) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
-        // Overwrites/refreshes any previous card Player A gave to Player B
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
@@ -798,7 +796,6 @@ function handleDiscardAction(lobby, ws, cardIndex) {
     currentPlayer.pickedUpDiscardCard = null;
     lobby.discardPile.push(discarded);
 
-    // If currentPlayer discards the card they took from Player A, clear the modal reminder
     if (lobby.fedCardReminders) {
         for (let donor in lobby.fedCardReminders) {
             if (lobby.fedCardReminders[donor].target === currentPlayer.username) {
@@ -900,7 +897,7 @@ function resolveRoundEnd(lobby) {
 }
 
 function triggerRoundOver(lobby, msg) {
-    lobby.fedCardReminders = {}; // Hide reminder modals on round conclusion
+    lobby.fedCardReminders = {};
     let active = getActiveParticipants(lobby);
     if (active.length === 1) { awardTournamentWinner(lobby, active[0]); return; }
     lobby.gameState = 'roundOver';
