@@ -1389,7 +1389,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
         let remainingActiveAfterDiscard = getActiveParticipants(lobby);
         if (remainingActiveAfterDiscard.length === 1) {
-            awardTournamentWinner(lobby, remainingActiveAfterDiscard[0]);
+            awardTournamentWinner(lobby, remainingActive[0]);
             return;
         }
 
