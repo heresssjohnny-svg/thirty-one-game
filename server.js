@@ -140,6 +140,7 @@ wss.on('connection', (ws) => {
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
+                            broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
                             broadcastLobbyList();
                             return;
                         }
@@ -150,6 +151,7 @@ wss.on('connection', (ws) => {
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
+                            broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
                             broadcastLobbyList();
                             return;
                         }
@@ -164,9 +166,16 @@ wss.on('connection', (ws) => {
                         ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                         broadcastLobbyUpdate(code);
                         broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
+                        broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
                         broadcastLobbyList();
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
+                    }
+                    break;
+
+                case 'RECONNECT_VOICE':
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        broadcastLobbyEvent(currentLobbyCode, { type: 'REESTABLISH_ALL_VOICE' });
                     }
                     break;
 
@@ -242,13 +251,6 @@ wss.on('connection', (ws) => {
                             lobby.songStartedAt = Date.now();
                             lobby.songPausedAtOffset = 0;
                         }
-                        broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                    break;
-
-                case 'RECONNECT_VOICE':
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        lobbies[currentLobbyCode].phaseMessage = `🎙️️ ${currentUsername} triggered a voice chat reconnect for everyone!`;
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
@@ -580,7 +582,10 @@ function leaveLobby(ws, code) {
     lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
     if (lobby.players.length === 0) delete lobbies[code];
-    else broadcastLobbyUpdate(code);
+    else {
+        broadcastLobbyUpdate(code);
+        broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
+    }
     broadcastLobbyList();
 }
 
@@ -938,7 +943,6 @@ function resolveRoundEnd(lobby) {
         let winner = scores[scores.length - 1].p;
         loser.lives = Math.max(0, loser.lives - 1);
         
-        // Critical: Only resolve first-to-lose bet if participant loses ALL lives (knockout)
         if (loser.lives <= 0 && !loser.eliminated) {
             loser.eliminated = true;
             resolveFirstToLoseBets(lobby, loser.username);
@@ -1049,11 +1053,12 @@ function resetLobbyToReadyRoom(lobby, msg) {
         if (winIdx !== -1) lobby.dealerIndex = winIdx;
     }
 
-    lobby.players.forEach(p => {
+    lobby.players.forEach((p, idx) => {
         p.lives = 2;
         p.eliminated = false;
         p.cards = [];
         p.ready = false;
+        p.seat = idx;
         p.nextHandReady = false;
         p.peekRequests = {};
         p.peekAllowed = {};
