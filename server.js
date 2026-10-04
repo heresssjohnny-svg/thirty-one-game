@@ -1280,7 +1280,6 @@ function startRound(lobby) {
     let allParts = [...lobby.players, ...lobby.bots];
     lobby.turnIndex = (lobby.dealerIndex + 1) % allParts.length;
     
-    // Ensure we start on an active participant
     let safetyCounter = 0;
     while (allParts[lobby.turnIndex].eliminated && safetyCounter < allParts.length) {
         lobby.turnIndex = (lobby.turnIndex + 1) % allParts.length;
@@ -1437,7 +1436,6 @@ function advanceTurnOrResolve(lobby) {
         }
     }
     
-    // Safely advance to the next non-eliminated participant
     let nextIdx = (lobby.turnIndex + 1) % allParts.length;
     let safetyCounter = 0;
     while (allParts[nextIdx].eliminated && safetyCounter < allParts.length) {
@@ -1548,6 +1546,44 @@ function triggerRoundOver(lobby, msg) {
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
     broadcastLobbyUpdate(lobby.code);
+}
+
+function resolveFirstToLoseBets(lobby, loserUsername) {
+    if (!lobby.activeBets) return;
+    lobby.activeBets = lobby.activeBets.filter(bet => {
+        if (bet.type === 'eliminate' && bet.pickUser === loserUsername) {
+            lobby.phaseMessage = `💰 Side Bet Won! ${bet.proposer} won $${bet.wagerAmt} because ${loserUsername} lost first!`;
+            return false;
+        }
+        return true;
+    });
+}
+
+function resolveWinSideBets(lobby, winnerUsername) {
+    if (!lobby.activeBets) return;
+    lobby.activeBets = lobby.activeBets.filter(bet => {
+        if (bet.type === 'win' && bet.pickUser === winnerUsername) {
+            lobby.phaseMessage = `💰 Side Bet Won! ${bet.proposer} won $${bet.wagerAmt} because ${winnerUsername} won the round!`;
+            return false;
+        }
+        return true;
+    });
+}
+
+function awardTournamentWinner(lobby, winner) {
+    lobby.gameState = 'roundOver';
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} is the last player standing!`;
+    broadcastLobbyUpdate(lobby.code);
+}
+
+function checkNextHandReady(lobby) {
+    let activeParts = getActiveParticipants(lobby);
+    let allReady = activeParts.every(p => p.nextHandReady || lobby.bots.some(b => b.username === p.username));
+    if (allReady) {
+        startRound(lobby);
+    } else {
+        broadcastLobbyUpdate(lobby.code);
+    }
 }
 
 function calculateScore(cards) {
