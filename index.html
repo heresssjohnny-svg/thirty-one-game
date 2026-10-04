@@ -577,7 +577,6 @@
         </div>
     </div>
 
-    <!-- YouTube Music Player Modal -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -739,13 +738,13 @@
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' }
+                { urls: 'stun:stun.stunprotocol.org:3478' }
             ] 
         };
 
         function getAudioContext() {
             if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
             }
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
@@ -756,6 +755,9 @@
         function playSound(type) {
             try {
                 let ctx = getAudioContext();
+                if (ctx.state === 'suspended') {
+                    ctx.resume();
+                }
                 let now = ctx.currentTime;
 
                 if (type === 'join') {
@@ -765,21 +767,21 @@
                     gain1.connect(ctx.destination);
                     osc1.type = 'sine';
                     osc1.frequency.setValueAtTime(698.46, now);
-                    gain1.gain.setValueAtTime(0.2, now);
-                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                    gain1.gain.setValueAtTime(0.18, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
                     osc1.start(now);
-                    osc1.stop(now + 0.18);
+                    osc1.stop(now + 0.16);
 
                     let osc2 = ctx.createOscillator();
                     let gain2 = ctx.createGain();
                     osc2.connect(gain2);
                     gain2.connect(ctx.destination);
                     osc2.type = 'sine';
-                    osc2.frequency.setValueAtTime(1046.50, now + 0.1);
-                    gain2.gain.setValueAtTime(0.25, now + 0.1);
-                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-                    osc2.start(now + 0.1);
-                    osc2.stop(now + 0.35);
+                    osc2.frequency.setValueAtTime(1046.50, now + 0.09);
+                    gain2.gain.setValueAtTime(0.22, now + 0.09);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+                    osc2.start(now + 0.09);
+                    osc2.stop(now + 0.32);
                     return;
                 }
 
@@ -792,7 +794,7 @@
                     osc.type = 'triangle';
                     osc.frequency.setValueAtTime(150, now);
                     osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
-                    gain.gain.setValueAtTime(0.6, now);
+                    gain.gain.setValueAtTime(0.45, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
                     osc.start(now);
                     osc.stop(now + 0.12);
@@ -800,22 +802,22 @@
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(420, now);
                     osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
-                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.setValueAtTime(0.15, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
                     osc.start(now);
                     osc.stop(now + 0.08);
                 } else if (type === 'ding') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(587.33, now);
-                    gain.gain.setValueAtTime(0.2, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
                     osc.start(now);
-                    osc.stop(now + 0.35);
+                    osc.stop(now + 0.3);
                 } else if (type === 'thud') {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(80, now);
                     osc.frequency.exponentialRampToValueAtTime(40, now + 0.09);
-                    gain.gain.setValueAtTime(0.5, now);
+                    gain.gain.setValueAtTime(0.4, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
                     osc.start(now);
                     osc.stop(now + 0.09);
@@ -825,9 +827,7 @@
 
         function triggerVibration(pattern) {
             if ('vibrate' in navigator) {
-                try {
-                    navigator.vibrate(pattern);
-                } catch (e) {}
+                try { navigator.vibrate(pattern); } catch (e) {}
             }
             let iosTrigger = document.getElementById('ios-haptic-trigger');
             if (iosTrigger) {
@@ -999,10 +999,13 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
 
-            window.addEventListener('touchstart', () => {
+            // Universal touch unlock: Keeps AudioContext running on user taps
+            const unlockAudio = () => {
                 let ctx = getAudioContext();
                 if (ctx.state === 'suspended') ctx.resume();
-            }, { once: true });
+            };
+            window.addEventListener('touchstart', unlockAudio, { passive: true });
+            window.addEventListener('click', unlockAudio, { passive: true });
 
             connectSocket();
             refreshLobbies();
@@ -1312,7 +1315,7 @@
             banner.innerText = msg;
             banner.style.display = 'block';
             if (notificationTimer) clearTimeout(notificationTimer);
-            notificationTimer = setTimeout(() => { banner.style.display = 'none'; }, 3000);
+            notificationTimer = setTimeout(() => { banner.style.display = 'none'; }, 3200);
         }
 
         function sendVCStatusInternal(inVC, isMuted) {
@@ -1326,6 +1329,7 @@
                 let led = document.getElementById('vc-led');
                 if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
+                localAudioStream.getAudioTracks().forEach(t => { t.enabled = false; });
                 sendVCStatusInternal(true, true);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
                 return;
@@ -1339,6 +1343,7 @@
                     }, 
                     video: false 
                 });
+                // Hard mute microphone immediately so device doesn't pick up ambient/speaker YouTube sound
                 localAudioStream.getAudioTracks().forEach(track => { track.enabled = false; });
                 isVoiceChatActive = true;
                 
@@ -1555,7 +1560,9 @@
             peerConnections[peerUser] = pc;
             pc.pendingCandidates = [];
 
-            localAudioStream.getTracks().forEach(track => { pc.addTrack(track, localAudioStream); });
+            if (localAudioStream) {
+                localAudioStream.getTracks().forEach(track => { pc.addTrack(track, localAudioStream); });
+            }
 
             pc.ontrack = (event) => {
                 let audioElem = new Audio();
@@ -1662,6 +1669,12 @@
                 fedModal.style.display = 'flex';
             } else {
                 fedModal.style.display = 'none';
+            }
+
+            // Central In-Game Notifications
+            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
+                showCenterNotification(lobby.phaseMessage);
+                lastPhaseMessage = lobby.phaseMessage;
             }
 
             clientState.gameState = lobby.gameState;
@@ -1829,12 +1842,6 @@
                 sidebarList.innerHTML = sidebarHtml;
             } else {
                 sidebar.style.display = 'none';
-            }
-
-            // Notifications
-            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
-                showCenterNotification(lobby.phaseMessage);
-                lastPhaseMessage = lobby.phaseMessage;
             }
 
             // Incoming Bet Proposals
