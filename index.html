@@ -229,15 +229,15 @@
             color: var(--accent-cyan); 
             z-index: 2500; 
             display: flex; 
-            flex-direction: column;
+            flex-direction: column; 
             gap: 3px; 
             align-items: flex-start; 
             background: rgba(15, 23, 42, 0.95); 
             padding: 8px 12px; 
             border-radius: 8px; 
             border: 1px solid var(--accent-gold); 
-            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
-            animation: slideInTopLeft 0.3s ease-out;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7); 
+            animation: slideInTopLeft 0.3s ease-out; 
         }
 
         @keyframes slideInTopLeft {
@@ -245,10 +245,36 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .deck-center { display: flex; gap: 10px; align-items: center; justify-content: center; }
+        .deck-center { display: flex; gap: 10px; align-items: center; justify-content: center; position: relative; }
         .card-slot { width: 48px; height: 70px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
         .card-slot.back { background: #1e3a8a; color: #fff; }
         .deck-counter { position: absolute; bottom: -15px; font-size: 0.65rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
+
+        /* Big "Your Turn!" indicator above the center table felt */
+        #center-turn-indicator {
+            position: absolute;
+            top: -34px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(180deg, #facc15 0%, #eab308 100%);
+            color: #0f172a;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 900;
+            letter-spacing: 1px;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 16px rgba(250, 204, 21, 0.9);
+            white-space: nowrap;
+            z-index: 100;
+            display: none;
+            animation: bounceTurn 1s infinite alternate;
+        }
+
+        @keyframes bounceTurn {
+            0% { transform: translateX(-50%) translateY(0); }
+            100% { transform: translateX(-50%) translateY(-4px); }
+        }
 
         .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; }
         .seat:hover { border-color: var(--accent-gold); }
@@ -282,7 +308,6 @@
         
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
         
-        /* Conspicuous, non-blocking knock alert modal */
         #knock-alert-modal { 
             position: absolute; 
             top: 40px; 
@@ -298,9 +323,9 @@
             box-shadow: 0 4px 18px rgba(239, 68, 68, 0.6); 
             display: none; 
             z-index: 250; 
-            pointer-events: none;
-            letter-spacing: 0.5px;
-            animation: pulseKnock 1.5s infinite;
+            pointer-events: none; 
+            letter-spacing: 0.5px; 
+            animation: pulseKnock 1.5s infinite; 
         }
 
         @keyframes pulseKnock {
@@ -342,7 +367,7 @@
             grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); 
             gap: 4px; 
             justify-content: center; 
-            align-content: center;
+            align-content: center; 
             overflow-y: auto; 
             max-height: 50vh; 
             padding: 6px; 
@@ -470,10 +495,8 @@
                 <div id="turn-banner">Turn: Waiting...</div>
             </div>
 
-            <!-- Conspicuous knock alert modal positioned cleanly beneath the turn banner -->
             <div id="knock-alert-modal">🔔 Knock Alert</div>
 
-            <!-- Spectator active peek control banner -->
             <div id="active-peeking-banner" style="display:none; background:rgba(30,58,138,0.95); border:1px solid var(--accent-cyan); padding:4px 12px; border-radius:14px; font-size:0.75rem; color:#fff; align-items:center; gap:8px; margin-top:2px;">
                 <span>👀 Viewing Player Hand</span>
                 <button class="secondary" onclick="stopPeekingAction()" style="padding:2px 6px; font-size:0.65rem; background:#ef4444;">Stop Peeking</button>
@@ -655,15 +678,6 @@
     </div>
 
     <script>
-        // PWA Service Worker Registration
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('Service Worker registered with scope:', reg.scope))
-                    .catch(err => console.log('Service Worker registration skipped/failed:', err));
-            });
-        }
-
         let ws = null;
         let isConnected = false;
         let pendingQueue = [];
@@ -786,8 +800,9 @@
         function parseYouTubeEmbedUrl(url, autoplay = true) {
             let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
             let match = url.match(regExp);
+            let autoStr = autoplay ? '1' : '0';
             if (match && match[2].length === 11) {
-                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoplay ? 1 : 0}&enablejsapi=1`;
+                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}&enablejsapi=1`;
             }
             return url;
         }
@@ -908,7 +923,6 @@
                 document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
             }
 
-            // Unlock iOS Web Audio on the very first screen interaction
             window.addEventListener('touchstart', () => {
                 let ctx = getAudioContext();
                 if (ctx.state === 'suspended') ctx.resume();
@@ -1521,7 +1535,6 @@
                 if (lastKnownKnockedBy !== lobby.knockedBy) {
                     lastKnownKnockedBy = lobby.knockedBy;
                     playSound('knock');
-                    // 3 rhythmic vibrations: 180ms pulse, 110ms gap, 180ms pulse, 110ms gap, 180ms pulse
                     triggerVibration([180, 110, 180, 110, 180]);
                 }
             } else {
@@ -1629,18 +1642,21 @@
                 }
             }
 
-            // Turn Detection & 2 Fast Hard Vibration Pulses on Your Turn
+            // Turn Detection & Display
             let turnBanner = document.getElementById('turn-banner');
+            let centerTurnIndicator = document.getElementById('center-turn-indicator');
             let isMyTurnPlaying = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
             if (isMyTurnPlaying) {
                 turnBanner.innerText = "YOUR TURN!";
+                if (centerTurnIndicator) centerTurnIndicator.style.display = 'block';
                 if (lastTurnUser !== activeUsername) {
                     lastTurnUser = activeUsername;
                     triggerFastTurnPulses();
                 }
             } else {
                 lastTurnUser = lobby.currentTurnUser;
+                if (centerTurnIndicator) centerTurnIndicator.style.display = 'none';
                 turnBanner.innerText = (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') ? `Turn: ${lobby.currentTurnUser}` : 'Turn: Waiting...';
             }
 
@@ -1821,6 +1837,7 @@
                     <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
                 </div>
                 <div class="deck-center">
+                    <div id="center-turn-indicator">YOUR TURN!</div>
                     <div class="card-slot back" onclick="drawCard('deck')">DECK<div class="deck-counter">${lobby.deckCount || 0} left</div></div>
                     <div class="card-slot" onclick="drawCard('discard')">${discardTopHtml}</div>
                 </div>
@@ -1857,6 +1874,12 @@
 
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
+
+            // Re-apply center turn visibility state after rebuilding table DOM
+            let updatedIndicator = document.getElementById('center-turn-indicator');
+            if (updatedIndicator) {
+                updatedIndicator.style.display = isMyTurnPlaying ? 'block' : 'none';
+            }
 
             if (me && me.cards) {
                 let cardsHtml = me.cards.map((c, i) => `
