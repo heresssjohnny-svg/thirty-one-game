@@ -447,7 +447,7 @@
             
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️️ Voice: Off</button>
                 <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
             </div>
 
@@ -588,7 +588,6 @@
         </div>
     </div>
 
-    <!-- YouTube Music Player Modal -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -775,7 +774,6 @@
             return audioCtx;
         }
 
-        // Keep audio graph alive across app minimization or screen locks
         function enableBackgroundAudioKeepAlive() {
             if (!backgroundAudioKeeper) {
                 backgroundAudioKeeper = document.createElement('audio');
@@ -796,8 +794,22 @@
             }
         }
 
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
+        // Intercept window/app background state change to prevent the 5-second Android kill switch
+        document.addEventListener('visibilitychange', async () => {
+            if (document.hidden) {
+                if (isVoiceChatActive) {
+                    let servicePlugin = getForegroundServicePlugin();
+                    if (servicePlugin && window.Capacitor.getPlatform() === 'android') {
+                        try {
+                            await servicePlugin.startForeground({
+                                title: '31! Voice Chat Active',
+                                body: 'Call in progress...',
+                                ongoing: true
+                            });
+                        } catch (e) {}
+                    }
+                }
+            } else {
                 if (audioCtx && audioCtx.state === 'suspended') {
                     audioCtx.resume();
                 }
@@ -813,6 +825,32 @@
                 }
             }
         });
+
+        function getForegroundServicePlugin() {
+            return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AndroidForegroundService;
+        }
+
+        async function startNativeForegroundService() {
+            let servicePlugin = getForegroundServicePlugin();
+            if (servicePlugin && window.Capacitor.getPlatform() === 'android') {
+                try {
+                    await servicePlugin.startForeground({
+                        title: '31! Voice Chat Active',
+                        body: 'Connected to table lobby',
+                        ongoing: true
+                    });
+                } catch (err) {}
+            }
+        }
+
+        async function stopNativeForegroundService() {
+            let servicePlugin = getForegroundServicePlugin();
+            if (servicePlugin && window.Capacitor.getPlatform() === 'android') {
+                try {
+                    await servicePlugin.stopForeground();
+                } catch (err) {}
+            }
+        }
 
         function playSound(type) {
             try {
@@ -1520,6 +1558,7 @@
                 if (btn) btn.innerText = '🎙️ Voice: Off';
                 if (led) led.classList.remove('active');
                 sendVCStatusInternal(true, true);
+                await stopNativeForegroundService();
                 return;
             }
 
@@ -1543,6 +1582,7 @@
                 if (led) led.classList.add('active');
                 sendVCStatusInternal(true, false);
                 if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
+                await startNativeForegroundService();
             } catch (err) {
                 alert('Microphone permission required.');
             }
@@ -1590,7 +1630,11 @@
                     updateUIFromLobby(data.lobby);
                     
                     if (isVoiceChatActive) {
-                        handleWebRTCConnections(data.lobby);
+                        setTimeout(() => {
+                            if (latestLobbySnapshot) {
+                                handleWebRTCConnections(latestLobbySnapshot);
+                            }
+                        }, 600);
                     }
                 } else if (data.type === 'CHAT_MESSAGE') {
                     appendChatMessage(data.username, data.message);
@@ -2326,6 +2370,7 @@
             Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
 
+            stopNativeForegroundService();
             initSocketAndSend({ type: 'LEAVE_LOBBY' });
         }
 
@@ -2346,6 +2391,7 @@
             Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
 
+            stopNativeForegroundService();
             currentJoinedCode = null;
             latestLobbySnapshot = null;
             document.getElementById('game-view').style.display = 'none';
