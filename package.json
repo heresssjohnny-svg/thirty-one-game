@@ -1,16 +1,17 @@
 {
-  "name": "thirty-one-card-game",
+  "name": "thirtyone-card-game",
   "version": "1.0.0",
-  "description": "Multiplayer 31 Card Game for Android, iOS, and Web",
+  "description": "31! Card Game with LiveKit SFU Voice Chat and WebSocket Multiplayer",
   "main": "server.js",
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "ws": "^8.16.0"
+    "ws": "^8.18.0",
+    "livekit-server-sdk": "^2.8.2"
+  },
+  "engines": {
+    "node": ">=18.x"
   }
 }
