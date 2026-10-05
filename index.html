@@ -588,6 +588,7 @@
         </div>
     </div>
 
+    <!-- YouTube Music Player Modal -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -743,6 +744,7 @@
         let individualVolume = 0.8;
         let isIndividualMuted = false;
         let audioCtx = null;
+        let backgroundAudioKeeper = null;
         
         const audioMediaConstraints = {
             audio: {
@@ -773,6 +775,27 @@
             return audioCtx;
         }
 
+        // Keep audio graph alive across app minimization or screen locks
+        function enableBackgroundAudioKeepAlive() {
+            if (!backgroundAudioKeeper) {
+                backgroundAudioKeeper = document.createElement('audio');
+                backgroundAudioKeeper.setAttribute('loop', '');
+                backgroundAudioKeeper.setAttribute('playsinline', '');
+                backgroundAudioKeeper.setAttribute('webkit-playsinline', '');
+                backgroundAudioKeeper.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP//';
+            }
+            backgroundAudioKeeper.play().catch(() => {});
+
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: '31! Voice Chat Active',
+                    artist: '31! Table Lobby'
+                });
+                navigator.mediaSession.setActionHandler('play', () => backgroundAudioKeeper.play());
+                navigator.mediaSession.setActionHandler('pause', () => {});
+            }
+        }
+
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 if (audioCtx && audioCtx.state === 'suspended') {
@@ -783,6 +806,11 @@
                         elem.play().catch(() => {});
                     }
                 });
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    connectSocket();
+                } else if (currentJoinedCode) {
+                    initSocketAndSend({ type: 'RECONNECT_VOICE' });
+                }
             }
         });
 
@@ -1046,6 +1074,7 @@
             const unlockAudio = () => {
                 let ctx = getAudioContext();
                 if (ctx.state === 'suspended') ctx.resume();
+                enableBackgroundAudioKeepAlive();
             };
             window.addEventListener('touchstart', unlockAudio, { passive: true });
             window.addEventListener('click', unlockAudio, { passive: true });
@@ -1247,6 +1276,7 @@
         function calculatePairwiseNet(ledgerData, myName, allUsers) {
             let totalNet = 0;
             let records = {};
+            let cleanMe = (myName || '').trim();
             let ledgerKeys = new Set([...Object.keys(ledgerData || {}), ...(allUsers || [])]);
             
             for (let debtorKey in (ledgerData || {})) {
@@ -1259,13 +1289,14 @@
             }
 
             ledgerKeys.forEach(otherUser => {
-                if (otherUser === myName) return;
-                let theyOweMe = (ledgerData && ledgerData[otherUser] && ledgerData[otherUser][myName]) || 0;
-                let iOweThem = (ledgerData && ledgerData[myName] && ledgerData[myName][otherUser]) || 0;
+                let cleanOther = (otherUser || '').trim();
+                if (cleanOther.toLowerCase() === cleanMe.toLowerCase()) return;
+                let theyOweMe = (ledgerData && ledgerData[cleanOther] && ledgerData[cleanOther][cleanMe]) || 0;
+                let iOweThem = (ledgerData && ledgerData[cleanMe] && ledgerData[cleanMe][cleanOther]) || 0;
                 
                 let net = theyOweMe - iOweThem;
                 if (net !== 0) {
-                    records[otherUser] = net;
+                    records[cleanOther] = net;
                     totalNet += net;
                 }
             });
@@ -1337,7 +1368,7 @@
         }
 
         function saveLedgerScreenshot() {
-            const myName = document.getElementById('username-input').value.trim() || clientState.username;
+            const myName = (document.getElementById('username-input').value.trim() || clientState.username).trim();
             const now = new Date();
             const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
             const readableDate = now.toLocaleString();
@@ -1465,6 +1496,7 @@
             if (btn) btn.innerText = '🎙️ Voice: Off';
             if (led) led.classList.remove('active');
             
+            enableBackgroundAudioKeepAlive();
             sendVCStatusInternal(true, true);
             if (latestLobbySnapshot) handleWebRTCConnections(latestLobbySnapshot);
         }
@@ -1506,6 +1538,7 @@
                     }
                 });
 
+                enableBackgroundAudioKeepAlive();
                 if (btn) btn.innerText = '🎙️ Voice: On';
                 if (led) led.classList.add('active');
                 sendVCStatusInternal(true, false);
@@ -1542,6 +1575,8 @@
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
                 else if (data.type === 'PLAY_SOUND') {
                     playSound(data.sound);
+                } else if (data.type === 'SYNC_VOICE_ROSTER') {
+                    syncPeerConnectionsWithRoster(data.roster);
                 } else if (data.type === 'REESTABLISH_ALL_VOICE') {
                     Object.values(peerConnections).forEach(pc => pc.close());
                     peerConnections = {};
@@ -1676,6 +1711,32 @@
             box.scrollTop = box.scrollHeight;
         }
 
+        function syncPeerConnectionsWithRoster(roster) {
+            if (!isVoiceChatActive) return;
+            let myName = (document.getElementById('username-input').value.trim() || clientState.username).toLowerCase();
+
+            Object.keys(peerConnections).forEach(peerName => {
+                if (!roster.some(r => r.toLowerCase() === peerName.toLowerCase())) {
+                    peerConnections[peerName].close();
+                    delete peerConnections[peerName];
+                    delete iceCandidatesBuffer[peerName];
+                }
+            });
+
+            roster.forEach(peerUser => {
+                if (peerUser.toLowerCase() !== myName) {
+                    let existingPc = peerConnections[peerUser];
+                    if (!existingPc || existingPc.connectionState === 'failed' || existingPc.connectionState === 'closed') {
+                        if (existingPc) {
+                            existingPc.close();
+                            delete peerConnections[peerUser];
+                        }
+                        setupPeerConnection(peerUser);
+                    }
+                }
+            });
+        }
+
         function handleWebRTCConnections(lobby) {
             if (!isVoiceChatActive) return;
             let currentUsername = (document.getElementById('username-input').value.trim() || clientState.username).toLowerCase();
@@ -1692,15 +1753,7 @@
                 }
             });
 
-            vcParticipants.forEach(peerUser => {
-                if (!peerConnections[peerUser] || peerConnections[peerUser].connectionState === 'failed' || peerConnections[peerUser].connectionState === 'closed') {
-                    if (peerConnections[peerUser]) {
-                        peerConnections[peerUser].close();
-                        delete peerConnections[peerUser];
-                    }
-                    setupPeerConnection(peerUser);
-                }
-            });
+            syncPeerConnectionsWithRoster(vcParticipants);
         }
 
         function setupPeerConnection(peerUser) {
@@ -1752,6 +1805,8 @@
                 audioElem.srcObject = stream;
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
+                audioElem.setAttribute('playsinline', '');
+                audioElem.setAttribute('webkit-playsinline', '');
                 audioElem.volume = 1.0;
 
                 if (typeof audioElem.setSinkId === 'function') {
