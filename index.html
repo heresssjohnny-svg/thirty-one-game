@@ -305,6 +305,17 @@
             transform: scale(1.08);
         }
 
+        .dealer-badge {
+            background: #facc15;
+            color: #0f172a;
+            font-weight: 900;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 0.65rem;
+            margin-left: 2px;
+            display: inline-block;
+        }
+
         .seat-0 { bottom: -5px; left: calc(50% - 55px); }
         .seat-1 { bottom: 25px; left: 6px; }
         .seat-2 { top: 25px; left: 8px; }
@@ -577,6 +588,7 @@
         </div>
     </div>
 
+    <!-- YouTube Music Player Modal -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -725,6 +737,7 @@
         let isVoiceChatActive = false;
         let peerConnections = {};
         let activePeerAudioElements = [];
+        let iceCandidatesBuffer = {};
         let latestLobbySnapshot = null;
         let currentPlaylistQueue = [];
         let activeSyncedSongKey = '';
@@ -1014,6 +1027,7 @@
                 elem.srcObject = null;
             });
             activePeerAudioElements = [];
+            iceCandidatesBuffer = {};
 
             Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
@@ -1531,9 +1545,9 @@
                 else if (data.type === 'PLAY_SOUND') {
                     playSound(data.sound);
                 } else if (data.type === 'REESTABLISH_ALL_VOICE') {
-                    // Flush lingering connections and re-run deterministic offerer handshake
                     Object.values(peerConnections).forEach(pc => pc.close());
                     peerConnections = {};
+                    iceCandidatesBuffer = {};
                     if (latestLobbySnapshot && isVoiceChatActive) {
                         handleWebRTCConnections(latestLobbySnapshot);
                     }
@@ -1678,7 +1692,7 @@
                         peerConnections[peerUser].close();
                         delete peerConnections[peerUser];
                     }
-                    // Deterministic offerer: prevents offer glare/deadlocks
+                    // Lexicographical caller eliminates glare/collision
                     let shouldInitiate = currentUsername < peerUser;
                     setupPeerConnection(peerUser, shouldInitiate);
                 }
@@ -1689,7 +1703,7 @@
             if (peerConnections[peerUser]) return;
             let pc = new RTCPeerConnection(rtcConfig);
             peerConnections[peerUser] = pc;
-            pc.pendingCandidates = [];
+            iceCandidatesBuffer[peerUser] = [];
 
             if (localAudioStream && localAudioStream.getAudioTracks().length > 0) {
                 localAudioStream.getTracks().forEach(track => pc.addTrack(track, localAudioStream));
@@ -1704,8 +1718,12 @@
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
                 audioElem.volume = 1.0;
-                
-                // Route stream into Web Audio Graph to retain playback when tab is in background
+
+                // Force iOS/Android to route through loudspeaker rather than earpiece
+                if (typeof audioElem.setSinkId === 'function') {
+                    audioElem.setSinkId('speaker').catch(() => {});
+                }
+
                 try {
                     let ctx = getAudioContext();
                     let source = ctx.createMediaStreamSource(stream);
@@ -1749,8 +1767,20 @@
                         await pc.setLocalDescription(answer);
                         initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: sender, signal: { sdp: pc.localDescription } });
                     }
+                    if (iceCandidatesBuffer[sender] && iceCandidatesBuffer[sender].length > 0) {
+                        for (let cand of iceCandidatesBuffer[sender]) {
+                            await pc.addIceCandidate(cand).catch(() => {});
+                        }
+                        iceCandidatesBuffer[sender] = [];
+                    }
                 } else if (signal.candidate) {
-                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                    let iceCandidate = new RTCIceCandidate(signal.candidate);
+                    if (pc.remoteDescription && pc.remoteDescription.type) {
+                        await pc.addIceCandidate(iceCandidate).catch(() => {});
+                    } else {
+                        if (!iceCandidatesBuffer[sender]) iceCandidatesBuffer[sender] = [];
+                        iceCandidatesBuffer[sender].push(iceCandidate);
+                    }
                 }
             } catch (e) {}
         }
@@ -2097,12 +2127,14 @@
                 </div>
             `;
 
-            lobby.players.forEach(p => {
+            lobby.players.forEach((p, idx) => {
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+                let isDealer = (idx === lobby.dealerIndex);
+                let dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
 
                 let peekerBadgesHtml = '';
                 if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
@@ -2117,7 +2149,7 @@
                 html += `
                     <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
                         <div class="seat-name-area" onclick="tapSeat('${p.username}')">
-                            <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                            <span>${readyStatusIcon}</span> <b>${p.username}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
                         ${peekerBadgesHtml}
@@ -2172,6 +2204,16 @@
         }
         
         function knockRound() {
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            let me = latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+            let currentScore = me && me.cards ? calculateLocalScore(me.cards) : 0;
+
+            // Prompt verification when knocking with a 10 or Face card score (20-30 points)
+            if (currentScore <= 30) {
+                let confirmKnock = confirm(`Knock Confirmation: Are you sure you want to knock with ${currentScore} points?`);
+                if (!confirmKnock) return;
+            }
+
             playSound('knock');
             triggerVibration([180, 110, 180, 110, 180]);
             initSocketAndSend({ type: 'KNOCK' }); 
@@ -2183,7 +2225,17 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
+
+            activePeerAudioElements.forEach(elem => {
+                elem.pause();
+                elem.srcObject = null;
+            });
+            activePeerAudioElements = [];
+            iceCandidatesBuffer = {};
+
+            Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
+
             initSocketAndSend({ type: 'LEAVE_LOBBY' });
         }
 
@@ -2193,7 +2245,17 @@
                 localAudioStream = null;
             }
             isVoiceChatActive = false;
+
+            activePeerAudioElements.forEach(elem => {
+                elem.pause();
+                elem.srcObject = null;
+            });
+            activePeerAudioElements = [];
+            iceCandidatesBuffer = {};
+
+            Object.values(peerConnections).forEach(pc => pc.close());
             peerConnections = {};
+
             currentJoinedCode = null;
             latestLobbySnapshot = null;
             document.getElementById('game-view').style.display = 'none';
