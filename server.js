@@ -739,11 +739,21 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                     lobby.spectators.push({ idSocket: loser.id, username: loser.username });
                 }
             }
-            if (getActiveParticipants(lobby).length === 1) awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
-            else {
-                advanceDealerToNextActive(lobby);
-                triggerRoundOver(lobby, `${entries[0].username} drew lowest in tie-breaker and lost a life!`);
-            }
+
+            lobby.phaseMessage = `${entries[0].username} drew lowest in tie-breaker!`;
+            broadcastLobbyUpdate(lobby.code);
+
+            // Hold modal for 3 seconds so players can see the card they picked
+            setTimeout(() => {
+                if (!lobbies[lobby.code]) return;
+                let currentLobby = lobbies[lobby.code];
+                if (getActiveParticipants(currentLobby).length === 1) {
+                    awardTournamentWinner(currentLobby, getActiveParticipants(currentLobby)[0]);
+                } else {
+                    advanceDealerToNextActive(currentLobby);
+                    triggerRoundOver(currentLobby, `${entries[0].username} lost a life in tie-breaker!`);
+                }
+            }, 3000);
         }
     }
 }
@@ -762,7 +772,6 @@ function startRound(lobby) {
     lobby.deck = createDeck();
     lobby.discardPile = [];
     lobby.lastDiscardPickup = null;
-    lobby.lastDiscardDonor = null;
     lobby.fedCardReminders = {};
     lobby.fedCardsTracker = {};
     lobby.knockedBy = null;
@@ -777,7 +786,9 @@ function startRound(lobby) {
     let firstDiscard = lobby.deck.pop();
     lobby.discardPile.push(firstDiscard);
     lobby.initialDealCard = { val: firstDiscard.val, suit: firstDiscard.suit };
-    lobby.lastDiscardDonor = null;
+    
+    // Initial deal card counts as being fed by the dealer
+    lobby.lastDiscardDonor = lobby.players[lobby.dealerIndex]?.username || null;
 
     lobby.turnIndex = (lobby.dealerIndex + 1) % lobby.players.length;
     while (lobby.players[lobby.turnIndex].eliminated) lobby.turnIndex = (lobby.turnIndex + 1) % lobby.players.length;
@@ -802,6 +813,7 @@ function handleTurnAction(lobby, ws, actionType) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
+        // Fed card reminder logic (works for regular turns and initial discard fed by dealer)
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
