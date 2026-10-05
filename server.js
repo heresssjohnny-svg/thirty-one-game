@@ -464,7 +464,7 @@ wss.on('connection', (ws) => {
                         lobby.endGameVotes[currentUsername] = true;
                         let activeParts = getActiveParticipants(lobby);
                         if (activeParts.every(p => lobby.endGameVotes[p.username])) {
-                            resetLobbyToReadyRoom(lobby, "⚠️ Game ended! Returning to waiting room.");
+                            resetLobbyToReadyRoom(lobby, "⚠️️ Game ended! Returning to waiting room.");
                         } else {
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -539,9 +539,24 @@ wss.on('connection', (ws) => {
 
                 case 'WEBRTC_SIGNAL':
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let targetRec = [...lobbies[currentLobbyCode].players, ...lobbies[currentLobbyCode].spectators.map(s => ({ username: s.username, id: s.idSocket }))].find(r => r.username === data.target);
-                        if (targetRec?.id?.readyState === WebSocket.OPEN) {
-                            targetRec.id.send(JSON.stringify({ type: 'WEBRTC_SIGNAL', lobbyCode: currentLobbyCode, sender: currentUsername, signal: data.signal }));
+                        let lobby = lobbies[currentLobbyCode];
+                        let targetLower = (data.target || '').toLowerCase();
+
+                        let targetRec = lobby.players.find(p => p.username.toLowerCase() === targetLower);
+                        let targetSocket = targetRec ? targetRec.id : null;
+
+                        if (!targetSocket) {
+                            let specRec = lobby.spectators.find(s => s.username.toLowerCase() === targetLower);
+                            if (specRec) targetSocket = specRec.idSocket;
+                        }
+
+                        if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+                            targetSocket.send(JSON.stringify({
+                                type: 'WEBRTC_SIGNAL',
+                                lobbyCode: currentLobbyCode,
+                                sender: currentUsername,
+                                signal: data.signal
+                            }));
                         }
                     }
                     break;
@@ -743,7 +758,6 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             lobby.phaseMessage = `${entries[0].username} drew lowest in tie-breaker!`;
             broadcastLobbyUpdate(lobby.code);
 
-            // Hold modal for 3 seconds so players can see the card they picked
             setTimeout(() => {
                 if (!lobbies[lobby.code]) return;
                 let currentLobby = lobbies[lobby.code];
@@ -787,7 +801,6 @@ function startRound(lobby) {
     lobby.discardPile.push(firstDiscard);
     lobby.initialDealCard = { val: firstDiscard.val, suit: firstDiscard.suit };
     
-    // Initial deal card counts as being fed by the dealer
     lobby.lastDiscardDonor = lobby.players[lobby.dealerIndex]?.username || null;
 
     lobby.turnIndex = (lobby.dealerIndex + 1) % lobby.players.length;
@@ -813,7 +826,6 @@ function handleTurnAction(lobby, ws, actionType) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
-        // Fed card reminder logic (works for regular turns and initial discard fed by dealer)
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
