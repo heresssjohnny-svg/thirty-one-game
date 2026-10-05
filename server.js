@@ -14,6 +14,19 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
+// WebSocket Keep-Alive to prevent mobile OS TCP teardowns
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 10000);
+
+wss.on('close', () => clearInterval(heartbeatInterval));
+
 function createDeck() {
     const suits = ['♠', '♣', '♥', '♦'];
     const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -24,7 +37,7 @@ function createDeck() {
             let drawVal = parseInt(v) || (v === 'A' ? 14 : (v === 'K' ? 13 : (v === 'Q' ? 12 : 11)));
             if (v === 'A') points = 11;
             else if (['J', 'Q', 'K'].includes(v)) points = 10;
-            else points = parseInt(v);
+            else points = parseInt(v, 10);
             deck.push({ suit: s, val: v, points, drawVal });
         }
     }
@@ -59,7 +72,19 @@ function broadcastLobbyEvent(code, payload) {
     lobby.spectators.forEach(s => { if (s.idSocket?.readyState === WebSocket.OPEN) s.idSocket.send(msg); });
 }
 
+function broadcastVoiceRoster(code) {
+    let lobby = lobbies[code];
+    if (!lobby) return;
+    let roster = [];
+    lobby.players.forEach(p => { if (p.inVC) roster.push(p.username); });
+    lobby.spectators.forEach(s => { if (s.inVC) roster.push(s.username); });
+    broadcastLobbyEvent(code, { type: 'SYNC_VOICE_ROSTER', roster });
+}
+
 wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
     let currentLobbyCode = null;
     let currentUsername = null;
 
@@ -73,7 +98,7 @@ wss.on('connection', (ws) => {
             }
 
             switch (data.type) {
-                case 'CREATE_LOBBY':
+                case 'CREATE_LOBBY': {
                     currentUsername = (data.username || 'Player').trim();
                     if (currentLobbyCode && lobbies[currentLobbyCode]) leaveLobby(ws, currentLobbyCode);
 
@@ -123,9 +148,11 @@ wss.on('connection', (ws) => {
                     touchLobbyActivity(lobbies[currentLobbyCode]);
                     ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws) }));
                     broadcastLobbyList();
+                    broadcastVoiceRoster(currentLobbyCode);
                     break;
+                }
 
-                case 'JOIN_LOBBY':
+                case 'JOIN_LOBBY': {
                     let code = (data.code || '').toUpperCase();
                     if (lobbies[code]) {
                         if (currentLobbyCode && currentLobbyCode !== code) leaveLobby(ws, currentLobbyCode);
@@ -140,7 +167,7 @@ wss.on('connection', (ws) => {
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
-                            broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
+                            broadcastVoiceRoster(code);
                             broadcastLobbyList();
                             return;
                         }
@@ -151,7 +178,7 @@ wss.on('connection', (ws) => {
                             ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
-                            broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
+                            broadcastVoiceRoster(code);
                             broadcastLobbyList();
                             return;
                         }
@@ -166,20 +193,62 @@ wss.on('connection', (ws) => {
                         ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                         broadcastLobbyUpdate(code);
                         broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
-                        broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
+                        broadcastVoiceRoster(code);
                         broadcastLobbyList();
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
                     }
                     break;
+                }
 
-                case 'RECONNECT_VOICE':
+                case 'RECONNECT_VOICE': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         broadcastLobbyEvent(currentLobbyCode, { type: 'REESTABLISH_ALL_VOICE' });
+                        broadcastVoiceRoster(currentLobbyCode);
                     }
                     break;
+                }
 
-                case 'ADD_PLAYLIST_SONG':
+                case 'UPDATE_VC_STATUS': {
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
+                        if (p) {
+                            p.inVC = !!data.inVC;
+                            p.isMuted = !!data.isMuted;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastVoiceRoster(currentLobbyCode);
+                        }
+                    }
+                    break;
+                }
+
+                case 'WEBRTC_SIGNAL': {
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let targetLower = (data.target || '').toLowerCase();
+
+                        let targetRec = lobby.players.find(p => p.username.toLowerCase() === targetLower);
+                        let targetSocket = targetRec ? targetRec.id : null;
+
+                        if (!targetSocket) {
+                            let specRec = lobby.spectators.find(s => s.username.toLowerCase() === targetLower);
+                            if (specRec) targetSocket = specRec.idSocket;
+                        }
+
+                        if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+                            targetSocket.send(JSON.stringify({
+                                type: 'WEBRTC_SIGNAL',
+                                lobbyCode: currentLobbyCode,
+                                sender: currentUsername,
+                                signal: data.signal
+                            }));
+                        }
+                    }
+                    break;
+                }
+
+                case 'ADD_PLAYLIST_SONG': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
@@ -199,8 +268,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'REMOVE_PLAYLIST_SONG':
+                case 'REMOVE_PLAYLIST_SONG': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
@@ -224,8 +294,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'CONTROL_MUSIC':
+                case 'CONTROL_MUSIC': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
@@ -254,8 +325,9 @@ wss.on('connection', (ws) => {
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
+                }
 
-                case 'STAND_UP':
+                case 'STAND_UP': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let playerIdx = lobby.players.findIndex(p => p.id === ws);
@@ -263,12 +335,14 @@ wss.on('connection', (ws) => {
                             let leaving = lobby.players.splice(playerIdx, 1)[0];
                             lobby.spectators.push({ username: leaving.username, idSocket: ws, inVC: leaving.inVC, isMuted: leaving.isMuted });
                             broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastVoiceRoster(currentLobbyCode);
                             broadcastLobbyList();
                         }
                     }
                     break;
+                }
 
-                case 'SIT_DOWN':
+                case 'SIT_DOWN': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username.toLowerCase() === currentUsername.toLowerCase());
@@ -277,50 +351,44 @@ wss.on('connection', (ws) => {
                             let seat = findOpenSeat(lobby);
                             lobby.players.push({ id: ws, username: spec.username, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat, nextHandReady: false, eliminated: false, inVC: spec.inVC, isMuted: spec.isMuted, peekRequests: {}, peekAllowed: {} });
                             broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastVoiceRoster(currentLobbyCode);
                             broadcastLobbyList();
                         }
                     }
                     break;
+                }
 
-                case 'REFRESH_LOBBIES':
+                case 'REFRESH_LOBBIES': {
                     ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
                     break;
+                }
 
-                case 'UPDATE_WAGER':
+                case 'UPDATE_WAGER': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let player = lobbies[currentLobbyCode].players.find(p => p.id === ws);
                         if (player && lobbies[currentLobbyCode].gameState === 'lobby') {
-                            player.wager = parseInt(data.wager) || 5;
+                            player.wager = parseInt(data.wager, 10) || 5;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
                     break;
+                }
 
-                case 'UPDATE_SETTINGS':
+                case 'UPDATE_SETTINGS': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.host.toLowerCase() === currentUsername.toLowerCase() && lobby.gameState === 'lobby') {
                             if (data.lives) {
-                                let l = parseInt(data.lives);
+                                let l = parseInt(data.lives, 10);
                                 lobby.players.forEach(p => p.lives = Math.max(0, l));
                             }
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
                     break;
+                }
 
-                case 'UPDATE_VC_STATUS':
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let p = lobbies[currentLobbyCode].players.find(pl => pl.id === ws) || lobbies[currentLobbyCode].spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
-                        if (p) {
-                            p.inVC = !!data.inVC;
-                            p.isMuted = !!data.isMuted;
-                            broadcastLobbyUpdate(currentLobbyCode);
-                        }
-                    }
-                    break;
-
-                case 'CLEAR_DEBT':
+                case 'CLEAR_DEBT': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let targetUser = data.targetUser;
@@ -338,8 +406,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'PROPOSE_ELIMINATION_BET':
+                case 'PROPOSE_ELIMINATION_BET': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let activeParts = getActiveParticipants(lobby);
@@ -360,8 +429,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'PROPOSE_GLOBAL_SIDE_BET':
+                case 'PROPOSE_GLOBAL_SIDE_BET': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let activeParts = getActiveParticipants(lobby);
@@ -378,8 +448,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'ACCEPT_GLOBAL_PROPOSAL':
+                case 'ACCEPT_GLOBAL_PROPOSAL': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let prop = lobbies[currentLobbyCode].globalProposals.find(gp => gp.id === data.proposalId);
                         if (prop && !prop.acceptedBy.includes(currentUsername) && prop.proposer !== currentUsername) {
@@ -388,8 +459,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'CONFIRM_GLOBAL_BET':
+                case 'CONFIRM_GLOBAL_BET': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let prop = lobby.globalProposals.find(gp => gp.id === data.proposalId && gp.proposer === currentUsername);
@@ -410,8 +482,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'RESPOND_BET':
+                case 'RESPOND_BET': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let betIdx = lobby.pendingBets.findIndex(b => b.id === data.betId);
@@ -422,8 +495,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'SET_READY':
+                case 'SET_READY': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
@@ -444,8 +518,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'NEXT_HAND':
+                case 'NEXT_HAND': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         let player = lobby.players.find(p => p.id === ws);
@@ -456,22 +531,24 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'END_GAME_PROPOSAL':
+                case 'END_GAME_PROPOSAL': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (!lobby.endGameVotes) lobby.endGameVotes = {};
                         lobby.endGameVotes[currentUsername] = true;
                         let activeParts = getActiveParticipants(lobby);
                         if (activeParts.every(p => lobby.endGameVotes[p.username])) {
-                            resetLobbyToReadyRoom(lobby, "⚠️️ Game ended! Returning to waiting room.");
+                            resetLobbyToReadyRoom(lobby, "⚠️ Game ended! Returning to waiting room.");
                         } else {
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
                     }
                     break;
+                }
 
-                case 'REQUEST_PEEK':
+                case 'REQUEST_PEEK': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let target = lobbies[currentLobbyCode].players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
                         if (target) {
@@ -481,8 +558,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'RESPOND_PEEK':
+                case 'RESPOND_PEEK': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let player = lobbies[currentLobbyCode].players.find(p => p.id === ws);
                         if (player) {
@@ -495,8 +573,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'STOP_PEEK':
+                case 'STOP_PEEK': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
@@ -506,8 +585,9 @@ wss.on('connection', (ws) => {
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
                     break;
+                }
 
-                case 'KICK_PEEKER':
+                case 'KICK_PEEKER': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
@@ -518,8 +598,9 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'CHOOSE_POOL_CARD':
+                case 'CHOOSE_POOL_CARD': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
@@ -528,57 +609,39 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+                }
 
-                case 'CHAT_MESSAGE':
+                case 'CHAT_MESSAGE': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
                         lobbies[currentLobbyCode].players.forEach(p => p.id?.send(JSON.stringify(chatPayload)));
                         lobbies[currentLobbyCode].spectators.forEach(s => s.idSocket?.send(JSON.stringify(chatPayload)));
                     }
                     break;
-
-                case 'WEBRTC_SIGNAL':
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let lobby = lobbies[currentLobbyCode];
-                        let targetLower = (data.target || '').toLowerCase();
-
-                        let targetRec = lobby.players.find(p => p.username.toLowerCase() === targetLower);
-                        let targetSocket = targetRec ? targetRec.id : null;
-
-                        if (!targetSocket) {
-                            let specRec = lobby.spectators.find(s => s.username.toLowerCase() === targetLower);
-                            if (specRec) targetSocket = specRec.idSocket;
-                        }
-
-                        if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
-                            targetSocket.send(JSON.stringify({
-                                type: 'WEBRTC_SIGNAL',
-                                lobbyCode: currentLobbyCode,
-                                sender: currentUsername,
-                                signal: data.signal
-                            }));
-                        }
-                    }
-                    break;
+                }
 
                 case 'DRAW_DECK':
-                case 'DRAW_DISCARD':
+                case 'DRAW_DISCARD': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
                     break;
+                }
 
-                case 'DISCARD_CARD':
+                case 'DISCARD_CARD': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) handleDiscardAction(lobbies[currentLobbyCode], ws, data.cardIndex);
                     break;
+                }
 
-                case 'KNOCK':
+                case 'KNOCK': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) handleKnock(lobbies[currentLobbyCode], ws);
                     break;
+                }
 
-                case 'LEAVE_LOBBY':
+                case 'LEAVE_LOBBY': {
                     leaveLobby(ws, currentLobbyCode);
                     currentLobbyCode = null;
                     ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
                     break;
+                }
             }
         } catch (err) {
             console.error(err);
@@ -599,6 +662,7 @@ function leaveLobby(ws, code) {
     if (lobby.players.length === 0) delete lobbies[code];
     else {
         broadcastLobbyUpdate(code);
+        broadcastVoiceRoster(code);
         broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
     }
     broadcastLobbyList();
@@ -758,6 +822,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             lobby.phaseMessage = `${entries[0].username} drew lowest in tie-breaker!`;
             broadcastLobbyUpdate(lobby.code);
 
+            // Hold tie breaker view for 3 seconds so players can see the card they chose
             setTimeout(() => {
                 if (!lobbies[lobby.code]) return;
                 let currentLobby = lobbies[lobby.code];
@@ -801,6 +866,7 @@ function startRound(lobby) {
     lobby.discardPile.push(firstDiscard);
     lobby.initialDealCard = { val: firstDiscard.val, suit: firstDiscard.suit };
     
+    // Initial deal card counts as being fed by the dealer
     lobby.lastDiscardDonor = lobby.players[lobby.dealerIndex]?.username || null;
 
     lobby.turnIndex = (lobby.dealerIndex + 1) % lobby.players.length;
@@ -1089,6 +1155,7 @@ function resetLobbyToReadyRoom(lobby, msg) {
     });
     lobby.spectators = [];
     broadcastLobbyUpdate(lobby.code);
+    broadcastVoiceRoster(lobby.code);
     broadcastLobbyList();
 }
 
