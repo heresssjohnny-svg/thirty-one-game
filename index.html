@@ -588,7 +588,6 @@
         </div>
     </div>
 
-    <!-- YouTube Music Player Modal -->
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
@@ -774,7 +773,6 @@
             return audioCtx;
         }
 
-        // Keep audio graph alive across app minimization or screen locks
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 if (audioCtx && audioCtx.state === 'suspended') {
@@ -1680,11 +1678,19 @@
 
         function handleWebRTCConnections(lobby) {
             if (!isVoiceChatActive) return;
-            let currentUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            let currentUsername = (document.getElementById('username-input').value.trim() || clientState.username).toLowerCase();
             
             let vcParticipants = [];
-            lobby.players.forEach(p => { if (p.inVC && p.username !== currentUsername) vcParticipants.push(p.username); });
-            lobby.spectators.forEach(s => { if (s.inVC && s.username !== currentUsername) vcParticipants.push(s.username); });
+            (lobby.players || []).forEach(p => { 
+                if (p.inVC && p.username.toLowerCase() !== currentUsername) {
+                    vcParticipants.push(p.username);
+                }
+            });
+            (lobby.spectators || []).forEach(s => { 
+                if (s.inVC && s.username.toLowerCase() !== currentUsername) {
+                    vcParticipants.push(s.username);
+                }
+            });
 
             vcParticipants.forEach(peerUser => {
                 if (!peerConnections[peerUser] || peerConnections[peerUser].connectionState === 'failed' || peerConnections[peerUser].connectionState === 'closed') {
@@ -1692,15 +1698,14 @@
                         peerConnections[peerUser].close();
                         delete peerConnections[peerUser];
                     }
-                    // Lexicographical caller eliminates glare/collision
-                    let shouldInitiate = currentUsername < peerUser;
-                    setupPeerConnection(peerUser, shouldInitiate);
+                    setupPeerConnection(peerUser);
                 }
             });
         }
 
-        function setupPeerConnection(peerUser, shouldInitiateOffer) {
+        function setupPeerConnection(peerUser) {
             if (peerConnections[peerUser]) return;
+
             let pc = new RTCPeerConnection(rtcConfig);
             peerConnections[peerUser] = pc;
             iceCandidatesBuffer[peerUser] = [];
@@ -1711,6 +1716,36 @@
                 pc.addTransceiver('audio', { direction: 'sendrecv' });
             }
 
+            let myName = (document.getElementById('username-input').value.trim() || clientState.username).toLowerCase();
+            let isPolite = myName > peerUser.toLowerCase();
+            pc.isPolite = isPolite;
+
+            pc.onnegotiationneeded = async () => {
+                try {
+                    pc.makingOffer = true;
+                    await pc.setLocalDescription();
+                    initSocketAndSend({ 
+                        type: 'WEBRTC_SIGNAL', 
+                        target: peerUser, 
+                        signal: { sdp: pc.localDescription } 
+                    });
+                } catch (err) {
+                    console.error("Negotiation error:", err);
+                } finally {
+                    pc.makingOffer = false;
+                }
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    initSocketAndSend({ 
+                        type: 'WEBRTC_SIGNAL', 
+                        target: peerUser, 
+                        signal: { candidate: event.candidate } 
+                    });
+                }
+            };
+
             pc.ontrack = (event) => {
                 let stream = event.streams[0];
                 let audioElem = new Audio();
@@ -1719,7 +1754,6 @@
                 audioElem.playsInline = true;
                 audioElem.volume = 1.0;
 
-                // Force iOS/Android to route through loudspeaker rather than earpiece
                 if (typeof audioElem.setSinkId === 'function') {
                     audioElem.setSinkId('speaker').catch(() => {});
                 }
@@ -1734,39 +1768,39 @@
                 audioElem.play().catch(() => {});
             };
 
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { candidate: event.candidate } });
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'failed') {
+                    pc.restartIce();
                 }
             };
-
-            if (shouldInitiateOffer) {
-                setTimeout(() => {
-                    if (peerConnections[peerUser] === pc && pc.signalingState === 'stable') {
-                        pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
-                            initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: peerUser, signal: { sdp: pc.localDescription } });
-                        }).catch(() => {});
-                    }
-                }, 300);
-            }
         }
 
         async function handleWebRTCSignal(sender, signal) {
             if (!isVoiceChatActive) return;
             if (!peerConnections[sender]) {
-                setupPeerConnection(sender, false);
+                setupPeerConnection(sender);
             }
             let pc = peerConnections[sender];
             if (!pc) return;
 
             try {
                 if (signal.sdp) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-                    if (signal.sdp.type === 'offer') {
-                        let answer = await pc.createAnswer();
-                        await pc.setLocalDescription(answer);
-                        initSocketAndSend({ type: 'WEBRTC_SIGNAL', target: sender, signal: { sdp: pc.localDescription } });
+                    const offerCollision = signal.sdp.type === 'offer' && (pc.makingOffer || pc.signalingState !== 'stable');
+                    if (offerCollision && !pc.isPolite) {
+                        return;
                     }
+
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+
+                    if (signal.sdp.type === 'offer') {
+                        await pc.setLocalDescription();
+                        initSocketAndSend({ 
+                            type: 'WEBRTC_SIGNAL', 
+                            target: sender, 
+                            signal: { sdp: pc.localDescription } 
+                        });
+                    }
+
                     if (iceCandidatesBuffer[sender] && iceCandidatesBuffer[sender].length > 0) {
                         for (let cand of iceCandidatesBuffer[sender]) {
                             await pc.addIceCandidate(cand).catch(() => {});
@@ -1782,7 +1816,9 @@
                         iceCandidatesBuffer[sender].push(iceCandidate);
                     }
                 }
-            } catch (e) {}
+            } catch (err) {
+                console.error("Signaling error:", err);
+            }
         }
 
         function updateUIFromLobby(lobby) {
@@ -2208,7 +2244,6 @@
             let me = latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
             let currentScore = me && me.cards ? calculateLocalScore(me.cards) : 0;
 
-            // Prompt verification when knocking with a 10 or Face card score (20-30 points)
             if (currentScore <= 30) {
                 let confirmKnock = confirm(`Knock Confirmation: Are you sure you want to knock with ${currentScore} points?`);
                 if (!confirmKnock) return;
