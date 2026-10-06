@@ -2,15 +2,34 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>31! Card Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>31! Casino & Voice Lounge</title>
     <!-- Official LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+        :root {
+            --felt-green: #076343;
+            --felt-dark: #043826;
+            --rail-wood: #2c1a0e;
+            --rail-border: #4a2c16;
+            --gold-accent: #facc15;
+            --gold-hover: #eab308;
+            --panel-bg: rgba(15, 23, 42, 0.94);
+            --card-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: radial-gradient(circle at center, #065f46 0%, #044e36 60%, #022c22 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
             color: #f8fafc;
             min-height: 100vh;
             display: flex;
@@ -20,22 +39,50 @@
 
         /* Top Bar */
         header {
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(8px);
-            padding: 8px 16px;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 10px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 2px solid #facc15;
+            border-bottom: 2px solid var(--gold-accent);
             z-index: 100;
         }
-        .header-title { font-weight: 900; font-size: 1.3rem; color: #facc15; letter-spacing: 1px; }
-        .header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand-title {
+            font-weight: 900;
+            font-size: 1.35rem;
+            color: var(--gold-accent);
+            letter-spacing: 1.5px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+        }
+        .lobby-badge {
+            background: #1e293b;
+            border: 1px solid #475569;
+            color: #94a3b8;
+            font-size: 0.8rem;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* Standard Buttons */
         .btn {
             background: #1e293b;
             color: #f8fafc;
             border: 1px solid #475569;
-            padding: 6px 12px;
+            padding: 7px 12px;
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
@@ -43,315 +90,641 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            transition: all 0.15s ease;
+            transition: background 0.15s, transform 0.1s, border-color 0.15s;
         }
         .btn:hover { background: #334155; }
-        .btn-gold { background: #eab308; color: #000; border-color: #facc15; }
-        .btn-gold:hover { background: #facc15; }
-        .btn-danger { background: #dc2626; border-color: #ef4444; }
+        .btn:active { transform: scale(0.97); }
+        .btn-gold {
+            background: var(--gold-accent);
+            color: #020617;
+            border-color: #eab308;
+            font-weight: 700;
+        }
+        .btn-gold:hover { background: var(--gold-hover); }
+        .btn-danger {
+            background: #dc2626;
+            border-color: #ef4444;
+            color: #fff;
+        }
         .btn-danger:hover { background: #b91c1c; }
-        
-        /* Voice indicator LED */
+        .btn-secondary {
+            background: #334155;
+            border-color: #64748b;
+        }
+
+        /* LiveKit Voice LED Indicator */
         .vc-led {
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background-color: #ef4444; /* red when muted/off */
+            background-color: #ef4444;
             display: inline-block;
-            box-shadow: 0 0 4px #ef4444;
-            transition: all 0.2s ease;
+            box-shadow: 0 0 5px #ef4444;
+            transition: background-color 0.25s, box-shadow 0.25s;
         }
         .vc-led.active {
-            background-color: #22c55e; /* green when active */
-            box-shadow: 0 0 8px #22c55e;
+            background-color: #22c55e;
+            box-shadow: 0 0 10px #22c55e;
         }
 
         /* Main Menu View */
-        #main-menu {
+        #main-menu-view {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             flex: 1;
-            padding: 20px;
-            gap: 16px;
+            padding: 24px;
+            gap: 20px;
         }
         .menu-card {
-            background: rgba(15, 23, 42, 0.9);
-            padding: 24px;
-            border-radius: 12px;
+            background: var(--panel-bg);
+            padding: 28px;
+            border-radius: 14px;
             border: 1px solid #334155;
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            gap: 14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.6);
         }
-        .input-field {
-            background: #0f172a;
+        .menu-card h2 {
+            font-size: 1.3rem;
+            color: var(--gold-accent);
+            text-align: center;
+            margin-bottom: 6px;
+        }
+        .input-box {
+            background: #090d16;
             border: 1px solid #334155;
             color: #fff;
-            padding: 10px;
-            border-radius: 6px;
+            padding: 12px;
+            border-radius: 8px;
             font-size: 1rem;
             outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-box:focus {
+            border-color: var(--gold-accent);
         }
 
-        /* Table Area */
-        #game-view {
+        /* Game Arena */
+        #game-arena-view {
             display: none;
             flex: 1;
             flex-direction: column;
             position: relative;
-            padding: 10px;
+            padding: 12px;
             overflow: hidden;
         }
-        .table-oval {
+
+        /* Poker Table Felt Surface */
+        .poker-table {
             flex: 1;
-            border: 8px solid #3f2e18;
-            border-radius: 120px;
-            background: radial-gradient(ellipse at center, #047857 0%, #064e3b 100%);
-            box-shadow: inset 0 0 60px rgba(0,0,0,0.6), 0 10px 30px rgba(0,0,0,0.7);
+            border: 12px solid var(--rail-wood);
+            border-radius: 140px;
+            background: radial-gradient(ellipse at center, var(--felt-green) 0%, var(--felt-dark) 100%);
+            box-shadow: inset 0 0 80px rgba(0,0,0,0.8), 0 12px 36px rgba(0,0,0,0.85);
+            outline: 2px solid var(--rail-border);
             position: relative;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             align-items: center;
-            padding: 16px;
-            min-height: 480px;
+            padding: 20px;
+            min-height: 520px;
         }
 
-        /* Discard Pickup Modal (Top-Left) */
-        #discard-pickup-topleft-modal {
+        /* Top-Left Notification Modals */
+        .top-notification-box {
             position: absolute;
-            top: 16px;
-            left: 16px;
-            background: rgba(15, 23, 42, 0.85);
-            border: 1px solid #facc15;
+            top: 18px;
+            left: 18px;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid var(--gold-accent);
             border-radius: 8px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             font-size: 0.8rem;
-            color: #facc15;
+            color: var(--gold-accent);
             display: none;
             z-index: 50;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
 
-        /* Center Board */
-        .table-center {
+        /* Center Table Elements */
+        .table-center-area {
             display: flex;
             align-items: center;
-            gap: 24px;
+            gap: 28px;
             position: absolute;
-            top: 45%;
+            top: 48%;
             left: 50%;
             transform: translate(-50%, -50%);
             z-index: 10;
         }
-        .pile {
-            width: 70px;
-            height: 98px;
+        .pile-box {
+            width: 72px;
+            height: 102px;
             border-radius: 8px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-weight: bold;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            font-weight: 800;
+            box-shadow: var(--card-shadow);
             border: 2px solid #fff;
+            transition: transform 0.15s, box-shadow 0.15s;
         }
-        .deck-pile { background: repeating-linear-gradient(45deg, #1e3a8a, #1e3a8a 10px, #172554 10px, #172554 20deg); color: #fff; }
-        .discard-pile { background: #fff; color: #000; }
+        .pile-box:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+        }
+        .pile-deck {
+            background: repeating-linear-gradient(45deg, #1e3a8a, #1e3a8a 10px, #172554 10px, #172554 20px);
+            color: #f8fafc;
+        }
+        .pile-discard {
+            background: #ffffff;
+            color: #020617;
+        }
 
-        /* Card Styles */
-        .card {
-            width: 66px;
-            height: 94px;
-            background: #fff;
+        /* Card Geometry */
+        .playing-card {
+            width: 68px;
+            height: 98px;
+            background: #ffffff;
             border-radius: 6px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 4px;
-            font-weight: bold;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            padding: 5px 6px;
+            font-weight: 800;
+            box-shadow: var(--card-shadow);
             cursor: pointer;
-            transition: transform 0.15s ease;
+            border: 1px solid #cbd5e1;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            position: relative;
         }
-        .card:hover { transform: translateY(-4px); }
-        .card.red { color: #dc2626; }
-        .card.black { color: #0f172a; }
+        .playing-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        .playing-card.red-suit { color: #dc2626; }
+        .playing-card.black-suit { color: #0f172a; }
+        .card-corner {
+            font-size: 0.9rem;
+            line-height: 1;
+        }
+        .card-corner.bottom {
+            text-align: right;
+            transform: rotate(180deg);
+        }
+        .card-center-suit {
+            align-self: center;
+            font-size: 1.5rem;
+            line-height: 1;
+        }
 
-        /* Player Seats */
-        .seats-container {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
+        /* Player Seats (6 Table Positions) */
+        .seats-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            position: absolute;
-            top: 0; left: 0;
             pointer-events: none;
-            padding: 10px;
         }
-        .seat {
+        .player-seat {
+            position: absolute;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 4px;
+            gap: 5px;
             font-size: 0.8rem;
             pointer-events: auto;
+            transform: translate(-50%, -50%);
+        }
+        .seat-badge {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid #475569;
+            padding: 5px 10px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .seat-badge.turn-active {
+            border-color: var(--gold-accent);
+            box-shadow: 0 0 12px var(--gold-accent);
+        }
+        .dealer-coin {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--gold-accent);
+            color: #000;
+            font-weight: 900;
+            font-size: 0.65rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 6px var(--gold-accent);
         }
 
-        /* Player Hands & Bottom Dock */
-        .bottom-dock {
+        /* Seat Coordinates on Felt Oval */
+        .seat-0 { top: 88%; left: 50%; } /* Hero */
+        .seat-1 { top: 74%; left: 16%; }
+        .seat-2 { top: 32%; left: 16%; }
+        .seat-3 { top: 12%; left: 50%; }
+        .seat-4 { top: 32%; left: 84%; }
+        .seat-5 { top: 74%; left: 84%; }
+
+        /* Bottom Player Hand & Action Dock */
+        .bottom-action-dock {
             width: 100%;
-            background: rgba(15, 23, 42, 0.95);
-            border-radius: 12px;
-            padding: 8px 16px;
+            background: var(--panel-bg);
+            border-radius: 14px;
+            padding: 10px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border: 1px solid #334155;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.7);
             z-index: 20;
+            margin-top: 8px;
         }
-        .hand-container { display: flex; gap: 8px; align-items: center; }
+        .my-hand-box {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
 
-        /* Draw Pool Grid */
-        #draw-pool-container {
+        /* Draw Pool Modal (Dealer & Tie-Breaker) */
+        #pool-card-overlay {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(15, 23, 42, 0.95);
-            padding: 16px;
-            border-radius: 12px;
-            border: 2px solid #facc15;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 14px;
+            border: 2px solid var(--gold-accent);
             display: none;
             flex-direction: column;
             align-items: center;
-            z-index: 60;
-            max-width: 90vw;
+            z-index: 70;
+            max-width: 92vw;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.9);
         }
-        .pool-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
+        .pool-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            margin-top: 14px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 4px;
+        }
 
-        /* Floating Chat Window */
-        #chat-window {
+        /* Generic Sliding/Floating Modals */
+        .casino-modal {
             position: fixed;
-            bottom: 70px;
-            right: 16px;
-            width: 280px;
-            height: 340px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid #facc15;
-            border-radius: 8px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--panel-bg);
+            border: 2px solid var(--gold-accent);
+            border-radius: 12px;
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 85vh;
+            overflow-y: auto;
             display: none;
             flex-direction: column;
-            z-index: 150;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+            gap: 14px;
+            z-index: 200;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.85);
         }
-        #chat-messages { flex: 1; padding: 8px; overflow-y: auto; font-size: 0.85rem; }
-        .chat-input-row { display: flex; border-top: 1px solid #334155; }
-        #chat-input { flex: 1; background: transparent; border: none; color: #fff; padding: 8px; outline: none; font-size: 0.85rem; }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+        }
+        .modal-title {
+            color: var(--gold-accent);
+            font-size: 1.15rem;
+            font-weight: 700;
+        }
+        .close-icon {
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: #94a3b8;
+        }
+        .close-icon:hover { color: #fff; }
+
+        /* Floating Chat Window */
+        #chat-floating-drawer {
+            position: fixed;
+            bottom: 80px;
+            right: 18px;
+            width: 300px;
+            height: 380px;
+            background: var(--panel-bg);
+            border: 1px solid var(--gold-accent);
+            border-radius: 10px;
+            display: none;
+            flex-direction: column;
+            z-index: 180;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.75);
+        }
+        #chat-history-box {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .chat-input-row {
+            display: flex;
+            border-top: 1px solid #334155;
+        }
+        #chat-input-elem {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 10px;
+            outline: none;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body>
 
+    <!-- Header Navigation -->
     <header>
-        <div class="header-title">31! CASINO</div>
-        <div class="header-controls">
+        <div class="brand">
+            <div class="brand-title">31! CASINO</div>
+            <div id="lobby-code-display" class="lobby-badge" style="display:none;">CODE: ------</div>
+        </div>
+        <div class="header-actions">
             <!-- Consolidated Voice Toggle & LED Indicator -->
             <button id="vc-main-btn" class="btn" onclick="toggleVoiceOnOff()">
-                <span id="vc-led" class="vc-led"></span> 🎙️ Voice: Off
+                <span id="vc-led" class="vc-led"></span>
+                <span id="vc-text">🎙️ Voice: Off</span>
             </button>
-            <button id="chat-toggle-btn" class="btn" onclick="toggleChatWindow()">💬 Chat</button>
-            <button class="btn btn-gold" onclick="alert('Rules: Form a 3-card hand in one suit. Face cards=10, Aces=11. 3 identical cards = 30.5 pts. Lowest loses a life!')">📖 Rules</button>
-            <button id="leave-btn" class="btn btn-danger" style="display:none;" onclick="leaveCurrentLobby()">Exit</button>
+            <button id="chat-btn" class="btn" onclick="toggleModal('chat')">💬 Chat</button>
+            <button class="btn" onclick="toggleModal('ledger')">📊 Ledger</button>
+            <button class="btn" onclick="toggleModal('bets')">🤝 Side Bets</button>
+            <button class="btn" onclick="toggleModal('music')">🎵 Music</button>
+            <button class="btn" onclick="toggleModal('rules')">📖 Rules</button>
+            <button id="exit-btn" class="btn btn-danger" style="display:none;" onclick="leaveLobby()">Exit</button>
         </div>
     </header>
 
-    <!-- Main Menu View -->
-    <div id="main-menu">
+    <!-- Main Menu / Lobby Selector -->
+    <div id="main-menu-view">
         <div class="menu-card">
-            <h2>Player Setup</h2>
-            <input type="text" id="username-input" class="input-field" placeholder="Enter Username..." maxlength="12">
-            <button class="btn btn-gold" onclick="createLobby()">Create Match</button>
+            <h2>Player Profile & Table</h2>
+            <input type="text" id="username-input" class="input-box" placeholder="Your Username (max 12)" maxlength="12">
+            <button class="btn btn-gold" onclick="createGameLobby()">Create New Table</button>
             <hr style="border-color:#334155;">
-            <input type="text" id="join-code-input" class="input-field" placeholder="Enter 6-Letter Lobby Code..." maxlength="6" style="text-transform:uppercase;">
-            <button class="btn" onclick="joinLobbyByCode()">Join Lobby</button>
+            <input type="text" id="join-code-input" class="input-box" placeholder="6-Letter Room Code" maxlength="6" style="text-transform:uppercase;">
+            <button class="btn" onclick="joinGameLobby()">Join Table</button>
         </div>
     </div>
 
-    <!-- Active Table View -->
-    <div id="game-view">
-        <div class="table-oval">
-            <!-- Discard Pickup Info Banner -->
-            <div id="discard-pickup-topleft-modal"></div>
+    <!-- Active Table Arena -->
+    <div id="game-arena-view">
+        <div class="poker-table">
+            <!-- Discard Pickup Notice -->
+            <div id="discard-pickup-modal" class="top-notification-box"></div>
 
-            <!-- Seats Grid -->
-            <div class="seats-container" id="seats-container"></div>
+            <!-- 6 Seats Surrounding Felt -->
+            <div class="seats-grid" id="seats-grid"></div>
 
-            <!-- Central Draw & Discard Piles -->
-            <div class="table-center">
-                <div class="pile deck-pile" onclick="drawFromDeck()">DECK</div>
-                <div class="pile discard-pile" id="discard-pile-view" onclick="drawFromDiscard()">EMPTY</div>
+            <!-- Central Deck and Discard Piles -->
+            <div class="table-center-area">
+                <div class="pile-box pile-deck" onclick="handleDrawDeck()">
+                    <span style="font-size:0.75rem;">DECK</span>
+                    <span id="deck-remaining-count" style="font-size:0.9rem; margin-top:4px;">52</span>
+                </div>
+                <div class="pile-box pile-discard" id="discard-pile-elem" onclick="handleDrawDiscard()">
+                    <span style="font-size:0.75rem; color:#64748b;">EMPTY</span>
+                </div>
             </div>
 
-            <!-- Dealer / Tie Breaker Pool Grid -->
-            <div id="draw-pool-container">
-                <h3 id="pool-title" style="color:#facc15;">Select a Card</h3>
-                <div class="pool-grid" id="pool-grid"></div>
+            <!-- Dealer / Tie Breaker Pool Modal -->
+            <div id="pool-card-overlay">
+                <h3 id="pool-overlay-title" style="color:var(--gold-accent);">Pick a Card for Dealer</h3>
+                <div class="pool-cards-grid" id="pool-cards-grid"></div>
             </div>
 
-            <!-- Phase message banner -->
-            <div id="phase-banner" style="position:absolute; top:20px; font-weight:bold; color:#facc15; font-size:1.1rem; text-shadow:0 2px 4px #000;"></div>
+            <!-- Table Notification Banner -->
+            <div id="phase-banner" style="position:absolute; top:20px; font-weight:800; color:var(--gold-accent); font-size:1.1rem; text-shadow:0 2px 6px #000; text-align:center;"></div>
         </div>
 
-        <!-- Bottom Player Hand & Control Dock -->
-        <div class="bottom-dock">
-            <div class="hand-container" id="my-cards-container"></div>
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div style="font-weight:bold; font-size:1.1rem;">Score: <span id="my-score" style="color:#facc15;">0</span></div>
-                <button id="ready-btn" class="btn btn-gold" onclick="toggleReady()">Ready Up</button>
-                <button id="knock-btn" class="btn btn-danger" onclick="callKnock()" style="display:none;">KNOCK!</button>
-                <button id="next-hand-btn" class="btn btn-gold" onclick="readyNextHand()" style="display:none;">Next Hand</button>
+        <!-- Hero Player Hand Dock -->
+        <div class="bottom-action-dock">
+            <div class="my-hand-box" id="my-cards-container"></div>
+            <div style="display:flex; align-items:center; gap:14px;">
+                <div style="font-weight:bold; font-size:1.15rem;">Hand Score: <span id="my-score-display" style="color:var(--gold-accent);">0</span></div>
+                <button id="ready-toggle-btn" class="btn btn-gold" onclick="toggleReadyState()">Ready Up</button>
+                <button id="knock-action-btn" class="btn btn-danger" onclick="callKnockAction()" style="display:none;">KNOCK!</button>
+                <button id="next-hand-action-btn" class="btn btn-gold" onclick="confirmNextHandReady()" style="display:none;">Next Hand</button>
             </div>
         </div>
     </div>
 
-    <!-- Floating In-Game Chat Window -->
-    <div id="chat-window">
-        <div style="padding:6px 10px; background:#1e293b; font-weight:bold; font-size:0.8rem; display:flex; justify-content:space-between;">
-            <span>Table Chat</span>
-            <span style="cursor:pointer;" onclick="toggleChatWindow()">✕</span>
+    <!-- Floating Chat Drawer -->
+    <div id="chat-floating-drawer">
+        <div class="modal-header" style="background:#1e293b; padding:8px 12px;">
+            <span style="font-weight:700; font-size:0.85rem; color:var(--gold-accent);">Table Live Chat</span>
+            <span class="close-icon" onclick="toggleModal('chat')">✕</span>
         </div>
-        <div id="chat-messages"></div>
+        <div id="chat-history-box"></div>
         <div class="chat-input-row">
-            <input type="text" id="chat-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <input type="text" id="chat-input-elem" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
             <button class="btn btn-gold" style="border-radius:0;" onclick="sendChatMessage()">Send</button>
         </div>
     </div>
 
+    <!-- Debt Ledger & Canvas Snapshot Modal -->
+    <div id="ledger-modal" class="casino-modal">
+        <div class="modal-header">
+            <div class="modal-title">📊 Pairwise Debt Ledger</div>
+            <div class="close-icon" onclick="toggleModal('ledger')">✕</div>
+        </div>
+        <div id="ledger-content" style="font-size:0.9rem; display:flex; flex-direction:column; gap:8px;"></div>
+        <button class="btn btn-gold" onclick="generateAndDownloadLedgerReceipt()">📷 Export Ledger Snapshot</button>
+    </div>
+
+    <!-- Side Bets Modal -->
+    <div id="bets-modal" class="casino-modal">
+        <div class="modal-header">
+            <div class="modal-title">🤝 Side Bets Lounge</div>
+            <div class="close-icon" onclick="toggleModal('bets')">✕</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <h4 style="color:#94a3b8; font-size:0.85rem;">Propose "First to Lose" Bet</h4>
+            <div style="display:flex; gap:8px;">
+                <select id="bet-target-player" class="input-box" style="flex:1; padding:8px;"></select>
+                <input type="number" id="bet-amount" class="input-box" value="5" min="1" max="100" style="width:80px; padding:8px;">
+                <button class="btn btn-gold" onclick="proposeEliminationBet()">Offer</button>
+            </div>
+            <hr style="border-color:#334155;">
+            <div id="active-side-bets-list" style="font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <!-- Music Queue Jukebox Modal -->
+    <div id="music-modal" class="casino-modal">
+        <div class="modal-header">
+            <div class="modal-title">🎵 Table Jukebox</div>
+            <div class="close-icon" onclick="toggleModal('music')">✕</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <input type="text" id="song-title-input" class="input-box" placeholder="Song Title...">
+            <input type="text" id="song-url-input" class="input-box" placeholder="Audio / MP3 Stream URL...">
+            <button class="btn btn-gold" onclick="queueSong()">Add to Queue</button>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+                <button class="btn" onclick="controlMusic('PLAY')">▶ Play</button>
+                <button class="btn" onclick="controlMusic('PAUSE')">⏸ Pause</button>
+                <button class="btn" onclick="controlMusic('SKIP')">⏭ Skip</button>
+            </div>
+            <div id="music-playlist-list" style="margin-top:8px; font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <!-- Rules Modal -->
+    <div id="rules-modal" class="casino-modal">
+        <div class="modal-header">
+            <div class="modal-title">📖 Rules of 31!</div>
+            <div class="close-icon" onclick="toggleModal('rules')">✕</div>
+        </div>
+        <div style="font-size:0.85rem; line-height:1.5; color:#cbd5e1; display:flex; flex-direction:column; gap:8px;">
+            <p><strong>Goal:</strong> Obtain a hand score as close to 31 as possible in a single suit.</p>
+            <p><strong>Values:</strong> Aces = 11, Face Cards (K, Q, J) = 10, Number Cards = face value. Three cards of identical rank (e.g. 7-7-7) = 30.5 points.</p>
+            <p><strong>Knock:</strong> A player may knock on their turn if they possess at least 21 points (or 25 in 2-player matches). All other players receive 1 final turn.</p>
+            <p><strong>31 Instant Win:</strong> Hitting 31 points instantly ends the round and causes all opponents to lose 1 life.</p>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas For Ledger Export -->
+    <canvas id="ledger-export-canvas" width="600" height="700" style="display:none;"></canvas>
+
     <script>
-        // WebSocket and State
+        // --- Web Audio Synthesizer Sound Engine ---
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) audioCtx = new AudioContextClass();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playSynthSound(type) {
+            try {
+                const ctx = getAudioContext();
+                if (!ctx) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const now = ctx.currentTime;
+
+                if (type === 'deal') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(350, now);
+                    osc.frequency.exponentialRampToValueAtTime(150, now + 0.08);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'discard') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(450, now);
+                    osc.frequency.exponentialRampToValueAtTime(200, now + 0.06);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+                    osc.start(now);
+                    osc.stop(now + 0.06);
+                } else if (type === 'knock') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(160, now);
+                    osc.frequency.setValueAtTime(110, now + 0.1);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'win') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.setValueAtTime(659.25, now + 0.1);
+                    osc.frequency.setValueAtTime(783.99, now + 0.2);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } else if (type === 'chip') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1200, now);
+                    osc.frequency.exponentialRampToValueAtTime(400, now + 0.04);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
+                    osc.start(now);
+                    osc.stop(now + 0.04);
+                }
+            } catch (e) {
+                console.warn("Synth sound skipped:", e);
+            }
+        }
+
+        function triggerHaptic(ms = 30) {
+            if (navigator.vibrate) navigator.vibrate(ms);
+        }
+
+        // --- Background Audio Keepalive (Mobile OS Sleeping Shield)[span_2](start_span)[span_2](end_span) ---
+        let backgroundAudioKeeper = null;
+        function enableBackgroundAudioKeepAlive() {
+            if (!backgroundAudioKeeper) {
+                backgroundAudioKeeper = document.createElement('audio');
+                backgroundAudioKeeper.setAttribute('loop', '');
+                backgroundAudioKeeper.setAttribute('playsinline', '');
+                backgroundAudioKeeper.setAttribute('webkit-playsinline', '');
+                // 1-second silent WAV base64[span_3](start_span)[span_3](end_span)
+                backgroundAudioKeeper.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP//';
+            }
+            backgroundAudioKeeper.play().catch(() => {});
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: '31! Card Game Voice Room',
+                    artist: 'Hetzner SFU Room'
+                });
+                navigator.mediaSession.setActionHandler('play', () => backgroundAudioKeeper.play());
+                navigator.mediaSession.setActionHandler('pause', () => {});
+            }
+        }
+
+        async function startNativeForegroundService() {}
+        async function stopNativeForegroundService() {}
+
+        // --- WebSocket Networking & Game State ---
         let ws = null;
         let currentLobbyCode = null;
         let myUsername = 'Player';
         let latestLobbySnapshot = null;
 
-        // LiveKit SFU Client State
-        let livekitRoom = null;
-        let isLiveKitConnected = false;
-        let isVoiceChatActive = false; // Source of truth: false = Muted, true = Active
-        let isConnectingVoice = false;
-        let latestLiveKitHost = null;
-        let latestLiveKitToken = null;
-
-        function getLiveKitSDK() {
-            return window.LivekitClient || window.LiveKitClient || null;
-        }
-
-        // Connect to WebSocket Server
         function initWebSocket() {
             const host = window.location.host;
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -359,16 +732,20 @@
 
             ws.onmessage = (event) => {
                 let data;
-                try { data = JSON.parse(event.data); } catch(e) { return; }
+                try { data = JSON.parse(event.data); } catch (e) { return; }
 
-                switch(data.type) {
+                switch (data.type) {
                     case 'LOBBY_JOINED':
                     case 'GAME_STATE_UPDATE':
-                        if (data.lobby && data.lobby.code) currentLobbyCode = data.lobby.code;
+                        if (data.lobby && data.lobby.code) {
+                            currentLobbyCode = data.lobby.code;
+                            document.getElementById('lobby-code-display').style.display = 'block';
+                            document.getElementById('lobby-code-display').innerText = `CODE: ${currentLobbyCode}`;
+                        }
                         latestLobbySnapshot = data.lobby;
-                        renderLobby(data.lobby);
+                        renderLobbyState(data.lobby);
 
-                        // Capture and initiate LiveKit voice automatically in MUTED state[span_10](start_span)[span_10](end_span)
+                        // Capture host/token and connect to LiveKit automatically in muted state[span_4](start_span)[span_4](end_span)
                         const host = data.livekitHost || latestLiveKitHost;
                         const token = data.livekitToken || data.token || latestLiveKitToken;
                         if (host && token) {
@@ -396,7 +773,7 @@
 
                     case 'LEFT_LOBBY':
                         disconnectLiveKit();
-                        resetUI();
+                        resetToMainMenu();
                         break;
 
                     case 'ERROR':
@@ -405,9 +782,7 @@
                 }
             };
 
-            ws.onclose = () => {
-                setTimeout(initWebSocket, 2000);
-            };
+            ws.onclose = () => setTimeout(initWebSocket, 2000);
         }
 
         function sendWS(payload) {
@@ -416,14 +791,24 @@
             }
         }
 
-        // LiveKit Voice Connection Logic[span_11](start_span)[span_11](end_span)
+        // --- LiveKit Realtime Voice Integration ---
+        let livekitRoom = null;
+        let isLiveKitConnected = false;
+        let isVoiceChatActive = false; // false = Muted, true = Active
+        let isConnectingVoice = false;
+        let latestLiveKitHost = null;
+        let latestLiveKitToken = null;
+
+        function getLiveKitSDK() {
+            return window.LivekitClient || window.LiveKitClient || null;
+        }
+
         async function connectToLiveKit(host, token) {
             const LK = getLiveKitSDK();
             if (!LK) {
                 console.error("LiveKit client SDK not loaded from CDN.");
                 return;
             }
-
             if (isConnectingVoice) return;
             isConnectingVoice = true;
 
@@ -443,7 +828,7 @@
                     }
                 });
 
-                // Attach incoming remote audio streams
+                // Attach incoming remote audio streams to the DOM[span_5](start_span)[span_5](end_span)
                 livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track) => {
                     if (track.kind === LK.Track.Kind.Audio || track.kind === 'audio') {
                         const audioElem = track.attach();
@@ -455,7 +840,7 @@
                     }
                 });
 
-                // Detach audio on participant leaving
+                // Remove unmounted audio streams[span_6](start_span)[span_6](end_span)
                 livekitRoom.on(LK.RoomEvent.TrackUnsubscribed, (track) => {
                     track.detach().forEach(el => el.remove());
                 });
@@ -466,29 +851,30 @@
                     updateVoiceUI();
                 });
 
+                // Connect to SFU server on Hetzner VPS[span_7](start_span)[span_7](end_span)
                 await livekitRoom.connect(host, token);
                 isLiveKitConnected = true;
 
-                // Auto-join lobby in MUTED state[span_12](start_span)[span_12](end_span)
+                // Enter lobby in MUTED state initially[span_8](start_span)[span_8](end_span)
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isVoiceChatActive = false;
                 updateVoiceUI();
                 sendWS({ type: 'UPDATE_VC_STATUS', inVC: true, isMuted: true });
 
-                console.log("Connected to LiveKit SFU successfully in muted state!");
+                console.log("Connected to LiveKit SFU Room in initial muted state.");
             } catch (err) {
-                console.error("LiveKit connection error:", err);
+                console.error("LiveKit connection failure:", err);
             } finally {
                 isConnectingVoice = false;
             }
         }
 
-        // Consolidated Voice & Mute Toggle Handler
+        // Consolidated Voice & Mute Toggle Handler[span_9](start_span)[span_9](end_span)
         async function toggleVoiceOnOff() {
             if (!livekitRoom || !isLiveKitConnected) {
                 if (latestLiveKitHost && latestLiveKitToken) {
-                    const btn = document.getElementById('vc-main-btn');
-                    if (btn) btn.innerText = 'Connecting...';
+                    const txt = document.getElementById('vc-text');
+                    if (txt) txt.innerText = 'Connecting...';
                     await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
                 } else {
                     sendWS({ type: 'REQUEST_LIVEKIT_TOKEN' });
@@ -499,19 +885,25 @@
             if (!livekitRoom || !isLiveKitConnected) return;
 
             try {
+                const ctx = getAudioContext();
+                if (ctx && ctx.state === 'suspended') ctx.resume();
+
                 if (isVoiceChatActive) {
-                    // MUTE MICROPHONE
+                    // MUTE MICROPHONE[span_10](start_span)[span_10](end_span)
                     await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                     isVoiceChatActive = false;
                     updateVoiceUI();
                     sendWS({ type: 'UPDATE_VC_STATUS', inVC: true, isMuted: true });
+                    await stopNativeForegroundService();
                 } else {
-                    // UNMUTE MICROPHONE
+                    // UNMUTE MICROPHONE[span_11](start_span)[span_11](end_span)
                     await livekitRoom.startAudio();
                     await livekitRoom.localParticipant.setMicrophoneEnabled(true);
                     isVoiceChatActive = true;
                     updateVoiceUI();
                     sendWS({ type: 'UPDATE_VC_STATUS', inVC: true, isMuted: false });
+                    enableBackgroundAudioKeepAlive(); //[span_12](start_span)[span_12](end_span)
+                    await startNativeForegroundService();
                 }
             } catch (err) {
                 console.error("Microphone toggle error:", err);
@@ -520,14 +912,18 @@
             }
         }
 
-        // Alias for backwards compatibility
+        // Backwards compatibility alias
         const toggleLiveKitVoice = toggleVoiceOnOff;
 
         function updateVoiceUI() {
-            const btn = document.getElementById('vc-main-btn');
             const led = document.getElementById('vc-led');
-            if (btn) {
-                btn.innerHTML = `<span id="vc-led" class="vc-led ${isVoiceChatActive ? 'active' : ''}"></span> ${isVoiceChatActive ? '🎙️ Voice: On' : '🎙️ Voice: Off'}`;
+            const txt = document.getElementById('vc-text');
+            if (led) {
+                if (isVoiceChatActive) led.classList.add('active');
+                else led.classList.remove('active');
+            }
+            if (txt) {
+                txt.innerText = isVoiceChatActive ? '🎙️ Voice: On' : '🎙️ Voice: Off';
             }
         }
 
@@ -539,49 +935,59 @@
             isLiveKitConnected = false;
             isVoiceChatActive = false;
             updateVoiceUI();
+            await stopNativeForegroundService();
         }
 
-        // Chat Handlers
-        function toggleChatWindow() {
-            const win = document.getElementById('chat-window');
-            const isVisible = win.style.display === 'flex';
-            win.style.display = isVisible ? 'none' : 'flex';
-            if (!isVisible) {
-                const btn = document.getElementById('chat-toggle-btn');
-                btn.innerText = '💬 Chat';
+        // --- Modals, Chat & UI Windows ---
+        function toggleModal(name) {
+            const map = {
+                chat: 'chat-floating-drawer',
+                ledger: 'ledger-modal',
+                bets: 'bets-modal',
+                music: 'music-modal',
+                rules: 'rules-modal'
+            };
+            const id = map[name];
+            if (!id) return;
+            const elem = document.getElementById(id);
+            if (!elem) return;
+            const isFlex = elem.style.display === 'flex';
+            elem.style.display = isFlex ? 'none' : 'flex';
+            if (name === 'chat' && !isFlex) {
+                document.getElementById('chat-btn').innerText = '💬 Chat';
+            }
+        }
+
+        function appendChatMessage(user, msg) {
+            const box = document.getElementById('chat-history-box');
+            if (!box) return;
+            const row = document.createElement('div');
+            row.innerHTML = `<strong style="color:var(--gold-accent);">${escapeHtml(user)}:</strong> ${escapeHtml(msg)}`;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+
+            const drawer = document.getElementById('chat-floating-drawer');
+            if (drawer.style.display !== 'flex') {
+                document.getElementById('chat-btn').innerText = '💬 Chat (*)';
             }
         }
 
         function sendChatMessage() {
-            const input = document.getElementById('chat-input');
+            const input = document.getElementById('chat-input-elem');
             const text = input.value.trim();
             if (!text) return;
             sendWS({ type: 'CHAT_MESSAGE', message: text });
             input.value = '';
         }
 
-        function appendChatMessage(user, msg) {
-            const container = document.getElementById('chat-messages');
-            const line = document.createElement('div');
-            line.style.marginBottom = '4px';
-            line.innerHTML = `<strong>${escapeHtml(user)}:</strong> ${escapeHtml(msg)}`;
-            container.appendChild(line);
-            container.scrollTop = container.scrollHeight;
-
-            const win = document.getElementById('chat-window');
-            if (win.style.display !== 'flex') {
-                document.getElementById('chat-toggle-btn').innerText = '💬 Chat (*)';
-            }
-        }
-
-        // Lobby Actions
-        function createLobby() {
+        // --- Game Actions ---
+        function createGameLobby() {
             const nameInput = document.getElementById('username-input');
             myUsername = nameInput.value.trim() || 'Host';
             sendWS({ type: 'CREATE_LOBBY', username: myUsername });
         }
 
-        function joinLobbyByCode() {
+        function joinGameLobby() {
             const nameInput = document.getElementById('username-input');
             const codeInput = document.getElementById('join-code-input');
             myUsername = nameInput.value.trim() || 'Player';
@@ -589,152 +995,317 @@
             if (code) sendWS({ type: 'JOIN_LOBBY', code, username: myUsername });
         }
 
-        function leaveCurrentLobby() {
+        function leaveLobby() {
             sendWS({ type: 'LEAVE_LOBBY' });
         }
 
-        function toggleReady() {
+        function toggleReadyState() {
             const me = latestLobbySnapshot?.players?.find(p => p.username === myUsername);
             sendWS({ type: 'SET_READY', ready: !me?.ready });
+            playSynthSound('chip');
         }
 
-        function readyNextHand() {
-            sendWS({ type: 'NEXT_HAND' });
-        }
-
-        function callKnock() {
-            sendWS({ type: 'KNOCK' });
-        }
-
-        function drawFromDeck() {
+        function handleDrawDeck() {
             sendWS({ type: 'DRAW_DECK' });
+            playSynthSound('deal');
+            triggerHaptic(25);
         }
 
-        function drawFromDiscard() {
+        function handleDrawDiscard() {
             sendWS({ type: 'DRAW_DISCARD' });
+            playSynthSound('deal');
+            triggerHaptic(25);
         }
 
-        function discardCard(idx) {
-            sendWS({ type: 'DISCARD_CARD', cardIndex: idx });
+        function handleDiscard(cardIndex) {
+            sendWS({ type: 'DISCARD_CARD', cardIndex });
+            playSynthSound('discard');
+            triggerHaptic(30);
+        }
+
+        function callKnockAction() {
+            sendWS({ type: 'KNOCK' });
+            playSynthSound('knock');
+            triggerHaptic(60);
+        }
+
+        function confirmNextHandReady() {
+            sendWS({ type: 'NEXT_HAND' });
+            playSynthSound('chip');
         }
 
         function pickPoolCard(idx) {
             sendWS({ type: 'CHOOSE_POOL_CARD', cardIndex: idx });
+            playSynthSound('deal');
         }
 
-        // UI Rendering Logic
-        function renderLobby(lobby) {
-            document.getElementById('main-menu').style.display = 'none';
-            document.getElementById('game-view').style.display = 'flex';
-            document.getElementById('leave-btn').style.display = 'inline-flex';
+        // --- Side Bets & Jukebox ---
+        function proposeEliminationBet() {
+            const target = document.getElementById('bet-target-player').value;
+            const amt = parseFloat(document.getElementById('bet-amount').value) || 5;
+            if (target && target !== myUsername) {
+                sendWS({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt: amt });
+                toggleModal('bets');
+            }
+        }
 
-            // Phase Message
-            document.getElementById('phase-banner').innerText = lobby.phaseMessage || '';
+        function queueSong() {
+            const title = document.getElementById('song-title-input').value.trim();
+            const url = document.getElementById('song-url-input').value.trim();
+            if (title && url) {
+                sendWS({ type: 'ADD_PLAYLIST_SONG', title, url });
+                document.getElementById('song-title-input').value = '';
+                document.getElementById('song-url-input').value = '';
+            }
+        }
 
-            // Discard Pickup Banner
-            const pickupModal = document.getElementById('discard-pickup-topleft-modal');
-            if (lobby.lastDiscardPickup) {
-                pickupModal.style.display = 'block';
-                pickupModal.innerText = `Discard: ${lobby.lastDiscardPickup.username} drew ${lobby.lastDiscardPickup.card.val}${lobby.lastDiscardPickup.card.suit}`;
-            } else {
-                pickupModal.style.display = 'none';
+        function controlMusic(action) {
+            sendWS({ type: 'CONTROL_MUSIC', action });
+        }
+
+        // --- Canvas Snapshot Receipt Exporter ---
+        function generateAndDownloadLedgerReceipt() {
+            if (!latestLobbySnapshot) return;
+            const canvas = document.getElementById('ledger-export-canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Draw Background Felt & Texture
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(16, 16, canvas.width - 32, canvas.height - 32);
+
+            // Title
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 26px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('31! CASINO LEDGER RECEIPT', canvas.width / 2, 60);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '14px monospace';
+            ctx.fillText(`Room: ${latestLobbySnapshot.code} | Date: ${new Date().toLocaleDateString()}`, canvas.width / 2, 90);
+
+            // Draw Horizontal Divider
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(32, 110);
+            ctx.lineTo(canvas.width - 32, 110);
+            ctx.stroke();
+
+            // Draw Ledgers
+            ctx.textAlign = 'left';
+            ctx.font = '16px sans-serif';
+            ctx.fillStyle = '#f8fafc';
+            let y = 145;
+
+            const mainLedger = latestLobbySnapshot.mainGameLedger || {};
+            ctx.fillStyle = '#facc15';
+            ctx.fillText('Main Tournament Debts:', 40, y);
+            y += 26;
+            ctx.fillStyle = '#ffffff';
+
+            let hasMain = false;
+            for (let debtor in mainLedger) {
+                for (let creditor in mainLedger[debtor]) {
+                    const amt = mainLedger[debtor][creditor];
+                    if (amt > 0) {
+                        hasMain = true;
+                        ctx.fillText(`• ${debtor} owes ${creditor}: $${amt}`, 50, y);
+                        y += 24;
+                    }
+                }
+            }
+            if (!hasMain) {
+                ctx.fillStyle = '#64748b';
+                ctx.fillText('(No outstanding tournament debts)', 50, y);
+                y += 24;
             }
 
-            // Central Discard Pile
-            const discardView = document.getElementById('discard-pile-view');
-            if (lobby.discardTop) {
-                discardView.innerText = `${lobby.discardTop.val}${lobby.discardTop.suit}`;
-                discardView.style.color = ['♥', '♦'].includes(lobby.discardTop.suit) ? '#dc2626' : '#0f172a';
+            y += 20;
+            const sideLedger = latestLobbySnapshot.sideBetLedger || {};
+            ctx.fillStyle = '#facc15';
+            ctx.fillText('Side Bet Debts:', 40, y);
+            y += 26;
+            ctx.fillStyle = '#ffffff';
+
+            let hasSide = false;
+            for (let debtor in sideLedger) {
+                for (let creditor in sideLedger[debtor]) {
+                    const amt = sideLedger[debtor][creditor];
+                    if (amt > 0) {
+                        hasSide = true;
+                        ctx.fillText(`• ${debtor} owes ${creditor}: $${amt}`, 50, y);
+                        y += 24;
+                    }
+                }
+            }
+            if (!hasSide) {
+                ctx.fillStyle = '#64748b';
+                ctx.fillText('(No outstanding side bet debts)', 50, y);
+                y += 24;
+            }
+
+            // Trigger Download
+            const link = document.createElement('a');
+            link.download = `31_Ledger_${latestLobbySnapshot.code}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // --- Render State to DOM ---
+        function renderLobbyState(lobby) {
+            document.getElementById('main-menu-view').style.display = 'none';
+            document.getElementById('game-arena-view').style.display = 'flex';
+            document.getElementById('exit-btn').style.display = 'inline-flex';
+
+            // Phase and Notification Banners
+            document.getElementById('phase-banner').innerText = lobby.phaseMessage || '';
+            const pickupBox = document.getElementById('discard-pickup-modal');
+            if (lobby.lastDiscardPickup) {
+                pickupBox.style.display = 'block';
+                pickupBox.innerText = `Discard: ${lobby.lastDiscardPickup.username} drew ${lobby.lastDiscardPickup.card.val}${lobby.lastDiscardPickup.card.suit}`;
             } else {
-                discardView.innerText = 'EMPTY';
-                discardView.style.color = '#000';
+                pickupBox.style.display = 'none';
+            }
+
+            // Discard and Deck Views
+            document.getElementById('deck-remaining-count').innerText = lobby.deckCount !== undefined ? lobby.deckCount : 52;
+            const discardElem = document.getElementById('discard-pile-elem');
+            if (lobby.discardTop) {
+                const isRed = ['♥', '♦'].includes(lobby.discardTop.suit);
+                discardElem.innerHTML = `
+                    <span style="font-size:1.1rem; color:${isRed ? '#dc2626' : '#0f172a'};">${lobby.discardTop.val}${lobby.discardTop.suit}</span>
+                `;
+            } else {
+                discardElem.innerHTML = `<span style="font-size:0.75rem; color:#64748b;">EMPTY</span>`;
             }
 
             // Seats Rendering
-            const seatsBox = document.getElementById('seats-container');
-            seatsBox.innerHTML = '';
-            lobby.players.forEach(p => {
+            const seatsGrid = document.getElementById('seats-grid');
+            seatsGrid.innerHTML = '';
+            lobby.players.forEach((p, idx) => {
                 const seatDiv = document.createElement('div');
-                seatDiv.className = 'seat';
+                seatDiv.className = `player-seat seat-${p.seat !== undefined ? p.seat : idx}`;
+                const isTurn = lobby.currentTurnUser === p.username;
+                const isDealer = lobby.dealerIndex === idx;
+
                 seatDiv.innerHTML = `
-                    <div style="background:#0f172a; border:1px solid #334155; padding:4px 8px; border-radius:6px; color:#fff;">
-                        ${escapeHtml(p.username)} (${p.lives} ❤️) ${p.ready ? '✅' : ''}
+                    <div class="seat-badge ${isTurn ? 'turn-active' : ''}">
+                        ${isDealer ? '<div class="dealer-coin">D</div>' : ''}
+                        <span>${escapeHtml(p.username)}</span>
+                        <span>(${p.lives} ❤️)</span>
+                        ${p.ready ? '<span>✅</span>' : ''}
                     </div>
                 `;
-                seatsBox.appendChild(seatDiv);
+                seatsGrid.appendChild(seatDiv);
             });
 
-            // My Cards & Score
-            const myPlayer = lobby.players.find(p => p.username === myUsername);
-            const handContainer = document.getElementById('my-cards-container');
-            handContainer.innerHTML = '';
+            // Hero Player Hand
+            const hero = lobby.players.find(p => p.username === myUsername);
+            const handBox = document.getElementById('my-cards-container');
+            handBox.innerHTML = '';
 
-            if (myPlayer && myPlayer.cards) {
-                myPlayer.cards.forEach((card, idx) => {
+            if (hero && hero.cards) {
+                hero.cards.forEach((card, idx) => {
                     const cardDiv = document.createElement('div');
                     const isRed = ['♥', '♦'].includes(card.suit);
-                    cardDiv.className = `card ${isRed ? 'red' : 'black'}`;
+                    cardDiv.className = `playing-card ${isRed ? 'red-suit' : 'black-suit'}`;
                     cardDiv.innerHTML = `
-                        <div style="text-align:left;">${card.val}<br>${card.suit}</div>
-                        <div style="text-align:right;">${card.val}</div>
+                        <div class="card-corner top">${card.val}<br>${card.suit}</div>
+                        <div class="card-center-suit">${card.suit}</div>
+                        <div class="card-corner bottom">${card.val}<br>${card.suit}</div>
                     `;
-                    // Click to discard if 4 cards in hand
-                    if (myPlayer.cards.length === 4) {
-                        cardDiv.onclick = () => discardCard(idx);
+                    // Click to discard if hero has drawn 4th card
+                    if (hero.cards.length === 4) {
+                        cardDiv.onclick = () => handleDiscard(idx);
                     }
-                    handContainer.appendChild(cardDiv);
+                    handBox.appendChild(cardDiv);
                 });
-                document.getElementById('my-score').innerText = calculateLocalScore(myPlayer.cards);
+                document.getElementById('my-score-display').innerText = calculateLocalHandScore(hero.cards);
             }
 
             // Action Buttons
-            const readyBtn = document.getElementById('ready-btn');
-            const knockBtn = document.getElementById('knock-btn');
-            const nextHandBtn = document.getElementById('next-hand-btn');
+            const readyBtn = document.getElementById('ready-toggle-btn');
+            const knockBtn = document.getElementById('knock-action-btn');
+            const nextBtn = document.getElementById('next-hand-action-btn');
 
             readyBtn.style.display = lobby.gameState === 'lobby' ? 'inline-flex' : 'none';
-            readyBtn.innerText = myPlayer?.ready ? 'Ready ✅' : 'Ready Up';
+            readyBtn.innerText = hero?.ready ? 'Ready ✅' : 'Ready Up';
 
             const isMyTurn = lobby.currentTurnUser === myUsername;
             knockBtn.style.display = (lobby.gameState === 'playing' && isMyTurn && lobby.canKnock) ? 'inline-flex' : 'none';
-            nextHandBtn.style.display = lobby.gameState === 'roundOver' ? 'inline-flex' : 'none';
+            nextBtn.style.display = lobby.gameState === 'roundOver' ? 'inline-flex' : 'none';
 
-            // Draw Pool (Dealer Draw / Tie Breaker)
-            const poolContainer = document.getElementById('draw-pool-container');
-            const poolGrid = document.getElementById('pool-grid');
+            // Pool Modal (Dealer / Tie Breaker)
+            const poolModal = document.getElementById('pool-card-overlay');
+            const poolGrid = document.getElementById('pool-cards-grid');
             if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-                poolContainer.style.display = 'flex';
+                poolModal.style.display = 'flex';
                 poolGrid.innerHTML = '';
                 lobby.drawPool.forEach(item => {
-                    const cardBtn = document.createElement('div');
-                    cardBtn.className = 'pile deck-pile';
-                    cardBtn.style.width = '48px';
-                    cardBtn.style.height = '68px';
-                    cardBtn.style.fontSize = '0.75rem';
-                    cardBtn.innerText = item.chosenBy ? item.chosenBy.substring(0, 4) : '?';
+                    const cardEl = document.createElement('div');
+                    cardEl.className = 'pile-box pile-deck';
+                    cardEl.style.width = '46px';
+                    cardEl.style.height = '64px';
+                    cardEl.style.fontSize = '0.75rem';
+                    cardEl.innerText = item.chosenBy ? item.chosenBy.substring(0, 4) : '?';
                     if (!item.chosenBy) {
-                        cardBtn.onclick = () => pickPoolCard(item.index);
+                        cardEl.onclick = () => pickPoolCard(item.index);
                     }
-                    poolGrid.appendChild(cardBtn);
+                    poolGrid.appendChild(cardEl);
                 });
             } else {
-                poolContainer.style.display = 'none';
+                poolModal.style.display = 'none';
+            }
+
+            // Update Target Selector in Side Bets Modal
+            const targetSelect = document.getElementById('bet-target-player');
+            if (targetSelect) {
+                targetSelect.innerHTML = '';
+                lobby.players.forEach(p => {
+                    if (p.username !== myUsername) {
+                        const opt = document.createElement('option');
+                        opt.value = p.username;
+                        opt.innerText = p.username;
+                        targetSelect.appendChild(opt);
+                    }
+                });
+            }
+
+            // Render Debt Ledger Modal Items
+            const ledgerBox = document.getElementById('ledger-content');
+            if (ledgerBox) {
+                ledgerBox.innerHTML = '';
+                const main = lobby.mainGameLedger || {};
+                for (let debtor in main) {
+                    for (let creditor in main[debtor]) {
+                        const amt = main[debtor][creditor];
+                        if (amt > 0) {
+                            const row = document.createElement('div');
+                            row.innerHTML = `<strong>${debtor}</strong> owes <strong>${creditor}</strong>: $${amt}`;
+                            ledgerBox.appendChild(row);
+                        }
+                    }
+                }
             }
         }
 
-        function calculateLocalScore(cards) {
-            let sc = cards.length === 4 ? cards.slice(0, 3) : cards;
-            if (!sc || sc.length === 0) return 0;
-            let sums = {};
-            sc.forEach(c => sums[c.suit] = (sums[c.suit] || 0) + c.points);
-            if (sc.length === 3 && sc[0].val === sc[1].val && sc[0].val === sc[2].val) return 30.5;
+        function calculateLocalHandScore(cards) {
+            const set = cards.length === 4 ? cards.slice(0, 3) : cards;
+            if (!set || set.length === 0) return 0;
+            const sums = {};
+            set.forEach(c => sums[c.suit] = (sums[c.suit] || 0) + c.points);
+            if (set.length === 3 && set[0].val === set[1].val && set[1].val === set[2].val) return 30.5;
             return Math.max(...Object.values(sums), 0);
         }
 
-        function resetUI() {
-            document.getElementById('main-menu').style.display = 'flex';
-            document.getElementById('game-view').style.display = 'none';
-            document.getElementById('leave-btn').style.display = 'none';
+        function resetToMainMenu() {
+            document.getElementById('main-menu-view').style.display = 'flex';
+            document.getElementById('game-arena-view').style.display = 'none';
+            document.getElementById('exit-btn').style.display = 'none';
+            document.getElementById('lobby-code-display').style.display = 'none';
         }
 
         function escapeHtml(str) {
