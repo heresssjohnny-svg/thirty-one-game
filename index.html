@@ -14,8 +14,8 @@
     <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%23065f46'/><circle cx='256' cy='256' r='180' fill='%23044e36' stroke='%23facc15' stroke-width='16'/><text x='256' y='295' font-family='sans-serif' font-weight='900' font-size='120' fill='%23facc15' text-anchor='middle'>31!</text></svg>">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%23065f46'/><circle cx='256' cy='256' r='180' fill='%23044e36' stroke='%23facc15' stroke-width='16'/><text x='256' y='295' font-family='sans-serif' font-weight='900' font-size='120' fill='%23facc15' text-anchor='middle'>31!</text></svg>">
 
-    <!-- Official LiveKit Client SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <!-- Stable Official LiveKit Client SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.6.0/dist/livekit-client.umd.min.js"></script>
 
     <style>
         :root {
@@ -1078,6 +1078,11 @@
 
                 livekitRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
                     track.detach().forEach(el => el.remove());
+                });
+
+                livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
+                    isVoiceChatActive = false;
+                    updateVoiceUI();
                 });
 
                 await livekitRoom.connect(host, token);
