@@ -573,8 +573,9 @@
         let currentJoinedCode = null;
         let latestLobbySnapshot = null;
         let activeScreenshotBlobUrl = null;
+        let lastSocketHeartbeat = Date.now();
 
-        // LiveKit Audio Integration
+        // LiveKit Audio Integration[span_9](start_span)[span_9](end_span)
         let livekitRoom = null;
         let isLiveKitConnected = false;
         let isVoiceChatActive = false;
@@ -638,7 +639,7 @@
             updateVoiceUI();
         }
 
-        // Audio & Vibrations
+        // Web Audio Synthesizer Engine
         let audioCtx = null;
         function getAudioContext() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -681,7 +682,7 @@
             }
         }
 
-        // Ledger Math & Formatting
+        // Pairwise Ledger Math & Settlement
         function calculatePairwiseNet(ledgerData, myName, allUsers) {
             let totalNet = 0;
             let records = {};
@@ -762,7 +763,7 @@
             setTimeout(openLedgerModal, 200);
         }
 
-        // Snapshot Pipeline
+        // Native Android Snapshot Pipeline[span_10](start_span)[span_10](end_span)
         function dataURLToBlobSync(dataURL) {
             const parts = dataURL.split(',');
             const mime = parts[0].match(/:(.*?);/)[1];
@@ -882,6 +883,7 @@
             if (botEntries.length === 0) {
                 ctx.fillStyle = '#94a3b8';
                 ctx.fillText("No bot bet balances recorded.", 45, y);
+                y += 25;
             } else {
                 for (let [user, netAmt] of botEntries) {
                     ctx.fillStyle = '#f8fafc';
@@ -932,7 +934,7 @@
                         if (err.name === 'AbortError') { statusText.innerText = ""; return; }
                     }
                 }
-                statusText.innerText = "Touch and hold the image above to save directly.";
+                statusText.innerText = "Touch and hold image to save directly.";
             };
 
             modal.style.display = 'flex';
@@ -966,7 +968,7 @@
             return Math.max(...Object.values(sums), 0);
         }
 
-        // WebSockets
+        // WebSockets & Fast Re-association Watchdog[span_11](start_span)[span_11](end_span)
         function connectSocket() {
             if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
             const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -974,6 +976,7 @@
 
             ws.onopen = () => {
                 isConnected = true;
+                lastSocketHeartbeat = Date.now();
                 while (pendingQueue.length > 0) ws.send(JSON.stringify(pendingQueue.shift()));
                 if (currentJoinedCode) {
                     initSocketAndSend({
@@ -985,6 +988,7 @@
             };
 
             ws.onmessage = (event) => {
+                lastSocketHeartbeat = Date.now();
                 let data = JSON.parse(event.data);
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
                 else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
@@ -1015,7 +1019,7 @@
 
             ws.onclose = () => {
                 isConnected = false;
-                setTimeout(connectSocket, 2500);
+                setTimeout(connectSocket, 2000);
             };
         }
 
@@ -1167,7 +1171,7 @@
                 lastKnownKnockedBy = null;
             }
 
-            // Top-Left Initial Discard Modal
+            // Top-Left Initial Discard Modal[span_12](start_span)[span_12](end_span)
             let topleftModal = document.getElementById('discard-pickup-topleft-modal');
             if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
                 document.getElementById('discard-pickup-card-content').innerHTML = `
@@ -1178,7 +1182,7 @@
                 topleftModal.style.display = 'none';
             }
 
-            // Top-Right Fed Card Modal
+            // Top-Right Fed Card Modal[span_13](start_span)[span_13](end_span)
             let fedModal = document.getElementById('fed-card-topright-modal');
             if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
                 document.getElementById('fed-card-label').innerText = `${lobby.myFedCardReminder.target} took your:`;
@@ -1188,7 +1192,7 @@
                 fedModal.style.display = 'none';
             }
 
-            // Turn Banner
+            // Turn Banner[span_14](start_span)[span_14](end_span)
             let turnBanner = document.getElementById('turn-banner');
             let isMyTurn = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase());
             if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
@@ -1231,7 +1235,7 @@
             document.getElementById('ready-btn').style.display = (lobby.gameState === 'lobby' && !isSpectatorOnly) ? 'inline-block' : 'none';
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
 
-            // Next Hand Overlay
+            // Next Hand Overlay[span_15](start_span)[span_15](end_span)
             let nextHandOverlay = document.getElementById('next-hand-overlay');
             if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
                 nextHandOverlay.style.display = 'block';
@@ -1285,7 +1289,7 @@
                 revealModal.style.display = 'none';
             }
 
-            // Render Table Felt
+            // Render Table Felt[span_16](start_span)[span_16](end_span)
             let container = document.getElementById('table-oval-container');
             let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
 
@@ -1321,7 +1325,7 @@
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
 
-            // Render Hand Cards
+            // Render Hand Cards[span_17](start_span)[span_17](end_span)
             let myCardsContainer = document.getElementById('my-cards-container');
             if (me && me.cards) {
                 myCardsContainer.innerHTML = me.cards.map((c, i) => `
@@ -1393,6 +1397,35 @@
         function sendMusicControl(action) {
             initSocketAndSend({ type: 'CONTROL_MUSIC', action });
         }
+
+        // Automatic Foreground Watchdog & Screen Reconnect[span_18](start_span)[span_18](end_span)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    connectSocket();
+                } else if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
+            }
+        });
+
+        window.addEventListener('pageshow', () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
+        });
+
+        // 12-Second Dead Socket Hunter
+        setInterval(() => {
+            if (Date.now() - lastSocketHeartbeat > 15000 && isConnected) {
+                if (ws) {
+                    try { ws.close(); } catch (e) {}
+                }
+                connectSocket();
+            }
+        }, 5000);
 
         window.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('saved_username')) document.getElementById('username-input').value = localStorage.getItem('saved_username');
