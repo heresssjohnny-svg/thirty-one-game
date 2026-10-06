@@ -11,13 +11,14 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
-// LiveKit Credentials
+// LiveKit Server Credentials
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = 'wss://31game.duckdns.org';
 
 app.use(express.json({ limit: '10mb' }));
 
+// Serve Static Assets Dynamically
 const wwwPath = path.join(__dirname, 'www');
 const publicPath = path.join(__dirname, 'public');
 if (fs.existsSync(wwwPath)) {
@@ -45,6 +46,7 @@ app.get('*', (req, res) => {
     }
 });
 
+// Card Definitions
 const SUITS = ['♠', '♥', '♦', '♣'];
 const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const BOT_NAMES = ['Liam (B)', 'Sophia (B)', 'Noah (B)', 'Emma (B)', 'Lucas (B)', 'Maya (B)', 'Ethan (B)', 'Olivia (B)'];
@@ -103,7 +105,7 @@ const lobbies = {};
 
 async function generateLiveKitToken(username, roomName) {
     try {
-        const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: username, name: username });
+        const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: username, name: username, ttl: '8h' });
         at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true });
         return await at.toJwt();
     } catch (e) {
@@ -261,7 +263,6 @@ function startDealerDrawPhase(lobby) {
 
     broadcastLobbyUpdate(lobby.code);
 
-    // Bot picks for dealer draw
     let activeBots = lobby.players.filter(p => !p.eliminated && p.isBot);
     activeBots.forEach((bot, idx) => {
         setTimeout(() => {
@@ -356,7 +357,6 @@ function checkTieBreakerComplete(lobby) {
                 cur.phaseMessage = `Tie-Breaker Re-Draw: Pick a card!`;
                 broadcastLobbyUpdate(cur.code);
 
-                // Auto-pick for tied bots
                 cur.players.filter(p => cur.tiedParticipantsList.includes(p.username) && p.isBot).forEach((bot, bIdx) => {
                     setTimeout(() => {
                         let openSlot = cur.drawPool.find(s => !s.chosenBy);
@@ -498,7 +498,7 @@ function handleDiscardAction(lobby, ws, cardIndex) {
 
     let discarded = currentPlayer.cards[cardIndex];
 
-    // Put-back discard mechanic: player changed mind and must draw from deck
+    // Put-Back Discard Rule: Changed mind, returns exact card back to pile
     if (currentPlayer.pickedUpDiscardCard && discarded.val === currentPlayer.pickedUpDiscardCard.val && discarded.suit === currentPlayer.pickedUpDiscardCard.suit) {
         currentPlayer.cards.splice(cardIndex, 1);
         lobby.discardPile.push(discarded);
@@ -609,13 +609,11 @@ function runBotTurn(lobby, bot) {
     let threshold = active.length > 2 ? 21 : 25;
     let currentScore = calculateScore(bot.cards);
 
-    // Bot Knock Logic
     if (lobby.gameState === 'playing' && !lobby.knockedBy && lobby.turnsTakenThisRound >= active.length && currentScore >= 28) {
         handleKnock(lobby, bot.id);
         return;
     }
 
-    // Bot Draw Logic
     let discardTop = lobby.discardPile[lobby.discardPile.length - 1];
     let shouldPickDiscard = false;
     if (discardTop) {
@@ -639,7 +637,6 @@ function runBotTurn(lobby, bot) {
         bot.pickedUpDiscardCard = null;
     }
 
-    // Check Blitz 31
     if (calculateBestFourCardScore(bot.cards) === 31) {
         lobby.players.forEach(p => {
             if (p !== bot && !p.eliminated) {
@@ -657,7 +654,6 @@ function runBotTurn(lobby, bot) {
         return;
     }
 
-    // Bot Discard Logic (7.5 IQ evaluates best hand)
     setTimeout(() => {
         let bestScore = -1;
         let discardIdx = 0;
@@ -728,7 +724,6 @@ function resolveRoundEnd(lobby) {
             lobby.phaseMessage = `Tie for lowest score (${lowest})! Tied participants must draw a card.`;
             broadcastLobbyUpdate(lobby.code);
 
-            // Auto-draw for tied bots
             lobby.players.filter(p => lobby.tiedParticipantsList.includes(p.username) && p.isBot).forEach((bot, bIdx) => {
                 setTimeout(() => {
                     let openSlot = lobby.drawPool.find(s => !s.chosenBy);
@@ -823,7 +818,7 @@ function awardTournamentWinner(lobby, winner) {
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
     lobby.gameState = 'roundOver';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match and will deal next game!`;
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match and deals next!`;
     broadcastLobbyUpdate(lobby.code);
 }
 
@@ -1120,6 +1115,7 @@ wss.on('connection', (ws) => {
     });
 });
 
+// Periodic Heartbeat Watchdog
 setInterval(() => {
     wss.clients.forEach(ws => {
         if (!ws.isAlive) return ws.terminate();
