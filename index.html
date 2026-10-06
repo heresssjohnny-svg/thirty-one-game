@@ -1506,7 +1506,6 @@
             celebrationParticles = [];
             const colors = ['#facc15', '#ef4444', '#38bdf8', '#10b981', '#ec4899', '#a855f7', '#fb923c'];
 
-            // Populate Confetti Ribbons
             for (let i = 0; i < 90; i++) {
                 celebrationParticles.push({
                     type: 'confetti',
@@ -1522,7 +1521,6 @@
                 });
             }
 
-            // Launch Initial Firework Bursts
             function spawnFireworkBurst() {
                 const cx = Math.random() * (canvas.width * 0.8) + (canvas.width * 0.1);
                 const cy = Math.random() * (canvas.height * 0.5) + (canvas.height * 0.15);
@@ -1572,7 +1570,7 @@
                     } else if (p.type === 'firework') {
                         p.x += p.vx;
                         p.y += p.vy;
-                        p.vy += 0.08; // Gravity
+                        p.vy += 0.08;
                         p.vx *= 0.98;
                         p.alpha -= 0.016;
 
@@ -1794,10 +1792,18 @@
 
             renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
 
-            // Winner Celebration with Confetti and Fireworks
-            if (lobby.tournamentWinner && lastCelebratedWinner !== lobby.tournamentWinner) {
-                lastCelebratedWinner = lobby.tournamentWinner;
-                triggerWinnerCelebration(lobby.tournamentWinner);
+            // Trigger grand celebration when tournament winner is announced
+            let hasWinner = lobby.tournamentWinner || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
+            if (hasWinner) {
+                let winnerName = lobby.tournamentWinner;
+                if (!winnerName && lobby.phaseMessage) {
+                    let m = lobby.phaseMessage.match(/TOURNAMENT WINNER!\s+(.*?)\s+wins/);
+                    if (m && m[1]) winnerName = m[1].trim();
+                }
+                if (winnerName && lastCelebratedWinner !== winnerName) {
+                    lastCelebratedWinner = winnerName;
+                    triggerWinnerCelebration(winnerName);
+                }
             }
             if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
                 lastCelebratedWinner = null;
@@ -2137,6 +2143,9 @@
                 `).join('');
                 document.getElementById('my-cards-container').innerHTML = cardsHtml;
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
+            } else {
+                document.getElementById('my-cards-container').innerHTML = '';
+                document.getElementById('my-score-display').innerText = '0';
             }
         }
 
