@@ -739,6 +739,7 @@
         let currentLivekitHost = null;
         let currentLivekitToken = null;
         let isVoiceChatActive = false;
+        let isConnectingVoice = false;
         let latestLobbySnapshot = null;
         let voiceRosterList = [];
         let currentPlaylistQueue = [];
@@ -807,14 +808,12 @@
 
         // Universal Permission Helper for Capacitor Android / iOS PWA / Web Browsers
         async function ensureMicrophonePermission() {
-            // Check for secure context requirement
             const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
             if (!window.isSecureContext && !isLocal) {
                 alert('Microphone access requires HTTPS on all platforms (iOS PWA, Android, and Web Browsers). If using an IP or domain over HTTP, the browser disables microphone permission prompts completely.');
                 return false;
             }
 
-            // 1. Android Capacitor Native Permission Probe
             if (window.Capacitor && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable('Permissions')) {
                 try {
                     const Perms = window.Capacitor.Plugins.Permissions;
@@ -825,7 +824,6 @@
                 } catch (e) {}
             }
 
-            // 2. Direct Web API getUserMedia prompt (Maintains user gesture token)
             try {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     alert('getUserMedia is not supported on this browser or requires HTTPS.');
@@ -1091,9 +1089,13 @@
                 return;
             }
 
+            if (isConnectingVoice) return;
+            isConnectingVoice = true;
+
             try {
                 if (livekitRoom) {
                     await livekitRoom.disconnect();
+                    livekitRoom = null;
                 }
 
                 livekitRoom = new LivekitClient.Room({
@@ -1124,14 +1126,14 @@
                 await livekitRoom.connect(host, token);
                 enableBackgroundAudioKeepAlive();
 
-                // Start muted by default
-                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isVoiceChatActive = false;
                 updateVoiceUI();
                 sendVCStatusInternal(true, true);
 
             } catch (err) {
                 console.error("LiveKit connection error:", err);
+            } finally {
+                isConnectingVoice = false;
             }
         }
 
@@ -1146,11 +1148,13 @@
         }
 
         async function toggleVoiceOnOff() {
-            // If muting active voice
+            // Mute active mic
             if (isVoiceChatActive && livekitRoom) {
                 try {
                     await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-                } catch (e) {}
+                } catch (e) {
+                    console.error("Mute error:", e);
+                }
                 isVoiceChatActive = false;
                 updateVoiceUI();
                 sendVCStatusInternal(true, true);
@@ -1158,18 +1162,28 @@
                 return;
             }
 
-            // If activating microphone, request permission directly from user gesture FIRST
+            // Unmute / Publish mic: Check permissions first
             const hasPermission = await ensureMicrophonePermission();
             if (!hasPermission) return;
 
-            // Connect LiveKit room if not connected
+            // Connect LiveKit room if not connected yet
             if (!livekitRoom || livekitRoom.state !== 'connected') {
                 if (currentLivekitHost && currentLivekitToken) {
                     await connectLiveKit(currentLivekitHost, currentLivekitToken);
+                    let waitCounter = 0;
+                    while ((!livekitRoom || livekitRoom.state !== 'connected') && waitCounter < 20) {
+                        await new Promise(r => setTimeout(r, 100));
+                        waitCounter++;
+                    }
                 } else {
                     initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
                     return;
                 }
+            }
+
+            if (!livekitRoom || livekitRoom.state !== 'connected') {
+                alert("Voice chat server is still connecting. Please try again in a moment.");
+                return;
             }
 
             try {
@@ -1186,6 +1200,8 @@
             } catch (err) {
                 console.error("Microphone activate error:", err);
                 alert("Microphone activation error: " + (err.message || err.name));
+                isVoiceChatActive = false;
+                updateVoiceUI();
             }
         }
 
