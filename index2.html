@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiveKit Voice Chat Test Bench</title>
+    <!-- LiveKit Official Client SDK[span_13](start_span)[span_13](end_span)[span_14](start_span)[span_14](end_span) -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body {
+            background: #0f172a;
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 520px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+        h2 { font-size: 1.3rem; color: #38bdf8; text-align: center; }
+        .input-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 0.8rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
+        input {
+            background: #090d16;
+            border: 1px solid #334155;
+            color: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+        }
+        input:focus { border-color: #38bdf8; }
+        .btn {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background 0.15s ease;
+        }
+        .btn:hover { background: #1d4ed8; }
+        .btn:disabled { background: #475569; cursor: not-allowed; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-mute {
+            background: #334155;
+            border: 1px solid #475569;
+        }
+        .btn-mute.active {
+            background: #15803d;
+            border-color: #22c55e;
+        }
+        .led {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+            box-shadow: 0 0 6px #ef4444;
+        }
+        .led.active {
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+        }
+        .section-box {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .list-header {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 4px;
+        }
+        .participant-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .participant-item:last-child { border-bottom: none; }
+        .badge {
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .badge-mic-off { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+        .badge-mic-on { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        #logs {
+            height: 110px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>LiveKit Voice Test Bench</h2>
+
+    <div class="input-group">
+        <label>Room Name</label>
+        <input type="text" id="room-input" value="test-room">
+    </div>
+
+    <div class="input-group">
+        <label>Participant Name</label>
+        <input type="text" id="user-input" value="Tester-1">
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+        <button id="connect-btn" class="btn" style="flex: 1;" onclick="connectRoom()">Connect to Room</button>
+        <button id="disconnect-btn" class="btn btn-danger" style="display: none;" onclick="disconnectRoom()">Disconnect</button>
+    </div>
+
+    <!-- Microphone Controls -->
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <button id="mic-toggle-btn" class="btn btn-mute" style="flex: 1;" onclick="toggleMicrophone()" disabled>
+            <span id="mic-led" class="led"></span>
+            <span id="mic-text">🎙️ Voice: Off (Muted)</span>
+        </button>
+    </div>
+
+    <!-- Active Participant List -->
+    <div class="section-box">
+        <div class="list-header">Active Participants (<span id="participant-count">0</span>)</div>
+        <div id="participant-list">
+            <div style="font-size: 0.8rem; color: #64748b;">Not connected</div>
+        </div>
+    </div>
+
+    <!-- Event Logs -->
+    <div class="section-box">
+        <div class="list-header">Engine Logs</div>
+        <div id="logs"></div>
+    </div>
+</div>
+
+<script>
+    let currentRoom = null;
+    let isMicActive = false;
+
+    function log(message) {
+        const box = document.getElementById('logs');
+        const entry = document.createElement('div');
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        box.appendChild(entry);
+        box.scrollTop = box.scrollHeight;
+        console.log(message);
+    }
+
+    async function connectRoom() {
+        const roomName = document.getElementById('room-input').value.trim();
+        const username = document.getElementById('user-input').value.trim();
+
+        if (!roomName || !username) {
+            alert('Room and Username are required');
+            return;
+        }
+
+        const LK = window.LivekitClient || window.LiveKitClient; //[span_15](start_span)[span_15](end_span)
+        if (!LK) {
+            log('Error: LiveKit SDK failed to load from CDN');
+            return;
+        }
+
+        const connectBtn = document.getElementById('connect-btn');
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Authenticating...';
+
+        try {
+            log(`Requesting token for room "${roomName}"...`);
+            const res = await fetch(`/token?room=${encodeURIComponent(roomName)}&username=${encodeURIComponent(username)}`);
+            const data = await res.json();
+
+            if (!data.token || !data.host) {
+                throw new Error(data.error || 'Invalid token response from server');
+            }
+
+            log('Token received. Connecting to LiveKit SFU...');
+            currentRoom = new LK.Room({
+                adaptiveStream: true,
+                dynacast: true,
+                audioCaptureDefaults: {
+                    autoGainControl: true,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                }
+            }); //[span_16](start_span)[span_16](end_span)
+
+            // Remote audio playback management[span_17](start_span)[span_17](end_span)
+            currentRoom.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                if (track.kind === LK.Track.Kind.Audio || track.kind === 'audio') { //[span_18](start_span)[span_18](end_span)
+                    log(`Subscribed to audio from ${participant.identity}`);
+                    const audioElem = track.attach(); //[span_19](start_span)[span_19](end_span)
+                    audioElem.autoplay = true;
+                    document.body.appendChild(audioElem); //[span_20](start_span)[span_20](end_span)
+                }
+            });
+
+            currentRoom.on(LK.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                log(`Unsubscribed from track: ${participant.identity}`);
+                track.detach().forEach(el => el.remove());
+            });
+
+            // Participant presence updates
+            currentRoom.on(LK.RoomEvent.ParticipantConnected, (p) => {
+                log(`Participant joined: ${p.identity}`);
+                updateRosterUI();
+            });
+
+            currentRoom.on(LK.RoomEvent.ParticipantDisconnected, (p) => {
+                log(`Participant left: ${p.identity}`);
+                updateRosterUI();
+            });
+
+            // Track state updates
+            currentRoom.on(LK.RoomEvent.TrackMuted, () => updateRosterUI());
+            currentRoom.on(LK.RoomEvent.TrackUnmuted, () => updateRosterUI());
+
+            currentRoom.on(LK.RoomEvent.Disconnected, () => {
+                log('Disconnected from room');
+                handleDisconnectState();
+            });
+
+            await currentRoom.connect(data.host, data.token); //[span_21](start_span)[span_21](end_span)
+            log('Connected successfully!');
+
+            // Default to muted upon entry
+            await currentRoom.localParticipant.setMicrophoneEnabled(false);
+            isMicActive = false;
+
+            // UI synchronization
+            document.getElementById('connect-btn').style.display = 'none';
+            document.getElementById('disconnect-btn').style.display = 'block';
+            document.getElementById('mic-toggle-btn').disabled = false;
+            document.getElementById('room-input').disabled = true;
+            document.getElementById('user-input').disabled = true;
+
+            updateMicUI();
+            updateRosterUI();
+        } catch (err) {
+            log(`Connection Error: ${err.message}`);
+            handleDisconnectState();
+        } finally {
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Connect to Room';
+        }
+    }
+
+    async function toggleMicrophone() {
+        if (!currentRoom) return;
+
+        const micBtn = document.getElementById('mic-toggle-btn');
+        micBtn.disabled = true;
+
+        try {
+            if (isMicActive) {
+                // Mute microphone
+                await currentRoom.localParticipant.setMicrophoneEnabled(false);
+                isMicActive = false;
+                log('Local microphone muted');
+            } else {
+                // Unmute microphone
+                if (currentRoom.startAudio) {
+                    await currentRoom.startAudio();
+                }
+                await currentRoom.localParticipant.setMicrophoneEnabled(true);
+                isMicActive = true;
+                log('Local microphone unmuted');
+            }
+            updateMicUI();
+            updateRosterUI();
+        } catch (err) {
+            log(`Microphone Error: ${err.message}`);
+            isMicActive = false;
+            updateMicUI();
+        } finally {
+            micBtn.disabled = false;
+        }
+    }
+
+    async function disconnectRoom() {
+        if (currentRoom) {
+            await currentRoom.disconnect(); //[span_22](start_span)[span_22](end_span)
+            currentRoom = null;
+        }
+        handleDisconnectState();
+    }
+
+    function handleDisconnectState() {
+        document.getElementById('connect-btn').style.display = 'block';
+        document.getElementById('disconnect-btn').style.display = 'none';
+        document.getElementById('mic-toggle-btn').disabled = true;
+        document.getElementById('room-input').disabled = false;
+        document.getElementById('user-input').disabled = false;
+        isMicActive = false;
+        updateMicUI();
+        document.getElementById('participant-list').innerHTML = '<div style="font-size: 0.8rem; color: #64748b;">Not connected</div>';
+        document.getElementById('participant-count').textContent = '0';
+    }
+
+    function updateMicUI() {
+        const text = document.getElementById('mic-text');
+        const led = document.getElementById('mic-led');
+        const btn = document.getElementById('mic-toggle-btn');
+
+        if (isMicActive) {
+            text.textContent = '🎙️ Voice: On (Active)';
+            led.classList.add('active');
+            btn.classList.add('active');
+        } else {
+            text.textContent = '🎙️ Voice: Off (Muted)';
+            led.classList.remove('active');
+            btn.classList.remove('active');
+        }
+    }
+
+    function updateRosterUI() {
+        if (!currentRoom) return;
+
+        const roster = document.getElementById('participant-list');
+        roster.innerHTML = '';
+
+        // Add Local Participant
+        const local = currentRoom.localParticipant;
+        let totalCount = 1;
+
+        const localItem = document.createElement('div');
+        localItem.className = 'participant-item';
+        localItem.innerHTML = `
+            <span><strong>${local.identity}</strong> (You)</span>
+            <span class="badge ${isMicActive ? 'badge-mic-on' : 'badge-mic-off'}">
+                ${isMicActive ? '🎙️ Unmuted' : '🔇 Muted'}
+            </span>
+        `;
+        roster.appendChild(localItem);
+
+        // Add Remote Participants
+        currentRoom.remoteParticipants.forEach((p) => {
+            totalCount++;
+            const isMuted = !p.isMicrophoneEnabled;
+            const remoteItem = document.createElement('div');
+            remoteItem.className = 'participant-item';
+            remoteItem.innerHTML = `
+                <span>${p.identity}</span>
+                <span class="badge ${isMuted ? 'badge-mic-off' : 'badge-mic-on'}">
+                    ${isMuted ? '🔇 Muted' : '🎙️ Unmuted'}
+                </span>
+            `;
+            roster.appendChild(remoteItem);
+        });
+
+        document.getElementById('participant-count').textContent = totalCount;
+    }
+</script>
+</body>
+</html>
