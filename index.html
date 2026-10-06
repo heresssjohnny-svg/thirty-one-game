@@ -1128,7 +1128,13 @@
                     updateVoiceUI();
                 });
 
-                await livekitRoom.connect(host, token);
+                // Convert ws:// to wss:// automatically if the client is on a secure HTTPS context
+                let resolvedHost = host;
+                if (location.protocol === 'https:' && resolvedHost.startsWith('ws://')) {
+                    resolvedHost = resolvedHost.replace('ws://', 'wss://');
+                }
+
+                await livekitRoom.connect(resolvedHost, token);
                 enableBackgroundAudioKeepAlive();
 
                 isVoiceChatActive = false;
@@ -1158,7 +1164,7 @@
         }
 
         async function toggleVoiceOnOff() {
-            // Mute active mic
+            // If voice is currently ON, mute microphone
             if (isVoiceChatActive && livekitRoom) {
                 try {
                     await livekitRoom.localParticipant.setMicrophoneEnabled(false);
@@ -1172,7 +1178,7 @@
                 return;
             }
 
-            // Unmute: check permissions first
+            // If voice is currently OFF, verify microphone access first
             const hasPermission = await ensureMicrophonePermission();
             if (!hasPermission) return;
 
