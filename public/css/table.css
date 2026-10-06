@@ -1,1 +1,208 @@
+#game-view {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    padding-bottom: 5px;
+    z-index: 10;
+}
+
+.table-oval {
+    position: relative;
+    width: 620px;
+    max-width: 96vw;
+    height: 260px;
+    background: radial-gradient(circle, #065f46 0%, #044e36 100%);
+    border: 6px solid #78350f;
+    border-radius: 140px;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.6);
+    flex-shrink: 0;
+}
+
+.pots-container {
+    position: absolute;
+    top: 6px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    z-index: 10;
+}
+
+.pot-total-display, .side-pot-total-display {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--accent-gold);
+    background: rgba(15, 23, 42, 0.85);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.deck-center { display: flex; gap: 16px; align-items: center; z-index: 5; }
+
+.card-slot {
+    width: 55px;
+    height: 80px;
+    border-radius: 6px;
+    background: #fff;
+    color: #000;
+    border: 1px solid #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    position: relative;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+}
+
+.card-slot.back {
+    background: #1e3a8a;
+    border: 2px solid #93c5fd;
+    color: #93c5fd;
+    font-size: 0.7rem;
+}
+
+.deck-counter {
+    position: absolute;
+    bottom: 2px;
+    font-size: 0.55rem;
+    color: #fff;
+}
+
+.seat {
+    position: absolute;
+    background: rgba(15, 23, 42, 0.9);
+    border: 2px solid #475569;
+    padding: 3px 6px;
+    border-radius: 6px;
+    font-size: 0.65rem;
+    text-align: center;
+    width: 110px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.seat:hover { border-color: var(--accent-gold); }
+
+.seat.current-turn-seat {
+    background: rgba(250, 204, 21, 0.95) !important;
+    border: 2px solid #ffffff !important;
+    box-shadow: 0 0 20px rgba(250, 204, 21, 0.9);
+    color: #0f172a !important;
+    transform: scale(1.08);
+}
+
+.seat-0 { bottom: -5px; left: calc(50% - 55px); }
+.seat-1 { bottom: 25px; left: 6px; }
+.seat-2 { top: 25px; left: 8px; }
+.seat-3 { top: -10px; left: calc(50% - 55px); }
+.seat-4 { top: 25px; right: 8px; }
+.seat-5 { bottom: 25px; right: 6px; }
+
+.seat-name-area { cursor: pointer; width: 100%; }
+.seat-cards { display: flex; gap: 1px; justify-content: center; margin-top: 1px; }
+
+.mini-card {
+    width: 18px;
+    height: 26px;
+    background: #fff;
+    font-size: 0.45rem;
+    font-weight: bold;
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #cbd5e1;
+}
+
+.red-suit { color: #dc2626; }
+.black-suit { color: #0f172a; }
+
+.dealer-badge {
+    background: var(--accent-gold);
+    color: #000;
+    font-size: 0.55rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+    margin-left: 3px;
+}
+
+.my-hand-area {
+    background: rgba(4, 78, 54, 0.9);
+    padding: 8px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    max-width: 450px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+    z-index: 100;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.cards-flex {
+    display: flex !important;
+    gap: 6px;
+    min-height: 70px;
+    align-items: center;
+    justify-content: center;
+}
+
+.my-card {
+    width: 50px;
+    height: 72px;
+    background: #fff;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1rem;
+    cursor: pointer;
+    border: 2px solid #cbd5e1;
+    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.3);
+}
+
+.my-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent-gold);
+}
+
+.bottom-action-bar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+}
+
+#turn-banner {
+    background: rgba(4, 78, 54, 0.9);
+    border: 1px solid var(--accent-gold);
+    padding: 3px 10px;
+    border-radius: 16px;
+    font-size: 0.75rem;
+    color: var(--accent-gold);
+    font-weight: bold;
+    flex-shrink: 0;
+}
 
