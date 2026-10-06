@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>31! Card Game</title>
+    <title>31!</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#044e36">
     <meta name="mobile-web-app-capable" content="yes">
@@ -64,7 +64,7 @@
         .logo { font-size: 1.3rem; font-weight: 900; color: var(--accent-gold); text-shadow: 0 0 10px rgba(250,204,21,0.5); }
         .top-menu-btns { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
 
-        button, .btn-link {
+        button {
             background: #10b981;
             color: #fff;
             border: 1px solid #34d399;
@@ -74,10 +74,6 @@
             font-size: 0.75rem;
             cursor: pointer;
             transition: 0.15s;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
         }
         button.secondary { background: #334155; border-color: #475569; }
         button.danger { background: #ef4444; border-color: #f87171; }
@@ -89,7 +85,9 @@
 
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.75rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        
+        #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
         #chat-window {
             position: absolute;
             top: 45px;
@@ -131,6 +129,11 @@
             border-radius: 8px;
             border: 1px solid var(--accent-gold);
             box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+            animation: slideInTopLeft 0.3s ease-out;
+        }
+        @keyframes slideInTopLeft {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .fed-card-modal-topright {
@@ -150,6 +153,11 @@
             border-radius: 8px;
             border: 1px solid var(--accent-gold);
             box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+            animation: slideInTopRight 0.3s ease-out;
+        }
+        @keyframes slideInTopRight {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         #main-menu {
@@ -217,6 +225,13 @@
             display: none;
             z-index: 250;
             pointer-events: none;
+            letter-spacing: 0.5px;
+            animation: pulseKnock 1.5s infinite;
+        }
+        @keyframes pulseKnock {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+            100% { transform: translateX(-50%) scale(1); }
         }
 
         .table-oval {
@@ -236,7 +251,7 @@
         }
 
         .pots-container { position: absolute; top: 6px; display: flex; gap: 6px; align-items: center; z-index: 10; }
-        .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .pot-total-display, .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
         .deck-center { display: flex; gap: 16px; align-items: center; z-index: 5; }
         .card-slot { width: 55px; height: 80px; border-radius: 6px; background: #fff; color: #000; border: 1px solid #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: bold; cursor: pointer; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.4); }
@@ -267,6 +282,26 @@
         .bottom-action-bar { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; align-items: center; }
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
 
+        #global-side-bets-sidebar {
+            position: absolute;
+            right: 8px;
+            top: 60px;
+            width: 190px;
+            max-height: 200px;
+            background: rgba(4, 78, 54, 0.92);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px;
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 100;
+            font-size: 0.7rem;
+            overflow-y: auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .global-bet-item { background: rgba(15, 23, 42, 0.8); padding: 5px; border-radius: 4px; border: 1px solid rgba(250, 204, 21, 0.2); display: flex; flex-direction: column; gap: 3px; }
+
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 10px; }
         .modal-content { background: var(--panel-bg); backdrop-filter: blur(16px); padding: 16px; border-radius: 12px; width: 95%; max-width: 400px; max-height: 85vh; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.8); overflow-y: auto; }
         .modal-content h3 { color: var(--accent-gold); font-size: 1.1rem; }
@@ -277,12 +312,64 @@
         .pool-card-item.revealed { background: #fff; color: #0f172a; flex-direction: column; font-size: 0.5rem; }
         #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
         #next-hand-btn { background: #10b981; color: #fff; font-size: 1rem; padding: 10px 20px; border-radius: 6px; font-weight: bold; border: 2px solid #34d399; }
+        #next-hand-btn:hover { background: #059669; }
+
+        /* Full-Screen Winner Celebration Modal */
+        #winner-celebration-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        #celebration-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #winner-celebration-card {
+            position: relative;
+            z-index: 10000;
+            text-align: center;
+            padding: 24px 36px;
+            background: rgba(4, 78, 54, 0.95);
+            border: 4px solid var(--accent-gold);
+            border-radius: 18px;
+            box-shadow: 0 0 50px rgba(250, 204, 21, 0.8), inset 0 0 20px rgba(0, 0, 0, 0.6);
+            animation: zoomInBounce 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 90vw;
+        }
+        @keyframes zoomInBounce {
+            0% { transform: scale(0.3); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
+    <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
+    <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
+
+    <!-- Celebration Screen Overlay -->
+    <div id="winner-celebration-overlay">
+        <canvas id="celebration-canvas"></canvas>
+        <div id="winner-celebration-card">
+            <div style="font-size: 2.2rem; margin-bottom: 6px;">🏆 👑 🏆</div>
+            <div id="celebration-winner-title" style="font-size: 2.2rem; font-weight: 900; color: var(--accent-gold); text-shadow: 0 0 25px rgba(250,204,21,0.9), 0 3px 6px #000; letter-spacing: 1px;"></div>
+            <div style="font-size: 1.2rem; color: #fff; font-weight: 800; margin-top: 8px; text-shadow: 0 2px 4px #000; letter-spacing: 0.5px;">TOURNAMENT CHAMPION!</div>
+        </div>
+    </div>
 
     <header>
         <div class="logo">31!</div>
@@ -294,6 +381,7 @@
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
                 <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Participants">...</button>
             </div>
 
             <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
@@ -375,6 +463,11 @@
                 <div id="turn-banner" style="font-size:0.75rem;">Turn: Waiting...</div>
             </div>
 
+            <div id="active-peeking-banner" style="display:none; background:rgba(30,58,138,0.95); border:1px solid var(--accent-cyan); padding:4px 12px; border-radius:14px; font-size:0.75rem; color:#fff; align-items:center; gap:8px; margin-top:2px;">
+                <span>👀 Viewing Player Hand</span>
+                <button class="secondary" onclick="stopPeekingAction()" style="padding:2px 6px; font-size:0.65rem; background:#ef4444;">Stop Peeking</button>
+            </div>
+
             <div id="lobby-config-bar" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
                 <select id="config-wager" onchange="updateWager()" style="padding:3px; font-size:0.75rem;">
                     <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
@@ -391,6 +484,7 @@
             <div class="table-oval" id="table-oval-container">
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
+                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:none;">Side Pots: $0</div>
                 </div>
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
@@ -399,109 +493,74 @@
 
             <div class="my-hand-area" id="my-hand-control-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: var(--text-muted);">
-                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>)</span>
+                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>) - Draw & discard</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar" id="my-action-buttons">
+                    <button class="danger" id="stand-up-btn" onclick="standUp()" style="display:none;">Stand Up</button>
+                    <button id="sit-btn" onclick="sitDown()" style="display:none; background:#10b981; border:1px solid #34d399;">Sit</button>
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
+                    <button class="secondary" onclick="openActiveBetsModal()" style="background:#065f46; border:1px solid var(--accent-gold);">Active Bets</button>
                 </div>
             </div>
+        </div>
+
+        <div id="global-side-bets-sidebar">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:3px; margin-bottom:3px;">
+                <span style="font-weight:bold; color:var(--accent-gold);">Global Side Bets</span>
+                <button class="secondary" style="padding: 1px 4px; font-size: 0.6rem;" onclick="toggleGlobalSidebar()">➖</button>
+            </div>
+            <div id="global-side-bets-list" style="display:flex; flex-direction:column; gap:3px;"></div>
         </div>
     </main>
 
     <!-- Modals -->
-    <div id="pool-draw-modal" class="modal">
-        <div class="modal-content">
-            <h3 id="pool-modal-title" style="font-size: 1.25rem;">Card Selection</h3>
-            <p id="pool-modal-instruction" style="font-size: 0.85rem; color: var(--text-muted);">Select a face-down card from the deck pool.</p>
-            <div class="pool-cards-grid" id="pool-cards-container"></div>
-        </div>
-    </div>
-
-    <div id="tie-breaker-reveal-modal" class="modal">
-        <div class="modal-content">
-            <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
-            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select their cards...</p>
-            <div id="tie-breaker-stream-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:8px; background:rgba(15,23,42,0.6); border-radius:6px;"></div>
+    <div id="vc-participants-modal" class="modal">
+        <div class="modal-content" style="max-width:320px;">
+            <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
+            <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
+            <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px; padding:6px; font-size:0.75rem;">🔄 Reconnect Voice Chat</button>
+            <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:4px;">Close</button>
         </div>
     </div>
 
     <div id="music-modal" class="modal">
         <div class="modal-content" style="max-width:360px;">
-            <h3 style="color:var(--accent-gold);">🎵 Table Music Player</h3>
-            <div id="youtube-embed-container" style="width:100%; height:140px; background:#000; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
-                No song playing
+            <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
+            <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
+                <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
+                    No song playing
+                </div>
             </div>
-            <div style="display:flex; justify-content:center; gap:6px; align-items:center;">
-                <button class="secondary" onclick="sendMusicControl('PLAY')">▶ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')">⏸️ Pause</button>
-                <button class="secondary" onclick="sendMusicControl('SKIP')">⏭️ Skip</button>
-            </div>
-            <div style="display:flex; gap:4px; margin-top:4px;">
-                <input type="text" id="new-song-url" placeholder="YouTube URL" style="font-size:0.75rem; flex:1;">
-                <button onclick="addNewSongToPlaylist()" style="padding:4px 8px;">Add</button>
-            </div>
-            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:4px;">Close</button>
-        </div>
-    </div>
 
-    <!-- In-Depth Rules Tutorial Modal -->
-    <div id="rules-modal" class="modal">
-        <div class="modal-content" style="max-width:440px; text-align:left;">
-            <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:6px;">📖 Complete 31! Tutorial & Rules</h3>
-            <div style="font-size:0.75rem; color:var(--text-muted); max-height:60vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px; line-height:1.4;">
-                <div>
-                    <b style="color:var(--accent-gold);">1. Objective & Hand Scoring</b>
-                    <p>Collect the highest point total in a <b>single suit</b> with your 3 cards:</p>
-                    <ul style="padding-left:14px; margin-top:2px;">
-                        <li><b>Aces:</b> 11 points</li>
-                        <li><b>Face Cards (K, Q, J):</b> 10 points</li>
-                        <li><b>Pip Cards (2–10):</b> Face value</li>
-                        <li><b>Three of a Kind (Triplets):</b> Any 3 cards of the identical rank (e.g., 7♠ 7♦ 7♥) score exactly <b>30.5 points</b>, beating any non-blitz 3-card combination!</li>
-                    </ul>
-                </div>
-                <div>
-                    <b style="color:var(--accent-gold);">2. Opening Dealer Selection</b>
-                    <p>At table start, all players draw a face-down card from the deck pool. The <b>lowest card deals</b> (2 is lowest, Ace is highest). If players tie on the lowest card, a re-draw occurs. The dealer is marked with the <b>[D]</b> badge.</p>
-                </div>
-                <div>
-                    <b style="color:var(--accent-gold);">3. Gameplay & Turn Flow</b>
-                    <p>Each player is dealt 3 cards. The dealer flips 1 card to start the discard pile. On your turn:</p>
-                    <ul style="padding-left:14px; margin-top:2px;">
-                        <li>Draw 1 card from either the face-down <b>DECK</b> or the face-up <b>DISCARD</b> pile (holding 4 cards).</li>
-                        <li>Discard 1 card back onto the pile to return to 3 cards.</li>
-                        <li><b>Put-Back Discard Rule:</b> If you pick the discard card, change your mind, and place that exact card right back down, your turn does not end—you must draw from the deck instead!</li>
-                    </ul>
-                </div>
-                <div>
-                    <b style="color:var(--accent-gold);">4. Knocking & The 21 / 25 Threshold</b>
-                    <p>When confident in your hand, you can <b>Knock</b> on your turn before drawing:</p>
-                    <ul style="padding-left:14px; margin-top:2px;">
-                        <li>You must complete at least 1 full orbit around the table before knocking is unlocked.</li>
-                        <li><b>3+ Players:</b> Must hold at least <b>21 points</b> to knock.</li>
-                        <li><b>Heads-Up (2 Players):</b> Must hold at least <b>25 points</b> to knock.</li>
-                        <li>Knocking triggers 1 final turn for every other player. Then all cards are revealed!</li>
-                    </ul>
-                </div>
-                <div>
-                    <b style="color:var(--accent-gold);">5. Round Resolution & Tie-Breakers</b>
-                    <p>The player with the lowest score loses 1 life (starts with 3 lives):</p>
-                    <ul style="padding-left:14px; margin-top:2px;">
-                        <li><b>Heads-Up Tie:</b> If both players tie for lowest score in a 2-player game, no one loses a life!</li>
-                        <li><b>3+ Player Tie-Breaker:</b> Tied players enter the live Tie-Breaker Draw stream. The player who draws the lowest card loses a life. If cards tie, players re-draw!</li>
-                    </ul>
-                </div>
-                <div>
-                    <b style="color:var(--accent-gold);">6. Blitz (31 Points Auto-Win)</b>
-                    <p>If any player hits an exact <b>31 points</b> (e.g., A♠ K♠ 10♠), the round ends immediately, and <b>every other player loses a life</b>!</p>
-                </div>
-                <div>
-                    <b style="color:var(--accent-gold);">7. Trackers & Side Bets</b>
-                    <p><b>Top-Left Tracker:</b> Shows who took the dealer's initial card. <b>Top-Right Tracker:</b> Reminds you if the next player took your discard. Tap any player's seat to propose $5 or $10 elimination side bets!</p>
+            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
+                <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.7rem; color:var(--text-muted);">Personal Vol:</span>
+                    <input type="range" id="individual-volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="adjustIndividualVolume(this.value)" style="width:80px; accent-color:var(--accent-gold);">
                 </div>
             </div>
-            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close Tutorial</button>
+
+            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:2px;">Shared Lobby Queue:</div>
+            <div id="playlist-container" style="max-height:100px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
+                <div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                <label style="text-align:left; font-size:0.75rem;">Add YouTube Song</label>
+                <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
+                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
+                <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
+            </div>
+
+            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:4px;">Close</button>
         </div>
     </div>
 
@@ -509,6 +568,13 @@
         <div class="modal-content">
             <h3 id="bet-modal-title">Propose Bet</h3>
             <div id="bet-modal-body" class="button-group"></div>
+        </div>
+    </div>
+
+    <div id="seat-action-modal" class="modal">
+        <div class="modal-content" style="max-width:300px;">
+            <h3 id="seat-action-title" style="color:var(--accent-gold);">Player Actions</h3>
+            <div id="seat-action-body" class="button-group" style="margin-top:4px;"></div>
         </div>
     </div>
 
@@ -523,33 +589,54 @@
         </div>
     </div>
 
+    <div id="active-bets-modal" class="modal">
+        <div class="modal-content" style="max-width:350px;">
+            <h3>My Active & Pending Side Bets</h3>
+            <div id="active-bets-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No active side bets.</div>
+            <button class="secondary" onclick="toggleModal('active-bets-modal')">Close</button>
+        </div>
+    </div>
+
+    <div id="pool-draw-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="pool-modal-title" style="font-size: 1.25rem;">Card Selection</h3>
+            <p id="pool-modal-instruction" style="font-size: 0.85rem; color: var(--text-muted);">Select a face-down card from the deck pool.</p>
+            <div class="pool-cards-grid" id="pool-cards-container"></div>
+            <div id="pool-announcement" style="font-size: 0.95rem; font-weight: 800; color: var(--accent-gold);"></div>
+        </div>
+    </div>
+
+    <div id="tie-breaker-reveal-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
+            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select cards...</p>
+            <div id="tie-breaker-stream-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:8px; background:rgba(15,23,42,0.6); border-radius:6px;"></div>
+        </div>
+    </div>
+
+    <div id="rules-modal" class="modal">
+        <div class="modal-content" style="max-width:350px; text-align:left;">
+            <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:4px;">How to Play 31!</h3>
+            <div style="font-size:0.75rem; color:var(--text-muted); max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
+                <p><b>Objective:</b> Collect 31 points in a single suit or achieve a higher hand score than your opponents before the round ends.</p>
+                <p><b>Scoring:</b></p>
+                <ul style="padding-left:14px;">
+                    <li>Numbered cards (2-10) are worth face value.</li>
+                    <li>Face cards (Jack, Queen, King) are worth 10 points.</li>
+                    <li>Aces are worth 11 points.</li>
+                    <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
+                </ul>
+            </div>
+            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
+        </div>
+    </div>
+
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:340px;">
             <h3>Ledger & Balances</h3>
             <div id="ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:230px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
-            <button onclick="saveLedgerScreenshot()" style="background:#10b981; margin-top:6px;">📸 Save Snapshot to Device</button>
+            <button onclick="saveLedgerScreenshot()">Save Snapshot</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
-        </div>
-    </div>
-
-    <!-- Android-Proof Snapshot Download Modal -->
-    <div id="screenshot-modal" class="modal" style="z-index: 7000;">
-        <div class="modal-content" style="max-width: 380px; user-select: auto; -webkit-user-select: auto;">
-            <h3 style="color: var(--accent-gold);">📸 Ledger Snapshot</h3>
-            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
-                Tap <b>Download</b> or <b>Share</b> below. You can also touch and hold the preview image to save it.
-            </p>
-            <div style="max-height: 48vh; overflow-y: auto; border-radius: 6px; border: 1px solid rgba(250,204,21,0.3); background: #022c22; padding: 4px; user-select: auto; -webkit-user-select: auto;">
-                <img id="screenshot-preview-img" 
-                     alt="Ledger Snapshot" 
-                     style="width: 100%; height: auto; display: block; border-radius: 4px; pointer-events: auto !important; user-select: auto !important; -webkit-user-select: auto !important; -webkit-touch-callout: default !important;" />
-            </div>
-            <div id="screenshot-status-text" style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); min-height: 18px; margin-top: 4px;"></div>
-            <div style="display: flex; gap: 6px; margin-top: 6px;">
-                <button id="screenshot-share-btn" type="button" style="flex: 1; background: #10b981; padding: 8px;">📤 Share / Save</button>
-                <a id="screenshot-download-link" class="btn-link" style="flex: 1; background: #2563eb; padding: 8px;">💾 Download</a>
-            </div>
-            <button class="secondary" type="button" onclick="closeScreenshotModal()" style="margin-top: 6px; padding: 8px;">Close</button>
         </div>
     </div>
 
@@ -566,21 +653,41 @@
         let isConnected = false;
         let pendingQueue = [];
         let clientState = {
-            username: 'Player1', isReady: false, playersList: [], spectatorsList: [],
-            sideBetLedger: {}, mainGameLedger: {}, botBetLedger: {}, gameState: 'lobby'
+            username: 'Player1',
+            isReady: false,
+            playersList: [],
+            spectatorsList: [],
+            discardTop: null,
+            sideBetLedger: {},
+            mainGameLedger: {},
+            botBetLedger: {},
+            lastDiscardPickup: null,
+            gameState: 'lobby',
+            activeParticipantsCount: 3,
+            isSpectator: false,
+            tiedParticipantsList: [],
+            activeBetsList: [],
+            pendingBetsList: []
         };
         let lastKnownKnockedBy = null;
+        let hasChosenPoolCard = false;
+        let lastPhaseMessage = '';
+        let lastGameState = '';
         let currentJoinedCode = null;
         let latestLobbySnapshot = null;
-        let activeScreenshotBlobUrl = null;
-        let lastSocketHeartbeat = Date.now();
+        let lastCelebratedWinner = null;
 
-        // LiveKit Audio Integration[span_9](start_span)[span_9](end_span)
+        // LiveKit Voice Chat State
         let livekitRoom = null;
         let isLiveKitConnected = false;
         let isVoiceChatActive = false;
+        let isConnectingVoice = false;
         let latestLiveKitHost = null;
         let latestLiveKitToken = null;
+
+        let activeSyncedSongKey = '';
+        let individualVolume = 0.8;
+        let isIndividualMuted = false;
 
         function getLiveKitSDK() {
             return window.LivekitClient || window.LiveKitClient || null;
@@ -589,38 +696,123 @@
         async function connectToLiveKit(host, token) {
             const LK = getLiveKitSDK();
             if (!LK) return;
+
+            if (isConnectingVoice) return;
+            isConnectingVoice = true;
+
             try {
-                if (livekitRoom) await livekitRoom.disconnect();
-                livekitRoom = new LK.Room({ adaptiveStream: true, dynacast: true });
-                livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track) => {
+                if (livekitRoom) {
+                    try { await livekitRoom.disconnect(); } catch (e) {}
+                    livekitRoom = null;
+                }
+
+                livekitRoom = new LK.Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                    audioCaptureDefaults: {
+                        autoGainControl: true,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
                     if (track.kind === LK.Track.Kind.Audio || track.kind === 'audio') {
                         const audioElem = track.attach();
+                        audioElem.autoplay = true;
+                        audioElem.playsInline = true;
                         audioElem.volume = 1.0;
+                        audioElem.setAttribute('playsinline', '');
+                        audioElem.setAttribute('webkit-playsinline', '');
+                        
+                        if (typeof audioElem.setSinkId === 'function') {
+                            audioElem.setSinkId('speaker').catch(() => {});
+                        }
                         document.body.appendChild(audioElem);
                     }
                 });
+
+                livekitRoom.on(LK.RoomEvent.TrackUnsubscribed, (track) => {
+                    track.detach().forEach(el => el.remove());
+                });
+
+                livekitRoom.on(LK.RoomEvent.Disconnected, () => {
+                    isLiveKitConnected = false;
+                    isVoiceChatActive = false;
+                    updateVoiceUI();
+                });
+
                 await livekitRoom.connect(host, token);
                 isLiveKitConnected = true;
+
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isVoiceChatActive = false;
                 updateVoiceUI();
-            } catch (e) {}
+                sendVCStatusInternal(true, true);
+                enableBackgroundAudioKeepAlive();
+
+            } catch (error) {
+                console.error("Failed to connect to LiveKit room:", error);
+            } finally {
+                isConnectingVoice = false;
+            }
+        }
+
+        if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
+            navigator.mediaDevices.ondevicechange = async () => {
+                const LK = getLiveKitSDK();
+                if (LK && livekitRoom && livekitRoom.state === 'connected') {
+                    try {
+                        const audioDevices = await LK.Room.getLocalDevices('audioinput');
+                        if (audioDevices && audioDevices.length > 0 && isVoiceChatActive) {
+                            await livekitRoom.switchActiveDevice('audioinput', audioDevices[0].deviceId);
+                        }
+                    } catch (e) {
+                        console.log("Device switch exception:", e);
+                    }
+                }
+            };
         }
 
         async function toggleVoiceOnOff() {
             if (!livekitRoom || !isLiveKitConnected) {
-                if (latestLiveKitHost && latestLiveKitToken) await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
-                else return;
+                if (latestLiveKitHost && latestLiveKitToken) {
+                    let btn = document.getElementById('vc-main-btn');
+                    if (btn) btn.innerText = 'Connecting...';
+                    await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
+                } else {
+                    initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
+                    return;
+                }
             }
+
+            if (!livekitRoom || !isLiveKitConnected) return;
+
             try {
-                isVoiceChatActive = !isVoiceChatActive;
-                await livekitRoom.localParticipant.setMicrophoneEnabled(isVoiceChatActive);
-                updateVoiceUI();
+                let ctx = getAudioContext();
+                if (ctx && ctx.state === 'suspended') ctx.resume();
+
+                if (isVoiceChatActive) {
+                    await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                    isVoiceChatActive = false;
+                    updateVoiceUI();
+                    sendVCStatusInternal(true, true);
+                } else {
+                    if (livekitRoom.startAudio) await livekitRoom.startAudio();
+                    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+                    isVoiceChatActive = true;
+                    updateVoiceUI();
+                    sendVCStatusInternal(true, false);
+                }
             } catch (err) {
+                console.error("Microphone toggle error:", err);
                 isVoiceChatActive = false;
                 updateVoiceUI();
+                alert("Microphone permission denied or unavailable.");
             }
         }
+
+        const toggleLiveKitVoice = toggleVoiceOnOff;
 
         function updateVoiceUI() {
             const btn = document.getElementById('vc-main-btn');
@@ -632,47 +824,110 @@
             }
         }
 
-        function disconnectLiveKit() {
-            if (livekitRoom) livekitRoom.disconnect();
+        async function disconnectLiveKit() {
+            if (livekitRoom) {
+                try { await livekitRoom.disconnect(); } catch (e) {}
+                livekitRoom = null;
+            }
             isLiveKitConnected = false;
             isVoiceChatActive = false;
             updateVoiceUI();
         }
 
-        // Web Audio Synthesizer Engine
-        let audioCtx = null;
-        function getAudioContext() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            return audioCtx;
+        function sendVCStatusInternal(inVC, isMuted) {
+            initSocketAndSend({ type: 'UPDATE_VC_STATUS', inVC, isMuted });
         }
 
-        window.addEventListener('touchstart', () => {
-            let ctx = getAudioContext();
-            if (ctx.state === 'suspended') ctx.resume();
-        }, { once: true });
+        function enableBackgroundAudioKeepAlive() {
+            try {
+                let ctx = getAudioContext();
+                if (ctx && ctx.state === 'suspended') ctx.resume();
+            } catch (e) {}
+        }
+
+        function triggerVoiceReconnect() {
+            if (latestLiveKitHost && latestLiveKitToken) {
+                connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
+                showCenterNotification("Reconnecting voice chat...");
+            } else {
+                initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
+            }
+            toggleModal('vc-participants-modal');
+        }
+
+        function openVcParticipantsModal() {
+            let listDiv = document.getElementById('vc-participants-list');
+            if (!latestLobbySnapshot) {
+                listDiv.innerHTML = 'No active lobby data.';
+                toggleModal('vc-participants-modal');
+                return;
+            }
+            let vcUsers = [];
+            latestLobbySnapshot.players.forEach(p => { if (p.inVC) vcUsers.push({ username: p.username, isMuted: p.isMuted }); });
+            latestLobbySnapshot.spectators.forEach(s => { if (s.inVC) vcUsers.push({ username: s.username, isMuted: s.isMuted }); });
+            if (vcUsers.length === 0) {
+                listDiv.innerHTML = 'No one currently in voice chat.';
+            } else {
+                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
+            }
+            toggleModal('vc-participants-modal');
+        }
+
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
 
         function playSound(type) {
             try {
                 let ctx = getAudioContext();
                 let now = ctx.currentTime;
-                let osc = ctx.createOscillator();
-                let gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                if (type === 'card') {
-                    osc.frequency.setValueAtTime(440, now);
+                if (type === 'ding') {
+                    let osc = ctx.createOscillator();
+                    let gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.setValueAtTime(587.33, now);
                     gain.gain.setValueAtTime(0.2, now);
-                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
                     osc.start(now);
-                    osc.stop(now + 0.1);
+                    osc.stop(now + 0.4);
                 } else if (type === 'knock') {
-                    osc.frequency.setValueAtTime(220, now);
-                    gain.gain.setValueAtTime(0.5, now);
-                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    let osc = ctx.createOscillator();
+                    let gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.setValueAtTime(300, now);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
                     osc.start(now);
                     osc.stop(now + 0.2);
                 }
+            } catch (e) {}
+        }
+
+        function playCelebrationFanfare() {
+            try {
+                let ctx = getAudioContext();
+                let now = ctx.currentTime;
+                let notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    let osc = ctx.createOscillator();
+                    let gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.16);
+                    gain.gain.setValueAtTime(0.3, now + idx * 0.16);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.16 + 0.9);
+                    osc.start(now + idx * 0.16);
+                    osc.stop(now + idx * 0.16 + 0.9);
+                });
             } catch (e) {}
         }
 
@@ -682,77 +937,391 @@
             }
         }
 
-        // Pairwise Ledger Math & Settlement
+        function parseYouTubeEmbedUrl(url, autoplay = true) {
+            let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            let match = url.match(regExp);
+            let autoStr = autoplay ? '1' : '0';
+            if (match && match[2].length === 11) {
+                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}&enablejsapi=1`;
+            }
+            return url;
+        }
+
+        function addNewSongToPlaylist() {
+            let titleInput = document.getElementById('new-song-title');
+            let urlInput = document.getElementById('new-song-url');
+            let title = titleInput.value.trim();
+            let rawUrl = urlInput.value.trim();
+
+            if (!title || !rawUrl) {
+                alert("Please provide both a song title and a valid YouTube link.");
+                return;
+            }
+
+            let embedUrl = parseYouTubeEmbedUrl(rawUrl, true);
+            initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl });
+            titleInput.value = '';
+            urlInput.value = '';
+            showCenterNotification(`Added "${title}" to queue!`);
+        }
+
+        function sendMusicControl(action, index = null) {
+            initSocketAndSend({ type: 'CONTROL_MUSIC', action, index });
+        }
+
+        function adjustIndividualVolume(val) {
+            individualVolume = parseFloat(val);
+            let slider = document.getElementById('individual-volume-slider');
+            if (slider) slider.value = individualVolume;
+            let iframe = document.querySelector('#youtube-embed-container iframe');
+            if (iframe?.contentWindow) {
+                try {
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: 'setVolume',
+                        args: [individualVolume * 100]
+                    }), '*');
+                } catch (e) {}
+            }
+        }
+
+        function toggleIndividualMusicMute() {
+            isIndividualMuted = !isIndividualMuted;
+            let btn = document.getElementById('individual-mute-btn');
+            if (btn) btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+            let iframe = document.querySelector('#youtube-embed-container iframe');
+            if (iframe?.contentWindow) {
+                try {
+                    let funcName = isIndividualMuted ? 'mute' : 'unMute';
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: funcName,
+                        args: []
+                    }), '*');
+                } catch (e) {}
+            }
+        }
+
+        function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
+            let container = document.getElementById('youtube-embed-container');
+            if (!container) return;
+            if (!playlist || playlist.length === 0 || !isPlaying) {
+                container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
+                activeSyncedSongKey = '';
+                return;
+            }
+
+            let currentSong = playlist[currentIndex] || playlist[0];
+            let songUniqueKey = `${currentIndex}_${currentSong.url}_${isPlaying}`;
+            let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
+
+            if (activeSyncedSongKey !== songUniqueKey) {
+                activeSyncedSongKey = songUniqueKey;
+                container.innerHTML = `
+                    <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                `;
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('saved_username')) {
+                document.getElementById('username-input').value = localStorage.getItem('saved_username');
+            }
+            if (localStorage.getItem('saved_lobby_name')) {
+                document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
+            }
+            connectSocket();
+            refreshLobbies();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    connectSocket();
+                } else if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
+            }
+        });
+
+        window.addEventListener('pageshow', () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
+        });
+
+        function saveInputs() {
+            localStorage.setItem('saved_username', document.getElementById('username-input').value);
+            localStorage.setItem('saved_lobby_name', document.getElementById('lobby-name-input').value);
+        }
+
+        function toggleChatWindow() {
+            let win = document.getElementById('chat-window');
+            let isVisible = win.style.display === 'flex';
+            win.style.display = isVisible ? 'none' : 'flex';
+            if (!isVisible) {
+                let chatBtn = document.getElementById('chat-toggle-btn');
+                if (chatBtn) {
+                    chatBtn.classList.remove('unread');
+                    chatBtn.innerText = '💬 Chat';
+                }
+            }
+        }
+
+        function toggleGlobalSidebar() {
+            let sidebar = document.getElementById('global-side-bets-sidebar');
+            if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
+        }
+
+        function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
+        function removeBot() { initSocketAndSend({ type: 'REMOVE_BOT' }); }
+
+        function tapSeat(targetUsername) {
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            if (clientState.gameState === 'lobby') return;
+
+            let isSpecOnly = clientState.isSpectator;
+            let activeCount = clientState.activeParticipantsCount;
+
+            if (isSpecOnly) {
+                let modalTitle = document.getElementById('seat-action-title');
+                let modalBody = document.getElementById('seat-action-body');
+                modalTitle.innerText = `Actions for ${targetUsername}`;
+
+                let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${targetUsername}')">🔍 Peek Hand</button>`;
+                if (activeCount === 2) {
+                    actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on ${targetUsername}</button>`;
+                }
+                actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
+                modalBody.innerHTML = actionsHtml;
+                toggleModal('seat-action-modal');
+                return;
+            }
+
+            if (activeCount >= 3) {
+                if (targetUsername === activeUsername) return;
+                let modalTitle = document.getElementById('bet-modal-title');
+                let modalBody = document.getElementById('bet-modal-body');
+                modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
+                modalBody.innerHTML = `
+                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount that ${targetUsername} loses before you:</p>
+                    <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
+                    <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
+                    <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+                `;
+                toggleModal('bet-modal');
+            } else if (activeCount === 2) {
+                let modalTitle = document.getElementById('bet-modal-title');
+                let modalBody = document.getElementById('bet-modal-body');
+                modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+                modalBody.innerHTML = `
+                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+                    <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+                    <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+                    <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+                `;
+                toggleModal('bet-modal');
+            }
+        }
+
+        function requestPeekFromModal(targetUsername) {
+            toggleModal('seat-action-modal');
+            initSocketAndSend({ type: 'REQUEST_PEEK', targetUsername });
+            showCenterNotification(`Peek request sent to ${targetUsername}!`);
+        }
+
+        function betOnHimFromModal(targetUsername) {
+            toggleModal('seat-action-modal');
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+            modalBody.innerHTML = `
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+                <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+            `;
+            toggleModal('bet-modal');
+        }
+
+        function submitEliminationProposal(target, wagerAmt) {
+            initSocketAndSend({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt });
+            toggleModal('bet-modal');
+            showCenterNotification(`First to lose bet proposed to ${target}!`);
+        }
+
+        function submitGlobalProposal(pickUser, wagerAmt) {
+            initSocketAndSend({ type: 'PROPOSE_GLOBAL_SIDE_BET', pickUser, wagerAmt });
+            toggleModal('bet-modal');
+            showCenterNotification(`Global bet offered on ${pickUser}!`);
+        }
+
+        function acceptGlobalProposal(proposalId) {
+            initSocketAndSend({ type: 'ACCEPT_GLOBAL_PROPOSAL', proposalId });
+        }
+
+        function confirmGlobalBet(proposalId, acceptedUser, confirm) {
+            initSocketAndSend({ type: 'CONFIRM_GLOBAL_BET', proposalId, acceptedUser, confirm });
+            toggleModal('bet-modal');
+        }
+
+        function openConfirmModal(proposalId, proposer, pickUser, acceptedUsers) {
+            let modal = document.getElementById('bet-modal');
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Confirm Global Side Bet (${pickUser})`;
+            
+            let listHtml = acceptedUsers.map(acc => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
+                    <span><b>${acc}</b> accepted</span>
+                    <div style="display:flex; gap:4px;">
+                        <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
+                        <button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="confirmGlobalBet('${proposalId}', '${acc}', false)">Decline</button>
+                    </div>
+                </div>
+            `).join('');
+
+            modalBody.innerHTML = `
+                <p style="font-size:0.80rem; color:var(--text-muted); margin-bottom:6px;">Players who accepted your proposal:</p>
+                ${listHtml}
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:8px;">Close</button>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function respondToBet(betId, accept) {
+            initSocketAndSend({ type: 'RESPOND_BET', betId, accept });
+            toggleModal('bet-modal');
+        }
+
+        function openActiveBetsModal() {
+            let myName = document.getElementById('username-input').value.trim() || clientState.username;
+            let contentDiv = document.getElementById('active-bets-content');
+            let active = clientState.activeBetsList || [];
+            let pending = clientState.pendingBetsList || [];
+
+            let myActive = active.filter(b => b.proposer === myName || b.target === myName || b.pickUser === myName);
+            let myPending = pending.filter(b => b.proposer === myName || b.target === myName || b.pickUser === myName);
+
+            let html = `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Active Side Bets (${myActive.length})</div>`;
+            if (myActive.length === 0) {
+                html += `<div style="margin-left:8px; margin-bottom:8px; color:var(--text-muted);">None currently active.</div>`;
+            } else {
+                html += '<ul style="margin-left:14px; margin-bottom:8px;">';
+                myActive.forEach(b => {
+                    let desc = b.type === 'eliminate' ? `Bet with ${b.proposer === myName ? b.target : b.proposer}: $${b.wagerAmt} on ${b.pickUser} to lose first` : `Global Bet: $${b.wagerAmt} on ${b.pickUser}`;
+                    html += `<li style="margin-bottom:3px;">${desc}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            html += `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Pending Side Bets (${myPending.length})</div>`;
+            if (myPending.length === 0) {
+                html += `<div style="margin-left:8px; color:var(--text-muted);">None currently pending.</div>`;
+            } else {
+                html += '<ul style="margin-left:14px;">';
+                myPending.forEach(b => {
+                    html += `<li style="margin-bottom:3px;">Proposal from ${b.proposer}: $${b.wagerAmt}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            contentDiv.innerHTML = html;
+            toggleModal('active-bets-modal');
+        }
+
         function calculatePairwiseNet(ledgerData, myName, allUsers) {
             let totalNet = 0;
             let records = {};
-            let ledgerKeys = new Set([...Object.keys(ledgerData || {}), ...(allUsers || [])]);
-            for (let debtorKey in (ledgerData || {})) {
+            let ledgerKeys = new Set([...Object.keys(ledgerData), ...allUsers]);
+            
+            for (let debtorKey in ledgerData) {
                 ledgerKeys.add(debtorKey);
                 if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
-                    for (let creditorKey in ledgerData[debtorKey]) ledgerKeys.add(creditorKey);
+                    for (let creditorKey in ledgerData[debtorKey]) {
+                        ledgerKeys.add(creditorKey);
+                    }
                 }
             }
+
             ledgerKeys.forEach(otherUser => {
-                let cleanOther = (otherUser || '').trim();
-                let cleanMe = (myName || '').trim();
-                if (cleanOther.toLowerCase() === cleanMe.toLowerCase()) return;
-                let theyOweMe = (ledgerData?.[cleanOther]?.[cleanMe]) || 0;
-                let iOweThem = (ledgerData?.[cleanMe]?.[cleanOther]) || 0;
+                if (otherUser === myName) return;
+                let theyOweMe = (ledgerData[otherUser] && ledgerData[otherUser][myName]) || 0;
+                let iOweThem = (ledgerData[myName] && ledgerData[myName][otherUser]) || 0;
                 let net = theyOweMe - iOweThem;
-                if (net !== 0) { records[cleanOther] = net; totalNet += net; }
+                if (net !== 0) {
+                    records[otherUser] = net;
+                    totalNet += net;
+                }
             });
+
             return { totalNet, records };
         }
 
         function openLedgerModal() {
             let ledgerDiv = document.getElementById('ledger-content');
-            let myName = (document.getElementById('username-input').value.trim() || clientState.username).trim();
-            let allUsers = new Set([...Object.keys(clientState.sideBetLedger || {}), ...Object.keys(clientState.mainGameLedger || {}), ...(clientState.playersList || [])]);
+            let myName = document.getElementById('username-input').value.trim() || clientState.username;
+            
+            let sideLedgerData = clientState.sideBetLedger || {};
+            let mainLedgerData = clientState.mainGameLedger || {};
+            let botBetLedgerData = clientState.botBetLedger || {};
 
-            let sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, allUsers);
-            let mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, allUsers);
-            let botCalc = calculatePairwiseNet(clientState.botBetLedger || {}, myName, allUsers);
+            let allUsers = new Set([
+                ...Object.keys(sideLedgerData), 
+                ...Object.keys(mainLedgerData), 
+                ...Object.keys(botBetLedgerData), 
+                ...(clientState.playersList || [])
+            ]);
+
+            let sideCalc = calculatePairwiseNet(sideLedgerData, myName, allUsers);
+            let mainCalc = calculatePairwiseNet(mainLedgerData, myName, allUsers);
+            let botCalc = calculatePairwiseNet(botBetLedgerData, myName, allUsers);
+
             let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
 
-            let html = `<div style="font-size:0.9rem; font-weight:bold; margin-bottom:5px; color:${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net Balance: $${grandTotal.toFixed(2)}</div>`;
+            let html = `<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 5px; color: ${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net Balance: $${grandTotal.toFixed(2)}</div>`;
             html += `<hr style="border-color:#475569; margin-bottom:5px;">`;
 
-            html += `<div style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold); margin-bottom:2px;">🤝 Side Bets</div>`;
-            let sideHtml = '<ul>';
-            let hasSide = false;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🤝 Side Bets</div>`;
+            let hasSideEntries = false;
+            let sideHtml = '<ul style="margin-bottom: 5px;">';
             for (let [user, netAmt] of Object.entries(sideCalc.records)) {
-                hasSide = true;
-                let relText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                hasSideEntries = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
                 let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'side')">Clear</button>` : '';
-                sideHtml += `<li style="margin-left:8px; margin-bottom:2px;"><b>${user}</b> ${relText}${clearBtn}</li>`;
+                sideHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
             sideHtml += '</ul>';
-            html += hasSide ? sideHtml : `<div style="font-size:0.65rem; color:var(--text-muted); margin-left:8px; margin-bottom:5px;">No side bet balances.</div>`;
+            html += hasSideEntries ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
 
-            html += `<div style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold); margin-bottom:2px;">🎮 Main Game Pot Ledger</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
+            let hasMainEntries = false;
             let mainHtml = '<ul>';
-            let hasMain = false;
             for (let [user, netAmt] of Object.entries(mainCalc.records)) {
-                hasMain = true;
-                let relText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                hasMainEntries = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
                 let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'main')">Clear</button>` : '';
-                mainHtml += `<li style="margin-left:8px; margin-bottom:2px;"><b>${user}</b> ${relText}${clearBtn}</li>`;
+                mainHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
             mainHtml += '</ul>';
-            html += hasMain ? mainHtml : `<div style="font-size:0.65rem; color:var(--text-muted); margin-left:8px; margin-bottom:5px;">No main game balances recorded.</div>`;
+            html += hasMainEntries ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No main game balances recorded yet.</div>`;
 
-            html += `<div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); margin-top:6px; margin-bottom:2px;">🤖 Bot Bets</div>`;
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-cyan); margin-top: 6px; margin-bottom: 2px;">🤖 Bot Bets (Excluded from Total Net)</div>`;
+            let hasBotEntries = false;
             let botHtml = '<ul>';
-            let hasBot = false;
             for (let [user, netAmt] of Object.entries(botCalc.records)) {
-                hasBot = true;
-                let relText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                hasBotEntries = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
                 let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'bot')">Clear</button>` : '';
-                botHtml += `<li style="margin-left:8px; margin-bottom:2px;"><b>${user}</b> ${relText}${clearBtn}</li>`;
+                botHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
             }
             botHtml += '</ul>';
-            html += hasBot ? botHtml : `<div style="font-size:0.65rem; color:var(--text-muted); margin-left:8px;">No bot bets recorded.</div>`;
+            html += hasBotEntries ? botHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No bot bets recorded.</div>`;
 
             ledgerDiv.innerHTML = html;
             toggleModal('ledger-modal');
@@ -760,184 +1329,277 @@
 
         function clearDebtCategory(targetUser, category) {
             initSocketAndSend({ type: 'CLEAR_DEBT', targetUser, category });
-            setTimeout(openLedgerModal, 200);
+            setTimeout(() => openLedgerModal(), 200);
         }
 
-        // Native Android Snapshot Pipeline[span_10](start_span)[span_10](end_span)
-        function dataURLToBlobSync(dataURL) {
-            const parts = dataURL.split(',');
-            const mime = parts[0].match(/:(.*?);/)[1];
-            const binary = atob(parts[1]);
-            const len = binary.length;
-            const u8arr = new Uint8Array(len);
-            for (let i = 0; i < len; i++) u8arr[i] = binary.charCodeAt(i);
-            return new Blob([u8arr], { type: mime });
-        }
-
-        function closeScreenshotModal() {
-            const modal = document.getElementById('screenshot-modal');
-            if (modal) modal.style.display = 'none';
-            if (activeScreenshotBlobUrl) {
-                URL.revokeObjectURL(activeScreenshotBlobUrl);
-                activeScreenshotBlobUrl = null;
+        function openSpectatorListModal() {
+            let content = document.getElementById('spectators-list-content');
+            let specs = clientState.spectatorsList || [];
+            if (specs.length === 0) {
+                content.innerHTML = 'No spectators.';
+            } else {
+                content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
             }
+            toggleModal('spectators-modal');
         }
 
+        // Timestamped Canvas Snapshot of the Ledger
         function saveLedgerScreenshot() {
-            const ledgerModal = document.getElementById('ledger-modal');
-            if (ledgerModal) ledgerModal.style.display = 'none';
+            let myName = document.getElementById('username-input').value.trim() || clientState.username;
+            let sideLedgerData = clientState.sideBetLedger || {};
+            let mainLedgerData = clientState.mainGameLedger || {};
+            let botLedgerData = clientState.botBetLedger || {};
 
-            const myName = (document.getElementById('username-input').value.trim() || clientState.username || 'Player').trim();
+            let allUsers = new Set([
+                ...Object.keys(sideLedgerData), 
+                ...Object.keys(mainLedgerData), 
+                ...Object.keys(botLedgerData), 
+                ...(clientState.playersList || [])
+            ]);
+
+            let sideCalc = calculatePairwiseNet(sideLedgerData, myName, allUsers);
+            let mainCalc = calculatePairwiseNet(mainLedgerData, myName, allUsers);
+            let botCalc = calculatePairwiseNet(botLedgerData, myName, allUsers);
+            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
+
             const now = new Date();
-            const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const fileName = `31-ledger-${dateStr}.png`;
-            const readableDate = now.toLocaleString();
+            const dateStr = now.toLocaleDateString();
+            const timeStr = now.toLocaleTimeString();
+            const pad = (n) => String(n).padStart(2, '0');
+            const timestampFile = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+            let lines = [];
+            lines.push({ text: `Total Net Balance: $${grandTotal.toFixed(2)}`, font: 'bold 22px system-ui', color: grandTotal >= 0 ? '#34d399' : '#f87171' });
+            lines.push({ type: 'divider' });
+
+            lines.push({ text: '🤝 Side Bets', font: 'bold 18px system-ui', color: '#facc15' });
+            let sideKeys = Object.entries(sideCalc.records);
+            if (sideKeys.length === 0) {
+                lines.push({ text: '  No side bet balances.', font: '14px system-ui', color: '#94a3b8' });
+            } else {
+                for (let [user, netAmt] of sideKeys) {
+                    let rel = netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`;
+                    lines.push({ text: `  • ${user}: ${rel}`, font: '15px system-ui', color: netAmt > 0 ? '#34d399' : '#f87171' });
+                }
+            }
+
+            lines.push({ type: 'spacer' });
+            lines.push({ text: '🎮 Main Game Pot Ledger', font: 'bold 18px system-ui', color: '#facc15' });
+            let mainKeys = Object.entries(mainCalc.records);
+            if (mainKeys.length === 0) {
+                lines.push({ text: '  No main game balances recorded.', font: '14px system-ui', color: '#94a3b8' });
+            } else {
+                for (let [user, netAmt] of mainKeys) {
+                    let rel = netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`;
+                    lines.push({ text: `  • ${user}: ${rel}`, font: '15px system-ui', color: netAmt > 0 ? '#34d399' : '#f87171' });
+                }
+            }
+
+            lines.push({ type: 'spacer' });
+            lines.push({ text: '🤖 Bot Bets (Excluded from Total Net)', font: 'bold 18px system-ui', color: '#38bdf8' });
+            let botKeys = Object.entries(botCalc.records);
+            if (botKeys.length === 0) {
+                lines.push({ text: '  No bot bets recorded.', font: '14px system-ui', color: '#94a3b8' });
+            } else {
+                for (let [user, netAmt] of botKeys) {
+                    let rel = netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`;
+                    lines.push({ text: `  • ${user}: ${rel}`, font: '15px system-ui', color: netAmt > 0 ? '#34d399' : '#f87171' });
+                }
+            }
+
+            const width = 640;
+            const headerHeight = 110;
+            let contentHeight = 0;
+            lines.forEach(l => {
+                if (l.type === 'divider' || l.type === 'spacer') contentHeight += 18;
+                else contentHeight += 26;
+            });
+            const height = headerHeight + contentHeight + 40;
 
             const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
-            canvas.width = 600;
-            canvas.height = 760;
 
-            ctx.fillStyle = '#065f46';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#022c22';
+            ctx.fillRect(0, 0, width, height);
+
+            let grad = ctx.createRadialGradient(width / 2, height / 2, 50, width / 2, height / 2, width);
+            grad.addColorStop(0, '#065f46');
+            grad.addColorStop(1, '#044e36');
+            ctx.fillStyle = grad;
+            ctx.fillRect(10, 10, width - 20, height - 20);
+
             ctx.strokeStyle = '#facc15';
-            ctx.lineWidth = 6;
-            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+            ctx.lineWidth = 3;
+            ctx.strokeRect(10, 10, width - 20, height - 20);
 
             ctx.fillStyle = '#facc15';
-            ctx.font = 'bold 24px system-ui, sans-serif';
-            ctx.fillText("31! Game Ledger Snapshot", 30, 50);
+            ctx.font = 'bold 26px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText('31! Card Game — Ledger Snapshot', width / 2, 48);
 
             ctx.fillStyle = '#cbd5e1';
-            ctx.font = '14px system-ui, sans-serif';
-            ctx.fillText(`Player: ${myName}  |  Captured: ${readableDate}`, 30, 80);
+            ctx.font = '14px system-ui';
+            ctx.fillText(`Player: ${myName}  |  Timestamp: ${dateStr} ${timeStr}`, width / 2, 75);
 
-            ctx.strokeStyle = '#38bdf8';
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(30, 95);
-            ctx.lineTo(570, 95);
+            ctx.lineTo(width - 30, 95);
             ctx.stroke();
 
-            const sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, clientState.playersList || []);
-            const mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, clientState.playersList || []);
-            const botCalc = calculatePairwiseNet(clientState.botBetLedger || {}, myName, clientState.playersList || []);
-            const grandTotal = sideCalc.totalNet + mainCalc.totalNet;
+            ctx.textAlign = 'left';
+            let currY = 130;
+            lines.forEach(l => {
+                if (l.type === 'divider') {
+                    ctx.strokeStyle = '#334155';
+                    ctx.beginPath();
+                    ctx.moveTo(30, currY - 8);
+                    ctx.lineTo(width - 30, currY - 8);
+                    ctx.stroke();
+                    currY += 16;
+                } else if (l.type === 'spacer') {
+                    currY += 16;
+                } else {
+                    ctx.fillStyle = l.color;
+                    ctx.font = l.font;
+                    ctx.fillText(l.text, 35, currY);
+                    currY += 26;
+                }
+            });
 
-            ctx.fillStyle = grandTotal >= 0 ? '#34d399' : '#f87171';
-            ctx.font = 'bold 20px system-ui, sans-serif';
-            ctx.fillText(`Total Net Balance: $${grandTotal.toFixed(2)}`, 30, 130);
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `31_Ledger_${timestampFile}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showCenterNotification(`📸 Snapshot saved: 31_Ledger_${timestampFile}.png`);
+            }, 'image/png');
 
-            let y = 170;
-            ctx.fillStyle = '#facc15';
-            ctx.font = 'bold 16px system-ui, sans-serif';
-            ctx.fillText("🤝 Side Bets", 30, y);
-            y += 25;
+            toggleModal('ledger-modal');
+        }
 
-            ctx.font = '15px system-ui, sans-serif';
-            let sideEntries = Object.entries(sideCalc.records);
-            if (sideEntries.length === 0) {
-                ctx.fillStyle = '#94a3b8';
-                ctx.fillText("No active side bet balances.", 45, y);
-                y += 25;
-            } else {
-                for (let [user, netAmt] of sideEntries) {
-                    ctx.fillStyle = '#f8fafc';
-                    ctx.fillText(`• ${user}: `, 45, y);
-                    ctx.fillStyle = netAmt > 0 ? '#34d399' : '#f87171';
-                    ctx.fillText(netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`, 160, y);
-                    y += 25;
+        // Particle System: Confetti & Fireworks
+        let celebrationAnimationId = null;
+        let celebrationParticles = [];
+
+        function triggerWinnerCelebration(winnerName) {
+            const overlay = document.getElementById('winner-celebration-overlay');
+            const title = document.getElementById('celebration-winner-title');
+            const canvas = document.getElementById('celebration-canvas');
+            if (!overlay || !canvas) return;
+
+            title.innerText = `${winnerName} Wins!`;
+            overlay.style.display = 'flex';
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const ctx = canvas.getContext('2d');
+
+            celebrationParticles = [];
+            const colors = ['#facc15', '#ef4444', '#38bdf8', '#10b981', '#ec4899', '#a855f7', '#fb923c'];
+
+            for (let i = 0; i < 90; i++) {
+                celebrationParticles.push({
+                    type: 'confetti',
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * -canvas.height,
+                    w: Math.random() * 8 + 6,
+                    h: Math.random() * 5 + 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    vx: Math.random() * 3 - 1.5,
+                    vy: Math.random() * 3 + 2.5,
+                    rot: Math.random() * 360,
+                    vRot: Math.random() * 6 - 3
+                });
+            }
+
+            function spawnFireworkBurst() {
+                const cx = Math.random() * (canvas.width * 0.8) + (canvas.width * 0.1);
+                const cy = Math.random() * (canvas.height * 0.5) + (canvas.height * 0.15);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                for (let i = 0; i < 45; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 5 + 2;
+                    celebrationParticles.push({
+                        type: 'firework',
+                        x: cx,
+                        y: cy,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        alpha: 1.0,
+                        color: color,
+                        radius: Math.random() * 2.5 + 1.5
+                    });
                 }
             }
 
-            y += 15;
-            ctx.fillStyle = '#facc15';
-            ctx.font = 'bold 16px system-ui, sans-serif';
-            ctx.fillText("🎮 Main Game Pot Ledger", 30, y);
-            y += 25;
+            for (let b = 0; b < 3; b++) spawnFireworkBurst();
+            let burstTimer = setInterval(() => {
+                if (overlay.style.display === 'flex') spawnFireworkBurst();
+            }, 700);
 
-            ctx.font = '15px system-ui, sans-serif';
-            let mainEntries = Object.entries(mainCalc.records);
-            if (mainEntries.length === 0) {
-                ctx.fillStyle = '#94a3b8';
-                ctx.fillText("No main game balances recorded.", 45, y);
-                y += 25;
-            } else {
-                for (let [user, netAmt] of mainEntries) {
-                    ctx.fillStyle = '#f8fafc';
-                    ctx.fillText(`• ${user}: `, 45, y);
-                    ctx.fillStyle = netAmt > 0 ? '#34d399' : '#f87171';
-                    ctx.fillText(netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`, 160, y);
-                    y += 25;
-                }
-            }
+            playCelebrationFanfare();
 
-            y += 15;
-            ctx.fillStyle = '#facc15';
-            ctx.font = 'bold 16px system-ui, sans-serif';
-            ctx.fillText("🤖 Bot Bets Ledger", 30, y);
-            y += 25;
+            function renderCelebration() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            ctx.font = '15px system-ui, sans-serif';
-            let botEntries = Object.entries(botCalc.records);
-            if (botEntries.length === 0) {
-                ctx.fillStyle = '#94a3b8';
-                ctx.fillText("No bot bet balances recorded.", 45, y);
-                y += 25;
-            } else {
-                for (let [user, netAmt] of botEntries) {
-                    ctx.fillStyle = '#f8fafc';
-                    ctx.fillText(`• ${user}: `, 45, y);
-                    ctx.fillStyle = netAmt > 0 ? '#34d399' : '#f87171';
-                    ctx.fillText(netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`, 160, y);
-                    y += 25;
-                }
-            }
+                for (let i = celebrationParticles.length - 1; i >= 0; i--) {
+                    const p = celebrationParticles[i];
+                    if (p.type === 'confetti') {
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        p.rot += p.vRot;
+                        if (p.y > canvas.height) {
+                            p.y = -10;
+                            p.x = Math.random() * canvas.width;
+                        }
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.rotate((p.rot * Math.PI) / 180);
+                        ctx.fillStyle = p.color;
+                        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                        ctx.restore();
+                    } else if (p.type === 'firework') {
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        p.vy += 0.08;
+                        p.vx *= 0.98;
+                        p.alpha -= 0.016;
 
-            const dataUrl = canvas.toDataURL('image/png');
-            const blob = dataURLToBlobSync(dataUrl);
-            if (activeScreenshotBlobUrl) URL.revokeObjectURL(activeScreenshotBlobUrl);
-            activeScreenshotBlobUrl = URL.createObjectURL(blob);
-            const file = new File([blob], fileName, { type: 'image/png' });
+                        if (p.alpha <= 0) {
+                            celebrationParticles.splice(i, 1);
+                            continue;
+                        }
 
-            const modal = document.getElementById('screenshot-modal');
-            const img = document.getElementById('screenshot-preview-img');
-            const shareBtn = document.getElementById('screenshot-share-btn');
-            const dlLink = document.getElementById('screenshot-download-link');
-            const statusText = document.getElementById('screenshot-status-text');
-
-            img.src = dataUrl;
-            statusText.innerText = "";
-
-            dlLink.href = activeScreenshotBlobUrl;
-            dlLink.download = fileName;
-            dlLink.onclick = () => { statusText.innerText = "Download initiated!"; };
-
-            shareBtn.onclick = async () => {
-                statusText.innerText = "Opening share sheet...";
-                if (window.Capacitor?.Plugins?.Share) {
-                    try {
-                        await window.Capacitor.Plugins.Share.share({
-                            title: '31! Game Ledger', url: dataUrl, dialogTitle: 'Save Ledger Snapshot'
-                        });
-                        statusText.innerText = "System sheet opened.";
-                        return;
-                    } catch (e) {}
-                }
-
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    try {
-                        await navigator.share({ files: [file], title: '31! Game Ledger' });
-                        statusText.innerText = "Shared successfully!";
-                        return;
-                    } catch (err) {
-                        if (err.name === 'AbortError') { statusText.innerText = ""; return; }
+                        ctx.save();
+                        ctx.globalAlpha = p.alpha;
+                        ctx.fillStyle = p.color;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
                     }
                 }
-                statusText.innerText = "Touch and hold image to save directly.";
-            };
 
-            modal.style.display = 'flex';
+                celebrationAnimationId = requestAnimationFrame(renderCelebration);
+            }
+
+            if (celebrationAnimationId) cancelAnimationFrame(celebrationAnimationId);
+            celebrationAnimationId = requestAnimationFrame(renderCelebration);
+
+            setTimeout(() => {
+                clearInterval(burstTimer);
+                overlay.style.display = 'none';
+                if (celebrationAnimationId) cancelAnimationFrame(celebrationAnimationId);
+            }, 6000);
         }
 
         function formatCardHtml(card, isMini = false) {
@@ -947,7 +1609,7 @@
             if (isMini) {
                 return `<div class="mini-card ${suitClass}"><span>${card.val}</span><span>${card.suit}</span></div>`;
             } else {
-                return `<div class="my-card ${suitClass}" style="width:55px; height:80px; font-size:1rem;"><span>${card.val}</span><span style="font-size:1.3rem;">${card.suit}</span></div>`;
+                return `<div class="my-card ${suitClass}" style="width:60px; height:85px; font-size:1.1rem;"><span>${card.val}</span><span style="font-size:1.4rem;">${card.suit}</span></div>`;
             }
         }
 
@@ -956,19 +1618,9 @@
             if (!banner) return;
             banner.innerText = msg;
             banner.style.display = 'block';
-            setTimeout(() => { banner.style.display = 'none'; }, 2600);
+            setTimeout(() => { banner.style.display = 'none'; }, 2500);
         }
 
-        function calculateLocalScore(cards) {
-            let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
-            if (!scoringCards || scoringCards.length === 0) return 0;
-            let sums = {};
-            scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
-            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
-            return Math.max(...Object.values(sums), 0);
-        }
-
-        // WebSockets & Fast Re-association Watchdog[span_11](start_span)[span_11](end_span)
         function connectSocket() {
             if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
             const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -976,8 +1628,10 @@
 
             ws.onopen = () => {
                 isConnected = true;
-                lastSocketHeartbeat = Date.now();
-                while (pendingQueue.length > 0) ws.send(JSON.stringify(pendingQueue.shift()));
+                while (pendingQueue.length > 0) {
+                    let msg = pendingQueue.shift();
+                    ws.send(JSON.stringify(msg));
+                }
                 if (currentJoinedCode) {
                     initSocketAndSend({
                         type: 'JOIN_LOBBY',
@@ -988,61 +1642,71 @@
             };
 
             ws.onmessage = (event) => {
-                lastSocketHeartbeat = Date.now();
                 let data = JSON.parse(event.data);
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
-                else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
+                else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE' || data.type === 'LOBBY_UPDATE') {
                     if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
                     latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
+
                     const host = data.livekitHost || latestLiveKitHost;
-                    const token = data.livekitToken || latestLiveKitToken;
-                    if (host && token && !isLiveKitConnected) connectToLiveKit(host, token);
-                } else if (data.type === 'CHAT_MESSAGE') {
-                    let box = document.getElementById('chat-messages');
-                    if (box) {
-                        box.innerHTML += `<div><b>${data.username}:</b> ${data.message}</div>`;
-                        box.scrollTop = box.scrollHeight;
+                    const token = data.livekitToken || data.token || latestLiveKitToken;
+                    if (host && token) {
+                        latestLiveKitHost = host;
+                        latestLiveKitToken = token;
+                        if (!isLiveKitConnected && !isConnectingVoice) {
+                            connectToLiveKit(host, token);
+                        }
                     }
+                } else if (data.type === 'LIVEKIT_TOKEN') {
+                    const host = data.livekitHost || latestLiveKitHost;
+                    const token = data.livekitToken || data.token;
+                    if (host && token) {
+                        latestLiveKitHost = host;
+                        latestLiveKitToken = token;
+                        connectToLiveKit(host, token);
+                    }
+                } else if (data.type === 'CHAT_MESSAGE') {
+                    appendChatMessage(data.username, data.message);
                 } else if (data.type === 'LEFT_LOBBY') {
                     currentJoinedCode = null;
                     latestLobbySnapshot = null;
                     disconnectLiveKit();
-                    document.getElementById('game-view').style.display = 'none';
-                    document.getElementById('main-menu').style.display = 'flex';
-                    document.getElementById('end-game-btn').style.display = 'none';
-                    document.getElementById('leave-lobby-btn').style.display = 'none';
-                    document.getElementById('vc-group-container').style.display = 'none';
-                    refreshLobbies();
+                    resetToMainMenu();
                 } else if (data.type === 'ERROR') alert(data.message);
             };
 
             ws.onclose = () => {
                 isConnected = false;
-                setTimeout(connectSocket, 2000);
+                setTimeout(() => { connectSocket(); }, 2500);
             };
         }
 
         function initSocketAndSend(payload) {
             saveInputs();
             clientState.username = document.getElementById('username-input').value.trim() || 'Player1';
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-            else {
+            
+            if (payload.type === 'CREATE_LOBBY' || payload.type === 'JOIN_LOBBY') {
+                if (payload.code) currentJoinedCode = payload.code;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
+            } else {
                 pendingQueue.push(payload);
                 connectSocket();
             }
         }
 
-        function refreshLobbies() { initSocketAndSend({ type: 'REFRESH_LOBBIES' }); }
+        function refreshLobbies() {
+            initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+        }
 
         function renderLobbyList(lobbies) {
             let container = document.getElementById('lobby-list');
             if (!container) return;
-            if (!lobbies || lobbies.length === 0) {
-                container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>';
-                return;
-            }
-            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6)</span><span style="color:#38bdf8;">Join</span></div>`).join('');
+            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
+            container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
         function createLobby() {
@@ -1062,14 +1726,23 @@
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
-        function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
-        function removeBot() { initSocketAndSend({ type: 'REMOVE_BOT' }); }
-        function updateWager() { initSocketAndSend({ type: 'UPDATE_WAGER', wager: document.getElementById('config-wager').value }); }
-        function updateSettings() { initSocketAndSend({ type: 'UPDATE_SETTINGS', lives: document.getElementById('config-lives').value }); }
+        function standUp() { initSocketAndSend({ type: 'STAND_UP' }); }
+        function sitDown() { initSocketAndSend({ type: 'SIT_DOWN' }); }
+
+        function updateWager() {
+            let wager = document.getElementById('config-wager').value;
+            initSocketAndSend({ type: 'UPDATE_WAGER', wager });
+        }
+
+        function updateSettings() {
+            let lives = document.getElementById('config-lives').value;
+            initSocketAndSend({ type: 'UPDATE_SETTINGS', lives });
+        }
 
         function toggleReady() {
             clientState.isReady = !clientState.isReady;
             document.getElementById('ready-btn').innerText = clientState.isReady ? 'Unready' : 'Ready Up';
+            hasChosenPoolCard = false;
             initSocketAndSend({ type: 'SET_READY', ready: clientState.isReady });
         }
 
@@ -1080,44 +1753,10 @@
             initSocketAndSend({ type: 'NEXT_HAND_READY' });
         }
 
-        function drawCard(type) {
-            playSound('card');
-            triggerVibration(40);
-            initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
-        }
-
-        function discardCard(cardIndex) {
-            playSound('card');
-            triggerVibration(30);
-            initSocketAndSend({ type: 'DISCARD_CARD', cardIndex });
-        }
-
-        function knockRound() {
-            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
-            let me = latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
-            let currentScore = me && me.cards ? calculateLocalScore(me.cards) : 0;
-
-            if (currentScore <= 30) {
-                let confirmKnock = confirm(`Knock Confirmation: Are you sure you want to knock with ${currentScore} points?`);
-                if (!confirmKnock) return;
-            }
-
-            playSound('knock');
-            triggerVibration([180, 110, 180, 110, 180]);
-            initSocketAndSend({ type: 'KNOCK' });
-        }
-
-        function choosePoolCard(cardIndex) {
-            initSocketAndSend({ type: 'CHOOSE_POOL_CARD', cardIndex });
-        }
-
-        function leaveLobby() {
-            disconnectLiveKit();
-            initSocketAndSend({ type: 'LEAVE_LOBBY' });
-        }
-
         function proposeEndGame() {
-            if (confirm("End this match and return to the waiting room?")) initSocketAndSend({ type: 'LEAVE_LOBBY' });
+            if (confirm("Propose ending the game?")) {
+                initSocketAndSend({ type: 'END_GAME_PROPOSAL' });
+            }
         }
 
         function sendChatMessage() {
@@ -1129,6 +1768,18 @@
             }
         }
 
+        function appendChatMessage(user, msg) {
+            let box = document.getElementById('chat-messages');
+            if (!box) return;
+            box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function stopPeekingAction() {
+            initSocketAndSend({ type: 'STOP_PEEK' });
+            document.getElementById('active-peeking-banner').style.display = 'none';
+        }
+
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('game-view').style.display = 'flex';
@@ -1136,166 +1787,324 @@
             document.getElementById('leave-lobby-btn').style.display = 'inline-block';
             document.getElementById('vc-group-container').style.display = 'inline-flex';
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
-            document.getElementById('spec-count').innerText = lobby.spectatorsCount || 0;
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
-            clientState.gameState = lobby.gameState;
-            clientState.playersList = lobby.players.map(p => p.username);
-            clientState.spectatorsList = lobby.spectators || [];
-            clientState.sideBetLedger = lobby.sideBetLedger || {};
-            clientState.mainGameLedger = lobby.mainGameLedger || {};
-            clientState.botBetLedger = lobby.botBetLedger || {};
+            renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
 
-            let me = lobby.players.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
-            let isEliminated = me && me.eliminated;
-            let isSpectatorOnly = !me || isEliminated;
-
-            if (me) {
-                clientState.isReady = me.ready;
-                document.getElementById('ready-btn').innerText = me.ready ? 'Unready' : 'Ready Up';
+            // Trigger grand celebration when tournament winner is announced
+            let hasWinner = lobby.tournamentWinner || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
+            if (hasWinner) {
+                let winnerName = lobby.tournamentWinner;
+                if (!winnerName && lobby.phaseMessage) {
+                    let m = lobby.phaseMessage.match(/TOURNAMENT WINNER!\s+(.*?)\s+wins/);
+                    if (m && m[1]) winnerName = m[1].trim();
+                }
+                if (winnerName && lastCelebratedWinner !== winnerName) {
+                    lastCelebratedWinner = winnerName;
+                    triggerWinnerCelebration(winnerName);
+                }
+            }
+            if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
+                lastCelebratedWinner = null;
             }
 
-            // Knock Alert Modal
-            let knockModal = document.getElementById('knock-alert-modal');
+            if (lobby.gameState !== lastGameState) {
+                hasChosenPoolCard = false;
+                lastGameState = lobby.gameState;
+                if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
+                    document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
+                    document.getElementById('fed-card-topright-modal').style.display = 'none';
+                }
+            }
+
+            let knockAlertModal = document.getElementById('knock-alert-modal');
             if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
-                knockModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
-                knockModal.style.display = 'block';
+                knockAlertModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
+                knockAlertModal.style.display = 'block';
+
                 if (lastKnownKnockedBy !== lobby.knockedBy) {
                     lastKnownKnockedBy = lobby.knockedBy;
                     playSound('knock');
                     triggerVibration([180, 110, 180, 110, 180]);
                 }
             } else {
-                knockModal.style.display = 'none';
+                knockAlertModal.style.display = 'none';
                 lastKnownKnockedBy = null;
             }
 
-            // Top-Left Initial Discard Modal[span_12](start_span)[span_12](end_span)
             let topleftModal = document.getElementById('discard-pickup-topleft-modal');
+            let topleftCardContent = document.getElementById('discard-pickup-card-content');
             if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
-                document.getElementById('discard-pickup-card-content').innerHTML = `
-                    <span><b>${lobby.lastDiscardPickup.username}</b>:</span> ${formatCardHtml(lobby.lastDiscardPickup.card, true)}
-                `;
+                let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
+                topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b>:</span> ${cardHtml}`;
                 topleftModal.style.display = 'flex';
             } else {
                 topleftModal.style.display = 'none';
             }
 
-            // Top-Right Fed Card Modal[span_13](start_span)[span_13](end_span)
             let fedModal = document.getElementById('fed-card-topright-modal');
+            let fedContent = document.getElementById('fed-card-content');
+            let fedLabel = document.getElementById('fed-card-label');
             if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
-                document.getElementById('fed-card-label').innerText = `${lobby.myFedCardReminder.target} took your:`;
-                document.getElementById('fed-card-content').innerHTML = formatCardHtml(lobby.myFedCardReminder.card, true);
+                fedLabel.innerText = `${lobby.myFedCardReminder.target} took your:`;
+                fedContent.innerHTML = formatCardHtml(lobby.myFedCardReminder.card, true);
                 fedModal.style.display = 'flex';
             } else {
                 fedModal.style.display = 'none';
             }
 
-            // Turn Banner[span_14](start_span)[span_14](end_span)
-            let turnBanner = document.getElementById('turn-banner');
-            let isMyTurn = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase());
-            if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-                turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-                if (isMyTurn) triggerVibration(30);
-            } else if (lobby.gameState === 'dealerDraw') {
-                turnBanner.innerText = "Dealer Draw Phase";
-            } else if (lobby.gameState === 'tieBreaker') {
-                turnBanner.innerText = "Tie-Breaker Draw";
-            } else {
-                turnBanner.innerText = lobby.phaseMessage || 'Round Over';
-            }
+            clientState.gameState = lobby.gameState;
+            clientState.playersList = lobby.players.map(p => p.username);
+            clientState.spectatorsList = lobby.spectators || [];
+            clientState.activeParticipantsCount = lobby.activeParticipantsCount || 3;
+            clientState.tiedParticipantsList = lobby.tiedParticipantsList || [];
+            clientState.activeBetsList = lobby.activeBets || [];
+            clientState.pendingBetsList = lobby.pendingBets || [];
+            clientState.sideBetLedger = lobby.sideBetLedger || {};
+            clientState.mainGameLedger = lobby.mainGameLedger || {};
+            clientState.botBetLedger = lobby.botBetLedger || {};
+            document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
-            if (lobby.phaseMessage) showCenterNotification(lobby.phaseMessage);
+            let me = lobby.players.find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
+            let isSpecUser = lobby.spectators.some(s => s.username.trim().toLowerCase() === activeUsername.toLowerCase());
+            let isEliminated = me && me.eliminated;
+            let isSpectatorOnly = !me || isEliminated || isSpecUser;
+            clientState.isSpectator = isSpectatorOnly;
 
-            // Knock Button & Threshold (21 for 3+, 25 for heads-up)
-            let knockBtn = document.getElementById('knock-btn');
-            let activeCount = lobby.players.filter(p => !p.eliminated).length;
-            let threshold = activeCount > 2 ? 21 : 25;
-            let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
-            let canKnockNow = lobby.canKnock && (myScore >= threshold) && isMyTurn && !lobby.knockedBy;
+            if (me) {
+                clientState.isReady = me.ready;
+                let readyBtn = document.getElementById('ready-btn');
+                readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
 
-            if (isSpectatorOnly || lobby.gameState !== 'playing') {
-                knockBtn.style.display = 'none';
-            } else {
-                knockBtn.style.display = 'inline-block';
-                if (lobby.knockedBy) {
-                    knockBtn.disabled = true;
-                    knockBtn.innerText = `${lobby.knockedBy} Knocked!`;
-                } else if (!canKnockNow) {
-                    knockBtn.disabled = true;
-                    knockBtn.innerText = `Knock (${threshold}+)`;
-                } else {
-                    knockBtn.disabled = false;
-                    knockBtn.innerText = 'Knock!';
+                if (me.peekIncoming && Object.keys(me.peekIncoming).length > 0) {
+                    let requester = Object.keys(me.peekIncoming)[0];
+                    let peekModal = document.getElementById('peek-request-modal');
+                    document.getElementById('peek-modal-msg').innerText = `${requester} wants to peek at your hand.`;
+                    document.getElementById('peek-allow-btn').onclick = () => {
+                        initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: true });
+                        toggleModal('peek-request-modal');
+                    };
+                    document.getElementById('peek-deny-btn').onclick = () => {
+                        initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: false });
+                        toggleModal('peek-request-modal');
+                    };
+                    peekModal.style.display = 'flex';
                 }
             }
 
+            let standUpBtn = document.getElementById('stand-up-btn');
+            let sitBtn = document.getElementById('sit-btn');
+            let readyBtn = document.getElementById('ready-btn');
+            let knockBtn = document.getElementById('knock-btn');
+
+            if (lobby.gameState === 'lobby') {
+                if (me && !isEliminated) {
+                    standUpBtn.style.display = 'inline-block';
+                    sitBtn.style.display = 'none';
+                    readyBtn.style.display = 'inline-block';
+                    knockBtn.style.display = 'none';
+                } else {
+                    standUpBtn.style.display = 'none';
+                    readyBtn.style.display = 'none';
+                    knockBtn.style.display = 'none';
+                    sitBtn.style.display = isSpecUser ? 'inline-block' : 'none';
+                }
+            } else {
+                sitBtn.style.display = 'none';
+                if (isSpectatorOnly) {
+                    standUpBtn.style.display = 'none';
+                    readyBtn.style.display = 'none';
+                    knockBtn.style.display = 'none';
+                } else {
+                    standUpBtn.style.display = 'none';
+                    readyBtn.style.display = 'none';
+                    knockBtn.style.display = 'inline-block';
+                }
+            }
+
+            let activePartsCount = lobby.players.filter(p => !p.eliminated).length;
+            let threshold = activePartsCount > 2 ? 21 : 25;
+            let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
+            let turnsConditionMet = !!lobby.canKnock;
+            let scoreConditionMet = myScore >= threshold;
+            let isMyTurnPlaying = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+
+            if (lobby.knockedBy) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `${lobby.knockedBy} knocked!`;
+            } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `Knock (${threshold}+)`;
+            } else {
+                knockBtn.disabled = false;
+                knockBtn.innerText = 'Knock!';
+            }
+
+            let sidebar = document.getElementById('global-side-bets-sidebar');
+            let sidebarList = document.getElementById('global-side-bets-list');
+            let globalProps = lobby.globalProposals || [];
+
+            if (globalProps.length > 0 && lobby.gameState !== 'lobby') {
+                sidebar.style.display = 'flex';
+                let sidebarHtml = '';
+                globalProps.forEach(gp => {
+                    let isMyProp = (gp.proposer === activeUsername);
+                    let alreadyAccepted = gp.acceptedBy.includes(activeUsername);
+
+                    let actionHtml = '';
+                    if (isMyProp) {
+                        if (gp.acceptedBy.length > 0) {
+                            actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${gp.proposer}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
+                        } else {
+                            actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
+                        }
+                    } else {
+                        if (!alreadyAccepted) {
+                            actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
+                        } else {
+                            actionHtml = `<span style="color:#34d399; font-size:0.65rem;">Accepted ("You got it")</span>`;
+                        }
+                    }
+
+                    sidebarHtml += `
+                        <div class="global-bet-item">
+                            <span>I like <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b> (${gp.proposer})</span>
+                            ${actionHtml}
+                        </div>
+                    `;
+                });
+                sidebarList.innerHTML = sidebarHtml;
+            } else {
+                sidebar.style.display = 'none';
+            }
+
+            let modal = document.getElementById('bet-modal');
+            let isModalOpen = modal.style.display === 'flex';
+
+            if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
+                lobby.pendingBetsForMe.forEach(bet => {
+                    let label = bet.type === 'win' ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that you win round.` : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
+                    
+                    let modalTitle = document.getElementById('bet-modal-title');
+                    let modalBody = document.getElementById('bet-modal-body');
+                    modalTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
+                    modalBody.innerHTML = `
+                        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">${label}</p>
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            <button onclick="respondToBet('${bet.id}', true)">Accept</button>
+                            <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
+                        </div>
+                    `;
+                    modal.style.display = 'flex';
+                });
+                lobby.pendingBetsForMe = [];
+            }
+
             document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
-            document.getElementById('ready-btn').style.display = (lobby.gameState === 'lobby' && !isSpectatorOnly) ? 'inline-block' : 'none';
             document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
 
-            // Next Hand Overlay[span_15](start_span)[span_15](end_span)
+            let sidePotBanner = document.getElementById('side-pot-total-banner');
+            if (lobby.sidePotTotal && lobby.sidePotTotal > 0) {
+                sidePotBanner.innerText = `Side Pots: $${lobby.sidePotTotal}`;
+                sidePotBanner.style.display = 'block';
+            } else {
+                sidePotBanner.style.display = 'none';
+            }
+
             let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
-                nextHandOverlay.style.display = 'block';
-                let nextBtn = document.getElementById('next-hand-btn');
-                nextBtn.innerText = me?.nextHandReady ? 'Waiting...' : 'Next Hand';
-                nextBtn.disabled = !!me?.nextHandReady;
+            if (lobby.gameState === 'roundOver') {
+                if (lobby.activeParticipantsCount <= 1) {
+                    nextHandOverlay.style.display = 'block';
+                    let nextBtn = document.getElementById('next-hand-btn');
+                    nextBtn.innerText = 'Returning to Ready Room...';
+                    nextBtn.disabled = true;
+                } else if (!isSpectatorOnly) {
+                    nextHandOverlay.style.display = 'block';
+                    let nextBtn = document.getElementById('next-hand-btn');
+                    if (me && me.nextHandReady) {
+                        nextBtn.innerText = 'Waiting...';
+                        nextBtn.disabled = true;
+                    } else {
+                        nextBtn.innerText = 'Next Hand';
+                        nextBtn.disabled = false;
+                    }
+                } else {
+                    nextHandOverlay.style.display = 'none';
+                }
             } else {
                 nextHandOverlay.style.display = 'none';
             }
 
-            // Pool Draw Modals
             let poolModal = document.getElementById('pool-draw-modal');
             let revealModal = document.getElementById('tie-breaker-reveal-modal');
+            let turnBanner = document.getElementById('turn-banner');
+
+            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
+                showCenterNotification(lobby.phaseMessage);
+                lastPhaseMessage = lobby.phaseMessage;
+            }
 
             if (lobby.gameState === 'dealerDraw') {
                 poolModal.style.display = 'flex';
                 revealModal.style.display = 'none';
+                document.getElementById('pool-modal-title').innerText = 'Picking for Dealer';
+                document.getElementById('pool-modal-instruction').innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
+                
                 let gridHtml = '';
-                (lobby.drawPool || []).forEach(slot => {
+                lobby.drawPool.forEach((slot) => {
                     if (slot.chosenBy) {
                         let revealedCard = lobby.drawResults[slot.chosenBy];
-                        gridHtml += `<div class="pool-card-item revealed"><span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>${revealedCard ? formatCardHtml(revealedCard, true) : ''}</div>`;
+                        let cardHtmlStr = revealedCard ? formatCardHtml(revealedCard, true) : '';
+                        gridHtml += `<div class="pool-card-item revealed"><span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>${cardHtmlStr}</div>`;
                     } else {
-                        let clickable = !lobby.drawResults[activeUsername];
+                        let clickable = !lobby.drawResults[activeUsername] && !hasChosenPoolCard;
                         gridHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.5; cursor:not-allowed;' : ''}">?</div>`;
                     }
                 });
                 document.getElementById('pool-cards-container').innerHTML = gridHtml;
+                turnBanner.innerText = 'Dealer Draw Phase';
             } else if (lobby.gameState === 'tieBreaker') {
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'flex';
-                let isTiedParticipant = (lobby.tiedParticipantsList || []).includes(activeUsername);
+                let isTiedParticipant = lobby.tiedParticipantsList.includes(activeUsername);
                 document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
-
+                
                 let streamHtml = '';
                 if (isTiedParticipant && !lobby.drawResults[activeUsername]) {
                     streamHtml += `<div style="width:100%; display:grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap:4px; margin-bottom:8px;">`;
-                    (lobby.drawPool || []).forEach(slot => {
-                        if (!slot.chosenBy) streamHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
+                    lobby.drawPool.forEach((slot) => {
+                        if (!slot.chosenBy) {
+                            streamHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
+                        }
                     });
                     streamHtml += `</div>`;
                 }
 
-                (lobby.tiedParticipantsList || []).forEach(uname => {
+                lobby.tiedParticipantsList.forEach(uname => {
                     let card = lobby.drawResults[uname];
                     streamHtml += `<div style="text-align:center; padding:4px;"><b>${uname}</b>: ${card ? formatCardHtml(card, true) : '<i>Choosing...</i>'}</div>`;
                 });
                 document.getElementById('tie-breaker-stream-grid').innerHTML = streamHtml;
+                turnBanner.innerText = 'Tie-Breaker Draw';
             } else {
                 poolModal.style.display = 'none';
                 revealModal.style.display = 'none';
+                if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
+                    let isMyTurn = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase());
+                    turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
+                } else if (lobby.gameState === 'roundOver') {
+                    turnBanner.innerText = lobby.phaseMessage || 'Round Over';
+                }
             }
 
-            // Render Table Felt[span_16](start_span)[span_16](end_span)
             let container = document.getElementById('table-oval-container');
             let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
 
             let html = `
                 <div class="pots-container">
-                    <div class="pot-total-display">Pot: $${lobby.potTotal || 0}</div>
+                    <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
                 </div>
                 <div class="deck-center">
                     <div class="card-slot back" onclick="drawCard('deck')">DECK<div class="deck-counter">${lobby.deckCount || 0} left</div></div>
@@ -1303,19 +2112,20 @@
                 </div>
             `;
 
-            (lobby.players || []).forEach(p => {
+            lobby.players.forEach(p => {
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [OUT]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let botBadge = p.isBot ? ' 🤖' : '';
-                let isCurrentTurn = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-                let isDealer = lobby.dealerName === p.username;
-                let micStatus = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+                let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+                let isDealer = lobby.players[lobby.dealerIndex]?.username === p.username;
+                let dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
+                let micStatusIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
 
                 html += `
-                    <div class="seat seat-${p.seat}${isCurrentTurn ? ' current-turn-seat' : ''}">
+                    <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
                         <div class="seat-name-area" onclick="tapSeat('${p.username}')">
-                            <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${micStatus}${statusBadge}</b>${isDealer ? ' <span class="dealer-badge">D</span>' : ''}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                            <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${micStatusIcon}${statusBadge}</b>${dealerBadgeHtml}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
                     </div>
@@ -1325,114 +2135,69 @@
             container.innerHTML = html;
             container.appendChild(nextHandOverlay);
 
-            // Render Hand Cards[span_17](start_span)[span_17](end_span)
-            let myCardsContainer = document.getElementById('my-cards-container');
             if (me && me.cards) {
-                myCardsContainer.innerHTML = me.cards.map((c, i) => `
+                let cardsHtml = me.cards.map((c, i) => `
                     <div class="my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}" onclick="discardCard(${i})">
                         <span>${c.val}</span><span style="font-size:1.1rem;">${c.suit}</span>
                     </div>
                 `).join('');
+                document.getElementById('my-cards-container').innerHTML = cardsHtml;
                 document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
             } else {
-                myCardsContainer.innerHTML = '';
+                document.getElementById('my-cards-container').innerHTML = '';
+                document.getElementById('my-score-display').innerText = '0';
             }
         }
 
-        function tapSeat(targetUsername) {
-            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
-            if (targetUsername === activeUsername || clientState.gameState === 'lobby') return;
-
-            let modalTitle = document.getElementById('bet-modal-title');
-            let modalBody = document.getElementById('bet-modal-body');
-            modalTitle.innerText = `Side Bet on ${targetUsername}`;
-            modalBody.innerHTML = `
-                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager that ${targetUsername} loses before you:</p>
-                <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
-                <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
-                <button class="secondary" onclick="toggleModal('bet-modal')">Cancel</button>
-            `;
-            toggleModal('bet-modal');
+        function choosePoolCard(cardIndex) {
+            if (hasChosenPoolCard) return;
+            hasChosenPoolCard = true;
+            initSocketAndSend({ type: 'CHOOSE_POOL_CARD', cardIndex });
         }
 
-        function submitEliminationProposal(target, wagerAmt) {
-            initSocketAndSend({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt });
-            toggleModal('bet-modal');
-            showCenterNotification(`Side bet proposed to ${target}!`);
+        function calculateLocalScore(cards) {
+            let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
+            if (!scoringCards || scoringCards.length === 0) return 0;
+            let sums = {};
+            scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
+            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
+            return Math.max(...Object.values(sums), 0);
+        }
+
+        function drawCard(type) { initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); }
+        function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
+        
+        function knockRound() {
+            initSocketAndSend({ type: 'KNOCK' });
+            playSound('knock');
+        }
+        
+        function leaveLobby() {
+            disconnectLiveKit();
+            initSocketAndSend({ type: 'LEAVE_LOBBY' });
+        }
+
+        function resetToMainMenu() {
+            disconnectLiveKit();
+            currentJoinedCode = null;
+            latestLobbySnapshot = null;
+            document.getElementById('game-view').style.display = 'none';
+            document.getElementById('main-menu').style.display = 'flex';
+            document.getElementById('end-game-btn').style.display = 'none';
+            document.getElementById('leave-lobby-btn').style.display = 'none';
+            document.getElementById('vc-group-container').style.display = 'none';
+            clientState.isReady = false;
+            hasChosenPoolCard = false;
+            let readyBtn = document.getElementById('ready-btn');
+            if (readyBtn) readyBtn.innerText = 'Ready Up';
+            refreshLobbies();
         }
 
         function toggleModal(id) {
             let m = document.getElementById(id);
-            if (m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+            if (!m) return;
+            m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
-
-        function openSpectatorListModal() {
-            let content = document.getElementById('spectators-list-content');
-            let specs = clientState.spectatorsList || [];
-            if (specs.length === 0) content.innerHTML = 'No spectators.';
-            else content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
-            toggleModal('spectators-modal');
-        }
-
-        function toggleChatWindow() {
-            let win = document.getElementById('chat-window');
-            win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
-        }
-
-        function saveInputs() {
-            localStorage.setItem('saved_username', document.getElementById('username-input').value);
-            localStorage.setItem('saved_lobby_name', document.getElementById('lobby-name-input').value);
-        }
-
-        function addNewSongToPlaylist() {
-            let urlInput = document.getElementById('new-song-url');
-            let rawUrl = urlInput.value.trim();
-            if (rawUrl) {
-                initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title: 'YouTube Audio', url: rawUrl });
-                urlInput.value = '';
-                showCenterNotification("Added song to playlist!");
-            }
-        }
-
-        function sendMusicControl(action) {
-            initSocketAndSend({ type: 'CONTROL_MUSIC', action });
-        }
-
-        // Automatic Foreground Watchdog & Screen Reconnect[span_18](start_span)[span_18](end_span)
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    connectSocket();
-                } else if (currentJoinedCode) {
-                    initSocketAndSend({
-                        type: 'JOIN_LOBBY',
-                        code: currentJoinedCode,
-                        username: document.getElementById('username-input').value.trim() || clientState.username
-                    });
-                }
-            }
-        });
-
-        window.addEventListener('pageshow', () => {
-            if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
-        });
-
-        // 12-Second Dead Socket Hunter
-        setInterval(() => {
-            if (Date.now() - lastSocketHeartbeat > 15000 && isConnected) {
-                if (ws) {
-                    try { ws.close(); } catch (e) {}
-                }
-                connectSocket();
-            }
-        }, 5000);
-
-        window.addEventListener('DOMContentLoaded', () => {
-            if (localStorage.getItem('saved_username')) document.getElementById('username-input').value = localStorage.getItem('saved_username');
-            if (localStorage.getItem('saved_lobby_name')) document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
-            connectSocket();
-            refreshLobbies();
-        });
     </script>
 </body>
 </html>
