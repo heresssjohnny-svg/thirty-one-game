@@ -252,6 +252,7 @@ function getSanitizedLobby(lobby, wsId) {
         potTotal: allParticipants.reduce((sum, p) => sum + (p.wager || 5), 0),
         sidePotTotal: (lobby.activeBets || []).reduce((sum, b) => sum + (b.wagerAmt || 0), 0),
         lastGameWinner: lobby.lastGameWinner || null,
+        tournamentWinner: lobby.tournamentWinner || null,
         myFedCardReminder: myFedReminder,
         sideBetLedger: lobby.sideBetLedger || {},
         mainGameLedger: lobby.mainGameLedger || {},
@@ -311,6 +312,7 @@ function startDealerDrawPhase(lobby) {
     lobby.phaseMessage = "Picking for Dealer (Lowest card deals, Ace highest)";
     lobby.gameState = 'dealerDraw';
     lobby.knockedBy = null;
+    lobby.tournamentWinner = null;
     lobby.turnsTakenThisRound = 0;
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
@@ -331,6 +333,7 @@ function startRound(lobby) {
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
     lobby.knockedBy = null;
+    lobby.tournamentWinner = null;
     lobby.gameState = 'playing';
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
@@ -373,7 +376,6 @@ function advanceDealerToNextActive(lobby) {
 
 function handlePoolCardSelection(lobby, username, cardIndex) {
     if (lobby.gameState === 'tieBreaker' && !lobby.tiedParticipantsList.includes(username)) return;
-    // Strict guard: Never allow drawing twice in the same draw phase
     if (lobby.drawResults && lobby.drawResults[username]) return;
 
     if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
@@ -398,7 +400,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             let lowestDrawVal = entries[0].card.drawVal;
             let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
-            // Re-draw ONLY if 2 or more players share the lowest card value
+            // Re-draw if two or more players tied for the lowest card value
             if (tiedLowest.length > 1) {
                 lobby.phaseMessage = `⚠️ Tie on lowest card (${entries[0].card.val})! Drawing again in 3 seconds...`;
                 broadcastLobbyUpdate(lobby.code);
@@ -407,7 +409,6 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                     if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'tieBreaker') return;
                     let cur = lobbies[lobby.code];
 
-                    // Narrow down the list: ONLY the players who actually tied for the lowest card draw again!
                     cur.tiedParticipantsList = tiedLowest.map(t => t.username);
                     let freshDeck = createDeck();
                     cur.drawPool = freshDeck.map(c => ({ card: c, chosenBy: null }));
@@ -669,7 +670,6 @@ function triggerRoundOver(lobby, msg) {
     });
     broadcastLobbyUpdate(lobby.code);
 
-    // If all remaining active players are bots, auto-advance after 3 seconds
     let active = getActiveParticipants(lobby);
     if (active.length > 1 && active.every(p => p.isBot)) {
         setTimeout(() => {
@@ -733,6 +733,7 @@ function awardTournamentWinner(lobby, winner) {
     });
 
     lobby.lastGameWinner = winner.username;
+    lobby.tournamentWinner = winner.username;
     let winIdx = lobby.players.findIndex(p => p.username === winner.username);
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
@@ -740,11 +741,11 @@ function awardTournamentWinner(lobby, winner) {
     lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 5s...`;
     broadcastLobbyUpdate(lobby.code);
 
-    // Auto-transition table to the ready up stage after match conclusion
+    // Auto-transition table to the ready up stage after match celebration
     setTimeout(() => {
         if (!lobbies[lobby.code]) return;
         resetLobbyToReadyRoom(lobbies[lobby.code], `🏆 ${winner.username} won the match! Ready up for the next game.`);
-    }, 5000);
+    }, 6000);
 }
 
 function checkNextHandReady(lobby) {
@@ -764,6 +765,7 @@ function resetLobbyToReadyRoom(lobby, msg) {
     lobby.pendingBets = [];
     lobby.globalProposals = [];
     lobby.knockedBy = null;
+    lobby.tournamentWinner = null;
     lobby.lastDiscardPickup = null;
     lobby.lastDiscardDonor = null;
     lobby.fedCardReminders = {};
@@ -987,6 +989,7 @@ wss.on('connection', (ws) => {
                         turnIndex: 0,
                         dealerIndex: 0,
                         lastGameWinner: null,
+                        tournamentWinner: null,
                         sideBetLedger: {},
                         mainGameLedger: {},
                         botBetLedger: {},
