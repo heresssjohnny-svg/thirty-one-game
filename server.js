@@ -10,17 +10,25 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit Configuration
+// LiveKit Server Credentials
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
 
-function generateLiveKitToken(roomName, participantName) {
+async function generateLiveKitToken(roomName, participantName) {
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
         identity: participantName,
+        name: participantName,
+        ttl: '8h'
     });
-    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
-    return at.toJwt();
+    at.addGrant({
+        roomJoin: true,
+        room: roomName,
+        canPublish: true,
+        canPublishData: true,
+        canSubscribe: true
+    });
+    return await at.toJwt();
 }
 
 const lobbies = {};
@@ -28,12 +36,9 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket Keep-Alive to prevent mobile OS TCP teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) {
-            return ws.terminate();
-        }
+        if (ws.isAlive === false) return ws.terminate();
         ws.isAlive = false;
         ws.ping();
     });
@@ -102,7 +107,7 @@ wss.on('connection', (ws) => {
     let currentLobbyCode = null;
     let currentUsername = null;
 
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
         let data;
         try { data = JSON.parse(message); } catch (e) { return; }
 
@@ -161,7 +166,7 @@ wss.on('connection', (ws) => {
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
                     
-                    let token = generateLiveKitToken(currentLobbyCode, currentUsername);
+                    let token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                     ws.send(JSON.stringify({ 
                         type: 'LOBBY_JOINED', 
                         lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws),
@@ -182,7 +187,7 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[code];
                         touchLobbyActivity(lobby);
 
-                        let token = generateLiveKitToken(code, currentUsername);
+                        let token = await generateLiveKitToken(code, currentUsername);
 
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
@@ -241,7 +246,7 @@ wss.on('connection', (ws) => {
 
                 case 'REQUEST_LIVEKIT_TOKEN': {
                     if (currentLobbyCode && currentUsername) {
-                        let token = generateLiveKitToken(currentLobbyCode, currentUsername);
+                        let token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                         ws.send(JSON.stringify({ 
                             type: 'LIVEKIT_TOKEN', 
                             livekitHost: LIVEKIT_HOST, 
