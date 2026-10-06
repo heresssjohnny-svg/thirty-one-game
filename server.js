@@ -138,6 +138,24 @@ function findOpenSeat(lobby) {
     return 0;
 }
 
+// Bots only ready up if all human players are ready
+function syncBotReadiness(lobby) {
+    if (lobby.gameState !== 'lobby') return false;
+    let humans = lobby.players.filter(p => !p.isBot);
+    let allHumansReady = humans.length > 0 && humans.every(p => p.ready);
+
+    let changed = false;
+    lobby.players.forEach(p => {
+        if (p.isBot) {
+            if (p.ready !== allHumansReady) {
+                p.ready = allHumansReady;
+                changed = true;
+            }
+        }
+    });
+    return changed;
+}
+
 function touchLobbyActivity(lobby) {
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
     lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code), 20 * 60 * 1000);
@@ -309,6 +327,7 @@ function startDealerDrawPhase(lobby) {
     lobby.drawResults = {};
     lobby.drawOrderSequence = [];
     lobby.tiedParticipantsList = [];
+    lobby.pendingBotDraw = {};
     lobby.phaseMessage = "Picking for Dealer (Lowest card deals, Ace highest)";
     lobby.gameState = 'dealerDraw';
     lobby.knockedBy = null;
@@ -330,6 +349,7 @@ function startRound(lobby) {
     lobby.drawResults = {};
     lobby.drawOrderSequence = [];
     lobby.tiedParticipantsList = [];
+    lobby.pendingBotDraw = {};
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
     lobby.knockedBy = null;
@@ -402,6 +422,9 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
 
             // Re-draw if two or more players tied for the lowest card value
             if (tiedLowest.length > 1) {
+                // Instantly isolate tied participants so safe bots/players do not pick again
+                lobby.tiedParticipantsList = tiedLowest.map(t => t.username);
+                lobby.pendingBotDraw = {};
                 lobby.phaseMessage = `⚠️ Tie on lowest card (${entries[0].card.val})! Drawing again in 3 seconds...`;
                 broadcastLobbyUpdate(lobby.code);
 
@@ -409,11 +432,11 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                     if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'tieBreaker') return;
                     let cur = lobbies[lobby.code];
 
-                    cur.tiedParticipantsList = tiedLowest.map(t => t.username);
                     let freshDeck = createDeck();
                     cur.drawPool = freshDeck.map(c => ({ card: c, chosenBy: null }));
                     cur.drawResults = {};
                     cur.drawOrderSequence = [];
+                    cur.pendingBotDraw = {};
                     cur.phaseMessage = `Tie-Breaker Re-Draw: Pick a card!`;
 
                     broadcastLobbyUpdate(cur.code);
@@ -632,6 +655,7 @@ function resolveRoundEnd(lobby) {
             lobby.drawPool = deck.map(c => ({ card: c, chosenBy: null }));
             lobby.drawResults = {};
             lobby.drawOrderSequence = [];
+            lobby.pendingBotDraw = {};
             lobby.gameState = 'tieBreaker';
             lobby.phaseMessage = `Tie for lowest score (${lowest} pts)! Draw to resolve.`;
             broadcastLobbyUpdate(lobby.code);
@@ -738,10 +762,10 @@ function awardTournamentWinner(lobby, winner) {
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
     lobby.gameState = 'roundOver';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 5s...`;
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 6s...`;
     broadcastLobbyUpdate(lobby.code);
 
-    // Auto-transition table to the ready up stage after match celebration
+    // After the celebration concludes, return table to the waiting/ready-up room
     setTimeout(() => {
         if (!lobbies[lobby.code]) return;
         resetLobbyToReadyRoom(lobbies[lobby.code], `🏆 ${winner.username} won the match! Ready up for the next game.`);
@@ -774,6 +798,7 @@ function resetLobbyToReadyRoom(lobby, msg) {
     lobby.drawResults = {};
     lobby.drawOrderSequence = [];
     lobby.tiedParticipantsList = [];
+    lobby.pendingBotDraw = {};
 
     if (lobby.lastGameWinner) {
         let winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
@@ -784,19 +809,21 @@ function resetLobbyToReadyRoom(lobby, msg) {
         p.lives = lobby.defaultLives || 2;
         p.eliminated = false;
         p.cards = [];
-        p.ready = p.isBot;
+        p.ready = false; // Everyone, including bots, begins unready
         p.seat = idx;
-        p.nextHandReady = p.isBot;
+        p.nextHandReady = false;
         p.peekRequests = {};
         p.peekAllowed = {};
     });
     lobby.spectators = [];
+    syncBotReadiness(lobby);
     broadcastLobbyUpdate(lobby.code);
     broadcastLobbyList();
 }
 
 function scheduleBotActions(lobby) {
     if (!lobby) return;
+    if (!lobby.pendingBotDraw) lobby.pendingBotDraw = {};
 
     if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
         lobby.players.forEach(p => {
@@ -805,12 +832,15 @@ function scheduleBotActions(lobby) {
                 if (lobby.gameState === 'dealerDraw' && !lobby.drawResults[p.username]) needsPick = true;
                 if (lobby.gameState === 'tieBreaker' && lobby.tiedParticipantsList.includes(p.username) && !lobby.drawResults[p.username]) needsPick = true;
 
-                if (needsPick && !p.isSchedulingPick) {
-                    p.isSchedulingPick = true;
+                // Ensure single asynchronous pick execution per bot
+                if (needsPick && !lobby.pendingBotDraw[p.username]) {
+                    lobby.pendingBotDraw[p.username] = true;
                     setTimeout(() => {
-                        p.isSchedulingPick = false;
                         let cur = lobbies[lobby.code];
-                        if (!cur || (cur.gameState !== 'dealerDraw' && cur.gameState !== 'tieBreaker')) return;
+                        if (!cur) return;
+                        delete cur.pendingBotDraw[p.username];
+
+                        if (cur.gameState !== 'dealerDraw' && cur.gameState !== 'tieBreaker') return;
                         if (cur.drawResults && cur.drawResults[p.username]) return;
                         if (cur.gameState === 'tieBreaker' && !cur.tiedParticipantsList.includes(p.username)) return;
 
@@ -922,6 +952,7 @@ function leaveLobby(ws, code) {
     if (lobby.players.length === 0) {
         delete lobbies[code];
     } else {
+        syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
     }
     broadcastLobbyList();
@@ -981,6 +1012,7 @@ wss.on('connection', (ws) => {
                         drawResults: {},
                         drawOrderSequence: [],
                         tiedParticipantsList: [],
+                        pendingBotDraw: {},
                         phaseMessage: null,
                         initialDealCard: null,
                         lastDiscardPickup: null,
@@ -1087,6 +1119,7 @@ wss.on('connection', (ws) => {
                             lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                         }
 
+                        syncBotReadiness(lobby);
                         ws.send(JSON.stringify({
                             type: 'LOBBY_JOINED',
                             lobby: getSanitizedLobby(lobby, ws),
@@ -1128,9 +1161,9 @@ wss.on('connection', (ws) => {
                                 lives: lobby.defaultLives || 2,
                                 wager: lobby.defaultWager || 5,
                                 cards: [],
-                                ready: true,
+                                ready: false, // Bots start unready until players ready up
                                 seat: findOpenSeat(lobby),
-                                nextHandReady: true,
+                                nextHandReady: false,
                                 eliminated: false,
                                 inVC: false,
                                 isMuted: true,
@@ -1138,12 +1171,9 @@ wss.on('connection', (ws) => {
                                 peekAllowed: {}
                             };
                             lobby.players.push(botPlayer);
+                            syncBotReadiness(lobby);
                             lobby.phaseMessage = `🤖 ${chosen} joined the table.`;
                             broadcastLobbyUpdate(currentLobbyCode);
-
-                            if (lobby.players.length >= 2 && lobby.players.every(p => p.ready)) {
-                                startDealerDrawPhase(lobby);
-                            }
                         }
                     }
                     break;
@@ -1161,6 +1191,7 @@ wss.on('connection', (ws) => {
                         }
                         if (botIdx !== -1) {
                             let removed = lobby.players.splice(botIdx, 1)[0];
+                            syncBotReadiness(lobby);
                             lobby.phaseMessage = `🤖 ${removed.username} was removed.`;
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -1264,6 +1295,7 @@ wss.on('connection', (ws) => {
                         if (playerIdx !== -1) {
                             let leaving = lobby.players.splice(playerIdx, 1)[0];
                             lobby.spectators.push({ username: leaving.username, idSocket: ws, inVC: leaving.inVC, isMuted: leaving.isMuted });
+                            syncBotReadiness(lobby);
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         }
@@ -1294,6 +1326,7 @@ wss.on('connection', (ws) => {
                                 peekRequests: {}, 
                                 peekAllowed: {} 
                             });
+                            syncBotReadiness(lobby);
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         }
@@ -1490,8 +1523,12 @@ wss.on('connection', (ws) => {
                         let player = lobby.players.find(p => p.username === currentUsername);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
                             player.ready = !!data.ready;
+                            
+                            // Synchronize bot readiness: Bots only ready up if all human players are ready
+                            syncBotReadiness(lobby);
+                            
                             let activeParts = getActiveParticipants(lobby);
-                            if (activeParts.every(p => p.ready) && activeParts.length >= 2) {
+                            if (activeParts.length >= 2 && activeParts.every(p => p.ready)) {
                                 if (lobby.lastGameWinner && lobby.players.some(p => p.username === lobby.lastGameWinner)) {
                                     let winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
                                     lobby.dealerIndex = winIdx !== -1 ? winIdx : 0;
