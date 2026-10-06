@@ -630,7 +630,7 @@
         // LiveKit Voice Chat State
         let livekitRoom = null;
         let isLiveKitConnected = false;
-        let isVoiceChatActive = false; // false = Muted, true = Active
+        let isVoiceChatActive = false;
         let isConnectingVoice = false;
         let latestLiveKitHost = null;
         let latestLiveKitToken = null;
@@ -671,11 +671,10 @@
                         const audioElem = track.attach();
                         audioElem.autoplay = true;
                         audioElem.playsInline = true;
-                        audioElem.volume = 1.0; // Play at full scale
+                        audioElem.volume = 1.0;
                         audioElem.setAttribute('playsinline', '');
                         audioElem.setAttribute('webkit-playsinline', '');
                         
-                        // Force routing to loud speaker if available
                         if (typeof audioElem.setSinkId === 'function') {
                             audioElem.setSinkId('speaker').catch(() => {});
                         }
@@ -696,7 +695,6 @@
                 await livekitRoom.connect(host, token);
                 isLiveKitConnected = true;
 
-                // Auto-connect in MUTED state
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isVoiceChatActive = false;
                 updateVoiceUI();
@@ -710,7 +708,6 @@
             }
         }
 
-        // Bluetooth / Audio device transition monitor
         if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
             navigator.mediaDevices.ondevicechange = async () => {
                 const LK = getLiveKitSDK();
@@ -826,7 +823,6 @@
             toggleModal('vc-participants-modal');
         }
 
-        // Web Audio Synthesizer Engine
         let audioCtx = null;
         function getAudioContext() {
             if (!audioCtx) {
@@ -969,7 +965,6 @@
             refreshLobbies();
         });
 
-        // Fast reconnect and state re-bind on tab focus
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1314,7 +1309,6 @@
                     let msg = pendingQueue.shift();
                     ws.send(JSON.stringify(msg));
                 }
-                // Automatically re-bind to existing seat when resuming
                 if (currentJoinedCode) {
                     initSocketAndSend({
                         type: 'JOIN_LOBBY',
@@ -1332,7 +1326,6 @@
                     latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
 
-                    // Connect to LiveKit SFU in muted state
                     const host = data.livekitHost || latestLiveKitHost;
                     const token = data.livekitToken || data.token || latestLiveKitToken;
                     if (host && token) {
@@ -1778,8 +1771,6 @@
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
                 let isDealer = lobby.players[lobby.dealerIndex]?.username === p.username;
                 let dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
-
-                // Microphone icon next to player name
                 let micStatusIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
 
                 html += `
