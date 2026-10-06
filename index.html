@@ -24,7 +24,7 @@
             background: radial-gradient(circle at center, #065f46 0%, #044e36 100%); 
             color: var(--text-main); 
             height: 100vh; 
-            min-height: 500px;
+            min-height: 500px; 
             display: flex; 
             flex-direction: column; 
             overflow: hidden; 
@@ -233,7 +233,33 @@
             animation: slideInTopLeft 0.3s ease-out;
         }
 
+        /* Top-Right Private Fed-Card Reminder Modal */
+        .fed-card-modal-topright { 
+            position: absolute; 
+            top: 10px; 
+            right: 10px; 
+            font-size: 0.75rem; 
+            font-weight: bold; 
+            color: var(--accent-gold); 
+            z-index: 2500; 
+            display: flex; 
+            flex-direction: column;
+            gap: 3px; 
+            align-items: flex-end; 
+            background: rgba(15, 23, 42, 0.95); 
+            padding: 8px 12px; 
+            border-radius: 8px; 
+            border: 1px solid var(--accent-gold); 
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+            animation: slideInTopRight 0.3s ease-out;
+        }
+
         @keyframes slideInTopLeft {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideInTopRight {
             from { opacity: 0; transform: translateY(-5px); }
             to { opacity: 1; transform: translateY(0); }
         }
@@ -410,9 +436,16 @@
     </header>
 
     <main>
+        <!-- Top-Left Initial Discard Pickup Notice -->
         <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
             <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
             <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
+        </div>
+
+        <!-- Top-Right Private Fed-Card Reminder Notice (Targeting Donor Only) -->
+        <div id="fed-card-topright-modal" class="fed-card-modal-topright" style="display:none;">
+            <span id="fed-card-label" style="color:var(--accent-gold); font-size:0.75rem; font-weight:bold;"></span>
+            <div id="fed-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
         <div id="main-menu">
@@ -506,7 +539,7 @@
 
     <div id="vc-participants-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
-            <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
+            <h3 style="color:var(--accent-gold);">🎙️️ Voice Chat Participants</h3>
             <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
             <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px; padding:6px; font-size:0.75rem;">🔄 Reconnect Voice Chat</button>
             <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:4px;">Close</button>
@@ -649,10 +682,10 @@
         let lastKnownKnockedBy = null;
         let latestLobbySnapshot = null;
 
-        // --- LiveKit Realtime Voice State ---
+        // LiveKit Audio & Voice Chat State
         let livekitRoom = null;
         let isLiveKitConnected = false;
-        let isLiveKitMicActive = false; // false = Muted, true = Microphone On
+        let isLiveKitMicActive = false;
         let latestLiveKitHost = null;
         let latestLiveKitToken = null;
         let isLiveKitConnecting = false;
@@ -661,6 +694,7 @@
         let individualVolume = 0.8;
         let isIndividualMuted = false;
         let audioCtx = null;
+        let backgroundAudioKeeper = null;
 
         function getLiveKitSDK() {
             return window.LivekitClient || window.LiveKitClient || null;
@@ -674,6 +708,54 @@
                 audioCtx.resume();
             }
             return audioCtx;
+        }
+
+        // Native Capacitor Foreground Service Helper
+        function getForegroundServicePlugin() {
+            return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AndroidForegroundService;
+        }
+
+        async function startNativeForegroundService() {
+            let servicePlugin = getForegroundServicePlugin();
+            if (servicePlugin && window.Capacitor?.getPlatform() === 'android') {
+                try {
+                    await servicePlugin.startForeground({
+                        title: '31! Voice Chat Active',
+                        body: 'Microphone & voice channel active in background',
+                        ongoing: true
+                    });
+                } catch (err) {}
+            }
+        }
+
+        async function stopNativeForegroundService() {
+            let servicePlugin = getForegroundServicePlugin();
+            if (servicePlugin && window.Capacitor?.getPlatform() === 'android') {
+                try {
+                    await servicePlugin.stopForeground();
+                } catch (err) {}
+            }
+        }
+
+        // Persistent Background Audio Keep-Alive
+        function enableBackgroundAudioKeepAlive() {
+            if (!backgroundAudioKeeper) {
+                backgroundAudioKeeper = document.createElement('audio');
+                backgroundAudioKeeper.setAttribute('loop', '');
+                backgroundAudioKeeper.setAttribute('playsinline', '');
+                backgroundAudioKeeper.setAttribute('webkit-playsinline', '');
+                backgroundAudioKeeper.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP//';
+            }
+            backgroundAudioKeeper.play().catch(() => {});
+
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: '31! Voice Chat Active',
+                    artist: '31! Casino Table'
+                });
+                navigator.mediaSession.setActionHandler('play', () => backgroundAudioKeeper.play());
+                navigator.mediaSession.setActionHandler('pause', () => {});
+            }
         }
 
         function playSound(type) {
@@ -704,7 +786,7 @@
                     osc2.frequency.exponentialRampToValueAtTime(65, now + 0.28);
                     gain2.gain.setValueAtTime(0.8, now + 0.14);
                     gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
-                    osc2.start(now + 0.14);
+                    osc2.start(now);
                     osc2.stop(now + 0.28);
                 } else if (type === 'card') {
                     osc.type = 'sine';
@@ -836,13 +918,10 @@
             `).join('');
         }
 
-        // --- LiveKit Realtime Voice Integration ---
+        // LiveKit SFU Client Connection
         async function connectLiveKit(host, token) {
             const LK = getLiveKitSDK();
-            if (!LK) {
-                console.error("LiveKit client SDK not loaded from CDN.");
-                return;
-            }
+            if (!LK) return;
             if (isLiveKitConnecting) return;
             isLiveKitConnecting = true;
 
@@ -867,8 +946,6 @@
                         const audioElem = track.attach();
                         audioElem.autoplay = true;
                         audioElem.playsInline = true;
-                        audioElem.setAttribute('playsinline', '');
-                        audioElem.setAttribute('webkit-playsinline', '');
                         document.body.appendChild(audioElem);
                     }
                 });
@@ -883,22 +960,15 @@
                     updateVoiceUI();
                 });
 
-                // Protocol compatibility check
-                let resolvedHost = host;
-                if (location.protocol === 'https:' && resolvedHost.startsWith('ws://')) {
-                    resolvedHost = resolvedHost.replace('ws://', 'wss://');
-                }
-
-                await livekitRoom.connect(resolvedHost, token);
+                await livekitRoom.connect(host, token);
                 isLiveKitConnected = true;
 
-                // Auto-join lobby in MUTED state
+                // Enter lobby initially muted
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isLiveKitMicActive = false;
                 updateVoiceUI();
                 sendVCStatusInternal(true, true);
-
-                console.log("Connected to LiveKit SFU Room in initial muted state.");
+                enableBackgroundAudioKeepAlive();
             } catch (err) {
                 console.error("LiveKit connection failure:", err);
             } finally {
@@ -924,38 +994,31 @@
 
             try {
                 if (isLiveKitMicActive) {
-                    // MUTE MICROPHONE
                     await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                     isLiveKitMicActive = false;
                     updateVoiceUI();
                     sendVCStatusInternal(true, true);
+                    await stopNativeForegroundService();
                 } else {
-                    // UNMUTE MICROPHONE
-                    if (livekitRoom.startAudio) {
-                        await livekitRoom.startAudio();
-                    }
+                    if (livekitRoom.startAudio) await livekitRoom.startAudio();
                     await livekitRoom.localParticipant.setMicrophoneEnabled(true);
                     isLiveKitMicActive = true;
                     updateVoiceUI();
                     sendVCStatusInternal(true, false);
+                    enableBackgroundAudioKeepAlive();
+                    await startNativeForegroundService();
                 }
             } catch (err) {
                 console.error("Microphone toggle error:", err);
-                alert("Microphone permission required for voice chat.");
                 isLiveKitMicActive = false;
                 updateVoiceUI();
             }
         }
 
-        const toggleLiveKitVoice = toggleVoiceOnOff;
-        const toggleLiveKitMic = toggleVoiceOnOff;
-
         function updateVoiceUI() {
             let btn = document.getElementById('vc-main-btn');
             let led = document.getElementById('vc-led');
-            if (btn) {
-                btn.innerText = isLiveKitMicActive ? '🎙 Voice: On' : '🎙 Voice: Off';
-            }
+            if (btn) btn.innerText = isLiveKitMicActive ? '🎙 Voice: On' : '🎙 Voice: Off';
             if (led) {
                 if (isLiveKitMicActive) led.classList.add('active');
                 else led.classList.remove('active');
@@ -970,6 +1033,7 @@
             isLiveKitConnected = false;
             isLiveKitMicActive = false;
             updateVoiceUI();
+            await stopNativeForegroundService();
         }
 
         function openVcParticipantsModal() {
@@ -995,12 +1059,47 @@
         async function triggerVoiceReconnect() {
             if (latestLiveKitHost && latestLiveKitToken) {
                 await connectLiveKit(latestLiveKitHost, latestLiveKitToken);
-                showCenterNotification("Reconnecting LiveKit Voice Chat...");
+                showCenterNotification("Voice chat reconnected!");
             } else {
                 initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
             }
             toggleModal('vc-participants-modal');
         }
+
+        // Background Visibility & Lifecycle Handlers
+        document.addEventListener('visibilitychange', async () => {
+            if (document.hidden) {
+                // Moving to background: Keep microphone and native services alive
+                if (isLiveKitMicActive) {
+                    await startNativeForegroundService();
+                }
+            } else {
+                // Returning to foreground: Reconnect audio & re-attach socket
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    try { await audioCtx.resume(); } catch (e) {}
+                }
+                if (livekitRoom) {
+                    try { await livekitRoom.startAudio(); } catch (e) {}
+                }
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    connectSocket();
+                } else if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
+            }
+        });
+
+        window.addEventListener('pageshow', () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
+        });
+
+        window.addEventListener('online', () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
+        });
 
         window.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('saved_username')) {
@@ -1324,6 +1423,14 @@
                     let msg = pendingQueue.shift();
                     ws.send(JSON.stringify(msg));
                 }
+                // Seamlessly re-join and re-claim room seat if returning from background
+                if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
             };
 
             ws.onmessage = (event) => {
@@ -1337,7 +1444,6 @@
                     latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
 
-                    // Connect LiveKit SFU automatically in initial muted state
                     const host = data.livekitHost || latestLiveKitHost;
                     const token = data.livekitToken || data.token || latestLiveKitToken;
                     if (host && token) {
@@ -1369,7 +1475,7 @@
 
             ws.onclose = () => {
                 isConnected = false;
-                setTimeout(() => { connectSocket(); }, 3000);
+                setTimeout(() => { connectSocket(); }, 2000);
             };
         }
 
@@ -1484,7 +1590,6 @@
 
             let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
 
-            // YouTube queue synchronization
             if (lobby.playlist !== undefined) {
                 clientState.playlist = lobby.playlist || [];
                 clientState.currentSongIndex = lobby.currentSongIndex || 0;
@@ -1497,11 +1602,13 @@
                 hasChosenPoolCard = false;
                 lastGameState = lobby.gameState;
                 if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
-                    document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
+                    let topleft = document.getElementById('discard-pickup-topleft-modal');
+                    if (topleft) topleft.style.display = 'none';
+                    let fedM = document.getElementById('fed-card-topright-modal');
+                    if (fedM) fedM.style.display = 'none';
                 }
             }
 
-            // Knock alert modal
             let knockAlertModal = document.getElementById('knock-alert-modal');
             if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
                 knockAlertModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
@@ -1525,7 +1632,21 @@
                 topleftCardContent.innerHTML = `<span><b>${escapeHtml(lobby.lastDiscardPickup.username)}</b>:</span> ${cardHtml}`;
                 topleftModal.style.display = 'flex';
             } else {
-                topleftModal.style.display = 'none';
+                if (topleftModal) topleftModal.style.display = 'none';
+            }
+
+            // Top-right Private Fed-Card modal targeting donor
+            let fedModal = document.getElementById('fed-card-topright-modal');
+            let fedContent = document.getElementById('fed-card-content');
+            let fedLabel = document.getElementById('fed-card-label');
+            if (fedModal && fedContent && fedLabel) {
+                if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+                    fedLabel.innerText = `${lobby.myFedCardReminder.target} took your:`;
+                    fedContent.innerHTML = formatCardHtml(lobby.myFedCardReminder.card, true);
+                    fedModal.style.display = 'flex';
+                } else {
+                    fedModal.style.display = 'none';
+                }
             }
 
             clientState.gameState = lobby.gameState;
@@ -1548,7 +1669,6 @@
                 let readyBtn = document.getElementById('ready-btn');
                 readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
 
-                // Incoming peek request check
                 if (me.peekIncoming && Object.keys(me.peekIncoming).length > 0) {
                     let requester = Object.keys(me.peekIncoming)[0];
                     let peekModal = document.getElementById('peek-request-modal');
@@ -1600,7 +1720,6 @@
                 }
             }
 
-            // Knock validation
             let activePartsCount = lobby.players.filter(p => !p.eliminated).length;
             let threshold = activePartsCount > 2 ? 21 : 25;
             let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
@@ -1623,7 +1742,6 @@
             clientState.sideBetLedger = lobby.sideBetLedger || {};
             clientState.mainGameLedger = lobby.mainGameLedger || {};
 
-            // Global side bets sidebar
             let sidebar = document.getElementById('global-side-bets-sidebar');
             let sidebarList = document.getElementById('global-side-bets-list');
             let globalProps = lobby.globalProposals || [];
@@ -1662,7 +1780,6 @@
                 sidebar.style.display = 'none';
             }
 
-            // Incoming Bet Proposals
             let modal = document.getElementById('bet-modal');
             let isModalOpen = modal.style.display === 'flex';
 
@@ -1787,19 +1904,32 @@
                 </div>
             `;
 
-            lobby.players.forEach(p => {
+            lobby.players.forEach((p, idx) => {
                 let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
                 let statusBadge = p.eliminated ? ' [ELIMINATED]' : '';
                 let readyStatusIcon = p.ready ? '✅' : '❌';
                 let micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
                 let isCurrentTurnUserSeat = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+                let isDealer = (idx === lobby.dealerIndex);
+                let dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
+
+                let peekerBadgesHtml = '';
+                if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
+                    let peekers = Object.keys(p.peekAllowed);
+                    if (peekers.length > 0) {
+                        peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">` +
+                            peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('') +
+                        `</div>`;
+                    }
+                }
 
                 html += `
                     <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
                         <div class="seat-name-area" onclick="tapSeat('${escapeHtml(p.username)}')">
-                            <span>${readyStatusIcon}</span> <b>${escapeHtml(p.username)}${statusBadge}</b>${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                            <span>${readyStatusIcon}</span> <b>${escapeHtml(p.username)}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
+                        ${peekerBadgesHtml}
                     </div>
                 `;
             });
