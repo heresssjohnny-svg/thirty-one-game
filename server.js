@@ -9,29 +9,28 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// LiveKit API Credentials matching Hetzner VPS livekit.yaml
+// LiveKit Server Credentials matching Hetzner VPS livekit.yaml
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
-const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
+const LIVEKIT_HOST = process.env.LIVEKIT_HOST || 'wss://31game.duckdns.org';
 
-// Asynchronous LiveKit Token Generator
 async function generateLiveKitToken(roomName, participantName) {
     try {
         const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
             identity: participantName,
             name: participantName,
-            ttl: '8h',
+            ttl: '8h'
         });
         at.addGrant({
             roomJoin: true,
             room: roomName,
             canPublish: true,
             canPublishData: true,
-            canSubscribe: true,
+            canSubscribe: true
         });
         return await at.toJwt();
     } catch (err) {
-        console.error("Failed to generate LiveKit token:", err);
+        console.error('Failed to generate LiveKit token:', err);
         return null;
     }
 }
@@ -41,6 +40,18 @@ app.use(express.static(path.join(__dirname)));
 if (fs.existsSync(path.join(__dirname, 'www'))) {
     app.use(express.static(path.join(__dirname, 'www')));
 }
+
+app.get('/token', async (req, res) => {
+    const room = (req.query.room || 'test-room').trim();
+    const username = (req.query.username || `User-${Math.floor(Math.random() * 1000)}`).trim();
+    try {
+        const token = await generateLiveKitToken(room, username);
+        if (!token) return res.status(500).json({ error: 'Failed to generate token' });
+        res.json({ token, host: LIVEKIT_HOST, room, username });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 app.get('*', (req, res) => {
     const candidates = [
@@ -58,7 +69,6 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket Keep-Alive to prevent mobile OS socket teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -170,37 +180,27 @@ function broadcastLobbyList() {
     });
 }
 
-async function broadcastLobbyUpdate(code) {
+function broadcastLobbyUpdate(code) {
     let lobby = lobbies[code];
     if (!lobby) return;
 
-    for (let p of lobby.players) {
+    lobby.players.forEach(p => {
         if (p.id?.readyState === WebSocket.OPEN) {
-            let data = await getSanitizedLobby(lobby, p.id);
-            p.id.send(JSON.stringify({
-                type: 'GAME_STATE_UPDATE',
-                lobby: data,
-                livekitHost: LIVEKIT_HOST,
-                livekitToken: data.livekitToken,
-                token: data.livekitToken
-            }));
+            let data = getSanitizedLobby(lobby, p.id);
+            p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: data }));
+            p.id.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: data }));
         }
-    }
-    for (let s of lobby.spectators) {
+    });
+    lobby.spectators.forEach(s => {
         if (s.idSocket?.readyState === WebSocket.OPEN) {
-            let data = await getSanitizedLobby(lobby, s.idSocket);
-            s.idSocket.send(JSON.stringify({
-                type: 'GAME_STATE_UPDATE',
-                lobby: data,
-                livekitHost: LIVEKIT_HOST,
-                livekitToken: data.livekitToken,
-                token: data.livekitToken
-            }));
+            let data = getSanitizedLobby(lobby, s.idSocket);
+            s.idSocket.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: data }));
+            s.idSocket.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: data }));
         }
-    }
+    });
 }
 
-async function getSanitizedLobby(lobby, wsId) {
+function getSanitizedLobby(lobby, wsId) {
     let activeParts = getActiveParticipants(lobby);
     let allParticipants = [...lobby.players];
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
@@ -238,11 +238,6 @@ async function getSanitizedLobby(lobby, wsId) {
         elapsedSeconds = lobby.songPausedAtOffset || 0;
     }
 
-    let token = null;
-    if (myUsername && !requestingPlayer?.isBot) {
-        token = await generateLiveKitToken(lobby.code, myUsername);
-    }
-
     return {
         code: lobby.code,
         name: lobby.name,
@@ -277,8 +272,6 @@ async function getSanitizedLobby(lobby, wsId) {
         currentSongIndex: lobby.currentSongIndex || 0,
         isPlaying: !!lobby.isPlaying,
         currentSongElapsedSeconds: elapsedSeconds,
-        livekitToken: token,
-        livekitHost: LIVEKIT_HOST,
         players: lobby.players.map(p => {
             let canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
             let specAllowed = requestingSpectator && p.peekAllowed?.[requestingSpectator.username];
@@ -680,7 +673,7 @@ function awardTournamentWinner(lobby, winner) {
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
     lobby.gameState = 'roundOver';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match and will deal next game!`;
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match!`;
     broadcastLobbyUpdate(lobby.code);
 }
 
@@ -726,7 +719,6 @@ function resetLobbyToReadyRoom(lobby, msg) {
     broadcastLobbyList();
 }
 
-// Bot AI Engine (7.5 Intelligence)
 function scheduleBotActions(lobby) {
     if (!lobby) return;
 
@@ -919,10 +911,9 @@ wss.on('connection', (ws) => {
                     touchLobbyActivity(lobbies[currentLobbyCode]);
                     
                     const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
-                    const sanitized = await getSanitizedLobby(lobbies[currentLobbyCode], ws);
-                    ws.send(JSON.stringify({ 
-                        type: 'LOBBY_JOINED', 
-                        lobby: sanitized,
+                    ws.send(JSON.stringify({
+                        type: 'LOBBY_JOINED',
+                        lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws),
                         livekitHost: LIVEKIT_HOST,
                         livekitToken: token,
                         token: token
@@ -945,10 +936,9 @@ wss.on('connection', (ws) => {
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
-                            const sanitized = await getSanitizedLobby(lobby, ws);
-                            ws.send(JSON.stringify({ 
-                                type: 'LOBBY_JOINED', 
-                                lobby: sanitized,
+                            ws.send(JSON.stringify({
+                                type: 'LOBBY_JOINED',
+                                lobby: getSanitizedLobby(lobby, ws),
                                 livekitHost: LIVEKIT_HOST,
                                 livekitToken: token,
                                 token: token
@@ -961,10 +951,9 @@ wss.on('connection', (ws) => {
                         let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingSpec) {
                             existingSpec.idSocket = ws;
-                            const sanitized = await getSanitizedLobby(lobby, ws);
-                            ws.send(JSON.stringify({ 
-                                type: 'LOBBY_JOINED', 
-                                lobby: sanitized,
+                            ws.send(JSON.stringify({
+                                type: 'LOBBY_JOINED',
+                                lobby: getSanitizedLobby(lobby, ws),
                                 livekitHost: LIVEKIT_HOST,
                                 livekitToken: token,
                                 token: token
@@ -981,10 +970,9 @@ wss.on('connection', (ws) => {
                             lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                         }
 
-                        const sanitized = await getSanitizedLobby(lobby, ws);
-                        ws.send(JSON.stringify({ 
-                            type: 'LOBBY_JOINED', 
-                            lobby: sanitized,
+                        ws.send(JSON.stringify({
+                            type: 'LOBBY_JOINED',
+                            lobby: getSanitizedLobby(lobby, ws),
                             livekitHost: LIVEKIT_HOST,
                             livekitToken: token,
                             token: token
@@ -1000,9 +988,9 @@ wss.on('connection', (ws) => {
                 case 'REQUEST_LIVEKIT_TOKEN': {
                     if (currentLobbyCode && currentUsername) {
                         const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
-                        ws.send(JSON.stringify({ 
-                            type: 'LIVEKIT_TOKEN', 
-                            livekitHost: LIVEKIT_HOST, 
+                        ws.send(JSON.stringify({
+                            type: 'LIVEKIT_TOKEN',
+                            livekitHost: LIVEKIT_HOST,
                             livekitToken: token,
                             token: token
                         }));
