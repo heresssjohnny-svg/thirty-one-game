@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
-const { AccessToken } = require('livekit-server-sdk'); // LiveKit Server SDK[span_3](start_span)[span_3](end_span)
+const { AccessToken } = require('livekit-server-sdk'); // LiveKit Server SDK[span_4](start_span)[span_4](end_span)
 
 const app = express();
 const server = http.createServer(app);
@@ -10,12 +10,12 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit API Configuration matching Hetzner VPS livekit.yaml[span_4](start_span)[span_4](end_span)
+// LiveKit API Credentials matching Hetzner VPS livekit.yaml[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
-const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
+const LIVEKIT_HOST = 'ws://135.181.43.233:7880'; //[span_7](start_span)[span_7](end_span)[span_8](start_span)[span_8](end_span)
 
-// Asynchronous LiveKit Token Generator[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)
+// Asynchronous LiveKit Token Generator[span_9](start_span)[span_9](end_span)[span_10](start_span)[span_10](end_span)
 async function generateLiveKitToken(roomName, participantName) {
     try {
         const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
@@ -30,22 +30,47 @@ async function generateLiveKitToken(roomName, participantName) {
             canPublishData: true,
             canSubscribe: true,
         });
-        return await at.toJwt(); // Awaited Promise for SDK v2+[span_7](start_span)[span_7](end_span)
+        return await at.toJwt(); // Must be awaited for livekit-server-sdk v2+[span_11](start_span)[span_11](end_span)[span_12](start_span)[span_12](end_span)
     } catch (err) {
-        console.error("LiveKit token generation failed:", err);
+        console.error("Failed to generate LiveKit token:", err);
         return null;
     }
 }
+
+// HTTP Token Endpoint for LiveKit Voice Test Bench (index2.html)[span_13](start_span)[span_13](end_span)
+app.get('/token', async (req, res) => {
+    const room = (req.query.room || 'test-room').trim();
+    const username = (req.query.username || `User-${Math.floor(Math.random() * 1000)}`).trim();
+
+    try {
+        const token = await generateLiveKitToken(room, username);
+        if (!token) {
+            return res.status(500).json({ error: 'Failed to generate token' });
+        }
+        console.log(`[Token Generated] Room: "${room}", User: "${username}"`);
+        res.json({
+            token,
+            host: LIVEKIT_HOST,
+            room,
+            username
+        });
+    } catch (err) {
+        console.error('Token generation route error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 const lobbies = {};
 
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket Keep-Alive to prevent mobile OS teardowns
+// WebSocket Keep-Alive to prevent mobile OS TCP teardowns[span_14](start_span)[span_14](end_span)
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) return ws.terminate();
+        if (ws.isAlive === false) {
+            return ws.terminate();
+        }
         ws.isAlive = false;
         ws.ping();
     });
@@ -60,7 +85,7 @@ function createDeck() {
     for (let s of suits) {
         for (let v of values) {
             let points = 10;
-            let drawVal = parseInt(v, 10) || (v === 'A' ? 14 : (v === 'K' ? 13 : (v === 'Q' ? 12 : 11)));
+            let drawVal = parseInt(v) || (v === 'A' ? 14 : (v === 'K' ? 13 : (v === 'Q' ? 12 : 11)));
             if (v === 'A') points = 11;
             else if (['J', 'Q', 'K'].includes(v)) points = 10;
             else points = parseInt(v, 10);
@@ -83,18 +108,8 @@ function closeInactiveLobby(code) {
     let lobby = lobbies[code];
     if (!lobby) return;
     let closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to inactivity.' });
-    lobby.players.forEach(p => { 
-        if (p.id?.readyState === WebSocket.OPEN) { 
-            p.id.send(closePayload); 
-            p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' })); 
-        } 
-    });
-    lobby.spectators.forEach(s => { 
-        if (s.idSocket?.readyState === WebSocket.OPEN) { 
-            s.idSocket.send(closePayload); 
-            s.idSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' })); 
-        } 
-    });
+    lobby.players.forEach(p => { if (p.id?.readyState === WebSocket.OPEN) { p.id.send(closePayload); p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' })); } });
+    lobby.spectators.forEach(s => { if (s.idSocket?.readyState === WebSocket.OPEN) { s.idSocket.send(closePayload); s.idSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' })); } });
     if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
     delete lobbies[code];
     broadcastLobbyList();
@@ -112,8 +127,8 @@ function broadcastVoiceRoster(code) {
     let lobby = lobbies[code];
     if (!lobby) return;
     let roster = [];
-    lobby.players.forEach(p => { if (p.inVC) roster.push(p.username); });
-    lobby.spectators.forEach(s => { if (s.inVC) roster.push(s.username); });
+    lobby.players.forEach(p => { if (p.inVC) roster.push({ username: p.username, isMuted: p.isMuted }); });
+    lobby.spectators.forEach(s => { if (s.inVC) roster.push({ username: s.username, isMuted: s.isMuted }); });
     broadcastLobbyEvent(code, { type: 'SYNC_VOICE_ROSTER', roster });
 }
 
@@ -182,7 +197,7 @@ wss.on('connection', (ws) => {
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
-
+                    
                     const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                     ws.send(JSON.stringify({ 
                         type: 'LOBBY_JOINED', 
@@ -271,8 +286,8 @@ wss.on('connection', (ws) => {
                         ws.send(JSON.stringify({ 
                             type: 'LIVEKIT_TOKEN', 
                             livekitHost: LIVEKIT_HOST, 
-                            livekitToken: token, 
-                            token: token 
+                            livekitToken: token,
+                            token: token
                         }));
                     }
                     break;
@@ -288,22 +303,6 @@ wss.on('connection', (ws) => {
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastVoiceRoster(currentLobbyCode);
                         }
-                    }
-                    break;
-                }
-
-                case 'CHAT_MESSAGE': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let lobby = lobbies[currentLobbyCode];
-                        let chatPayload = { 
-                            type: 'CHAT_MESSAGE', 
-                            username: currentUsername || 'Player', 
-                            message: data.message || '' 
-                        };
-                        lobby.chatHistory.push(chatPayload);
-                        if (lobby.chatHistory.length > 50) lobby.chatHistory.shift();
-                        lobby.players.forEach(p => p.id?.send(JSON.stringify(chatPayload)));
-                        lobby.spectators.forEach(s => s.idSocket?.send(JSON.stringify(chatPayload)));
                     }
                     break;
                 }
@@ -671,6 +670,15 @@ wss.on('connection', (ws) => {
                     break;
                 }
 
+                case 'CHAT_MESSAGE': {
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
+                        lobbies[currentLobbyCode].players.forEach(p => p.id?.send(JSON.stringify(chatPayload)));
+                        lobbies[currentLobbyCode].spectators.forEach(s => s.idSocket?.send(JSON.stringify(chatPayload)));
+                    }
+                    break;
+                }
+
                 case 'DRAW_DECK':
                 case 'DRAW_DISCARD': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
@@ -695,7 +703,7 @@ wss.on('connection', (ws) => {
                 }
             }
         } catch (err) {
-            console.error(err);
+            console.error("Server error:", err);
         }
     });
 
