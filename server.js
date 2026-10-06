@@ -9,7 +9,6 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// LiveKit Server Credentials
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
@@ -20,7 +19,6 @@ async function generateLiveKitToken(roomName, participantName) {
     return await at.toJwt();
 }
 
-// Serve root and www directories
 app.use(express.static(path.join(__dirname)));
 if (fs.existsSync(path.join(__dirname, 'www'))) {
     app.use(express.static(path.join(__dirname, 'www')));
@@ -34,7 +32,7 @@ app.get('*', (req, res) => {
     for (const p of candidates) {
         if (fs.existsSync(p)) return res.sendFile(p);
     }
-    res.status(404).send('index.html not found. Place index.html in the root or www folder.');
+    res.status(404).send('index.html not found.');
 });
 
 const lobbies = {};
@@ -42,7 +40,6 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket keep-alive ping/pong
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -217,7 +214,7 @@ async function getSanitizedLobby(lobby, wsId) {
         try {
             token = await generateLiveKitToken(lobby.code, myUsername);
         } catch (e) {
-            console.error('Error generating token:', e);
+            console.error('LiveKit Token error:', e);
         }
     }
 
@@ -413,12 +410,10 @@ function handleTurnAction(lobby, wsId, actionType) {
         currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
 
-        // If card was initial face-up card, trigger top-left modal for all
         if (lobby.initialDealCard && card.val === lobby.initialDealCard.val && card.suit === lobby.initialDealCard.suit) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
-        // If card was discarded by another player, trigger their top-right fed modal
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
@@ -660,7 +655,7 @@ function awardTournamentWinner(lobby, winner) {
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
     lobby.gameState = 'roundOver';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match!`;
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match and will deal next game!`;
     broadcastLobbyUpdate(lobby.code);
 }
 
@@ -706,7 +701,6 @@ function resetLobbyToReadyRoom(lobby, msg) {
     broadcastLobbyList();
 }
 
-// Bot AI Engine (7.5 Intelligence)
 function scheduleBotActions(lobby) {
     if (!lobby) return;
 
@@ -1340,7 +1334,7 @@ wss.on('connection', (ws) => {
                         lobby.endGameVotes[currentUsername] = true;
                         let activeParts = getActiveParticipants(lobby);
                         if (activeParts.every(p => lobby.endGameVotes[p.username])) {
-                            resetLobbyToReadyRoom(lobby, "⚠️️ Game ended! Returning to waiting room.");
+                            resetLobbyToReadyRoom(lobby, "⚠️ Game ended! Returning to waiting room.");
                         } else {
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
