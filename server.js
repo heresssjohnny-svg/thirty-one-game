@@ -776,20 +776,11 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                     lobby.spectators.push({ idSocket: loser.id, username: loser.username });
                 }
             }
-
-            lobby.phaseMessage = `${entries[0].username} drew lowest in tie-breaker!`;
-            broadcastLobbyUpdate(lobby.code);
-
-            setTimeout(() => {
-                if (!lobbies[lobby.code]) return;
-                let currentLobby = lobbies[lobby.code];
-                if (getActiveParticipants(currentLobby).length === 1) {
-                    awardTournamentWinner(currentLobby, getActiveParticipants(currentLobby)[0]);
-                } else {
-                    advanceDealerToNextActive(currentLobby);
-                    triggerRoundOver(currentLobby, `${entries[0].username} lost a life in tie-breaker!`);
-                }
-            }, 3000);
+            if (getActiveParticipants(lobby).length === 1) awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
+            else {
+                advanceDealerToNextActive(lobby);
+                triggerRoundOver(lobby, `${entries[0].username} drew lowest in tie-breaker and lost a life!`);
+            }
         }
     }
 }
@@ -1114,4 +1105,27 @@ function resetLobbyToReadyRoom(lobby, msg) {
     broadcastLobbyList();
 }
 
-function calculateBestFour
+function calculateBestFourCardScore(cards) {
+    if (!cards || cards.length < 3) return 0;
+    if (cards.length === 4) {
+        return Math.max(
+            calculateScore([cards[0], cards[1], cards[2]]),
+            calculateScore([cards[0], cards[1], cards[3]]),
+            calculateScore([cards[0], cards[2], cards[3]]),
+            calculateScore([cards[1], cards[2], cards[3]])
+        );
+    }
+    return calculateScore(cards);
+}
+
+function calculateScore(cards) {
+    let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
+    if (!scoringCards || scoringCards.length === 0) return 0;
+    let sums = {};
+    scoringCards.forEach(c => sums[c.suit] = (sums[c.suit] || 0) + c.points);
+    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
+    return Math.max(...Object.values(sums), 0);
+}
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`31! Server running on port ${PORT}`));
