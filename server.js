@@ -10,24 +10,25 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit API Configuration with SSL reverse proxy
+// LiveKit API Configuration with SSL domain reverse-proxied by Caddy
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = 'wss://31game.duckdns.org';
 
+// Asynchronous LiveKit Token Generator
 async function generateLiveKitToken(roomName, participantName) {
     try {
         const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
             identity: participantName,
             name: participantName,
-            ttl: '8h'
+            ttl: '8h',
         });
         at.addGrant({
             roomJoin: true,
             room: roomName,
             canPublish: true,
             canPublishData: true,
-            canSubscribe: true
+            canSubscribe: true,
         });
         return await at.toJwt();
     } catch (err) {
@@ -36,15 +37,24 @@ async function generateLiveKitToken(roomName, participantName) {
     }
 }
 
+// HTTP Token Endpoint for Voice Test Bench (index2.html)
 app.get('/token', async (req, res) => {
     const room = (req.query.room || 'test-room').trim();
     const username = (req.query.username || `User-${Math.floor(Math.random() * 1000)}`).trim();
 
     try {
         const token = await generateLiveKitToken(room, username);
-        if (!token) return res.status(500).json({ error: 'Failed to generate token' });
-        res.json({ token, host: LIVEKIT_HOST, room, username });
+        if (!token) {
+            return res.status(500).json({ error: 'Failed to generate token' });
+        }
+        res.json({
+            token,
+            host: LIVEKIT_HOST,
+            room,
+            username
+        });
     } catch (err) {
+        console.error('Token route error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -54,6 +64,7 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
+// WebSocket Keep-Alive to prevent mobile OS connection teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -87,7 +98,7 @@ function createDeck() {
 
 function touchLobbyActivity(lobby) {
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
-    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code), 25 * 60 * 1000);
+    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code), 20 * 60 * 1000);
 }
 
 function closeInactiveLobby(code) {
@@ -194,7 +205,7 @@ wss.on('connection', (ws) => {
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
 
-                    let token = await generateLiveKitToken(currentLobbyCode, currentUsername);
+                    const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                     ws.send(JSON.stringify({ 
                         type: 'LOBBY_JOINED', 
                         lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws),
@@ -215,9 +226,9 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[code];
                         touchLobbyActivity(lobby);
 
-                        let token = await generateLiveKitToken(code, currentUsername);
+                        const token = await generateLiveKitToken(code, currentUsername);
 
-                        // Reattach player socket if reconnecting from background or network blip
+                        // Seamless background rejoin / reconnect to existing seat
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
@@ -276,7 +287,7 @@ wss.on('connection', (ws) => {
 
                 case 'REQUEST_LIVEKIT_TOKEN': {
                     if (currentLobbyCode && currentUsername) {
-                        let token = await generateLiveKitToken(currentLobbyCode, currentUsername);
+                        const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                         ws.send(JSON.stringify({ 
                             type: 'LIVEKIT_TOKEN', 
                             livekitHost: LIVEKIT_HOST, 
@@ -290,8 +301,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_VC_STATUS': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let p = lobby.players.find(pl => pl.username.toLowerCase() === currentUsername.toLowerCase()) || 
-                                lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
+                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
                         if (p) {
                             p.inVC = !!data.inVC;
                             p.isMuted = !!data.isMuted;
@@ -384,7 +394,7 @@ wss.on('connection', (ws) => {
                 case 'STAND_UP': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let playerIdx = lobby.players.findIndex(p => p.username.toLowerCase() === currentUsername.toLowerCase());
+                        let playerIdx = lobby.players.findIndex(p => p.id === ws);
                         if (playerIdx !== -1) {
                             let leaving = lobby.players.splice(playerIdx, 1)[0];
                             lobby.spectators.push({ username: leaving.username, idSocket: ws, inVC: leaving.inVC, isMuted: leaving.isMuted });
@@ -399,7 +409,7 @@ wss.on('connection', (ws) => {
                 case 'SIT_DOWN': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let specIdx = lobby.spectators.findIndex(s => s.username.toLowerCase() === currentUsername.toLowerCase());
+                        let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username.toLowerCase() === currentUsername.toLowerCase());
                         if (specIdx !== -1 && lobby.players.length < 6 && lobby.gameState === 'lobby') {
                             let spec = lobby.spectators.splice(specIdx, 1)[0];
                             let seat = findOpenSeat(lobby);
@@ -419,7 +429,7 @@ wss.on('connection', (ws) => {
 
                 case 'UPDATE_WAGER': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let player = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
+                        let player = lobbies[currentLobbyCode].players.find(p => p.id === ws);
                         if (player && lobbies[currentLobbyCode].gameState === 'lobby') {
                             player.wager = parseInt(data.wager, 10) || 5;
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -554,7 +564,7 @@ wss.on('connection', (ws) => {
                 case 'SET_READY': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let player = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
+                        let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
                             player.ready = !!data.ready;
                             let activeParts = getActiveParticipants(lobby);
@@ -577,7 +587,7 @@ wss.on('connection', (ws) => {
                 case 'NEXT_HAND': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let player = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
+                        let player = lobby.players.find(p => p.id === ws);
                         if (player && lobby.gameState === 'roundOver' && !player.eliminated) {
                             player.nextHandReady = true;
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -616,7 +626,7 @@ wss.on('connection', (ws) => {
 
                 case 'RESPOND_PEEK': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let player = lobbies[currentLobbyCode].players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
+                        let player = lobbies[currentLobbyCode].players.find(p => p.id === ws);
                         if (player) {
                             delete player.peekRequests?.[data.spectatorUsername];
                             if (data.allow) {
@@ -645,7 +655,7 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         touchLobbyActivity(lobby);
-                        let player = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
+                        let player = lobby.players.find(p => p.id === ws);
                         if (player && player.peekAllowed) {
                             delete player.peekAllowed[data.spectatorUsername];
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -658,7 +668,8 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-                            handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
+                            let p = lobby.players.find(pl => pl.id === ws);
+                            handlePoolCardSelection(lobby, p ? p.username : currentUsername, data.cardIndex);
                         }
                     }
                     break;
@@ -675,40 +686,41 @@ wss.on('connection', (ws) => {
 
                 case 'DRAW_DECK':
                 case 'DRAW_DISCARD': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) handleTurnAction(lobbies[currentLobbyCode], currentUsername, data.type);
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
                     break;
                 }
 
                 case 'DISCARD_CARD': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) handleDiscardAction(lobbies[currentLobbyCode], currentUsername, data.cardIndex);
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) handleDiscardAction(lobbies[currentLobbyCode], ws, data.cardIndex);
                     break;
                 }
 
                 case 'KNOCK': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) handleKnock(lobbies[currentLobbyCode], currentUsername);
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) handleKnock(lobbies[currentLobbyCode], ws);
                     break;
                 }
 
                 case 'LEAVE_LOBBY': {
-                    // Only leaves lobby when user clicks leave button
-                    leaveLobby(ws, currentLobbyCode, currentUsername);
+                    // Only explicit leave button drops the seat
+                    leaveLobby(ws, currentLobbyCode);
                     currentLobbyCode = null;
                     ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
                     break;
                 }
             }
         } catch (err) {
-            console.error(err);
+            console.error("Server dispatch error:", err);
         }
     });
 
     ws.on('close', () => {
-        // DO NOT REMOVE PLAYER FROM LOBBY WHEN SOCKET DROPS OR APP SLEEPS
+        // Socket closed by backgrounding, screen sleep, or network change
+        // We detatch the socket handle but DO NOT remove the player from seat/game!
         if (currentLobbyCode && lobbies[currentLobbyCode]) {
             let lobby = lobbies[currentLobbyCode];
-            let p = lobby.players.find(pl => pl.username.toLowerCase() === (currentUsername || '').toLowerCase());
-            if (p) p.id = null; // Unbind socket, preserve seat & cards
-            let s = lobby.spectators.find(spec => spec.username.toLowerCase() === (currentUsername || '').toLowerCase());
+            let p = lobby.players.find(pl => pl.id === ws);
+            if (p) p.id = null; 
+            let s = lobby.spectators.find(spec => spec.idSocket === ws);
             if (s) s.idSocket = null;
             broadcastVoiceRoster(currentLobbyCode);
         }
@@ -718,14 +730,13 @@ wss.on('connection', (ws) => {
 function getActiveParticipants(lobby) { return lobby.players.filter(p => !p.eliminated); }
 function findOpenSeat(lobby) { let occ = lobby.players.map(p => p.seat); for (let i = 0; i < 6; i++) { if (!occ.includes(i)) return i; } return 0; }
 
-function leaveLobby(ws, code, username) {
+function leaveLobby(ws, code) {
     if (!lobbies[code]) return;
     let lobby = lobbies[code];
-    lobby.players = lobby.players.filter(p => p.username.toLowerCase() !== (username || '').toLowerCase() && p.id !== ws);
-    lobby.spectators = lobby.spectators.filter(s => s.username.toLowerCase() !== (username || '').toLowerCase() && s.idSocket !== ws);
-    if (lobby.players.length === 0 && lobby.spectators.length === 0) {
-        delete lobbies[code];
-    } else {
+    lobby.players = lobby.players.filter(p => p.id !== ws);
+    lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
+    if (lobby.players.length === 0) delete lobbies[code];
+    else {
         broadcastLobbyUpdate(code);
         broadcastVoiceRoster(code);
     }
@@ -765,6 +776,7 @@ function getSanitizedLobby(lobby, wsId) {
     let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.delivered[myUsername]);
     myUnrespondedBets.forEach(b => b.delivered[myUsername] = true);
 
+    // Private Fed-Card reminder modal targeting donor only
     let myFedReminder = null;
     if (myUsername && lobby.fedCardReminders?.[myUsername] && lobby.gameState !== 'roundOver') {
         let rem = lobby.fedCardReminders[myUsername];
@@ -928,6 +940,8 @@ function startRound(lobby) {
     let firstDiscard = lobby.deck.pop();
     lobby.discardPile.push(firstDiscard);
     lobby.initialDealCard = { val: firstDiscard.val, suit: firstDiscard.suit };
+    
+    // First card on table counts as placed by the dealer
     lobby.lastDiscardDonor = lobby.players[lobby.dealerIndex]?.username || null;
 
     lobby.turnIndex = (lobby.dealerIndex + 1) % lobby.players.length;
@@ -935,10 +949,10 @@ function startRound(lobby) {
     broadcastLobbyUpdate(lobby.code);
 }
 
-function handleTurnAction(lobby, username, actionType) {
+function handleTurnAction(lobby, ws, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     let currentPlayer = lobby.players[lobby.turnIndex];
-    if (!currentPlayer || currentPlayer.username.toLowerCase() !== username.toLowerCase() || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
+    if (!currentPlayer || currentPlayer.id !== ws || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
 
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
@@ -981,18 +995,16 @@ function handleTurnAction(lobby, username, actionType) {
     broadcastLobbyUpdate(lobby.code);
 }
 
-function handleDiscardAction(lobby, username, cardIndex) {
+function handleDiscardAction(lobby, ws, cardIndex) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     let currentPlayer = lobby.players[lobby.turnIndex];
-    if (!currentPlayer || currentPlayer.username.toLowerCase() !== username.toLowerCase() || currentPlayer.cards.length !== 4) return;
+    if (!currentPlayer || currentPlayer.id !== ws || currentPlayer.cards.length !== 4) return;
 
     let discarded = currentPlayer.cards[cardIndex];
-
     if (currentPlayer.pickedUpDiscardCard && discarded.val === currentPlayer.pickedUpDiscardCard.val && discarded.suit === currentPlayer.pickedUpDiscardCard.suit) {
         currentPlayer.cards.splice(cardIndex, 1);
         lobby.discardPile.push(discarded);
         currentPlayer.pickedUpDiscardCard = null;
-
         if (lobby.lastDiscardPickup?.username === currentPlayer.username && lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
             lobby.lastDiscardPickup = null;
         }
@@ -1017,6 +1029,7 @@ function handleDiscardAction(lobby, username, cardIndex) {
     currentPlayer.pickedUpDiscardCard = null;
     lobby.discardPile.push(discarded);
 
+    // If player discarded the card they took from someone, delete the reminder
     if (lobby.fedCardReminders) {
         for (let donor in lobby.fedCardReminders) {
             if (lobby.fedCardReminders[donor].target === currentPlayer.username) {
@@ -1069,10 +1082,10 @@ function advanceTurnOrResolve(lobby) {
     broadcastLobbyUpdate(lobby.code);
 }
 
-function handleKnock(lobby, username) {
+function handleKnock(lobby, ws) {
     if (lobby.gameState !== 'playing') return;
     let p = lobby.players[lobby.turnIndex];
-    if (!p || p.username.toLowerCase() !== username.toLowerCase() || lobby.knockedBy) return;
+    if (!p || p.id !== ws || lobby.knockedBy) return;
     let active = getActiveParticipants(lobby);
     if (lobby.turnsTakenThisRound < active.length) return;
     if (calculateScore(p.cards) < (active.length > 2 ? 21 : 25)) return;
@@ -1251,7 +1264,7 @@ function calculateScore(cards) {
     let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
     if (!scoringCards || scoringCards.length === 0) return 0;
     let sums = {};
-    scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
+    scoringCards.forEach(c => sums[c.suit] = (sums[c.suit] || 0) + c.points);
     if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
     return Math.max(...Object.values(sums), 0);
 }
