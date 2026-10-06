@@ -10,10 +10,14 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit API Credentials matching your livekit.yaml on Hetzner
+// LiveKit Server Credentials
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
-const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
+const LIVEKIT_IP = '135.181.43.233';
+
+function getLiveKitHost(isSecure) {
+    return isSecure ? `wss://${LIVEKIT_IP}:7880` : `ws://${LIVEKIT_IP}:7880`;
+}
 
 function generateLiveKitToken(roomName, participantName) {
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
@@ -36,6 +40,7 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
+// WebSocket Keep-Alive to prevent mobile OS TCP teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -100,9 +105,12 @@ function broadcastVoiceRoster(code) {
     broadcastLobbyEvent(code, { type: 'SYNC_VOICE_ROSTER', roster });
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
+
+    const isClientSecure = req.headers['x-forwarded-proto'] === 'https' || (req.connection && req.connection.encrypted);
+    const clientLiveKitHost = getLiveKitHost(isClientSecure);
 
     let currentLobbyCode = null;
     let currentUsername = null;
@@ -170,7 +178,7 @@ wss.on('connection', (ws) => {
                     ws.send(JSON.stringify({ 
                         type: 'LOBBY_JOINED', 
                         lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws),
-                        livekitHost: LIVEKIT_HOST,
+                        livekitHost: clientLiveKitHost,
                         livekitToken: token
                     }));
                     broadcastLobbyList();
@@ -195,7 +203,7 @@ wss.on('connection', (ws) => {
                             ws.send(JSON.stringify({ 
                                 type: 'LOBBY_JOINED', 
                                 lobby: getSanitizedLobby(lobby, ws),
-                                livekitHost: LIVEKIT_HOST,
+                                livekitHost: clientLiveKitHost,
                                 livekitToken: token
                             }));
                             broadcastLobbyUpdate(code);
@@ -211,7 +219,7 @@ wss.on('connection', (ws) => {
                             ws.send(JSON.stringify({ 
                                 type: 'LOBBY_JOINED', 
                                 lobby: getSanitizedLobby(lobby, ws),
-                                livekitHost: LIVEKIT_HOST,
+                                livekitHost: clientLiveKitHost,
                                 livekitToken: token
                             }));
                             broadcastLobbyUpdate(code);
@@ -231,7 +239,7 @@ wss.on('connection', (ws) => {
                         ws.send(JSON.stringify({ 
                             type: 'LOBBY_JOINED', 
                             lobby: getSanitizedLobby(lobby, ws),
-                            livekitHost: LIVEKIT_HOST,
+                            livekitHost: clientLiveKitHost,
                             livekitToken: token
                         }));
                         broadcastLobbyUpdate(code);
@@ -249,7 +257,7 @@ wss.on('connection', (ws) => {
                         let token = generateLiveKitToken(currentLobbyCode, currentUsername);
                         ws.send(JSON.stringify({ 
                             type: 'LIVEKIT_TOKEN', 
-                            livekitHost: LIVEKIT_HOST, 
+                            livekitHost: clientLiveKitHost, 
                             livekitToken: token 
                         }));
                     }
