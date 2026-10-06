@@ -10,7 +10,7 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit Configuration
+// LiveKit API Credentials matching your livekit.yaml on Hetzner
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
@@ -18,8 +18,16 @@ const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
 function generateLiveKitToken(roomName, participantName) {
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
         identity: participantName,
+        name: participantName,
+        ttl: '8h'
     });
-    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+    at.addGrant({
+        roomJoin: true,
+        room: roomName,
+        canPublish: true,
+        canPublishData: true,
+        canSubscribe: true
+    });
     return at.toJwt();
 }
 
@@ -28,12 +36,9 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket Keep-Alive to prevent mobile OS TCP teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) {
-            return ws.terminate();
-        }
+        if (ws.isAlive === false) return ws.terminate();
         ws.isAlive = false;
         ws.ping();
     });
@@ -557,7 +562,7 @@ wss.on('connection', (ws) => {
                         lobby.endGameVotes[currentUsername] = true;
                         let activeParts = getActiveParticipants(lobby);
                         if (activeParts.every(p => lobby.endGameVotes[p.username])) {
-                            resetLobbyToReadyRoom(lobby, "⚠ Game ended! Returning to waiting room.");
+                            resetLobbyToReadyRoom(lobby, "⚠️ Game ended! Returning to waiting room.");
                         } else {
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
