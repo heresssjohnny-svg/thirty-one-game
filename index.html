@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="31!">
 
-    <!-- Official LiveKit Client SDK -->
+    <!-- LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 
     <style>
@@ -645,10 +645,7 @@
 
         async function connectToLiveKit(host, token) {
             const LK = getLiveKitSDK();
-            if (!LK) {
-                console.error("LiveKit client SDK not loaded from CDN.");
-                return;
-            }
+            if (!LK) return;
 
             if (isConnectingVoice) return;
             isConnectingVoice = true;
@@ -674,8 +671,14 @@
                         const audioElem = track.attach();
                         audioElem.autoplay = true;
                         audioElem.playsInline = true;
+                        audioElem.volume = 1.0; // Play at full scale
                         audioElem.setAttribute('playsinline', '');
                         audioElem.setAttribute('webkit-playsinline', '');
+                        
+                        // Force routing to loud speaker if available
+                        if (typeof audioElem.setSinkId === 'function') {
+                            audioElem.setSinkId('speaker').catch(() => {});
+                        }
                         document.body.appendChild(audioElem);
                     }
                 });
@@ -693,19 +696,35 @@
                 await livekitRoom.connect(host, token);
                 isLiveKitConnected = true;
 
-                // Start muted by default
+                // Auto-connect in MUTED state
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isVoiceChatActive = false;
                 updateVoiceUI();
                 sendVCStatusInternal(true, true);
                 enableBackgroundAudioKeepAlive();
 
-                console.log("Connected to LiveKit SFU Room successfully!");
             } catch (error) {
                 console.error("Failed to connect to LiveKit room:", error);
             } finally {
                 isConnectingVoice = false;
             }
+        }
+
+        // Bluetooth / Audio device transition monitor
+        if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
+            navigator.mediaDevices.ondevicechange = async () => {
+                const LK = getLiveKitSDK();
+                if (LK && livekitRoom && livekitRoom.state === 'connected') {
+                    try {
+                        const audioDevices = await LK.Room.getLocalDevices('audioinput');
+                        if (audioDevices && audioDevices.length > 0 && isVoiceChatActive) {
+                            await livekitRoom.switchActiveDevice('audioinput', audioDevices[0].deviceId);
+                        }
+                    } catch (e) {
+                        console.log("Device switch exception:", e);
+                    }
+                }
+            };
         }
 
         async function toggleVoiceOnOff() {
@@ -720,10 +739,7 @@
                 }
             }
 
-            if (!livekitRoom || !isLiveKitConnected) {
-                console.warn("LiveKit connection pending. Please try again in a moment.");
-                return;
-            }
+            if (!livekitRoom || !isLiveKitConnected) return;
 
             try {
                 let ctx = getAudioContext();
@@ -734,14 +750,12 @@
                     isVoiceChatActive = false;
                     updateVoiceUI();
                     sendVCStatusInternal(true, true);
-                    stopNativeForegroundService();
                 } else {
                     if (livekitRoom.startAudio) await livekitRoom.startAudio();
                     await livekitRoom.localParticipant.setMicrophoneEnabled(true);
                     isVoiceChatActive = true;
                     updateVoiceUI();
                     sendVCStatusInternal(true, false);
-                    startNativeForegroundService();
                 }
             } catch (err) {
                 console.error("Microphone toggle error:", err);
@@ -771,7 +785,6 @@
             isLiveKitConnected = false;
             isVoiceChatActive = false;
             updateVoiceUI();
-            stopNativeForegroundService();
         }
 
         function sendVCStatusInternal(inVC, isMuted) {
@@ -783,25 +796,6 @@
                 let ctx = getAudioContext();
                 if (ctx && ctx.state === 'suspended') ctx.resume();
             } catch (e) {}
-        }
-
-        function startNativeForegroundService() {
-            if (window.Capacitor?.isPluginAvailable?.('AndroidForegroundService')) {
-                try {
-                    window.Capacitor.Plugins.AndroidForegroundService.start({
-                        title: '31! Voice Chat Active',
-                        text: 'Live voice communication in progress'
-                    });
-                } catch(e) {}
-            }
-        }
-
-        function stopNativeForegroundService() {
-            if (window.Capacitor?.isPluginAvailable?.('AndroidForegroundService')) {
-                try {
-                    window.Capacitor.Plugins.AndroidForegroundService.stop();
-                } catch(e) {}
-            }
         }
 
         function triggerVoiceReconnect() {
@@ -878,7 +872,6 @@
             }
         }
 
-        // Music Player Handling
         function parseYouTubeEmbedUrl(url, autoplay = true) {
             let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
             let match = url.match(regExp);
@@ -974,6 +967,25 @@
             }
             connectSocket();
             refreshLobbies();
+        });
+
+        // Fast reconnect and state re-bind on tab focus
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    connectSocket();
+                } else if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
+            }
+        });
+
+        window.addEventListener('pageshow', () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
         });
 
         function saveInputs() {
@@ -1302,6 +1314,14 @@
                     let msg = pendingQueue.shift();
                     ws.send(JSON.stringify(msg));
                 }
+                // Automatically re-bind to existing seat when resuming
+                if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
             };
 
             ws.onmessage = (event) => {
@@ -1342,7 +1362,7 @@
 
             ws.onclose = () => {
                 isConnected = false;
-                setTimeout(() => { connectSocket(); }, 3000);
+                setTimeout(() => { connectSocket(); }, 2500);
             };
         }
 
@@ -1759,10 +1779,13 @@
                 let isDealer = lobby.players[lobby.dealerIndex]?.username === p.username;
                 let dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
 
+                // Microphone icon next to player name
+                let micStatusIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+
                 html += `
                     <div class="seat seat-${p.seat}${isCurrentTurnUserSeat ? ' current-turn-seat' : ''}">
                         <div class="seat-name-area" onclick="tapSeat('${p.username}')">
-                            <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${statusBadge}</b>${dealerBadgeHtml}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                            <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${micStatusIcon}${statusBadge}</b>${dealerBadgeHtml}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         </div>
                         ${revealedCardsHtml}
                     </div>
