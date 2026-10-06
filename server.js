@@ -3,12 +3,24 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
+const { AccessToken } = require('livekit-server-sdk');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static assets from root or www folder
+// LiveKit Server Credentials
+const LIVEKIT_API_KEY = 'thirtyone-chat';
+const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
+const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
+
+async function generateLiveKitToken(roomName, participantName) {
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: participantName });
+    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+    return await at.toJwt();
+}
+
+// Serve root and www directories
 app.use(express.static(path.join(__dirname)));
 if (fs.existsSync(path.join(__dirname, 'www'))) {
     app.use(express.static(path.join(__dirname, 'www')));
@@ -22,7 +34,7 @@ app.get('*', (req, res) => {
     for (const p of candidates) {
         if (fs.existsSync(p)) return res.sendFile(p);
     }
-    res.status(404).send('index.html not found. Place index.html in project root.');
+    res.status(404).send('index.html not found. Place index.html in the root or www folder.');
 });
 
 const lobbies = {};
@@ -30,7 +42,7 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket Keep-Alive to prevent mobile OS socket drops
+// WebSocket keep-alive ping/pong
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -121,30 +133,8 @@ function closeInactiveLobby(code) {
             s.idSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
         }
     });
-    if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
     delete lobbies[code];
     broadcastLobbyList();
-}
-
-function broadcastLobbyEvent(code, payload) {
-    let lobby = lobbies[code];
-    if (!lobby) return;
-    let msg = JSON.stringify(payload);
-    lobby.players.forEach(p => {
-        if (p.id && typeof p.id === 'object' && p.id.readyState === WebSocket.OPEN) p.id.send(msg);
-    });
-    lobby.spectators.forEach(s => {
-        if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) s.idSocket.send(msg);
-    });
-}
-
-function broadcastVoiceRoster(code) {
-    let lobby = lobbies[code];
-    if (!lobby) return;
-    let roster = [];
-    lobby.players.forEach(p => { if (p.inVC) roster.push(p.username); });
-    lobby.spectators.forEach(s => { if (s.inVC) roster.push(s.username); });
-    broadcastLobbyEvent(code, { type: 'SYNC_VOICE_ROSTER', roster });
 }
 
 function getPublicLobbiesList() {
@@ -164,26 +154,27 @@ function broadcastLobbyList() {
     });
 }
 
-function broadcastLobbyUpdate(code) {
+async function broadcastLobbyUpdate(code) {
     let lobby = lobbies[code];
     if (!lobby) return;
-    lobby.players.forEach(p => {
+
+    for (let p of lobby.players) {
         if (p.id && typeof p.id === 'object' && p.id.readyState === WebSocket.OPEN) {
-            let data = getSanitizedLobby(lobby, p.id);
+            let data = await getSanitizedLobby(lobby, p.id);
             p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: data }));
             p.id.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: data }));
         }
-    });
-    lobby.spectators.forEach(s => {
+    }
+    for (let s of lobby.spectators) {
         if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) {
-            let data = getSanitizedLobby(lobby, s.idSocket);
+            let data = await getSanitizedLobby(lobby, s.idSocket);
             s.idSocket.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: data }));
             s.idSocket.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: data }));
         }
-    });
+    }
 }
 
-function getSanitizedLobby(lobby, wsId) {
+async function getSanitizedLobby(lobby, wsId) {
     let activeParts = getActiveParticipants(lobby);
     let allParticipants = [...lobby.players];
     let requestingPlayer = lobby.players.find(p => p.id === wsId);
@@ -221,6 +212,15 @@ function getSanitizedLobby(lobby, wsId) {
         elapsedSeconds = lobby.songPausedAtOffset || 0;
     }
 
+    let token = null;
+    if (myUsername) {
+        try {
+            token = await generateLiveKitToken(lobby.code, myUsername);
+        } catch (e) {
+            console.error('Error generating token:', e);
+        }
+    }
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -255,6 +255,8 @@ function getSanitizedLobby(lobby, wsId) {
         currentSongIndex: lobby.currentSongIndex || 0,
         isPlaying: !!lobby.isPlaying,
         currentSongElapsedSeconds: elapsedSeconds,
+        livekitToken: token,
+        livekitHost: LIVEKIT_HOST,
         players: lobby.players.map(p => {
             let canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
             let specAllowed = requestingSpectator && p.peekAllowed?.[requestingSpectator.username];
@@ -330,6 +332,7 @@ function startRound(lobby) {
         lobby.turnIndex = (lobby.turnIndex + 1) % lobby.players.length;
     }
 
+    lobby.phaseMessage = `Round started! Turn: ${lobby.players[lobby.turnIndex].username}`;
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
 }
@@ -403,15 +406,19 @@ function handleTurnAction(lobby, wsId, actionType) {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
         currentPlayer.cards.push(lobby.deck.pop());
         currentPlayer.pickedUpDiscardCard = null;
+        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the deck.`;
     } else if (actionType === 'DRAW_DISCARD' && lobby.discardPile.length > 0) {
         let card = lobby.discardPile.pop();
         currentPlayer.cards.push(card);
         currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
+        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
 
+        // If card was initial face-up card, trigger top-left modal for all
         if (lobby.initialDealCard && card.val === lobby.initialDealCard.val && card.suit === lobby.initialDealCard.suit) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
+        // If card was discarded by another player, trigger their top-right fed modal
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
@@ -696,7 +703,6 @@ function resetLobbyToReadyRoom(lobby, msg) {
     });
     lobby.spectators = [];
     broadcastLobbyUpdate(lobby.code);
-    broadcastVoiceRoster(lobby.code);
     broadcastLobbyList();
 }
 
@@ -824,8 +830,6 @@ function leaveLobby(ws, code) {
         delete lobbies[code];
     } else {
         broadcastLobbyUpdate(code);
-        broadcastVoiceRoster(code);
-        broadcastLobbyEvent(code, { type: 'REESTABLISH_ALL_VOICE' });
     }
     broadcastLobbyList();
 }
@@ -854,7 +858,7 @@ wss.on('connection', (ws) => {
                     currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
                     lobbies[currentLobbyCode] = {
                         code: currentLobbyCode,
-                        name: data.lobbyName || `${currentUsername}'s Lobby`,
+                        name: data.lobbyName || `${currentUsername}'s Table`,
                         host: currentUsername,
                         isPrivate: !!data.isPrivate,
                         players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, isBot: false, inVC: true, isMuted: true, peekRequests: {}, peekAllowed: {} }],
@@ -883,7 +887,6 @@ wss.on('connection', (ws) => {
                         knockedBy: null,
                         finalTurnsRemaining: 0,
                         turnsTakenThisRound: 0,
-                        nextHandTimer: null,
                         endGameVotes: {},
                         chatHistory: [],
                         playlist: [],
@@ -894,9 +897,8 @@ wss.on('connection', (ws) => {
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
-                    ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws) }));
+                    broadcastLobbyUpdate(currentLobbyCode);
                     broadcastLobbyList();
-                    broadcastVoiceRoster(currentLobbyCode);
                     break;
                 }
 
@@ -912,10 +914,7 @@ wss.on('connection', (ws) => {
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
-                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
-                            broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
-                            broadcastVoiceRoster(code);
                             broadcastLobbyList();
                             return;
                         }
@@ -923,10 +922,7 @@ wss.on('connection', (ws) => {
                         let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingSpec) {
                             existingSpec.idSocket = ws;
-                            ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                             broadcastLobbyUpdate(code);
-                            broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
-                            broadcastVoiceRoster(code);
                             broadcastLobbyList();
                             return;
                         }
@@ -938,10 +934,7 @@ wss.on('connection', (ws) => {
                             lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                         }
 
-                        ws.send(JSON.stringify({ type: 'LOBBY_JOINED', lobby: getSanitizedLobby(lobby, ws) }));
                         broadcastLobbyUpdate(code);
-                        broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
-                        broadcastVoiceRoster(code);
                         broadcastLobbyList();
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
@@ -1002,14 +995,6 @@ wss.on('connection', (ws) => {
                     break;
                 }
 
-                case 'RECONNECT_VOICE': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        broadcastLobbyEvent(currentLobbyCode, { type: 'REESTABLISH_ALL_VOICE' });
-                        broadcastVoiceRoster(currentLobbyCode);
-                    }
-                    break;
-                }
-
                 case 'UPDATE_VC_STATUS': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
@@ -1018,31 +1003,6 @@ wss.on('connection', (ws) => {
                             p.inVC = !!data.inVC;
                             p.isMuted = !!data.isMuted;
                             broadcastLobbyUpdate(currentLobbyCode);
-                            broadcastVoiceRoster(currentLobbyCode);
-                        }
-                    }
-                    break;
-                }
-
-                case 'WEBRTC_SIGNAL': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let lobby = lobbies[currentLobbyCode];
-                        let targetLower = (data.target || '').toLowerCase();
-                        let targetRec = lobby.players.find(p => p.username.toLowerCase() === targetLower);
-                        let targetSocket = targetRec && typeof targetRec.id === 'object' ? targetRec.id : null;
-
-                        if (!targetSocket) {
-                            let specRec = lobby.spectators.find(s => s.username.toLowerCase() === targetLower);
-                            if (specRec) targetSocket = specRec.idSocket;
-                        }
-
-                        if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
-                            targetSocket.send(JSON.stringify({
-                                type: 'WEBRTC_SIGNAL',
-                                lobbyCode: currentLobbyCode,
-                                sender: currentUsername,
-                                signal: data.signal
-                            }));
                         }
                     }
                     break;
@@ -1132,7 +1092,6 @@ wss.on('connection', (ws) => {
                             let leaving = lobby.players.splice(playerIdx, 1)[0];
                             lobby.spectators.push({ username: leaving.username, idSocket: ws, inVC: leaving.inVC, isMuted: leaving.isMuted });
                             broadcastLobbyUpdate(currentLobbyCode);
-                            broadcastVoiceRoster(currentLobbyCode);
                             broadcastLobbyList();
                         }
                     }
@@ -1148,7 +1107,6 @@ wss.on('connection', (ws) => {
                             let seat = findOpenSeat(lobby);
                             lobby.players.push({ id: ws, username: spec.username, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat, nextHandReady: false, eliminated: false, isBot: false, inVC: spec.inVC, isMuted: spec.isMuted, peekRequests: {}, peekAllowed: {} });
                             broadcastLobbyUpdate(currentLobbyCode);
-                            broadcastVoiceRoster(currentLobbyCode);
                             broadcastLobbyList();
                         }
                     }
@@ -1382,7 +1340,7 @@ wss.on('connection', (ws) => {
                         lobby.endGameVotes[currentUsername] = true;
                         let activeParts = getActiveParticipants(lobby);
                         if (activeParts.every(p => lobby.endGameVotes[p.username])) {
-                            resetLobbyToReadyRoom(lobby, "⚠️ Game ended! Returning to waiting room.");
+                            resetLobbyToReadyRoom(lobby, "⚠️️ Game ended! Returning to waiting room.");
                         } else {
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
@@ -1425,19 +1383,6 @@ wss.on('connection', (ws) => {
                             if (pl.peekAllowed) delete pl.peekAllowed[currentUsername];
                         });
                         broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                    break;
-                }
-
-                case 'KICK_PEEKER': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let lobby = lobbies[currentLobbyCode];
-                        touchLobbyActivity(lobby);
-                        let player = lobby.players.find(p => p.id === ws);
-                        if (player && player.peekAllowed) {
-                            delete player.peekAllowed[data.spectatorUsername];
-                            broadcastLobbyUpdate(currentLobbyCode);
-                        }
                     }
                     break;
                 }
@@ -1509,5 +1454,5 @@ wss.on('connection', (ws) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`31! Server running on port ${PORT}`);
+    console.log(`31! Card Game server running on port ${PORT}`);
 });
