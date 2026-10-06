@@ -10,28 +10,16 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit Server Credentials
+// LiveKit Configuration
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
-const LIVEKIT_IP = '135.181.43.233';
-
-function getLiveKitHost(isSecure) {
-    return isSecure ? `wss://${LIVEKIT_IP}:7880` : `ws://${LIVEKIT_IP}:7880`;
-}
+const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
 
 function generateLiveKitToken(roomName, participantName) {
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
         identity: participantName,
-        name: participantName,
-        ttl: '8h'
     });
-    at.addGrant({
-        roomJoin: true,
-        room: roomName,
-        canPublish: true,
-        canPublishData: true,
-        canSubscribe: true
-    });
+    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
     return at.toJwt();
 }
 
@@ -43,7 +31,9 @@ process.on('unhandledRejection', (reason, promise) => console.error('Unhandled R
 // WebSocket Keep-Alive to prevent mobile OS TCP teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) return ws.terminate();
+        if (ws.isAlive === false) {
+            return ws.terminate();
+        }
         ws.isAlive = false;
         ws.ping();
     });
@@ -105,12 +95,9 @@ function broadcastVoiceRoster(code) {
     broadcastLobbyEvent(code, { type: 'SYNC_VOICE_ROSTER', roster });
 }
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws) => {
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
-
-    const isClientSecure = req.headers['x-forwarded-proto'] === 'https' || (req.connection && req.connection.encrypted);
-    const clientLiveKitHost = getLiveKitHost(isClientSecure);
 
     let currentLobbyCode = null;
     let currentUsername = null;
@@ -178,7 +165,7 @@ wss.on('connection', (ws, req) => {
                     ws.send(JSON.stringify({ 
                         type: 'LOBBY_JOINED', 
                         lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws),
-                        livekitHost: clientLiveKitHost,
+                        livekitHost: LIVEKIT_HOST,
                         livekitToken: token
                     }));
                     broadcastLobbyList();
@@ -203,7 +190,7 @@ wss.on('connection', (ws, req) => {
                             ws.send(JSON.stringify({ 
                                 type: 'LOBBY_JOINED', 
                                 lobby: getSanitizedLobby(lobby, ws),
-                                livekitHost: clientLiveKitHost,
+                                livekitHost: LIVEKIT_HOST,
                                 livekitToken: token
                             }));
                             broadcastLobbyUpdate(code);
@@ -219,7 +206,7 @@ wss.on('connection', (ws, req) => {
                             ws.send(JSON.stringify({ 
                                 type: 'LOBBY_JOINED', 
                                 lobby: getSanitizedLobby(lobby, ws),
-                                livekitHost: clientLiveKitHost,
+                                livekitHost: LIVEKIT_HOST,
                                 livekitToken: token
                             }));
                             broadcastLobbyUpdate(code);
@@ -239,7 +226,7 @@ wss.on('connection', (ws, req) => {
                         ws.send(JSON.stringify({ 
                             type: 'LOBBY_JOINED', 
                             lobby: getSanitizedLobby(lobby, ws),
-                            livekitHost: clientLiveKitHost,
+                            livekitHost: LIVEKIT_HOST,
                             livekitToken: token
                         }));
                         broadcastLobbyUpdate(code);
@@ -257,7 +244,7 @@ wss.on('connection', (ws, req) => {
                         let token = generateLiveKitToken(currentLobbyCode, currentUsername);
                         ws.send(JSON.stringify({ 
                             type: 'LIVEKIT_TOKEN', 
-                            livekitHost: clientLiveKitHost, 
+                            livekitHost: LIVEKIT_HOST, 
                             livekitToken: token 
                         }));
                     }
