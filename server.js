@@ -324,6 +324,10 @@ function startDealerDrawPhase(lobby) {
 function startRound(lobby) {
     lobby.deck = createDeck();
     lobby.discardPile = [];
+    lobby.drawPool = [];
+    lobby.drawResults = {};
+    lobby.drawOrderSequence = [];
+    lobby.tiedParticipantsList = [];
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
     lobby.knockedBy = null;
@@ -369,6 +373,9 @@ function advanceDealerToNextActive(lobby) {
 
 function handlePoolCardSelection(lobby, username, cardIndex) {
     if (lobby.gameState === 'tieBreaker' && !lobby.tiedParticipantsList.includes(username)) return;
+    // Strict guard: Never allow drawing twice in the same draw phase
+    if (lobby.drawResults && lobby.drawResults[username]) return;
+
     if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
         lobby.drawPool[cardIndex].chosenBy = username;
         let card = lobby.drawPool[cardIndex].card;
@@ -391,7 +398,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             let lowestDrawVal = entries[0].card.drawVal;
             let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
-            // Re-draw rule when multiple players draw cards of the same lowest value
+            // Re-draw ONLY if 2 or more players share the lowest card value
             if (tiedLowest.length > 1) {
                 lobby.phaseMessage = `⚠️ Tie on lowest card (${entries[0].card.val})! Drawing again in 3 seconds...`;
                 broadcastLobbyUpdate(lobby.code);
@@ -400,6 +407,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                     if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'tieBreaker') return;
                     let cur = lobbies[lobby.code];
 
+                    // Narrow down the list: ONLY the players who actually tied for the lowest card draw again!
                     cur.tiedParticipantsList = tiedLowest.map(t => t.username);
                     let freshDeck = createDeck();
                     cur.drawPool = freshDeck.map(c => ({ card: c, chosenBy: null }));
@@ -431,7 +439,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             setTimeout(() => {
                 if (!lobbies[lobby.code]) return;
                 let currentLobby = lobbies[lobby.code];
-                if (getActiveParticipants(currentLobby).length === 1) {
+                if (getActiveParticipants(currentLobby).length <= 1) {
                     awardTournamentWinner(currentLobby, getActiveParticipants(currentLobby)[0]);
                 } else {
                     advanceDealerToNextActive(currentLobby);
@@ -487,6 +495,13 @@ function handleTurnAction(lobby, wsId, actionType) {
             }
         });
         resolveWinSideBets(lobby, currentPlayer.username);
+
+        let remaining = getActiveParticipants(lobby);
+        if (remaining.length <= 1) {
+            awardTournamentWinner(lobby, remaining[0] || currentPlayer);
+            return;
+        }
+
         advanceDealerToNextActive(lobby);
         triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points!`);
         return;
@@ -551,6 +566,13 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             }
         });
         resolveWinSideBets(lobby, currentPlayer.username);
+
+        let remaining = getActiveParticipants(lobby);
+        if (remaining.length <= 1) {
+            awardTournamentWinner(lobby, remaining[0] || currentPlayer);
+            return;
+        }
+
         advanceDealerToNextActive(lobby);
         triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points!`);
     } else {
@@ -629,7 +651,7 @@ function resolveRoundEnd(lobby) {
 
         resolveWinSideBets(lobby, winner.username);
 
-        if (getActiveParticipants(lobby).length === 1) {
+        if (getActiveParticipants(lobby).length <= 1) {
             awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
         } else {
             advanceDealerToNextActive(lobby);
@@ -646,6 +668,15 @@ function triggerRoundOver(lobby, msg) {
         p.nextHandReady = p.isBot;
     });
     broadcastLobbyUpdate(lobby.code);
+
+    // If all remaining active players are bots, auto-advance after 3 seconds
+    let active = getActiveParticipants(lobby);
+    if (active.length > 1 && active.every(p => p.isBot)) {
+        setTimeout(() => {
+            if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'roundOver') return;
+            startRound(lobbies[lobby.code]);
+        }, 3000);
+    }
 }
 
 function recordDebt(ledger, debtor, creditor, amount) {
@@ -688,6 +719,7 @@ function resolveWinSideBets(lobby, winnerUsername) {
 }
 
 function awardTournamentWinner(lobby, winner) {
+    if (!winner) return;
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
 
@@ -705,8 +737,14 @@ function awardTournamentWinner(lobby, winner) {
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
     lobby.gameState = 'roundOver';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match!`;
+    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 5s...`;
     broadcastLobbyUpdate(lobby.code);
+
+    // Auto-transition table to the ready up stage after match conclusion
+    setTimeout(() => {
+        if (!lobbies[lobby.code]) return;
+        resetLobbyToReadyRoom(lobbies[lobby.code], `🏆 ${winner.username} won the match! Ready up for the next game.`);
+    }, 5000);
 }
 
 function checkNextHandReady(lobby) {
@@ -714,7 +752,7 @@ function checkNextHandReady(lobby) {
     if (active.every(p => p.nextHandReady) && active.length > 1) {
         startRound(lobby);
     } else if (active.length <= 1) {
-        resetLobbyToReadyRoom(lobby, "Match completed! Returning to waiting room.");
+        resetLobbyToReadyRoom(lobby, "Match completed! Returning to ready room.");
     }
 }
 
@@ -730,6 +768,10 @@ function resetLobbyToReadyRoom(lobby, msg) {
     lobby.lastDiscardDonor = null;
     lobby.fedCardReminders = {};
     lobby.initialDealCard = null;
+    lobby.drawPool = [];
+    lobby.drawResults = {};
+    lobby.drawOrderSequence = [];
+    lobby.tiedParticipantsList = [];
 
     if (lobby.lastGameWinner) {
         let winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
@@ -761,10 +803,15 @@ function scheduleBotActions(lobby) {
                 if (lobby.gameState === 'dealerDraw' && !lobby.drawResults[p.username]) needsPick = true;
                 if (lobby.gameState === 'tieBreaker' && lobby.tiedParticipantsList.includes(p.username) && !lobby.drawResults[p.username]) needsPick = true;
 
-                if (needsPick) {
+                if (needsPick && !p.isSchedulingPick) {
+                    p.isSchedulingPick = true;
                     setTimeout(() => {
+                        p.isSchedulingPick = false;
                         let cur = lobbies[lobby.code];
                         if (!cur || (cur.gameState !== 'dealerDraw' && cur.gameState !== 'tieBreaker')) return;
+                        if (cur.drawResults && cur.drawResults[p.username]) return;
+                        if (cur.gameState === 'tieBreaker' && !cur.tiedParticipantsList.includes(p.username)) return;
+
                         let unchosen = cur.drawPool.map((c, i) => ({ i, chosen: c.chosenBy })).filter(c => c.chosen === null);
                         if (unchosen.length > 0) {
                             let chosenIndex = unchosen[Math.floor(Math.random() * unchosen.length)].i;
