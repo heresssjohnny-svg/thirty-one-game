@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-title" content="31!">
     <link rel="apple-touch-icon" href="/icon-192.png">
 
-    <!-- LiveKit Client SDK CDN -->
+    <!-- Official LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 
     <style>
@@ -174,11 +174,6 @@
             width: 100%;
         }
 
-        input:focus, select:focus { 
-            border-color: var(--accent-gold); 
-            box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2); 
-        }
-
         .lobby-list-container { 
             max-height: 110px; 
             overflow-y: auto; 
@@ -204,8 +199,6 @@
         
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.75rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
         
         #chat-window { position: absolute; top: 45px; left: calc(50% - 120px); width: 240px; height: 160px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 6px; z-index: 3000; font-size: 0.7rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
         .chat-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; border-bottom: 1px solid #334155; padding-bottom: 3px; color: #38bdf8; font-weight: bold; }
@@ -219,30 +212,6 @@
         .pots-container { position: absolute; top: 6px; display: flex; gap: 6px; align-items: center; z-index: 10; }
         .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
 
-        .discard-pickup-modal-topleft { 
-            position: absolute; 
-            top: 10px; 
-            left: 10px; 
-            font-size: 0.75rem; 
-            font-weight: bold; 
-            color: var(--accent-cyan); 
-            z-index: 2500; 
-            display: flex; 
-            flex-direction: column;
-            gap: 3px; 
-            align-items: flex-start; 
-            background: rgba(15, 23, 42, 0.95); 
-            padding: 8px 12px; 
-            border-radius: 8px; 
-            border: 1px solid var(--accent-gold); 
-            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
-        }
-
-        .deck-center { display: flex; gap: 10px; align-items: center; justify-content: center; }
-        .card-slot { width: 48px; height: 70px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
-        .card-slot.back { background: #1e3a8a; color: #fff; }
-        .deck-counter { position: absolute; bottom: -15px; font-size: 0.65rem; color: #cbd5e1; font-weight: bold; width: 100%; text-align: center; }
-
         .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; }
         .seat:hover { border-color: var(--accent-gold); }
         
@@ -252,16 +221,18 @@
         .seat-3 { top: -10px; left: calc(50% - 55px); }
         .seat-4 { top: 25px; right: 8px; }
         .seat-5 { bottom: 25px; right: 6px; }
-        .seat-name-area { cursor: pointer; width: 100%; }
         .seat-cards { display: flex; gap: 1px; justify-content: center; margin-top: 1px; }
         .mini-card { width: 18px; height: 26px; background: #fff; font-size: 0.45rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
         .black-suit { color: #0f172a; }
 
+        .deck-center { display: flex; gap: 10px; align-items: center; justify-content: center; }
+        .card-slot { width: 48px; height: 70px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
+        .card-slot.back { background: #1e3a8a; color: #fff; }
+
         .my-hand-area { background: rgba(4, 78, 54, 0.9); padding: 8px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; max-width: 450px; border: 1px solid var(--border-color); flex-shrink: 0; z-index: 100; box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
         .cards-flex { display: flex !important; gap: 6px; min-height: 70px; align-items: center; justify-content: center; }
         .my-card { width: 50px; height: 72px; background: #fff; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; box-shadow: 0 3px 5px rgba(0,0,0,0.3); }
-        .my-card:hover { transform: translateY(-3px); border-color: var(--accent-gold); }
 
         .bottom-action-bar { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; align-items: center; }
         
@@ -311,7 +282,7 @@
 </head>
 <body>
 
-    <input type="checkbox" id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
+    <input type="checkbox" switch id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
 
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
@@ -320,21 +291,14 @@
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
-            <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
-            
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
                 <button class="secondary" id="vc-main-btn" onclick="toggleLiveKitMic()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
             </div>
-
-            <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
-            
             <div id="chat-container">
                 <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
             </div>
-
             <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
         </div>
@@ -352,11 +316,6 @@
     </header>
 
     <main>
-        <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
-            <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
-            <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
-        </div>
-
         <div id="main-menu">
             <h2>Lobby Menu</h2>
             <div class="input-group">
@@ -403,29 +362,27 @@
 
             <div id="knock-alert-modal">🔔 Knock Alert</div>
 
-            <div id="lobby-config-bar" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
-                <select id="config-wager" onchange="updateWager()" style="padding:3px; font-size:0.75rem;">
-                    <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
-                </select>
-                <select id="config-lives" onchange="updateSettings()" style="padding:3px; font-size:0.75rem;">
-                    <option value="2">2 Lives</option><option value="3">3 Lives</option><option value="5">5 Lives</option>
-                </select>
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <button class="secondary" onclick="addBot()">+ Bot</button>
+                <button class="secondary" onclick="removeBot()">- Bot</button>
             </div>
             
             <div class="table-oval" id="table-oval-container">
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
                 </div>
+                <div class="deck-center" id="table-deck-center">
+                    <div class="card-slot back" onclick="drawCard('deck')">DECK</div>
+                    <div class="card-slot" id="discard-slot" onclick="drawCard('discard')">--</div>
+                </div>
             </div>
 
             <div class="my-hand-area" id="my-hand-control-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: var(--text-muted);">
-                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>) - Draw & discard</span>
+                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>)</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar" id="my-action-buttons">
-                    <button class="danger" id="stand-up-btn" onclick="standUp()" style="display:none;">Stand Up</button>
-                    <button id="sit-btn" onclick="sitDown()" style="display:none; background:#10b981; border:1px solid #34d399;">Sit</button>
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
                 </div>
@@ -433,187 +390,78 @@
         </div>
     </main>
 
-    <!-- Modals -->
-    <div id="rules-modal" class="modal">
-        <div class="modal-content" style="max-width:350px; text-align:left;">
-            <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:4px;">How to Play 31!</h3>
-            <p style="font-size:0.75rem; color:var(--text-muted);">Score points in a single suit or get three of a kind (30.5). Knock when confident, lowest hand loses a life.</p>
-            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
-        </div>
-    </div>
-
+    <!-- Ledger Balances Modal -->
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:340px;">
             <h3>Ledger & Balances</h3>
             <div id="ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
-            <button onclick="saveLedgerScreenshot()" style="background:#10b981;">📸 Save Snapshot to Device</button>
+            <button onclick="saveLedgerScreenshot()" style="background:#10b981; margin-top:6px;">📸 Save Snapshot to Device</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
     </div>
 
-    <!-- Android Fail-Safe Screenshot Modal -->
-    <div id="screenshot-modal" class="modal">
-        <div class="modal-content" style="max-width:380px;">
-            <h3 style="color:var(--accent-gold);">📸 Ledger Snapshot</h3>
-            <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">
-                <b>Mobile Tip:</b> If download didn't auto-save, touch and hold the image below and select <b>"Save image"</b>.
+    <!-- Android & Cross-Platform Ledger Snapshot Fail-Safe Modal -->
+    <div id="screenshot-modal" class="modal" style="z-index: 6000;">
+        <div class="modal-content" style="max-width: 380px; user-select: auto; -webkit-user-select: auto;">
+            <h3 style="color: var(--accent-gold);">📸 Ledger Snapshot</h3>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+                Tap <b>Download</b> or <b>Share</b> below. You can also touch and hold the preview image to save it.
             </p>
-            <div style="max-height:50vh; overflow-y:auto; border-radius:6px; border:1px solid rgba(250,204,21,0.3); background:#022c22; padding:4px;">
-                <img id="screenshot-preview-img" style="width:100%; height:auto; display:block; border-radius:4px;" alt="Ledger Snapshot" />
+            
+            <div style="max-height: 48vh; overflow-y: auto; border-radius: 6px; border: 1px solid rgba(250,204,21,0.3); background: #022c22; padding: 4px; user-select: auto; -webkit-user-select: auto;">
+                <img id="screenshot-preview-img" 
+                     alt="Ledger Snapshot" 
+                     style="width: 100%; height: auto; display: block; border-radius: 4px; pointer-events: auto !important; user-select: auto !important; -webkit-user-select: auto !important; -webkit-touch-callout: default !important;" />
             </div>
-            <div style="display:flex; gap:6px; margin-top:8px;">
-                <button id="screenshot-share-btn" style="flex:1; background:#10b981;">📤 Share / Save</button>
-                <button id="screenshot-download-btn" style="flex:1;">💾 Download</button>
-            </div>
-            <button class="secondary" onclick="toggleModal('screenshot-modal')" style="margin-top:4px;">Close</button>
-        </div>
-    </div>
 
-    <div id="spectators-modal" class="modal">
-        <div class="modal-content" style="max-width:330px;">
-            <h3>Spectator List</h3>
-            <div id="spectators-list-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No spectators.</div>
-            <button class="secondary" onclick="toggleModal('spectators-modal')">Close</button>
+            <div id="screenshot-status-text" style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); min-height: 18px; margin-top: 4px;"></div>
+
+            <div style="display: flex; gap: 6px; margin-top: 6px;">
+                <button id="screenshot-share-btn" type="button" style="flex: 1; background: #10b981; padding: 8px;">📤 Share / Save</button>
+                <button id="screenshot-download-btn" type="button" style="flex: 1; background: #2563eb; padding: 8px;">💾 Download</button>
+            </div>
+            <button class="secondary" type="button" onclick="closeScreenshotModal()" style="margin-top: 6px; padding: 8px;">Close</button>
         </div>
     </div>
 
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(err => {});
-            });
-        }
-
         let ws = null;
         let isConnected = false;
         let pendingQueue = [];
-        let clientState = { username: 'Player1', isReady: false, playersList: [], spectatorsList: [], gameState: 'lobby', sideBetLedger: {}, mainGameLedger: {} };
+        let clientState = { username: 'Player1', isReady: false, playersList: [], gameState: 'lobby', sideBetLedger: {}, mainGameLedger: {} };
         let currentJoinedCode = null;
-        let latestLobbySnapshot = null;
-
-        // LiveKit Client State
         let livekitRoom = null;
         let isLiveKitConnected = false;
         let isLiveKitMuted = true;
-        let latestLiveKitHost = null;
-        let latestLiveKitToken = null;
 
-        function getForegroundServicePlugin() {
-            return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AndroidForegroundService;
-        }
-
-        async function startNativeForegroundService() {
-            let servicePlugin = getForegroundServicePlugin();
-            if (servicePlugin && window.Capacitor.getPlatform() === 'android') {
-                try {
-                    await servicePlugin.startForeground({
-                        title: '31! Voice Chat Active',
-                        body: 'LiveKit Voice channel active',
-                        ongoing: true
-                    });
-                } catch (e) {}
+        // Synchronous Base64 to Blob Converter
+        function dataURLToBlobSync(dataURL) {
+            const parts = dataURL.split(',');
+            const mime = parts[0].match(/:(.*?);/)[1];
+            const binary = atob(parts[1]);
+            const len = binary.length;
+            const u8arr = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                u8arr[i] = binary.charCodeAt(i);
             }
+            return new Blob([u8arr], { type: mime });
         }
 
-        async function stopNativeForegroundService() {
-            let servicePlugin = getForegroundServicePlugin();
-            if (servicePlugin && window.Capacitor.getPlatform() === 'android') {
-                try {
-                    await servicePlugin.stopForeground();
-                } catch (e) {}
-            }
+        function closeScreenshotModal() {
+            const modal = document.getElementById('screenshot-modal');
+            if (modal) modal.style.display = 'none';
         }
 
-        document.addEventListener("visibilitychange", async () => {
-            if (document.hidden && isLiveKitConnected && !isLiveKitMuted) {
-                await startNativeForegroundService();
-            }
-        });
-
-        // LiveKit Client Integration
-        async function connectToLiveKit(host, token) {
-            if (!window.LivekitClient) return;
-            try {
-                if (livekitRoom) await livekitRoom.disconnect();
-                livekitRoom = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
-                livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
-                    if (track.kind === LivekitClient.Track.Kind.Audio) {
-                        const el = track.attach();
-                        document.body.appendChild(el);
-                    }
-                });
-                await livekitRoom.connect(host, token);
-                isLiveKitConnected = true;
-                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-                isLiveKitMuted = true;
-                updateLiveKitUI();
-            } catch (error) {
-                console.error("LiveKit connection error:", error);
-            }
+        function setModalStatus(msg) {
+            const el = document.getElementById('screenshot-status-text');
+            if (el) el.innerText = msg;
         }
 
-        async function toggleLiveKitMic() {
-            if (!livekitRoom || !isLiveKitConnected) {
-                if (latestLiveKitHost && latestLiveKitToken) {
-                    await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
-                } else return;
-            }
-            isLiveKitMuted = !isLiveKitMuted;
-            try {
-                await livekitRoom.localParticipant.setMicrophoneEnabled(!isLiveKitMuted);
-                if (!isLiveKitMuted) await startNativeForegroundService();
-                else await stopNativeForegroundService();
-            } catch (e) {}
-            updateLiveKitUI();
-        }
-
-        function updateLiveKitUI() {
-            let btn = document.getElementById('vc-main-btn');
-            let led = document.getElementById('vc-led');
-            if (btn) btn.innerText = isLiveKitMuted ? '🎙️ Voice: Off' : '🎙️ Voice: On';
-            if (led) {
-                if (isLiveKitMuted) led.classList.remove('active');
-                else led.classList.add('active');
-            }
-        }
-
-        function calculatePairwiseNet(ledgerData, myName, allUsers) {
-            let totalNet = 0;
-            let records = {};
-            let ledgerKeys = new Set([...Object.keys(ledgerData || {}), ...(allUsers || [])]);
-            for (let debtorKey in (ledgerData || {})) {
-                ledgerKeys.add(debtorKey);
-                if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
-                    for (let creditorKey in ledgerData[debtorKey]) ledgerKeys.add(creditorKey);
-                }
-            }
-            ledgerKeys.forEach(otherUser => {
-                let cleanOther = (otherUser || '').trim();
-                let cleanMe = (myName || '').trim();
-                if (cleanOther.toLowerCase() === cleanMe.toLowerCase()) return;
-                let theyOweMe = (ledgerData?.[cleanOther]?.[cleanMe]) || 0;
-                let iOweThem = (ledgerData?.[cleanMe]?.[cleanOther]) || 0;
-                let net = theyOweMe - iOweThem;
-                if (net !== 0) { records[cleanOther] = net; totalNet += net; }
-            });
-            return { totalNet, records };
-        }
-
-        function openLedgerModal() {
-            let ledgerDiv = document.getElementById('ledger-content');
-            let myName = document.getElementById('username-input').value.trim() || clientState.username;
-            let sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, clientState.playersList || []);
-            let mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, clientState.playersList || []);
-            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
-            let html = `<div style="font-weight:bold; color:${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net: $${grandTotal.toFixed(2)}</div>`;
-            ledgerDiv.innerHTML = html;
-            toggleModal('ledger-modal');
-        }
-
-        // ==========================================
-        // ABSOLUTE ANDROID & MULTI-DEVICE SNAPSHOT FIX
-        // ==========================================
+        // Android-Proof Ledger Snapshot Pipeline
         async function saveLedgerScreenshot() {
+            const ledgerModal = document.getElementById('ledger-modal');
+            if (ledgerModal) ledgerModal.style.display = 'none';
+
             const myName = (document.getElementById('username-input').value.trim() || clientState.username || 'Player').trim();
             const now = new Date();
             const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -625,7 +473,7 @@
             canvas.width = 600;
             canvas.height = 740;
 
-            // Canvas Background & Gold Border
+            // Background & Border
             ctx.fillStyle = '#065f46';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.strokeStyle = '#facc15';
@@ -657,8 +505,6 @@
             ctx.fillText(`Total Net Balance: $${grandTotal.toFixed(2)}`, 30, 130);
 
             let y = 170;
-
-            // Side Bets
             ctx.fillStyle = '#facc15';
             ctx.font = 'bold 16px system-ui, sans-serif';
             ctx.fillText("🤝 Side Bets", 30, y);
@@ -681,8 +527,6 @@
             }
 
             y += 15;
-
-            // Main Pot Ledger
             ctx.fillStyle = '#facc15';
             ctx.font = 'bold 16px system-ui, sans-serif';
             ctx.fillText("🎮 Main Game Pot Ledger", 30, y);
@@ -704,55 +548,14 @@
             }
 
             const dataUrl = canvas.toDataURL('image/png');
+            const blob = dataURLToBlobSync(dataUrl);
+            const blobUrl = URL.createObjectURL(blob);
+            const file = new File([blob], fileName, { type: 'image/png' });
 
-            canvas.toBlob(async (blob) => {
-                if (!blob) {
-                    showScreenshotModal(dataUrl, fileName);
-                    return;
-                }
-
-                const file = new File([blob], fileName, { type: 'image/png' });
-
-                // Method 1: Web Share API (Triggers native Android Share/Save sheet)
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    try {
-                        await navigator.share({
-                            files: [file],
-                            title: '31! Game Ledger',
-                            text: `Ledger Snapshot for ${myName}`
-                        });
-                        showCenterNotification("Ledger snapshot shared!");
-                        return;
-                    } catch (err) {
-                        if (err.name === 'AbortError') return; // User closed sheet
-                    }
-                }
-
-                // Method 2: Standard Blob Object URL Anchor Download
-                try {
-                    const blobUrl = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.download = fileName;
-                    link.href = blobUrl;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-                } catch (e) {}
-
-                // Method 3: Fail-Safe In-App Image Popup
-                // On mobile Android WebViews where programmatic download is restricted, 
-                // this displays the image so you can press & hold to save.
-                const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.Capacitor;
-                if (isMobile) {
-                    showScreenshotModal(dataUrl, fileName, blob);
-                } else {
-                    showCenterNotification("Ledger snapshot saved!");
-                }
-            }, 'image/png');
+            showScreenshotModal(dataUrl, blobUrl, file, fileName);
         }
 
-        function showScreenshotModal(dataUrl, fileName, blob) {
+        function showScreenshotModal(dataUrl, blobUrl, file, fileName) {
             const modal = document.getElementById('screenshot-modal');
             const img = document.getElementById('screenshot-preview-img');
             const shareBtn = document.getElementById('screenshot-share-btn');
@@ -760,31 +563,92 @@
             if (!modal || !img) return;
 
             img.src = dataUrl;
+            setModalStatus("");
 
             shareBtn.onclick = async () => {
-                if (blob && navigator.canShare) {
-                    const file = new File([blob], fileName, { type: 'image/png' });
-                    if (navigator.canShare({ files: [file] })) {
-                        try {
-                            await navigator.share({ files: [file], title: '31! Game Ledger' });
+                setModalStatus("Opening share sheet...");
+                if (window.Capacitor?.Plugins?.Share) {
+                    try {
+                        await window.Capacitor.Plugins.Share.share({
+                            title: '31! Game Ledger',
+                            url: dataUrl,
+                            dialogTitle: 'Save or Share Ledger'
+                        });
+                        setModalStatus("Share sheet opened.");
+                        return;
+                    } catch (e) {}
+                }
+
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({ files: [file], title: '31! Game Ledger' });
+                        setModalStatus("Snapshot shared!");
+                        return;
+                    } catch (err) {
+                        if (err.name === 'AbortError') {
+                            setModalStatus("");
                             return;
-                        } catch (e) {}
+                        }
                     }
                 }
-                showCenterNotification("Press and hold the image to save.");
+                setModalStatus("Share unavailable. Use Download or hold the image.");
             };
 
             dlBtn.onclick = () => {
-                const link = document.createElement('a');
-                link.download = fileName;
-                link.href = dataUrl;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                showCenterNotification("Download initiated. If not saved, press & hold image.");
+                setModalStatus("Starting download...");
+                try {
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = fileName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setModalStatus("File download sent to device!");
+                } catch (err) {
+                    window.open(blobUrl, '_blank');
+                    setModalStatus("Opened image in viewer. Save from menu.");
+                }
             };
 
             modal.style.display = 'flex';
+        }
+
+        function calculatePairwiseNet(ledgerData, myName, allUsers) {
+            let totalNet = 0;
+            let records = {};
+            let ledgerKeys = new Set([...Object.keys(ledgerData || {}), ...(allUsers || [])]);
+            for (let debtorKey in (ledgerData || {})) {
+                ledgerKeys.add(debtorKey);
+                if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
+                    for (let creditorKey in ledgerData[debtorKey]) ledgerKeys.add(creditorKey);
+                }
+            }
+            ledgerKeys.forEach(otherUser => {
+                let cleanOther = (otherUser || '').trim();
+                let cleanMe = (myName || '').trim();
+                if (cleanOther.toLowerCase() === cleanMe.toLowerCase()) return;
+                let theyOweMe = (ledgerData?.[cleanOther]?.[cleanMe]) || 0;
+                let iOweThem = (ledgerData?.[cleanMe]?.[cleanOther]) || 0;
+                let net = theyOweMe - iOweThem;
+                if (net !== 0) { records[cleanOther] = net; totalNet += net; }
+            });
+            return { totalNet, records };
+        }
+
+        function openLedgerModal() {
+            let ledgerDiv = document.getElementById('ledger-content');
+            let myName = (document.getElementById('username-input').value.trim() || clientState.username).trim();
+            let sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, clientState.playersList || []);
+            let mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, clientState.playersList || []);
+            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
+            let html = `<div style="font-weight:bold; color:${grandTotal >= 0 ? '#34d399' : '#f87171'}; margin-bottom:6px;">Total Net: $${grandTotal.toFixed(2)}</div>`;
+            ledgerDiv.innerHTML = html;
+            toggleModal('ledger-modal');
+        }
+
+        function toggleModal(id) {
+            let m = document.getElementById(id);
+            if (m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
 
         function showCenterNotification(msg) {
@@ -795,23 +659,48 @@
             setTimeout(() => { banner.style.display = 'none'; }, 2500);
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (localStorage.getItem('saved_username')) document.getElementById('username-input').value = localStorage.getItem('saved_username');
-            if (localStorage.getItem('saved_lobby_name')) document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
-            connectSocket();
-            refreshLobbies();
-        });
-
-        function saveInputs() {
-            localStorage.setItem('saved_username', document.getElementById('username-input').value);
-            localStorage.setItem('saved_lobby_name', document.getElementById('lobby-name-input').value);
+        // LiveKit Audio Integration
+        async function connectToLiveKit(host, token) {
+            if (!window.LivekitClient) return;
+            try {
+                if (livekitRoom) await livekitRoom.disconnect();
+                livekitRoom = new LivekitClient.Room({ adaptiveStream: true });
+                livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+                    if (track.kind === LivekitClient.Track.Kind.Audio) {
+                        const el = track.attach();
+                        document.body.appendChild(el);
+                    }
+                });
+                await livekitRoom.connect(host, token);
+                isLiveKitConnected = true;
+                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                isLiveKitMuted = true;
+                updateLiveKitUI();
+            } catch (e) {
+                console.error("LiveKit connection failure:", e);
+            }
         }
 
-        function toggleChatWindow() {
-            let win = document.getElementById('chat-window');
-            win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
+        async function toggleLiveKitMic() {
+            if (!livekitRoom || !isLiveKitConnected) return;
+            isLiveKitMuted = !isLiveKitMuted;
+            try {
+                await livekitRoom.localParticipant.setMicrophoneEnabled(!isLiveKitMuted);
+            } catch (e) {}
+            updateLiveKitUI();
         }
 
+        function updateLiveKitUI() {
+            let btn = document.getElementById('vc-main-btn');
+            let led = document.getElementById('vc-led');
+            if (btn) btn.innerText = isLiveKitMuted ? '🎙️ Voice: Off' : '🎙️ Voice: On';
+            if (led) {
+                if (isLiveKitMuted) led.classList.remove('active');
+                else led.classList.add('active');
+            }
+        }
+
+        // WebSocket Handlers
         function connectSocket() {
             if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
             const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -827,12 +716,8 @@
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
                 else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
                     if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
-                    latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
-                    
                     if (data.livekitHost && data.livekitToken) {
-                        latestLiveKitHost = data.livekitHost;
-                        latestLiveKitToken = data.livekitToken;
                         connectToLiveKit(data.livekitHost, data.livekitToken);
                     }
                 } else if (data.type === 'CHAT_MESSAGE') {
@@ -844,7 +729,6 @@
                 } else if (data.type === 'LEFT_LOBBY') {
                     currentJoinedCode = null;
                     if (livekitRoom) livekitRoom.disconnect();
-                    stopNativeForegroundService();
                     document.getElementById('game-view').style.display = 'none';
                     document.getElementById('main-menu').style.display = 'flex';
                     document.getElementById('end-game-btn').style.display = 'none';
@@ -874,7 +758,10 @@
         function renderLobbyList(lobbies) {
             let container = document.getElementById('lobby-list');
             if (!container) return;
-            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
+            if (!lobbies || lobbies.length === 0) {
+                container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>';
+                return;
+            }
             container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6)</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
@@ -895,27 +782,13 @@
             initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
         }
 
-        function standUp() { initSocketAndSend({ type: 'STAND_UP' }); }
-        function sitDown() { initSocketAndSend({ type: 'SIT_DOWN' }); }
-        function updateWager() { initSocketAndSend({ type: 'UPDATE_WAGER', wager: document.getElementById('config-wager').value }); }
-        function updateSettings() { initSocketAndSend({ type: 'UPDATE_SETTINGS', lives: document.getElementById('config-lives').value }); }
+        function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
+        function removeBot() { initSocketAndSend({ type: 'REMOVE_BOT' }); }
         function toggleReady() { initSocketAndSend({ type: 'SET_READY', ready: true }); }
+        function drawCard(source) { initSocketAndSend({ type: 'DRAW_CARD', source }); }
+        function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
         function knockRound() { initSocketAndSend({ type: 'KNOCK' }); }
-        function leaveLobby() {
-            if (livekitRoom) livekitRoom.disconnect();
-            stopNativeForegroundService();
-            initSocketAndSend({ type: 'LEAVE_LOBBY' });
-        }
-        function proposeEndGame() { if (confirm("Propose ending game?")) initSocketAndSend({ type: 'END_GAME_PROPOSAL' }); }
-
-        function sendChatMessage() {
-            let input = document.getElementById('chat-input');
-            let text = input.value.trim();
-            if (text) {
-                initSocketAndSend({ type: 'CHAT_MESSAGE', message: text });
-                input.value = '';
-            }
-        }
+        function leaveLobby() { initSocketAndSend({ type: 'LEAVE_LOBBY' }); }
 
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
@@ -929,23 +802,77 @@
             clientState.mainGameLedger = lobby.mainGameLedger || {};
             clientState.playersList = (lobby.players || []).map(p => p.username);
 
-            let container = document.getElementById('table-oval-container');
-            let html = `<div class="pots-container"><div class="pot-total-display">Pot: $${lobby.potTotal || 0}</div></div>`;
+            document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
+            document.getElementById('turn-banner').innerText = `Turn: ${lobby.currentTurnUser || 'Waiting'}`;
+
+            let discardSlot = document.getElementById('discard-slot');
+            if (lobby.discardTop) {
+                discardSlot.className = `card-slot ${['♥', '♦'].includes(lobby.discardTop.suit) ? 'red-suit' : 'black-suit'}`;
+                discardSlot.innerText = `${lobby.discardTop.val}${lobby.discardTop.suit}`;
+            } else {
+                discardSlot.className = 'card-slot';
+                discardSlot.innerText = '--';
+            }
+
+            // Render Seats
+            let oval = document.getElementById('table-oval-container');
+            oval.querySelectorAll('.seat').forEach(s => s.remove());
             (lobby.players || []).forEach(p => {
-                html += `
-                    <div class="seat seat-${p.seat}">
-                        <div><b>${p.username}</b><br>Lives: ${p.lives}</div>
-                    </div>
+                let seatDiv = document.createElement('div');
+                seatDiv.className = `seat seat-${p.seat}`;
+                seatDiv.innerHTML = `
+                    <div><b>${p.username}</b> ${p.isMuted ? '🔇' : '🎙️'}</div>
+                    <div style="color:var(--accent-gold);">Lives: ${p.lives}</div>
                 `;
+                oval.appendChild(seatDiv);
             });
-            container.innerHTML = html;
+
+            // Render My Hand
+            let myPlayer = (lobby.players || []).find(p => p.username === clientState.username);
+            let cardsContainer = document.getElementById('my-cards-container');
+            cardsContainer.innerHTML = '';
+            if (myPlayer && myPlayer.cards) {
+                document.getElementById('my-score-display').innerText = myPlayer.score || 0;
+                myPlayer.cards.forEach((c, idx) => {
+                    let cardEl = document.createElement('div');
+                    cardEl.className = `my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}`;
+                    cardEl.innerText = `${c.val}${c.suit}`;
+                    if (myPlayer.cards.length === 4) {
+                        cardEl.onclick = () => discardCard(idx);
+                    }
+                    cardsContainer.appendChild(cardEl);
+                });
+            }
+
+            let knockBtn = document.getElementById('knock-btn');
+            knockBtn.disabled = !(lobby.canKnock && lobby.currentTurnUser === clientState.username && !lobby.hasKnockedUser);
         }
 
-        function toggleModal(id) {
-            let m = document.getElementById(id);
-            if (m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+        function saveInputs() {
+            localStorage.setItem('saved_username', document.getElementById('username-input').value);
+            localStorage.setItem('saved_lobby_name', document.getElementById('lobby-name-input').value);
         }
-        function openSpectatorListModal() { toggleModal('spectators-modal'); }
+
+        function toggleChatWindow() {
+            let win = document.getElementById('chat-window');
+            win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function sendChatMessage() {
+            let input = document.getElementById('chat-input');
+            let text = input.value.trim();
+            if (text) {
+                initSocketAndSend({ type: 'CHAT_MESSAGE', message: text });
+                input.value = '';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('saved_username')) document.getElementById('username-input').value = localStorage.getItem('saved_username');
+            if (localStorage.getItem('saved_lobby_name')) document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
+            connectSocket();
+            refreshLobbies();
+        });
     </script>
 </body>
 </html>
