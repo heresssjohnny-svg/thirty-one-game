@@ -1672,16 +1672,26 @@
                 sidePotBanner.style.display = 'none';
             }
 
+            // Next hand overlay handling
             let nextHandOverlay = document.getElementById('next-hand-overlay');
-            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
-                nextHandOverlay.style.display = 'block';
-                let nextBtn = document.getElementById('next-hand-btn');
-                if (me && me.nextHandReady) {
-                    nextBtn.innerText = 'Waiting...';
+            if (lobby.gameState === 'roundOver') {
+                if (lobby.activeParticipantsCount <= 1) {
+                    nextHandOverlay.style.display = 'block';
+                    let nextBtn = document.getElementById('next-hand-btn');
+                    nextBtn.innerText = 'Returning to Ready Room...';
                     nextBtn.disabled = true;
+                } else if (!isSpectatorOnly) {
+                    nextHandOverlay.style.display = 'block';
+                    let nextBtn = document.getElementById('next-hand-btn');
+                    if (me && me.nextHandReady) {
+                        nextBtn.innerText = 'Waiting...';
+                        nextBtn.disabled = true;
+                    } else {
+                        nextBtn.innerText = 'Next Hand';
+                        nextBtn.disabled = false;
+                    }
                 } else {
-                    nextBtn.innerText = 'Next Hand';
-                    nextBtn.disabled = false;
+                    nextHandOverlay.style.display = 'none';
                 }
             } else {
                 nextHandOverlay.style.display = 'none';
