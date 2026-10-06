@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
-const { AccessToken } = require('livekit-server-sdk');
+const { AccessToken } = require('livekit-server-sdk'); // LiveKit Server SDK[span_3](start_span)[span_3](end_span)
 
 const app = express();
 const server = http.createServer(app);
@@ -10,18 +10,31 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname)));
 
-// LiveKit API Credentials matching your livekit.yaml on Hetzner
+// LiveKit API Configuration matching Hetzner VPS livekit.yaml[span_4](start_span)[span_4](end_span)
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = 'ws://135.181.43.233:7880';
 
-// Function to generate LiveKit client tokens for voice channels
+// Asynchronous LiveKit Token Generator[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)
 async function generateLiveKitToken(roomName, participantName) {
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-        identity: participantName,
-    });
-    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
-    return await at.toJwt();
+    try {
+        const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+            identity: participantName,
+            name: participantName,
+            ttl: '8h',
+        });
+        at.addGrant({
+            roomJoin: true,
+            room: roomName,
+            canPublish: true,
+            canPublishData: true,
+            canSubscribe: true,
+        });
+        return await at.toJwt(); // Awaited Promise for SDK v2+[span_7](start_span)[span_7](end_span)
+    } catch (err) {
+        console.error("LiveKit token generation failed:", err);
+        return null;
+    }
 }
 
 const lobbies = {};
@@ -29,12 +42,10 @@ const lobbies = {};
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// WebSocket Keep-Alive to prevent mobile OS TCP teardowns
+// WebSocket Keep-Alive to prevent mobile OS teardowns
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) {
-            return ws.terminate();
-        }
+        if (ws.isAlive === false) return ws.terminate();
         ws.isAlive = false;
         ws.ping();
     });
@@ -49,7 +60,7 @@ function createDeck() {
     for (let s of suits) {
         for (let v of values) {
             let points = 10;
-            let drawVal = parseInt(v) || (v === 'A' ? 14 : (v === 'K' ? 13 : (v === 'Q' ? 12 : 11)));
+            let drawVal = parseInt(v, 10) || (v === 'A' ? 14 : (v === 'K' ? 13 : (v === 'Q' ? 12 : 11)));
             if (v === 'A') points = 11;
             else if (['J', 'Q', 'K'].includes(v)) points = 10;
             else points = parseInt(v, 10);
@@ -72,8 +83,18 @@ function closeInactiveLobby(code) {
     let lobby = lobbies[code];
     if (!lobby) return;
     let closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to inactivity.' });
-    lobby.players.forEach(p => { if (p.id?.readyState === WebSocket.OPEN) { p.id.send(closePayload); p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' })); } });
-    lobby.spectators.forEach(s => { if (s.idSocket?.readyState === WebSocket.OPEN) { s.idSocket.send(closePayload); s.idSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' })); } });
+    lobby.players.forEach(p => { 
+        if (p.id?.readyState === WebSocket.OPEN) { 
+            p.id.send(closePayload); 
+            p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' })); 
+        } 
+    });
+    lobby.spectators.forEach(s => { 
+        if (s.idSocket?.readyState === WebSocket.OPEN) { 
+            s.idSocket.send(closePayload); 
+            s.idSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' })); 
+        } 
+    });
     if (lobby.nextHandTimer) clearTimeout(lobby.nextHandTimer);
     delete lobbies[code];
     broadcastLobbyList();
@@ -85,6 +106,15 @@ function broadcastLobbyEvent(code, payload) {
     let msg = JSON.stringify(payload);
     lobby.players.forEach(p => { if (p.id?.readyState === WebSocket.OPEN) p.id.send(msg); });
     lobby.spectators.forEach(s => { if (s.idSocket?.readyState === WebSocket.OPEN) s.idSocket.send(msg); });
+}
+
+function broadcastVoiceRoster(code) {
+    let lobby = lobbies[code];
+    if (!lobby) return;
+    let roster = [];
+    lobby.players.forEach(p => { if (p.inVC) roster.push(p.username); });
+    lobby.spectators.forEach(s => { if (s.inVC) roster.push(s.username); });
+    broadcastLobbyEvent(code, { type: 'SYNC_VOICE_ROSTER', roster });
 }
 
 wss.on('connection', (ws) => {
@@ -152,15 +182,17 @@ wss.on('connection', (ws) => {
                         inactivityTimer: null
                     };
                     touchLobbyActivity(lobbies[currentLobbyCode]);
-                    
-                    let token = await generateLiveKitToken(currentLobbyCode, currentUsername);
+
+                    const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                     ws.send(JSON.stringify({ 
                         type: 'LOBBY_JOINED', 
                         lobby: getSanitizedLobby(lobbies[currentLobbyCode], ws),
                         livekitHost: LIVEKIT_HOST,
-                        livekitToken: token
+                        livekitToken: token,
+                        token: token
                     }));
                     broadcastLobbyList();
+                    broadcastVoiceRoster(currentLobbyCode);
                     break;
                 }
 
@@ -173,18 +205,21 @@ wss.on('connection', (ws) => {
                         let lobby = lobbies[code];
                         touchLobbyActivity(lobby);
 
+                        const token = await generateLiveKitToken(code, currentUsername);
+
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
-                            let token = await generateLiveKitToken(code, currentUsername);
                             ws.send(JSON.stringify({ 
                                 type: 'LOBBY_JOINED', 
                                 lobby: getSanitizedLobby(lobby, ws),
                                 livekitHost: LIVEKIT_HOST,
-                                livekitToken: token
+                                livekitToken: token,
+                                token: token
                             }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
+                            broadcastVoiceRoster(code);
                             broadcastLobbyList();
                             return;
                         }
@@ -192,15 +227,16 @@ wss.on('connection', (ws) => {
                         let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingSpec) {
                             existingSpec.idSocket = ws;
-                            let token = await generateLiveKitToken(code, currentUsername);
                             ws.send(JSON.stringify({ 
                                 type: 'LOBBY_JOINED', 
                                 lobby: getSanitizedLobby(lobby, ws),
                                 livekitHost: LIVEKIT_HOST,
-                                livekitToken: token
+                                livekitToken: token,
+                                token: token
                             }));
                             broadcastLobbyUpdate(code);
                             broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
+                            broadcastVoiceRoster(code);
                             broadcastLobbyList();
                             return;
                         }
@@ -212,15 +248,16 @@ wss.on('connection', (ws) => {
                             lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                         }
 
-                        let token = await generateLiveKitToken(code, currentUsername);
                         ws.send(JSON.stringify({ 
                             type: 'LOBBY_JOINED', 
                             lobby: getSanitizedLobby(lobby, ws),
                             livekitHost: LIVEKIT_HOST,
-                            livekitToken: token
+                            livekitToken: token,
+                            token: token
                         }));
                         broadcastLobbyUpdate(code);
                         broadcastLobbyEvent(code, { type: 'PLAY_SOUND', sound: 'join' });
+                        broadcastVoiceRoster(code);
                         broadcastLobbyList();
                     } else {
                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found!' }));
@@ -230,12 +267,43 @@ wss.on('connection', (ws) => {
 
                 case 'REQUEST_LIVEKIT_TOKEN': {
                     if (currentLobbyCode && currentUsername) {
-                        let token = await generateLiveKitToken(currentLobbyCode, currentUsername);
+                        const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
                         ws.send(JSON.stringify({ 
                             type: 'LIVEKIT_TOKEN', 
                             livekitHost: LIVEKIT_HOST, 
-                            livekitToken: token 
+                            livekitToken: token, 
+                            token: token 
                         }));
+                    }
+                    break;
+                }
+
+                case 'UPDATE_VC_STATUS': {
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
+                        if (p) {
+                            p.inVC = !!data.inVC;
+                            p.isMuted = !!data.isMuted;
+                            broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastVoiceRoster(currentLobbyCode);
+                        }
+                    }
+                    break;
+                }
+
+                case 'CHAT_MESSAGE': {
+                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                        let lobby = lobbies[currentLobbyCode];
+                        let chatPayload = { 
+                            type: 'CHAT_MESSAGE', 
+                            username: currentUsername || 'Player', 
+                            message: data.message || '' 
+                        };
+                        lobby.chatHistory.push(chatPayload);
+                        if (lobby.chatHistory.length > 50) lobby.chatHistory.shift();
+                        lobby.players.forEach(p => p.id?.send(JSON.stringify(chatPayload)));
+                        lobby.spectators.forEach(s => s.idSocket?.send(JSON.stringify(chatPayload)));
                     }
                     break;
                 }
@@ -327,6 +395,7 @@ wss.on('connection', (ws) => {
                             let leaving = lobby.players.splice(playerIdx, 1)[0];
                             lobby.spectators.push({ username: leaving.username, idSocket: ws, inVC: leaving.inVC, isMuted: leaving.isMuted });
                             broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastVoiceRoster(currentLobbyCode);
                             broadcastLobbyList();
                         }
                     }
@@ -342,6 +411,7 @@ wss.on('connection', (ws) => {
                             let seat = findOpenSeat(lobby);
                             lobby.players.push({ id: ws, username: spec.username, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat, nextHandReady: false, eliminated: false, inVC: spec.inVC, isMuted: spec.isMuted, peekRequests: {}, peekAllowed: {} });
                             broadcastLobbyUpdate(currentLobbyCode);
+                            broadcastVoiceRoster(currentLobbyCode);
                             broadcastLobbyList();
                         }
                     }
@@ -601,15 +671,6 @@ wss.on('connection', (ws) => {
                     break;
                 }
 
-                case 'CHAT_MESSAGE': {
-                    if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let chatPayload = { type: 'CHAT_MESSAGE', username: currentUsername, message: data.message };
-                        lobbies[currentLobbyCode].players.forEach(p => p.id?.send(JSON.stringify(chatPayload)));
-                        lobbies[currentLobbyCode].spectators.forEach(s => s.idSocket?.send(JSON.stringify(chatPayload)));
-                    }
-                    break;
-                }
-
                 case 'DRAW_DECK':
                 case 'DRAW_DISCARD': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) handleTurnAction(lobbies[currentLobbyCode], ws, data.type);
@@ -638,7 +699,9 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => {});
+    ws.on('close', () => {
+        if (currentLobbyCode) leaveLobby(ws, currentLobbyCode);
+    });
 });
 
 function getActiveParticipants(lobby) { return lobby.players.filter(p => !p.eliminated); }
@@ -652,6 +715,7 @@ function leaveLobby(ws, code) {
     if (lobby.players.length === 0) delete lobbies[code];
     else {
         broadcastLobbyUpdate(code);
+        broadcastVoiceRoster(code);
     }
     broadcastLobbyList();
 }
@@ -1141,6 +1205,7 @@ function resetLobbyToReadyRoom(lobby, msg) {
     });
     lobby.spectators = [];
     broadcastLobbyUpdate(lobby.code);
+    broadcastVoiceRoster(lobby.code);
     broadcastLobbyList();
 }
 
