@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// LiveKit Server Credentials matching Hetzner VPS livekit.yaml
+// LiveKit Server Credentials
 const LIVEKIT_API_KEY = 'thirtyone-chat';
 const LIVEKIT_API_SECRET = '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e';
 const LIVEKIT_HOST = process.env.LIVEKIT_HOST || 'wss://31game.duckdns.org';
@@ -272,6 +272,7 @@ function getSanitizedLobby(lobby, wsId) {
         currentSongIndex: lobby.currentSongIndex || 0,
         isPlaying: !!lobby.isPlaying,
         currentSongElapsedSeconds: elapsedSeconds,
+        livekitHost: LIVEKIT_HOST,
         players: lobby.players.map(p => {
             let canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
             let specAllowed = requestingSpectator && p.peekAllowed?.[requestingSpectator.username];
@@ -287,13 +288,17 @@ function getSanitizedLobby(lobby, wsId) {
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
                 inVC: !!p.inVC,
-                isMuted: !!p.isMuted,
+                isMuted: p.isMuted !== undefined ? p.isMuted : true,
                 peekIncoming: wsId === p.id ? (p.peekRequests || {}) : {},
                 peekAllowed: p.peekAllowed || {},
                 cards: (canSee || specAllowed) ? p.cards : []
             };
         }),
-        spectators: lobby.spectators.map(s => ({ username: s.username, inVC: !!s.inVC, isMuted: !!s.isMuted }))
+        spectators: lobby.spectators.map(s => ({ 
+            username: s.username, 
+            inVC: !!s.inVC, 
+            isMuted: s.isMuted !== undefined ? s.isMuted : true 
+        }))
     };
 }
 
@@ -389,7 +394,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                 if (loser.lives <= 0 && !loser.eliminated) {
                     loser.eliminated = true;
                     resolveFirstToLoseBets(lobby, loser.username);
-                    if (typeof loser.id === 'object') {
+                    if (loser.id && typeof loser.id === 'object') {
                         lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
                     }
                 }
@@ -448,7 +453,7 @@ function handleTurnAction(lobby, wsId, actionType) {
                 if (p.lives <= 0) {
                     p.eliminated = true;
                     resolveFirstToLoseBets(lobby, p.username);
-                    if (typeof p.id === 'object') {
+                    if (p.id && typeof p.id === 'object') {
                         lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
                     }
                 }
@@ -512,7 +517,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
                 if (p.lives <= 0) {
                     p.eliminated = true;
                     resolveFirstToLoseBets(lobby, p.username);
-                    if (typeof p.id === 'object') {
+                    if (p.id && typeof p.id === 'object') {
                         lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
                     }
                 }
@@ -590,7 +595,7 @@ function resolveRoundEnd(lobby) {
         if (loser.lives <= 0 && !loser.eliminated) {
             loser.eliminated = true;
             resolveFirstToLoseBets(lobby, loser.username);
-            if (typeof loser.id === 'object') {
+            if (loser.id && typeof loser.id === 'object') {
                 lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
             }
         }
@@ -868,12 +873,30 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) leaveLobby(ws, currentLobbyCode);
 
                     currentLobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                    ws.lobbyCode = currentLobbyCode;
+                    ws.username = currentUsername;
+
                     lobbies[currentLobbyCode] = {
                         code: currentLobbyCode,
                         name: data.lobbyName || `${currentUsername}'s Table`,
                         host: currentUsername,
                         isPrivate: !!data.isPrivate,
-                        players: [{ id: ws, username: currentUsername, lives: 2, wager: 5, cards: [], ready: false, seat: 0, nextHandReady: false, eliminated: false, isBot: false, inVC: true, isMuted: true, peekRequests: {}, peekAllowed: {} }],
+                        players: [{ 
+                            id: ws, 
+                            username: currentUsername, 
+                            lives: 2, 
+                            wager: 5, 
+                            cards: [], 
+                            ready: false, 
+                            seat: 0, 
+                            nextHandReady: false, 
+                            eliminated: false, 
+                            isBot: false, 
+                            inVC: true, 
+                            isMuted: true, 
+                            peekRequests: {}, 
+                            peekAllowed: {} 
+                        }],
                         spectators: [],
                         deck: [],
                         discardPile: [],
@@ -925,14 +948,17 @@ wss.on('connection', (ws) => {
                 case 'JOIN_LOBBY': {
                     let code = (data.code || '').toUpperCase();
                     if (lobbies[code]) {
-                        if (currentLobbyCode && currentLobbyCode !== code) leaveLobby(ws, currentLobbyCode);
                         currentLobbyCode = code;
                         currentUsername = (data.username || 'Player').trim();
+                        ws.lobbyCode = code;
+                        ws.username = currentUsername;
+
                         let lobby = lobbies[code];
                         touchLobbyActivity(lobby);
 
                         const token = await generateLiveKitToken(code, currentUsername);
 
+                        // Reconnect to an existing seat without kicking out
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
@@ -965,7 +991,22 @@ wss.on('connection', (ws) => {
 
                         if (lobby.players.length < 6 && lobby.gameState === 'lobby') {
                             let availableSeat = findOpenSeat(lobby);
-                            lobby.players.push({ id: ws, username: currentUsername, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat: availableSeat, nextHandReady: false, eliminated: false, isBot: false, inVC: true, isMuted: true, peekRequests: {}, peekAllowed: {} });
+                            lobby.players.push({ 
+                                id: ws, 
+                                username: currentUsername, 
+                                lives: lobby.players[0]?.lives || 2, 
+                                wager: 5, 
+                                cards: [], 
+                                ready: false, 
+                                seat: availableSeat, 
+                                nextHandReady: false, 
+                                eliminated: false, 
+                                isBot: false, 
+                                inVC: true, 
+                                isMuted: true, 
+                                peekRequests: {}, 
+                                peekAllowed: {} 
+                            });
                         } else {
                             lobby.spectators.push({ username: currentUsername, idSocket: ws, inVC: true, isMuted: true });
                         }
@@ -1054,7 +1095,7 @@ wss.on('connection', (ws) => {
                 case 'UPDATE_VC_STATUS': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let p = lobby.players.find(pl => pl.id === ws) || lobby.spectators.find(s => s.username.toLowerCase() === currentUsername.toLowerCase());
+                        let p = lobby.players.find(pl => pl.username === currentUsername) || lobby.spectators.find(s => s.username === currentUsername);
                         if (p) {
                             p.inVC = !!data.inVC;
                             p.isMuted = !!data.isMuted;
@@ -1143,7 +1184,7 @@ wss.on('connection', (ws) => {
                 case 'STAND_UP': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let playerIdx = lobby.players.findIndex(p => p.id === ws);
+                        let playerIdx = lobby.players.findIndex(p => p.username === currentUsername);
                         if (playerIdx !== -1) {
                             let leaving = lobby.players.splice(playerIdx, 1)[0];
                             lobby.spectators.push({ username: leaving.username, idSocket: ws, inVC: leaving.inVC, isMuted: leaving.isMuted });
@@ -1157,11 +1198,26 @@ wss.on('connection', (ws) => {
                 case 'SIT_DOWN': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let specIdx = lobby.spectators.findIndex(s => s.idSocket === ws || s.username.toLowerCase() === currentUsername.toLowerCase());
+                        let specIdx = lobby.spectators.findIndex(s => s.username === currentUsername);
                         if (specIdx !== -1 && lobby.players.length < 6 && lobby.gameState === 'lobby') {
                             let spec = lobby.spectators.splice(specIdx, 1)[0];
                             let seat = findOpenSeat(lobby);
-                            lobby.players.push({ id: ws, username: spec.username, lives: lobby.players[0]?.lives || 2, wager: 5, cards: [], ready: false, seat, nextHandReady: false, eliminated: false, isBot: false, inVC: spec.inVC, isMuted: spec.isMuted, peekRequests: {}, peekAllowed: {} });
+                            lobby.players.push({ 
+                                id: ws, 
+                                username: spec.username, 
+                                lives: lobby.players[0]?.lives || 2, 
+                                wager: 5, 
+                                cards: [], 
+                                ready: false, 
+                                seat, 
+                                nextHandReady: false, 
+                                eliminated: false, 
+                                isBot: false, 
+                                inVC: spec.inVC, 
+                                isMuted: spec.isMuted, 
+                                peekRequests: {}, 
+                                peekAllowed: {} 
+                            });
                             broadcastLobbyUpdate(currentLobbyCode);
                             broadcastLobbyList();
                         }
@@ -1176,7 +1232,7 @@ wss.on('connection', (ws) => {
 
                 case 'UPDATE_WAGER': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let player = lobbies[currentLobbyCode].players.find(p => p.id === ws);
+                        let player = lobbies[currentLobbyCode].players.find(p => p.username === currentUsername);
                         if (player && lobbies[currentLobbyCode].gameState === 'lobby') {
                             player.wager = parseInt(data.wager, 10) || 5;
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -1355,7 +1411,7 @@ wss.on('connection', (ws) => {
                 case 'SET_READY': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let player = lobby.players.find(p => p.id === ws);
+                        let player = lobby.players.find(p => p.username === currentUsername);
                         if (player && lobby.gameState === 'lobby' && !player.eliminated) {
                             player.ready = !!data.ready;
                             let activeParts = getActiveParticipants(lobby);
@@ -1379,7 +1435,7 @@ wss.on('connection', (ws) => {
                 case 'NEXT_HAND_READY': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
-                        let player = lobby.players.find(p => p.id === ws);
+                        let player = lobby.players.find(p => p.username === currentUsername);
                         if (player && lobby.gameState === 'roundOver' && !player.eliminated) {
                             player.nextHandReady = true;
                             broadcastLobbyUpdate(currentLobbyCode);
@@ -1418,7 +1474,7 @@ wss.on('connection', (ws) => {
 
                 case 'RESPOND_PEEK': {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                        let player = lobbies[currentLobbyCode].players.find(p => p.id === ws);
+                        let player = lobby.players.find(p => p.username === currentUsername);
                         if (player) {
                             delete player.peekRequests?.[data.spectatorUsername];
                             if (data.allow) {
@@ -1447,8 +1503,7 @@ wss.on('connection', (ws) => {
                     if (currentLobbyCode && lobbies[currentLobbyCode]) {
                         let lobby = lobbies[currentLobbyCode];
                         if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-                            let p = lobby.players.find(pl => pl.id === ws);
-                            handlePoolCardSelection(lobby, p ? p.username : currentUsername, data.cardIndex);
+                            handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
                         }
                     }
                     break;
@@ -1501,9 +1556,14 @@ wss.on('connection', (ws) => {
         }
     });
 
+    // Unbind socket on background / disconnect, without kicking from table
     ws.on('close', () => {
         if (currentLobbyCode && lobbies[currentLobbyCode]) {
-            leaveLobby(ws, currentLobbyCode);
+            let lobby = lobbies[currentLobbyCode];
+            let p = lobby.players.find(pl => pl.id === ws);
+            if (p) p.id = null; // Detach socket, keep player in seat
+            let s = lobby.spectators.find(spec => spec.idSocket === ws);
+            if (s) s.idSocket = null;
         }
     });
 });
