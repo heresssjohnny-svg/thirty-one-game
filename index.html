@@ -1088,7 +1088,7 @@
                 await livekitRoom.connect(host, token);
                 enableBackgroundAudioKeepAlive();
 
-                // Start muted by default
+                // Connects muted by default
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isVoiceChatActive = false;
                 updateVoiceUI();
@@ -1110,10 +1110,31 @@
         }
 
         async function toggleVoiceOnOff() {
-            let btn = document.getElementById('vc-main-btn');
-            let led = document.getElementById('vc-led');
+            // If voice is currently ON, mute microphone
+            if (isVoiceChatActive && livekitRoom) {
+                try {
+                    await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                } catch (e) {
+                    console.error("Mute error:", e);
+                }
+                isVoiceChatActive = false;
+                updateVoiceUI();
+                sendVCStatusInternal(true, true);
+                await stopNativeForegroundService();
+                return;
+            }
 
-            // If not connected yet, try connecting
+            // Direct microphone access check
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(t => t.stop());
+            } catch (permErr) {
+                console.error("Microphone permission denied:", permErr);
+                alert("Microphone permission required. Please allow microphone access in your browser or device settings.");
+                return;
+            }
+
+            // Ensure room is connected
             if (!livekitRoom || livekitRoom.state !== 'connected') {
                 if (currentLivekitHost && currentLivekitToken) {
                     await connectLiveKit(currentLivekitHost, currentLivekitToken);
@@ -1124,28 +1145,21 @@
             }
 
             try {
-                if (isVoiceChatActive) {
-                    await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-                    isVoiceChatActive = false;
-                    updateVoiceUI();
-                    sendVCStatusInternal(true, true);
-                    await stopNativeForegroundService();
-                } else {
-                    let ctx = getAudioContext();
-                    if (ctx.state === 'suspended') ctx.resume();
-                    
-                    // Start playback for remote audio tracks if suspended
-                    await livekitRoom.startAudio();
-                    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-                    
-                    isVoiceChatActive = true;
-                    updateVoiceUI();
-                    sendVCStatusInternal(true, false);
-                    await startNativeForegroundService();
-                }
+                let ctx = getAudioContext();
+                if (ctx.state === 'suspended') ctx.resume();
+
+                await livekitRoom.startAudio();
+                await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+
+                isVoiceChatActive = true;
+                updateVoiceUI();
+                sendVCStatusInternal(true, false);
+                await startNativeForegroundService();
             } catch (err) {
-                console.error("Microphone toggle error:", err);
-                alert("Microphone permission required. Please check your browser or system permissions.");
+                console.error("Microphone activate error:", err);
+                alert("Microphone activation error: " + (err.message || err.name));
+                isVoiceChatActive = false;
+                updateVoiceUI();
             }
         }
 
