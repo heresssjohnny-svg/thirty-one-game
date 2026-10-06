@@ -557,7 +557,7 @@ wss.on('connection', (ws) => {
                         lobby.endGameVotes[currentUsername] = true;
                         let activeParts = getActiveParticipants(lobby);
                         if (activeParts.every(p => lobby.endGameVotes[p.username])) {
-                            resetLobbyToReadyRoom(lobby, "⚠️️ Game ended! Returning to waiting room.");
+                            resetLobbyToReadyRoom(lobby, "⚠ Game ended! Returning to waiting room.");
                         } else {
                             broadcastLobbyUpdate(currentLobbyCode);
                         }
