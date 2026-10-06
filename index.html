@@ -33,8 +33,13 @@
 
         #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; padding: 6px 10px; }
         #center-notification-banner { display: none; position: absolute; top: 12%; background: rgba(0,0,0,0.85); border: 1px solid var(--accent-gold); color: #fff; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; z-index: 100; font-weight: bold; }
+        
+        /* Top-Left Modal: Initial Face-Up Discard Pickup */
         #discard-pickup-topleft-modal { display: none; position: absolute; top: 48px; left: 10px; background: rgba(15,23,42,0.95); border: 1px solid var(--accent-gold); padding: 5px 8px; border-radius: 8px; font-size: 0.7rem; align-items: center; gap: 6px; z-index: 90; }
+        
+        /* Top-Right Modal: Fed Card Reminder */
         #fed-card-topright-modal { display: none; background: rgba(15,23,42,0.95); border: 1px solid #ec4899; padding: 4px 8px; border-radius: 8px; font-size: 0.65rem; align-items: center; gap: 4px; }
+        
         #knock-alert-modal { display: none; position: absolute; top: 18%; background: #ef4444; color: #fff; padding: 6px 14px; border-radius: 14px; font-size: 0.85rem; font-weight: bold; z-index: 101; animation: pulse 1s infinite alternate; }
 
         .table-oval { position: relative; width: 96%; max-width: 650px; height: 350px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 8px solid #0f172a; border-radius: 175px; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 20px rgba(0,0,0,0.6); }
@@ -105,6 +110,7 @@
             <div id="center-notification-banner">NOTIFICATION</div>
             <div id="knock-alert-modal">🔔 Knock Alert</div>
             
+            <!-- Top-Left Initial Discard Modal -->
             <div id="discard-pickup-topleft-modal">
                 <span id="discard-pickup-card-content"></span>
             </div>
@@ -113,6 +119,7 @@
                 <span id="room-title-display" style="font-weight:bold; color:var(--accent-gold); font-size:0.8rem;">Lobby</span>
                 <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
                     <div id="turn-banner" style="font-size:0.75rem;">Waiting...</div>
+                    <!-- Top-Right Fed Card Modal -->
                     <div id="fed-card-topright-modal">
                         <span id="fed-card-label" style="color:var(--text-muted);">Took your card:</span>
                         <div id="fed-card-content" style="display:flex; align-items:center; gap:2px;"></div>
@@ -120,7 +127,8 @@
                 </div>
             </div>
 
-            <div id="lobby-config-bar" style="display:flex; gap:6px; align-items:center;">
+            <!-- Table Config Bar with +bot and -bot -->
+            <div id="lobby-config-bar" style="display:flex; gap:6px; align-items:center; margin-top:2px;">
                 <select id="config-wager" onchange="updateSettings()" style="padding:2px 6px; font-size:0.75rem;">
                     <option value="5">$5 Wager</option>
                     <option value="10">$10 Wager</option>
@@ -159,7 +167,7 @@
         </div>
     </main>
 
-    <!-- Modals -->
+    <!-- Dealer / Tie Breaker Pool Modal -->
     <div id="pool-modal" class="modal">
         <div class="modal-content">
             <h3 id="pool-modal-title" style="color:var(--accent-gold); margin-bottom:4px;">Dealer Draw</h3>
@@ -168,6 +176,7 @@
         </div>
     </div>
 
+    <!-- Ledger & Balances Modal -->
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:340px;">
             <h3 style="color:var(--accent-gold); margin-bottom:6px;">Ledger & Balances</h3>
@@ -176,6 +185,7 @@
         </div>
     </div>
 
+    <!-- Side Bets Modal -->
     <div id="sidebets-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
             <h3 style="color:var(--accent-gold); margin-bottom:8px;">Propose Side Bet</h3>
@@ -291,7 +301,7 @@
                 knockModal.style.display = 'none';
             }
 
-            // Top-left initial deal card modal
+            // Top-left initial deal card pickup modal
             let topleftModal = document.getElementById('discard-pickup-topleft-modal');
             let topleftCardContent = document.getElementById('discard-pickup-card-content');
             if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
@@ -340,7 +350,7 @@
                 hasChosenPoolCard = false;
             }
 
-            // Seats Rendering
+            // Seat Rendering
             let container = document.getElementById('table-oval-container');
             let existingSeats = container.querySelectorAll('.seat');
             existingSeats.forEach(s => s.remove());
@@ -432,11 +442,13 @@
         function removeBot() { sendMsg({ type: 'REMOVE_BOT' }); }
         function toggleReady() { sendMsg({ type: 'SET_READY' }); }
         function clickNextHand() { sendMsg({ type: 'NEXT_HAND_READY' }); }
+        
         function choosePoolCard(cardIndex) {
             if (hasChosenPoolCard) return;
             hasChosenPoolCard = true;
             sendMsg({ type: 'CHOOSE_POOL_CARD', cardIndex });
         }
+        
         function drawCard(type) { sendMsg({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); }
         function discardCard(cardIndex) { sendMsg({ type: 'DISCARD_CARD', cardIndex }); }
         function knockRound() { sendMsg({ type: 'KNOCK' }); }
@@ -467,6 +479,7 @@
             let mainCalc = calculatePairwiseNet(mainLedger, myName, allUsers);
             let botCalc = calculatePairwiseNet(botLedger, myName, allUsers);
 
+            // Total Net Balance strictly excludes Bot Bets
             let totalNet = sideCalc.totalNet + mainCalc.totalNet;
 
             let html = `<div style="font-size:0.9rem; font-weight:bold; color:${totalNet >= 0 ? '#34d399' : '#f87171'}; margin-bottom:6px;">Total Net Balance: $${totalNet.toFixed(2)}</div><hr style="border-color:#334155; margin-bottom:6px;">`;
@@ -485,7 +498,7 @@
                 html += `</ul>`;
             }
 
-            // Human Main Game Pot
+            // Human Main Game Pot Ledger
             html += `<div style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold); margin-bottom:2px;">🎮 Main Game Pot Ledger</div>`;
             let mainKeys = Object.keys(mainCalc.records);
             if (mainKeys.length === 0) {
@@ -499,7 +512,7 @@
                 html += `</ul>`;
             }
 
-            // Separate Bot Bets Category (Not in Total Net)
+            // Distinct Bot Bets Category (Excluded from balance)
             html += `<div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); margin-top:6px; margin-bottom:2px;">🤖 Bot Bets (Practice / Excluded from Total)</div>`;
             let botKeys = Object.keys(botCalc.records);
             if (botKeys.length === 0) {
