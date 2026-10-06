@@ -388,6 +388,32 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             }, 3000);
         } else if (lobby.gameState === 'tieBreaker' && lobby.tiedParticipantsList.every(u => lobby.drawResults[u])) {
             let entries = lobby.tiedParticipantsList.map(u => ({ username: u, card: lobby.drawResults[u] })).sort((a, b) => a.card.drawVal - b.card.drawVal);
+            let lowestDrawVal = entries[0].card.drawVal;
+            let tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
+
+            // Re-draw rule when multiple players draw cards of the same lowest value
+            if (tiedLowest.length > 1) {
+                lobby.phaseMessage = `⚠️ Tie on lowest card (${entries[0].card.val})! Drawing again in 3 seconds...`;
+                broadcastLobbyUpdate(lobby.code);
+
+                setTimeout(() => {
+                    if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'tieBreaker') return;
+                    let cur = lobbies[lobby.code];
+
+                    cur.tiedParticipantsList = tiedLowest.map(t => t.username);
+                    let freshDeck = createDeck();
+                    cur.drawPool = freshDeck.map(c => ({ card: c, chosenBy: null }));
+                    cur.drawResults = {};
+                    cur.drawOrderSequence = [];
+                    cur.phaseMessage = `Tie-Breaker Re-Draw: Pick a card!`;
+
+                    broadcastLobbyUpdate(cur.code);
+                    scheduleBotActions(cur);
+                }, 3000);
+                return;
+            }
+
+            // Single lowest card loser resolution
             let loser = lobby.players.find(p => p.username === entries[0].username);
             if (loser) {
                 loser.lives = Math.max(0, loser.lives - 1);
@@ -401,14 +427,15 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             }
             lobby.phaseMessage = `${entries[0].username} drew lowest in tie-breaker!`;
             broadcastLobbyUpdate(lobby.code);
+
             setTimeout(() => {
                 if (!lobbies[lobby.code]) return;
-                let cur = lobbies[lobby.code];
-                if (getActiveParticipants(cur).length === 1) {
-                    awardTournamentWinner(cur, getActiveParticipants(cur)[0]);
+                let currentLobby = lobbies[lobby.code];
+                if (getActiveParticipants(currentLobby).length === 1) {
+                    awardTournamentWinner(currentLobby, getActiveParticipants(currentLobby)[0]);
                 } else {
-                    advanceDealerToNextActive(cur);
-                    triggerRoundOver(cur, `${entries[0].username} lost a life in tie-breaker!`);
+                    advanceDealerToNextActive(currentLobby);
+                    triggerRoundOver(currentLobby, `${entries[0].username} lost a life in tie-breaker!`);
                 }
             }, 3000);
         } else {
@@ -958,7 +985,6 @@ wss.on('connection', (ws) => {
 
                         const token = await generateLiveKitToken(code, currentUsername);
 
-                        // Reconnect to an existing seat without kicking out
                         let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === currentUsername.toLowerCase());
                         if (existingPlayer) {
                             existingPlayer.id = ws;
@@ -1556,12 +1582,11 @@ wss.on('connection', (ws) => {
         }
     });
 
-    // Unbind socket on background / disconnect, without kicking from table
     ws.on('close', () => {
         if (currentLobbyCode && lobbies[currentLobbyCode]) {
             let lobby = lobbies[currentLobbyCode];
             let p = lobby.players.find(pl => pl.id === ws);
-            if (p) p.id = null; // Detach socket, keep player in seat
+            if (p) p.id = null;
             let s = lobby.spectators.find(spec => spec.idSocket === ws);
             if (s) s.idSocket = null;
         }
