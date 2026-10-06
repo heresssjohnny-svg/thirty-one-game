@@ -3,18 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>31! Card Game</title>
-
-    <!-- PWA Configuration -->
+    <title>31!</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#044e36">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="31!">
-    <link rel="apple-touch-icon" href="/icon-192.png">
 
-    <!-- Official LiveKit Client SDK -->
+    <!-- LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 
     <style>
@@ -26,282 +23,315 @@
             --accent-gold: #facc15;
             --text-main: #f8fafc;
             --text-muted: #cbd5e1;
+            --card-red: #ef4444;
+            --card-black: #0f172a;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
-        
-        body { 
-            background: radial-gradient(circle at center, #065f46 0%, #044e36 100%); 
-            color: var(--text-main); 
-            height: 100vh; 
+
+        body {
+            background: radial-gradient(circle at center, #065f46 0%, #044e36 100%);
+            color: var(--text-main);
+            height: 100vh;
             min-height: 500px;
-            display: flex; 
-            flex-direction: column; 
-            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
         }
 
         .bg-card {
             position: absolute;
-            width: 50px;
-            height: 75px;
-            background: #ffffff;
-            color: #dc2626;
-            border-radius: 4px;
+            font-size: 5rem;
+            font-weight: 900;
+            opacity: 0.05;
+            pointer-events: none;
+            z-index: 0;
+            color: #fff;
+        }
+
+        header {
+            background: rgba(15, 23, 42, 0.95);
+            padding: 6px 12px;
             display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border-color);
+            position: relative;
+            z-index: 1000;
+        }
+
+        .logo { font-size: 1.3rem; font-weight: 900; color: var(--accent-gold); text-shadow: 0 0 10px rgba(250,204,21,0.5); }
+        .top-menu-btns { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+
+        button, .btn-link {
+            background: #10b981;
+            color: #fff;
+            border: 1px solid #34d399;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: 0.15s;
+            text-decoration: none;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            font-size: 1.1rem;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            opacity: 0.12;
-            z-index: 0;
-            pointer-events: none;
         }
-        
-        header { 
-            background: rgba(4, 78, 54, 0.95); 
-            backdrop-filter: blur(10px);
-            padding: 8px 12px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            border-bottom: 1px solid var(--border-color); 
-            flex-shrink: 0; 
-            z-index: 1000; 
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        
-        .logo { 
-            font-size: 1.2rem; 
-            font-weight: 900; 
-            letter-spacing: 1px;
-            color: var(--accent-gold);
-            text-shadow: 0 2px 10px rgba(250, 204, 21, 0.4);
-        }
-        
-        .top-menu-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; z-index: 10; }
-        
-        button { 
-            background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%); 
-            color: #fff; 
-            border: 1px solid rgba(255,255,255,0.15); 
-            padding: 6px 10px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-weight: 600; 
-            font-size: 0.75rem; 
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-            transition: all 0.2s ease;
-        }
-        
-        button:hover { 
-            background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%); 
-            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
-            transform: translateY(-1px);
-        }
-        
-        button:active { transform: translateY(1px); }
-        button:disabled { background: #1e293b; color: #475569; box-shadow: none; cursor: not-allowed; }
-        button.danger { background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
-        button.secondary { background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.12); box-shadow: none; }
-        button.secondary:hover { background: rgba(51, 65, 85, 0.95); }
-        
-        .vc-control-group {
-            display: none; 
-            align-items: center;
-            gap: 4px;
-            background: rgba(30, 41, 59, 0.85);
-            border: 1px solid rgba(255,255,255,0.15);
-            padding: 3px 6px;
-            border-radius: 6px;
-        }
+        button.secondary { background: #334155; border-color: #475569; }
+        button.danger { background: #ef4444; border-color: #f87171; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        .led-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            background-color: #ef4444; 
-            box-shadow: 0 0 6px #ef4444;
-            transition: background-color 0.3s, box-shadow 0.3s;
-        }
-        .led-indicator.active {
-            background-color: #10b981; 
-            box-shadow: 0 0 8px #10b981;
-        }
+        .vc-control-group { display: flex; align-items: center; gap: 4px; background: rgba(30,41,59,0.7); padding: 2px 5px; border-radius: 6px; }
+        .led-indicator { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 6px #ef4444; transition: 0.3s; }
+        .led-indicator.active { background: #10b981; box-shadow: 0 0 8px #10b981; }
 
-        main { flex: 1; display: flex; flex-direction: column; padding: 10px; align-items: center; justify-content: center; overflow: hidden; position: relative; z-index: 10; width: 100%; max-width: 100vw; }
-        
-        #main-menu { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 12px; 
-            width: 95%; 
-            max-width: 400px; 
-            background: var(--panel-bg); 
-            backdrop-filter: blur(16px);
-            padding: 20px; 
-            border-radius: 12px; 
-            border: 1px solid var(--border-color); 
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-            z-index: 10;
-            max-height: 85vh;
-            overflow-y: auto;
-        }
-
-        #main-menu h2 {
-            font-size: 1.1rem;
-            font-weight: 800;
-            color: var(--accent-gold);
-            text-transform: uppercase;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 6px;
-            margin-bottom: 2px;
-        }
-
-        .input-group { display: flex; flex-direction: column; gap: 4px; }
-        label { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        input, select { 
-            background: rgba(15, 23, 42, 0.85); 
-            border: 1px solid rgba(250, 204, 21, 0.3); 
-            padding: 8px 10px; 
-            color: var(--text-main); 
-            border-radius: 6px; 
-            font-size: 0.9rem; 
-            outline: none;
-            width: 100%;
-        }
-
-        .lobby-list-container { 
-            max-height: 110px; 
-            overflow-y: auto; 
-            background: rgba(15, 23, 42, 0.7); 
-            border: 1px solid rgba(250, 204, 21, 0.2); 
-            border-radius: 6px; 
-            padding: 4px; 
-        }
-
-        .lobby-item { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 6px 8px; 
-            border-bottom: 1px solid rgba(30, 41, 59, 0.8); 
-            cursor: pointer; 
-            font-size: 0.8rem; 
-            border-radius: 4px;
-        }
-
-        .lobby-item:hover { background: rgba(250, 204, 21, 0.15); color: var(--accent-gold); }
-
-        #game-view { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: space-between; position: relative; padding-bottom: 5px; }
-        
         #chat-container { position: relative; display: inline-block; }
         #chat-toggle-btn { background: #475569; border: none; color: #fff; font-size: 0.75rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        
-        #chat-window { position: absolute; top: 45px; left: calc(50% - 120px); width: 240px; height: 160px; background: rgba(30,41,59,0.98); border: 1px solid #475569; border-radius: 8px; display: none; flex-direction: column; padding: 6px; z-index: 3000; font-size: 0.7rem; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
+        #chat-toggle-btn.unread { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+        #chat-window {
+            position: absolute;
+            top: 45px;
+            left: calc(50% - 120px);
+            width: 240px;
+            height: 160px;
+            background: rgba(30,41,59,0.98);
+            border: 1px solid #475569;
+            border-radius: 8px;
+            display: none;
+            flex-direction: column;
+            padding: 6px;
+            z-index: 3000;
+            font-size: 0.7rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+        }
         .chat-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; border-bottom: 1px solid #334155; padding-bottom: 3px; color: #38bdf8; font-weight: bold; }
         #chat-messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; margin-bottom: 4px; }
         .chat-input-row { display: flex; gap: 3px; }
         .chat-input-row input { flex: 1; padding: 3px; font-size: 0.7rem; }
         .chat-input-row button { padding: 3px 6px; font-size: 0.7rem; }
 
-        .table-oval { position: relative; width: 620px; max-width: 96vw; height: 260px; background: radial-gradient(circle, #065f46 0%, #044e36 100%); border: 6px solid #78350f; border-radius: 140px; margin: auto; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 25px rgba(0,0,0,0.6); flex-shrink: 0; }
-        
+        main { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+
+        .discard-pickup-modal-topleft {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: var(--accent-cyan);
+            z-index: 2500;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            align-items: flex-start;
+            background: rgba(15, 23, 42, 0.95);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--accent-gold);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+        }
+
+        .fed-card-modal-topright {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: var(--accent-gold);
+            z-index: 2500;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            align-items: flex-end;
+            background: rgba(15, 23, 42, 0.95);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--accent-gold);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+        }
+
+        #main-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            max-width: 360px;
+            width: 90%;
+            z-index: 10;
+        }
+        .input-group { display: flex; flex-direction: column; gap: 3px; }
+        .input-group label { font-size: 0.75rem; color: var(--text-muted); }
+        input, select { background: #1e293b; border: 1px solid #475569; color: #fff; padding: 6px; border-radius: 6px; outline: none; }
+        .lobby-list-container { max-height: 120px; overflow-y: auto; background: #090d16; border-radius: 6px; padding: 4px; border: 1px solid #1e293b; }
+        .lobby-item { display: flex; justify-content: space-between; align-items: center; padding: 4px; border-bottom: 1px solid #1e293b; font-size: 0.75rem; cursor: pointer; }
+
+        #game-view {
+            display: none;
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            padding-bottom: 5px;
+            z-index: 10;
+        }
+
+        #center-notification-banner {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(4, 78, 54, 0.98);
+            border: 3px solid var(--accent-gold);
+            color: var(--text-main);
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-weight: 900;
+            font-size: 1rem;
+            text-align: center;
+            z-index: 4000;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.85);
+            display: none;
+            pointer-events: none;
+        }
+
+        #knock-alert-modal {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.96);
+            border: 2px solid #ef4444;
+            color: var(--accent-gold);
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-weight: 900;
+            font-size: 0.85rem;
+            box-shadow: 0 4px 18px rgba(239, 68, 68, 0.6);
+            display: none;
+            z-index: 250;
+            pointer-events: none;
+            letter-spacing: 0.5px;
+        }
+
+        .table-oval {
+            position: relative;
+            width: 620px;
+            max-width: 96vw;
+            height: 260px;
+            background: radial-gradient(circle, #065f46 0%, #044e36 100%);
+            border: 6px solid #78350f;
+            border-radius: 140px;
+            margin: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 0 25px rgba(0,0,0,0.6);
+            flex-shrink: 0;
+        }
+
         .pots-container { position: absolute; top: 6px; display: flex; gap: 6px; align-items: center; z-index: 10; }
-        .pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .pot-total-display, .side-pot-total-display { font-size: 0.8rem; font-weight: bold; color: var(--accent-gold); background: rgba(15,23,42,0.85); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); }
+
+        .deck-center { display: flex; gap: 16px; align-items: center; z-index: 5; }
+        .card-slot { width: 55px; height: 80px; border-radius: 6px; background: #fff; color: #000; border: 1px solid #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: bold; cursor: pointer; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.4); }
+        .card-slot.back { background: #1e3a8a; border: 2px solid #93c5fd; color: #93c5fd; font-size: 0.7rem; }
+        .deck-counter { position: absolute; bottom: 2px; font-size: 0.55rem; color: #fff; }
 
         .seat { position: absolute; background: rgba(15, 23, 42, 0.9); border: 2px solid #475569; padding: 3px 6px; border-radius: 6px; font-size: 0.65rem; text-align: center; width: 110px; z-index: 5; display: flex; flex-direction: column; align-items: center; transition: all 0.3s ease; }
         .seat:hover { border-color: var(--accent-gold); }
-        
+        .seat.current-turn-seat { background: rgba(250, 204, 21, 0.95) !important; border: 2px solid #ffffff !important; box-shadow: 0 0 20px rgba(250, 204, 21, 0.9); color: #0f172a !important; transform: scale(1.08); }
         .seat-0 { bottom: -5px; left: calc(50% - 55px); }
         .seat-1 { bottom: 25px; left: 6px; }
         .seat-2 { top: 25px; left: 8px; }
         .seat-3 { top: -10px; left: calc(50% - 55px); }
         .seat-4 { top: 25px; right: 8px; }
         .seat-5 { bottom: 25px; right: 6px; }
+        .seat-name-area { cursor: pointer; width: 100%; }
         .seat-cards { display: flex; gap: 1px; justify-content: center; margin-top: 1px; }
         .mini-card { width: 18px; height: 26px; background: #fff; font-size: 0.45rem; font-weight: bold; border-radius: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #cbd5e1; }
         .red-suit { color: #dc2626; }
         .black-suit { color: #0f172a; }
-
-        .deck-center { display: flex; gap: 10px; align-items: center; justify-content: center; }
-        .card-slot { width: 48px; height: 70px; background: #fff; color: #000; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; cursor: pointer; border: 2px solid #cbd5e1; position: relative; }
-        .card-slot.back { background: #1e3a8a; color: #fff; }
+        .dealer-badge { background: var(--accent-gold); color: #000; font-size: 0.55rem; padding: 1px 4px; border-radius: 3px; font-weight: bold; margin-left: 3px; }
 
         .my-hand-area { background: rgba(4, 78, 54, 0.9); padding: 8px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; max-width: 450px; border: 1px solid var(--border-color); flex-shrink: 0; z-index: 100; box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
         .cards-flex { display: flex !important; gap: 6px; min-height: 70px; align-items: center; justify-content: center; }
         .my-card { width: 50px; height: 72px; background: #fff; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 1rem; cursor: pointer; border: 2px solid #cbd5e1; box-shadow: 0 3px 5px rgba(0,0,0,0.3); }
+        .my-card:hover { transform: translateY(-3px); border-color: var(--accent-gold); }
 
         .bottom-action-bar { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; align-items: center; }
-        
         #turn-banner { background: rgba(4, 78, 54, 0.9); border: 1px solid var(--accent-gold); padding: 3px 10px; border-radius: 16px; font-size: 0.75rem; color: var(--accent-gold); font-weight: bold; flex-shrink: 0; }
-        
-        #knock-alert-modal { 
-            position: absolute; 
-            top: 40px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: rgba(15, 23, 42, 0.96); 
-            border: 2px solid #ef4444; 
-            color: var(--accent-gold); 
-            padding: 6px 18px; 
-            border-radius: 20px; 
-            font-weight: 900; 
-            font-size: 0.85rem; 
-            box-shadow: 0 4px 18px rgba(239, 68, 68, 0.6); 
-            display: none; 
-            z-index: 250; 
-            pointer-events: none;
-        }
 
-        #center-notification-banner { 
-            position: absolute; 
-            top: 15px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: rgba(4, 78, 54, 0.98); 
-            border: 3px solid var(--accent-gold); 
-            color: var(--text-main); 
-            padding: 12px 28px; 
-            border-radius: 10px; 
-            font-weight: 900; 
-            font-size: 1.15rem; 
-            text-align: center; 
-            z-index: 4000; 
-            box-shadow: 0 8px 25px rgba(0,0,0,0.85); 
-            display: none; 
-            pointer-events: none; 
+        #global-side-bets-sidebar {
+            position: absolute;
+            right: 8px;
+            top: 60px;
+            width: 190px;
+            max-height: 200px;
+            background: rgba(4, 78, 54, 0.92);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px;
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 100;
+            font-size: 0.7rem;
+            overflow-y: auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
         }
+        .global-bet-item { background: rgba(15, 23, 42, 0.8); padding: 5px; border-radius: 4px; border: 1px solid rgba(250, 204, 21, 0.2); display: flex; flex-direction: column; gap: 3px; }
 
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 10px; }
         .modal-content { background: var(--panel-bg); backdrop-filter: blur(16px); padding: 16px; border-radius: 12px; width: 95%; max-width: 400px; max-height: 85vh; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.8); overflow-y: auto; }
         .modal-content h3 { color: var(--accent-gold); font-size: 1.1rem; }
+        .button-group { display: flex; flex-direction: column; gap: 6px; }
+
+        .pool-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 4px; justify-content: center; align-content: center; overflow-y: auto; max-height: 50vh; padding: 6px; background: rgba(15, 23, 42, 0.6); border-radius: 6px; border: 1px solid rgba(250, 204, 21, 0.2); }
+        .pool-card-item { width: 100%; height: 48px; background: #1e3a8a; border: 1px solid var(--accent-cyan); border-radius: 3px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; color: #fff; font-size: 0.65rem; }
+        .pool-card-item.revealed { background: #fff; color: #0f172a; flex-direction: column; font-size: 0.5rem; }
+        #next-hand-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; display: none; }
+        #next-hand-btn { background: #10b981; color: #fff; font-size: 1rem; padding: 10px 20px; border-radius: 6px; font-weight: bold; border: 2px solid #34d399; }
     </style>
 </head>
 <body>
-
-    <input type="checkbox" switch id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
-
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
+    <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
+    <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
+            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
+            <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
             <button class="secondary" onclick="openLedgerModal()">Ledger</button>
+            
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleLiveKitMic()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Participants">...</button>
             </div>
+
+            <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
+            
             <div id="chat-container">
                 <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
             </div>
+
             <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End</button>
             <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
         </div>
+
         <div id="chat-window">
             <div class="chat-header-row">
                 <span>Chat Room</span>
@@ -316,15 +346,25 @@
     </header>
 
     <main>
+        <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
+            <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
+            <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
+        </div>
+
+        <div id="fed-card-topright-modal" class="fed-card-modal-topright" style="display:none;">
+            <span id="fed-card-label" style="color:var(--accent-gold); font-size:0.75rem; font-weight:bold;">Next player took:</span>
+            <div id="fed-card-content" style="display:flex; align-items:center; gap:6px;"></div>
+        </div>
+
         <div id="main-menu">
             <h2>Lobby Menu</h2>
             <div class="input-group">
                 <label>Username</label>
-                <input type="text" id="username-input" oninput="saveInputs()">
+                <input type="text" id="username-input" oninput="saveInputs()" value="Player1">
             </div>
             <div class="input-group">
                 <label>Lobby Name</label>
-                <input type="text" id="lobby-name-input" oninput="saveInputs()">
+                <input type="text" id="lobby-name-input" oninput="saveInputs()" value="My Table">
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <button onclick="createLobby()" style="flex:1;">Create Lobby</button>
@@ -354,58 +394,196 @@
 
         <div id="game-view">
             <div id="center-notification-banner">NOTIFICATION</div>
+            <div id="knock-alert-modal">🔔 Knock Alert</div>
 
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
-                <div id="turn-banner">Turn: Waiting...</div>
+                <div id="turn-banner" style="font-size:0.75rem;">Turn: Waiting...</div>
             </div>
 
-            <div id="knock-alert-modal">🔔 Knock Alert</div>
+            <div id="active-peeking-banner" style="display:none; background:rgba(30,58,138,0.95); border:1px solid var(--accent-cyan); padding:4px 12px; border-radius:14px; font-size:0.75rem; color:#fff; align-items:center; gap:8px; margin-top:2px;">
+                <span>👀 Viewing Player Hand</span>
+                <button class="secondary" onclick="stopPeekingAction()" style="padding:2px 6px; font-size:0.65rem; background:#ef4444;">Stop Peeking</button>
+            </div>
 
-            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                <button class="secondary" onclick="addBot()">+ Bot</button>
-                <button class="secondary" onclick="removeBot()">- Bot</button>
+            <div id="lobby-config-bar" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+                <select id="config-wager" onchange="updateWager()" style="padding:3px; font-size:0.75rem;">
+                    <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
+                </select>
+                <select id="config-lives" onchange="updateSettings()" style="padding:3px; font-size:0.75rem;">
+                    <option value="2">2 Lives</option><option value="3">3 Lives</option><option value="5">5 Lives</option>
+                </select>
+                <div style="display:inline-flex; gap:4px; margin-left:4px;">
+                    <button type="button" class="secondary" onclick="addBot()" style="padding:3px 8px; font-size:0.75rem; background:#2563eb; color:#fff; border:1px solid #3b82f6;">+bot</button>
+                    <button type="button" class="secondary" onclick="removeBot()" style="padding:3px 8px; font-size:0.75rem; background:#475569; color:#fff; border:1px solid #64748b;">-bot</button>
+                </div>
             </div>
             
             <div class="table-oval" id="table-oval-container">
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
+                    <div class="side-pot-total-display" id="side-pot-total-banner" style="display:none;">Side Pots: $0</div>
                 </div>
-                <div class="deck-center" id="table-deck-center">
-                    <div class="card-slot back" onclick="drawCard('deck')">DECK</div>
-                    <div class="card-slot" id="discard-slot" onclick="drawCard('discard')">--</div>
+                <div id="next-hand-overlay">
+                    <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
                 </div>
             </div>
 
             <div class="my-hand-area" id="my-hand-control-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: var(--text-muted);">
-                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>)</span>
+                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>) - Draw & discard</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar" id="my-action-buttons">
+                    <button class="danger" id="stand-up-btn" onclick="standUp()" style="display:none;">Stand Up</button>
+                    <button id="sit-btn" onclick="sitDown()" style="display:none; background:#10b981; border:1px solid #34d399;">Sit</button>
                     <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
                     <button onclick="knockRound()" id="knock-btn" class="secondary" disabled>Knock</button>
+                    <button class="secondary" onclick="openActiveBetsModal()" style="background:#065f46; border:1px solid var(--accent-gold);">Active Bets</button>
                 </div>
             </div>
         </div>
+
+        <div id="global-side-bets-sidebar">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:3px; margin-bottom:3px;">
+                <span style="font-weight:bold; color:var(--accent-gold);">Global Side Bets</span>
+                <button class="secondary" style="padding: 1px 4px; font-size: 0.6rem;" onclick="toggleGlobalSidebar()">➖</button>
+            </div>
+            <div id="global-side-bets-list" style="display:flex; flex-direction:column; gap:3px;"></div>
+        </div>
     </main>
 
-    <!-- Ledger Balances Modal -->
+    <!-- Modals -->
+    <div id="vc-participants-modal" class="modal">
+        <div class="modal-content" style="max-width:320px;">
+            <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
+            <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
+            <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px; padding:6px; font-size:0.75rem;">🔄 Reconnect Voice Chat</button>
+            <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:4px;">Close</button>
+        </div>
+    </div>
+
+    <div id="music-modal" class="modal">
+        <div class="modal-content" style="max-width:360px;">
+            <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
+            <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
+                <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
+                    No song playing
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
+                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
+                <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.7rem; color:var(--text-muted);">Personal Vol:</span>
+                    <input type="range" id="individual-volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="adjustIndividualVolume(this.value)" style="width:80px; accent-color:var(--accent-gold);">
+                </div>
+            </div>
+
+            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:2px;">Shared Lobby Queue:</div>
+            <div id="playlist-container" style="max-height:100px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
+                <div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                <label style="text-align:left; font-size:0.75rem;">Add YouTube Song</label>
+                <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
+                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
+                <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
+            </div>
+
+            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:4px;">Close</button>
+        </div>
+    </div>
+
+    <div id="bet-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="bet-modal-title">Propose Bet</h3>
+            <div id="bet-modal-body" class="button-group"></div>
+        </div>
+    </div>
+
+    <div id="seat-action-modal" class="modal">
+        <div class="modal-content" style="max-width:300px;">
+            <h3 id="seat-action-title" style="color:var(--accent-gold);">Player Actions</h3>
+            <div id="seat-action-body" class="button-group" style="margin-top:4px;"></div>
+        </div>
+    </div>
+
+    <div id="peek-request-modal" class="modal">
+        <div class="modal-content" style="max-width:320px;">
+            <h3 style="color:var(--accent-gold);">Peek Permission Request</h3>
+            <p id="peek-modal-msg" style="font-size:0.85rem; color:var(--text-muted);">Spectator wants to peek at your hand.</p>
+            <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+                <button id="peek-allow-btn" style="background:#10b981;">Allow</button>
+                <button class="danger" id="peek-deny-btn">Deny</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="active-bets-modal" class="modal">
+        <div class="modal-content" style="max-width:350px;">
+            <h3>My Active & Pending Side Bets</h3>
+            <div id="active-bets-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No active side bets.</div>
+            <button class="secondary" onclick="toggleModal('active-bets-modal')">Close</button>
+        </div>
+    </div>
+
+    <div id="pool-draw-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="pool-modal-title" style="font-size: 1.25rem;">Card Selection</h3>
+            <p id="pool-modal-instruction" style="font-size: 0.85rem; color: var(--text-muted);">Select a face-down card from the deck pool.</p>
+            <div class="pool-cards-grid" id="pool-cards-container"></div>
+            <div id="pool-announcement" style="font-size: 0.95rem; font-weight: 800; color: var(--accent-gold);"></div>
+        </div>
+    </div>
+
+    <div id="tie-breaker-reveal-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
+            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select cards...</p>
+            <div id="tie-breaker-stream-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:8px; background:rgba(15,23,42,0.6); border-radius:6px;"></div>
+        </div>
+    </div>
+
+    <div id="rules-modal" class="modal">
+        <div class="modal-content" style="max-width:350px; text-align:left;">
+            <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:4px;">How to Play 31!</h3>
+            <div style="font-size:0.75rem; color:var(--text-muted); max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
+                <p><b>Objective:</b> Collect 31 points in a single suit or achieve a higher hand score than your opponents before the round ends.</p>
+                <p><b>Scoring:</b></p>
+                <ul style="padding-left:14px;">
+                    <li>Numbered cards (2-10) are worth face value.</li>
+                    <li>Face cards (Jack, Queen, King) are worth 10 points.</li>
+                    <li>Aces are worth 11 points.</li>
+                    <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
+                </ul>
+            </div>
+            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
+        </div>
+    </div>
+
     <div id="ledger-modal" class="modal">
         <div class="modal-content" style="max-width:340px;">
             <h3>Ledger & Balances</h3>
-            <div id="ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
+            <div id="ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:230px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
             <button onclick="saveLedgerScreenshot()" style="background:#10b981; margin-top:6px;">📸 Save Snapshot to Device</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
     </div>
 
-    <!-- Android & Cross-Platform Ledger Snapshot Fail-Safe Modal -->
-    <div id="screenshot-modal" class="modal" style="z-index: 6000;">
+    <!-- Android-Proof Snapshot Download & Share Modal -->
+    <div id="screenshot-modal" class="modal" style="z-index: 7000;">
         <div class="modal-content" style="max-width: 380px; user-select: auto; -webkit-user-select: auto;">
             <h3 style="color: var(--accent-gold);">📸 Ledger Snapshot</h3>
             <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
-                Tap <b>Download</b> or <b>Share</b> below. You can also touch and hold the preview image to save it.
+                Tap <b>Download</b> or <b>Share</b> below. On mobile, you can also touch and hold the preview image to save it.
             </p>
             
             <div style="max-height: 48vh; overflow-y: auto; border-radius: 6px; border: 1px solid rgba(250,204,21,0.3); background: #022c22; padding: 4px; user-select: auto; -webkit-user-select: auto;">
@@ -418,9 +596,17 @@
 
             <div style="display: flex; gap: 6px; margin-top: 6px;">
                 <button id="screenshot-share-btn" type="button" style="flex: 1; background: #10b981; padding: 8px;">📤 Share / Save</button>
-                <button id="screenshot-download-btn" type="button" style="flex: 1; background: #2563eb; padding: 8px;">💾 Download</button>
+                <a id="screenshot-download-link" class="btn-link" style="flex: 1; background: #2563eb; padding: 8px;">💾 Download</a>
             </div>
             <button class="secondary" type="button" onclick="closeScreenshotModal()" style="margin-top: 6px; padding: 8px;">Close</button>
+        </div>
+    </div>
+
+    <div id="spectators-modal" class="modal">
+        <div class="modal-content" style="max-width:330px;">
+            <h3>Spectator List</h3>
+            <div id="spectators-list-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No spectators.</div>
+            <button class="secondary" onclick="toggleModal('spectators-modal')">Close</button>
         </div>
     </div>
 
@@ -428,13 +614,411 @@
         let ws = null;
         let isConnected = false;
         let pendingQueue = [];
-        let clientState = { username: 'Player1', isReady: false, playersList: [], gameState: 'lobby', sideBetLedger: {}, mainGameLedger: {} };
+        let clientState = {
+            username: 'Player1',
+            isReady: false,
+            playersList: [],
+            spectatorsList: [],
+            discardTop: null,
+            sideBetLedger: {},
+            mainGameLedger: {},
+            botBetLedger: {},
+            lastDiscardPickup: null,
+            gameState: 'lobby',
+            activeParticipantsCount: 3,
+            isSpectator: false,
+            tiedParticipantsList: [],
+            activeBetsList: [],
+            pendingBetsList: []
+        };
+        let lastKnownKnockedBy = null;
+        let hasChosenPoolCard = false;
+        let lastPhaseMessage = '';
+        let lastGameState = '';
         let currentJoinedCode = null;
+        let latestLobbySnapshot = null;
+
+        // LiveKit Voice Chat State
         let livekitRoom = null;
         let isLiveKitConnected = false;
-        let isLiveKitMuted = true;
+        let isVoiceChatActive = false;
+        let isConnectingVoice = false;
+        let latestLiveKitHost = null;
+        let latestLiveKitToken = null;
 
-        // Synchronous Base64 to Blob Converter
+        let activeSyncedSongKey = '';
+        let individualVolume = 0.8;
+        let isIndividualMuted = false;
+        let activeScreenshotBlobUrl = null;
+
+        function getLiveKitSDK() {
+            return window.LivekitClient || window.LiveKitClient || null;
+        }
+
+        async function connectToLiveKit(host, token) {
+            const LK = getLiveKitSDK();
+            if (!LK || isConnectingVoice) return;
+            isConnectingVoice = true;
+
+            try {
+                if (livekitRoom) {
+                    try { await livekitRoom.disconnect(); } catch (e) {}
+                    livekitRoom = null;
+                }
+
+                livekitRoom = new LK.Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                    audioCaptureDefaults: {
+                        autoGainControl: true,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track) => {
+                    if (track.kind === LK.Track.Kind.Audio || track.kind === 'audio') {
+                        const audioElem = track.attach();
+                        audioElem.autoplay = true;
+                        audioElem.playsInline = true;
+                        audioElem.volume = 1.0;
+                        document.body.appendChild(audioElem);
+                    }
+                });
+
+                livekitRoom.on(LK.RoomEvent.TrackUnsubscribed, (track) => {
+                    track.detach().forEach(el => el.remove());
+                });
+
+                livekitRoom.on(LK.RoomEvent.Disconnected, () => {
+                    isLiveKitConnected = false;
+                    isVoiceChatActive = false;
+                    updateVoiceUI();
+                });
+
+                await livekitRoom.connect(host, token);
+                isLiveKitConnected = true;
+
+                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                isVoiceChatActive = false;
+                updateVoiceUI();
+                sendVCStatusInternal(true, true);
+            } catch (error) {
+                console.error("Failed to connect to LiveKit room:", error);
+            } finally {
+                isConnectingVoice = false;
+            }
+        }
+
+        async function toggleVoiceOnOff() {
+            if (!livekitRoom || !isLiveKitConnected) {
+                if (latestLiveKitHost && latestLiveKitToken) {
+                    let btn = document.getElementById('vc-main-btn');
+                    if (btn) btn.innerText = 'Connecting...';
+                    await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
+                } else {
+                    return;
+                }
+            }
+
+            if (!livekitRoom || !isLiveKitConnected) return;
+
+            try {
+                let ctx = getAudioContext();
+                if (ctx && ctx.state === 'suspended') ctx.resume();
+
+                if (isVoiceChatActive) {
+                    await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                    isVoiceChatActive = false;
+                    updateVoiceUI();
+                    sendVCStatusInternal(true, true);
+                } else {
+                    if (livekitRoom.startAudio) await livekitRoom.startAudio();
+                    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+                    isVoiceChatActive = true;
+                    updateVoiceUI();
+                    sendVCStatusInternal(true, false);
+                }
+            } catch (err) {
+                console.error("Microphone toggle error:", err);
+                isVoiceChatActive = false;
+                updateVoiceUI();
+                alert("Microphone permission denied or unavailable.");
+            }
+        }
+
+        function updateVoiceUI() {
+            const btn = document.getElementById('vc-main-btn');
+            const led = document.getElementById('vc-led');
+            if (btn) btn.innerText = isVoiceChatActive ? '🎙️ Voice: On' : '🎙️ Voice: Off';
+            if (led) {
+                if (isVoiceChatActive) led.classList.add('active');
+                else led.classList.remove('active');
+            }
+        }
+
+        async function disconnectLiveKit() {
+            if (livekitRoom) {
+                try { await livekitRoom.disconnect(); } catch (e) {}
+                livekitRoom = null;
+            }
+            isLiveKitConnected = false;
+            isVoiceChatActive = false;
+            updateVoiceUI();
+        }
+
+        function sendVCStatusInternal(inVC, isMuted) {
+            initSocketAndSend({ type: 'UPDATE_VC_STATUS', inVC, isMuted });
+        }
+
+        function triggerVoiceReconnect() {
+            if (latestLiveKitHost && latestLiveKitToken) {
+                connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
+                showCenterNotification("Reconnecting voice chat...");
+            }
+            toggleModal('vc-participants-modal');
+        }
+
+        function openVcParticipantsModal() {
+            let listDiv = document.getElementById('vc-participants-list');
+            if (!latestLobbySnapshot) {
+                listDiv.innerHTML = 'No active lobby data.';
+                toggleModal('vc-participants-modal');
+                return;
+            }
+            let vcUsers = [];
+            latestLobbySnapshot.players.forEach(p => { if (p.inVC) vcUsers.push({ username: p.username, isMuted: p.isMuted }); });
+            latestLobbySnapshot.spectators.forEach(s => { if (s.inVC) vcUsers.push({ username: s.username, isMuted: s.isMuted }); });
+            if (vcUsers.length === 0) {
+                listDiv.innerHTML = 'No one currently in voice chat.';
+            } else {
+                listDiv.innerHTML = '<ul>' + vcUsers.map(u => `<li style="margin-bottom:4px;"><b>${u.username}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>`).join('') + '</ul>';
+            }
+            toggleModal('vc-participants-modal');
+        }
+
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playSound(type) {
+            try {
+                let ctx = getAudioContext();
+                let now = ctx.currentTime;
+                let osc = ctx.createOscillator();
+                let gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (type === 'ding') {
+                    osc.frequency.setValueAtTime(587.33, now);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } else if (type === 'knock') {
+                    osc.frequency.setValueAtTime(300, now);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                }
+            } catch (e) {}
+        }
+
+        function triggerVibration(pattern) {
+            if (navigator.vibrate) {
+                try { navigator.vibrate(pattern); } catch (e) {}
+            }
+        }
+
+        function parseYouTubeEmbedUrl(url, autoplay = true) {
+            let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            let match = url.match(regExp);
+            let autoStr = autoplay ? '1' : '0';
+            if (match && match[2].length === 11) {
+                return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}&enablejsapi=1`;
+            }
+            return url;
+        }
+
+        function addNewSongToPlaylist() {
+            let titleInput = document.getElementById('new-song-title');
+            let urlInput = document.getElementById('new-song-url');
+            let title = titleInput.value.trim();
+            let rawUrl = urlInput.value.trim();
+
+            if (!title || !rawUrl) {
+                alert("Please provide both a song title and a valid YouTube link.");
+                return;
+            }
+
+            let embedUrl = parseYouTubeEmbedUrl(rawUrl, true);
+            initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl });
+            titleInput.value = '';
+            urlInput.value = '';
+            showCenterNotification(`Added "${title}" to queue!`);
+        }
+
+        function sendMusicControl(action) {
+            initSocketAndSend({ type: 'CONTROL_MUSIC', action });
+        }
+
+        function adjustIndividualVolume(val) {
+            individualVolume = parseFloat(val);
+            let iframe = document.querySelector('#youtube-embed-container iframe');
+            if (iframe?.contentWindow) {
+                try {
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: 'setVolume',
+                        args: [individualVolume * 100]
+                    }), '*');
+                } catch (e) {}
+            }
+        }
+
+        function toggleIndividualMusicMute() {
+            isIndividualMuted = !isIndividualMuted;
+            let btn = document.getElementById('individual-mute-btn');
+            if (btn) btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+            let iframe = document.querySelector('#youtube-embed-container iframe');
+            if (iframe?.contentWindow) {
+                try {
+                    let funcName = isIndividualMuted ? 'mute' : 'unMute';
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: funcName,
+                        args: []
+                    }), '*');
+                } catch (e) {}
+            }
+        }
+
+        function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
+            let container = document.getElementById('youtube-embed-container');
+            if (!container) return;
+            if (!playlist || playlist.length === 0 || !isPlaying) {
+                container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
+                activeSyncedSongKey = '';
+                return;
+            }
+
+            let currentSong = playlist[currentIndex] || playlist[0];
+            let songUniqueKey = `${currentIndex}_${currentSong.url}_${isPlaying}`;
+            let embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
+
+            if (activeSyncedSongKey !== songUniqueKey) {
+                activeSyncedSongKey = songUniqueKey;
+                container.innerHTML = `
+                    <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                `;
+            }
+        }
+
+        function calculatePairwiseNet(ledgerData, myName, allUsers) {
+            let totalNet = 0;
+            let records = {};
+            let ledgerKeys = new Set([...Object.keys(ledgerData || {}), ...(allUsers || [])]);
+            for (let debtorKey in (ledgerData || {})) {
+                ledgerKeys.add(debtorKey);
+                if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
+                    for (let creditorKey in ledgerData[debtorKey]) ledgerKeys.add(creditorKey);
+                }
+            }
+            ledgerKeys.forEach(otherUser => {
+                let cleanOther = (otherUser || '').trim();
+                let cleanMe = (myName || '').trim();
+                if (cleanOther.toLowerCase() === cleanMe.toLowerCase()) return;
+                let theyOweMe = (ledgerData?.[cleanOther]?.[cleanMe]) || 0;
+                let iOweThem = (ledgerData?.[cleanMe]?.[cleanOther]) || 0;
+                let net = theyOweMe - iOweThem;
+                if (net !== 0) { records[cleanOther] = net; totalNet += net; }
+            });
+            return { totalNet, records };
+        }
+
+        function openLedgerModal() {
+            let ledgerDiv = document.getElementById('ledger-content');
+            let myName = (document.getElementById('username-input').value.trim() || clientState.username).trim();
+            let sideLedgerData = clientState.sideBetLedger || {};
+            let mainLedgerData = clientState.mainGameLedger || {};
+            let botLedgerData = clientState.botBetLedger || {};
+
+            let allUsers = new Set([
+                ...Object.keys(sideLedgerData), 
+                ...Object.keys(mainLedgerData), 
+                ...Object.keys(botLedgerData), 
+                ...(clientState.playersList || [])
+            ]);
+
+            let sideCalc = calculatePairwiseNet(sideLedgerData, myName, allUsers);
+            let mainCalc = calculatePairwiseNet(mainLedgerData, myName, allUsers);
+            let botCalc = calculatePairwiseNet(botLedgerData, myName, allUsers);
+            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
+
+            let html = `<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 5px; color: ${grandTotal >= 0 ? '#34d399' : '#f87171'};">Total Net Balance: $${grandTotal.toFixed(2)}</div>`;
+            html += `<hr style="border-color:#475569; margin-bottom:5px;">`;
+
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🤝 Side Bets</div>`;
+            let sideHtml = '<ul>';
+            let hasSide = false;
+            for (let [user, netAmt] of Object.entries(sideCalc.records)) {
+                hasSide = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'side')">Clear</button>` : '';
+                sideHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
+            }
+            sideHtml += '</ul>';
+            html += hasSide ? sideHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No side bet balances.</div>`;
+
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 2px;">🎮 Main Game Pot Ledger</div>`;
+            let mainHtml = '<ul>';
+            let hasMain = false;
+            for (let [user, netAmt] of Object.entries(mainCalc.records)) {
+                hasMain = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'main')">Clear</button>` : '';
+                mainHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
+            }
+            mainHtml += '</ul>';
+            html += hasMain ? mainHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px; margin-bottom: 5px;">No main game balances recorded.</div>`;
+
+            html += `<div style="font-size: 0.75rem; font-weight: bold; color: var(--accent-cyan); margin-top: 6px; margin-bottom: 2px;">🤖 Bot Bets</div>`;
+            let botHtml = '<ul>';
+            let hasBot = false;
+            for (let [user, netAmt] of Object.entries(botCalc.records)) {
+                hasBot = true;
+                let relationText = netAmt > 0 ? `<span style="color:#34d399;">owes you $${Math.abs(netAmt).toFixed(2)}</span>` : `<span style="color:#f87171;">you owe $${Math.abs(netAmt).toFixed(2)}</span>`;
+                let clearBtn = netAmt > 0 ? ` <button style="font-size:0.5rem; padding:1px 3px; background:#10b981;" onclick="clearDebtCategory('${user}', 'bot')">Clear</button>` : '';
+                botHtml += `<li style="margin-left: 8px; margin-bottom:2px;"><b>${user}</b> ${relationText}${clearBtn}</li>`;
+            }
+            botHtml += '</ul>';
+            html += hasBot ? botHtml : `<div style="font-size: 0.65rem; color: var(--text-muted); margin-left: 8px;">No bot bets recorded.</div>`;
+
+            ledgerDiv.innerHTML = html;
+            toggleModal('ledger-modal');
+        }
+
+        function clearDebtCategory(targetUser, category) {
+            initSocketAndSend({ type: 'CLEAR_DEBT', targetUser, category });
+            setTimeout(openLedgerModal, 200);
+        }
+
+        function openSpectatorListModal() {
+            let content = document.getElementById('spectators-list-content');
+            let specs = clientState.spectatorsList || [];
+            if (specs.length === 0) content.innerHTML = 'No spectators.';
+            else content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
+            toggleModal('spectators-modal');
+        }
+
+        // ==========================================
+        // GUARANTEED ANDROID / MULTI-DEVICE DOWNLOAD
+        // ==========================================
         function dataURLToBlobSync(dataURL) {
             const parts = dataURL.split(',');
             const mime = parts[0].match(/:(.*?);/)[1];
@@ -450,15 +1034,13 @@
         function closeScreenshotModal() {
             const modal = document.getElementById('screenshot-modal');
             if (modal) modal.style.display = 'none';
+            if (activeScreenshotBlobUrl) {
+                URL.revokeObjectURL(activeScreenshotBlobUrl);
+                activeScreenshotBlobUrl = null;
+            }
         }
 
-        function setModalStatus(msg) {
-            const el = document.getElementById('screenshot-status-text');
-            if (el) el.innerText = msg;
-        }
-
-        // Android-Proof Ledger Snapshot Pipeline
-        async function saveLedgerScreenshot() {
+        function saveLedgerScreenshot() {
             const ledgerModal = document.getElementById('ledger-modal');
             if (ledgerModal) ledgerModal.style.display = 'none';
 
@@ -471,16 +1053,14 @@
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 600;
-            canvas.height = 740;
+            canvas.height = 760;
 
-            // Background & Border
             ctx.fillStyle = '#065f46';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.strokeStyle = '#facc15';
             ctx.lineWidth = 6;
             ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
 
-            // Header Banner
             ctx.fillStyle = '#facc15';
             ctx.font = 'bold 24px system-ui, sans-serif';
             ctx.fillText("31! Game Ledger Snapshot", 30, 50);
@@ -498,6 +1078,7 @@
 
             const sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, clientState.playersList || []);
             const mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, clientState.playersList || []);
+            const botCalc = calculatePairwiseNet(clientState.botBetLedger || {}, myName, clientState.playersList || []);
             const grandTotal = sideCalc.totalNet + mainCalc.totalNet;
 
             ctx.fillStyle = grandTotal >= 0 ? '#34d399' : '#f87171';
@@ -537,6 +1118,7 @@
             if (mainEntries.length === 0) {
                 ctx.fillStyle = '#94a3b8';
                 ctx.fillText("No main game balances recorded.", 45, y);
+                y += 25;
             } else {
                 for (let [user, netAmt] of mainEntries) {
                     ctx.fillStyle = '#f8fafc';
@@ -547,34 +1129,58 @@
                 }
             }
 
+            y += 15;
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 16px system-ui, sans-serif';
+            ctx.fillText("🤖 Bot Bets Ledger", 30, y);
+            y += 25;
+
+            ctx.font = '15px system-ui, sans-serif';
+            const botEntries = Object.entries(botCalc.records);
+            if (botEntries.length === 0) {
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText("No bot bet balances recorded.", 45, y);
+            } else {
+                for (let [user, netAmt] of botEntries) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillText(`• ${user}: `, 45, y);
+                    ctx.fillStyle = netAmt > 0 ? '#34d399' : '#f87171';
+                    ctx.fillText(netAmt > 0 ? `owes you $${Math.abs(netAmt).toFixed(2)}` : `you owe $${Math.abs(netAmt).toFixed(2)}`, 160, y);
+                    y += 25;
+                }
+            }
+
             const dataUrl = canvas.toDataURL('image/png');
             const blob = dataURLToBlobSync(dataUrl);
-            const blobUrl = URL.createObjectURL(blob);
+            if (activeScreenshotBlobUrl) URL.revokeObjectURL(activeScreenshotBlobUrl);
+            activeScreenshotBlobUrl = URL.createObjectURL(blob);
             const file = new File([blob], fileName, { type: 'image/png' });
 
-            showScreenshotModal(dataUrl, blobUrl, file, fileName);
-        }
-
-        function showScreenshotModal(dataUrl, blobUrl, file, fileName) {
             const modal = document.getElementById('screenshot-modal');
             const img = document.getElementById('screenshot-preview-img');
             const shareBtn = document.getElementById('screenshot-share-btn');
-            const dlBtn = document.getElementById('screenshot-download-btn');
-            if (!modal || !img) return;
+            const dlLink = document.getElementById('screenshot-download-link');
+            const statusText = document.getElementById('screenshot-status-text');
 
             img.src = dataUrl;
-            setModalStatus("");
+            statusText.innerText = "";
+
+            dlLink.href = activeScreenshotBlobUrl;
+            dlLink.download = fileName;
+            dlLink.onclick = () => {
+                statusText.innerText = "Download initiated!";
+            };
 
             shareBtn.onclick = async () => {
-                setModalStatus("Opening share sheet...");
+                statusText.innerText = "Opening share sheet...";
                 if (window.Capacitor?.Plugins?.Share) {
                     try {
                         await window.Capacitor.Plugins.Share.share({
                             title: '31! Game Ledger',
                             url: dataUrl,
-                            dialogTitle: 'Save or Share Ledger'
+                            dialogTitle: 'Save Ledger Snapshot'
                         });
-                        setModalStatus("Share sheet opened.");
+                        statusText.innerText = "System sheet opened.";
                         return;
                     } catch (e) {}
                 }
@@ -582,73 +1188,37 @@
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     try {
                         await navigator.share({ files: [file], title: '31! Game Ledger' });
-                        setModalStatus("Snapshot shared!");
+                        statusText.innerText = "Shared successfully!";
                         return;
                     } catch (err) {
-                        if (err.name === 'AbortError') {
-                            setModalStatus("");
-                            return;
-                        }
+                        if (err.name === 'AbortError') { statusText.innerText = ""; return; }
                     }
                 }
-                setModalStatus("Share unavailable. Use Download or hold the image.");
-            };
-
-            dlBtn.onclick = () => {
-                setModalStatus("Starting download...");
-                try {
-                    const link = document.createElement('a');
-                    link.href = blobUrl;
-                    link.download = fileName;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setModalStatus("File download sent to device!");
-                } catch (err) {
-                    window.open(blobUrl, '_blank');
-                    setModalStatus("Opened image in viewer. Save from menu.");
-                }
+                statusText.innerText = "Press & hold the image to save directly.";
             };
 
             modal.style.display = 'flex';
+
+            // Automatic download kick-off
+            try {
+                const autoLink = document.createElement('a');
+                autoLink.href = activeScreenshotBlobUrl;
+                autoLink.download = fileName;
+                document.body.appendChild(autoLink);
+                autoLink.click();
+                document.body.removeChild(autoLink);
+            } catch (e) {}
         }
 
-        function calculatePairwiseNet(ledgerData, myName, allUsers) {
-            let totalNet = 0;
-            let records = {};
-            let ledgerKeys = new Set([...Object.keys(ledgerData || {}), ...(allUsers || [])]);
-            for (let debtorKey in (ledgerData || {})) {
-                ledgerKeys.add(debtorKey);
-                if (ledgerData[debtorKey] && typeof ledgerData[debtorKey] === 'object') {
-                    for (let creditorKey in ledgerData[debtorKey]) ledgerKeys.add(creditorKey);
-                }
+        function formatCardHtml(card, isMini = false) {
+            if (!card) return '';
+            let isRed = ['♥', '♦'].includes(card.suit);
+            let suitClass = isRed ? 'red-suit' : 'black-suit';
+            if (isMini) {
+                return `<div class="mini-card ${suitClass}"><span>${card.val}</span><span>${card.suit}</span></div>`;
+            } else {
+                return `<div class="my-card ${suitClass}" style="width:60px; height:85px; font-size:1.1rem;"><span>${card.val}</span><span style="font-size:1.4rem;">${card.suit}</span></div>`;
             }
-            ledgerKeys.forEach(otherUser => {
-                let cleanOther = (otherUser || '').trim();
-                let cleanMe = (myName || '').trim();
-                if (cleanOther.toLowerCase() === cleanMe.toLowerCase()) return;
-                let theyOweMe = (ledgerData?.[cleanOther]?.[cleanMe]) || 0;
-                let iOweThem = (ledgerData?.[cleanMe]?.[cleanOther]) || 0;
-                let net = theyOweMe - iOweThem;
-                if (net !== 0) { records[cleanOther] = net; totalNet += net; }
-            });
-            return { totalNet, records };
-        }
-
-        function openLedgerModal() {
-            let ledgerDiv = document.getElementById('ledger-content');
-            let myName = (document.getElementById('username-input').value.trim() || clientState.username).trim();
-            let sideCalc = calculatePairwiseNet(clientState.sideBetLedger || {}, myName, clientState.playersList || []);
-            let mainCalc = calculatePairwiseNet(clientState.mainGameLedger || {}, myName, clientState.playersList || []);
-            let grandTotal = sideCalc.totalNet + mainCalc.totalNet;
-            let html = `<div style="font-weight:bold; color:${grandTotal >= 0 ? '#34d399' : '#f87171'}; margin-bottom:6px;">Total Net: $${grandTotal.toFixed(2)}</div>`;
-            ledgerDiv.innerHTML = html;
-            toggleModal('ledger-modal');
-        }
-
-        function toggleModal(id) {
-            let m = document.getElementById(id);
-            if (m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
 
         function showCenterNotification(msg) {
@@ -659,48 +1229,6 @@
             setTimeout(() => { banner.style.display = 'none'; }, 2500);
         }
 
-        // LiveKit Audio Integration
-        async function connectToLiveKit(host, token) {
-            if (!window.LivekitClient) return;
-            try {
-                if (livekitRoom) await livekitRoom.disconnect();
-                livekitRoom = new LivekitClient.Room({ adaptiveStream: true });
-                livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
-                    if (track.kind === LivekitClient.Track.Kind.Audio) {
-                        const el = track.attach();
-                        document.body.appendChild(el);
-                    }
-                });
-                await livekitRoom.connect(host, token);
-                isLiveKitConnected = true;
-                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-                isLiveKitMuted = true;
-                updateLiveKitUI();
-            } catch (e) {
-                console.error("LiveKit connection failure:", e);
-            }
-        }
-
-        async function toggleLiveKitMic() {
-            if (!livekitRoom || !isLiveKitConnected) return;
-            isLiveKitMuted = !isLiveKitMuted;
-            try {
-                await livekitRoom.localParticipant.setMicrophoneEnabled(!isLiveKitMuted);
-            } catch (e) {}
-            updateLiveKitUI();
-        }
-
-        function updateLiveKitUI() {
-            let btn = document.getElementById('vc-main-btn');
-            let led = document.getElementById('vc-led');
-            if (btn) btn.innerText = isLiveKitMuted ? '🎙️ Voice: Off' : '🎙️ Voice: On';
-            if (led) {
-                if (isLiveKitMuted) led.classList.remove('active');
-                else led.classList.add('active');
-            }
-        }
-
-        // WebSocket Handlers
         function connectSocket() {
             if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
             const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -709,6 +1237,13 @@
             ws.onopen = () => {
                 isConnected = true;
                 while (pendingQueue.length > 0) ws.send(JSON.stringify(pendingQueue.shift()));
+                if (currentJoinedCode) {
+                    initSocketAndSend({
+                        type: 'JOIN_LOBBY',
+                        code: currentJoinedCode,
+                        username: document.getElementById('username-input').value.trim() || clientState.username
+                    });
+                }
             };
 
             ws.onmessage = (event) => {
@@ -716,9 +1251,17 @@
                 if (data.type === 'LOBBY_LIST') renderLobbyList(data.lobbies);
                 else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE') {
                     if (data.lobby && data.lobby.code) currentJoinedCode = data.lobby.code;
+                    latestLobbySnapshot = data.lobby;
                     updateUIFromLobby(data.lobby);
-                    if (data.livekitHost && data.livekitToken) {
-                        connectToLiveKit(data.livekitHost, data.livekitToken);
+
+                    const host = data.livekitHost || latestLiveKitHost;
+                    const token = data.livekitToken || latestLiveKitToken;
+                    if (host && token) {
+                        latestLiveKitHost = host;
+                        latestLiveKitToken = token;
+                        if (!isLiveKitConnected && !isConnectingVoice) {
+                            connectToLiveKit(host, token);
+                        }
                     }
                 } else if (data.type === 'CHAT_MESSAGE') {
                     let box = document.getElementById('chat-messages');
@@ -728,18 +1271,15 @@
                     }
                 } else if (data.type === 'LEFT_LOBBY') {
                     currentJoinedCode = null;
-                    if (livekitRoom) livekitRoom.disconnect();
-                    document.getElementById('game-view').style.display = 'none';
-                    document.getElementById('main-menu').style.display = 'flex';
-                    document.getElementById('end-game-btn').style.display = 'none';
-                    document.getElementById('leave-lobby-btn').style.display = 'none';
-                    refreshLobbies();
+                    latestLobbySnapshot = null;
+                    disconnectLiveKit();
+                    resetToMainMenu();
                 } else if (data.type === 'ERROR') alert(data.message);
             };
 
             ws.onclose = () => {
                 isConnected = false;
-                setTimeout(() => { connectSocket(); }, 3000);
+                setTimeout(connectSocket, 2500);
             };
         }
 
@@ -758,10 +1298,7 @@
         function renderLobbyList(lobbies) {
             let container = document.getElementById('lobby-list');
             if (!container) return;
-            if (!lobbies || lobbies.length === 0) {
-                container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>';
-                return;
-            }
+            if (!lobbies || lobbies.length === 0) { container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>'; return; }
             container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6)</span><span style="color:#38bdf8;">Join</span></div>`).join('');
         }
 
@@ -784,11 +1321,41 @@
 
         function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
         function removeBot() { initSocketAndSend({ type: 'REMOVE_BOT' }); }
-        function toggleReady() { initSocketAndSend({ type: 'SET_READY', ready: true }); }
-        function drawCard(source) { initSocketAndSend({ type: 'DRAW_CARD', source }); }
-        function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
-        function knockRound() { initSocketAndSend({ type: 'KNOCK' }); }
-        function leaveLobby() { initSocketAndSend({ type: 'LEAVE_LOBBY' }); }
+        function standUp() { initSocketAndSend({ type: 'STAND_UP' }); }
+        function sitDown() { initSocketAndSend({ type: 'SIT_DOWN' }); }
+        function updateWager() { initSocketAndSend({ type: 'UPDATE_WAGER', wager: document.getElementById('config-wager').value }); }
+        function updateSettings() { initSocketAndSend({ type: 'UPDATE_SETTINGS', lives: document.getElementById('config-lives').value }); }
+
+        function toggleReady() {
+            clientState.isReady = !clientState.isReady;
+            document.getElementById('ready-btn').innerText = clientState.isReady ? 'Unready' : 'Ready Up';
+            initSocketAndSend({ type: 'SET_READY', ready: clientState.isReady });
+        }
+
+        function clickNextHand() {
+            let btn = document.getElementById('next-hand-btn');
+            btn.innerText = 'Waiting...';
+            btn.disabled = true;
+            initSocketAndSend({ type: 'NEXT_HAND_READY' });
+        }
+
+        function proposeEndGame() {
+            if (confirm("Propose ending the game?")) initSocketAndSend({ type: 'END_GAME_PROPOSAL' });
+        }
+
+        function sendChatMessage() {
+            let input = document.getElementById('chat-input');
+            let text = input.value.trim();
+            if (text) {
+                initSocketAndSend({ type: 'CHAT_MESSAGE', message: text });
+                input.value = '';
+            }
+        }
+
+        function stopPeekingAction() {
+            initSocketAndSend({ type: 'STOP_PEEK' });
+            document.getElementById('active-peeking-banner').style.display = 'none';
+        }
 
         function updateUIFromLobby(lobby) {
             document.getElementById('main-menu').style.display = 'none';
@@ -798,54 +1365,264 @@
             document.getElementById('vc-group-container').style.display = 'inline-flex';
             document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
+
+            renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying);
+
+            let knockAlertModal = document.getElementById('knock-alert-modal');
+            if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
+                knockAlertModal.innerText = `🔔 ${lobby.knockedBy} has knocked!`;
+                knockAlertModal.style.display = 'block';
+                if (lastKnownKnockedBy !== lobby.knockedBy) {
+                    lastKnownKnockedBy = lobby.knockedBy;
+                    playSound('knock');
+                    triggerVibration([180, 110, 180, 110, 180]);
+                }
+            } else {
+                knockAlertModal.style.display = 'none';
+                lastKnownKnockedBy = null;
+            }
+
+            let topleftModal = document.getElementById('discard-pickup-topleft-modal');
+            if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+                let cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
+                document.getElementById('discard-pickup-card-content').innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b>:</span> ${cardHtml}`;
+                topleftModal.style.display = 'flex';
+            } else {
+                topleftModal.style.display = 'none';
+            }
+
+            let fedModal = document.getElementById('fed-card-topright-modal');
+            if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+                document.getElementById('fed-card-label').innerText = `${lobby.myFedCardReminder.target} took your:`;
+                document.getElementById('fed-card-content').innerHTML = formatCardHtml(lobby.myFedCardReminder.card, true);
+                fedModal.style.display = 'flex';
+            } else {
+                fedModal.style.display = 'none';
+            }
+
+            clientState.gameState = lobby.gameState;
+            clientState.playersList = lobby.players.map(p => p.username);
+            clientState.spectatorsList = lobby.spectators || [];
             clientState.sideBetLedger = lobby.sideBetLedger || {};
             clientState.mainGameLedger = lobby.mainGameLedger || {};
-            clientState.playersList = (lobby.players || []).map(p => p.username);
+            clientState.botBetLedger = lobby.botBetLedger || {};
+            document.getElementById('spec-count').innerText = clientState.spectatorsList.length;
 
-            document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
-            document.getElementById('turn-banner').innerText = `Turn: ${lobby.currentTurnUser || 'Waiting'}`;
+            let me = lobby.players.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+            let isSpecUser = lobby.spectators.some(s => s.username.toLowerCase() === activeUsername.toLowerCase());
+            let isEliminated = me && me.eliminated;
+            let isSpectatorOnly = !me || isEliminated || isSpecUser;
+            clientState.isSpectator = isSpectatorOnly;
 
-            let discardSlot = document.getElementById('discard-slot');
-            if (lobby.discardTop) {
-                discardSlot.className = `card-slot ${['♥', '♦'].includes(lobby.discardTop.suit) ? 'red-suit' : 'black-suit'}`;
-                discardSlot.innerText = `${lobby.discardTop.val}${lobby.discardTop.suit}`;
-            } else {
-                discardSlot.className = 'card-slot';
-                discardSlot.innerText = '--';
+            if (me) {
+                clientState.isReady = me.ready;
+                document.getElementById('ready-btn').innerText = me.ready ? 'Unready' : 'Ready Up';
+
+                if (me.peekIncoming && Object.keys(me.peekIncoming).length > 0) {
+                    let requester = Object.keys(me.peekIncoming)[0];
+                    document.getElementById('peek-modal-msg').innerText = `${requester} wants to peek at your hand.`;
+                    document.getElementById('peek-allow-btn').onclick = () => {
+                        initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: true });
+                        toggleModal('peek-request-modal');
+                    };
+                    document.getElementById('peek-deny-btn').onclick = () => {
+                        initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: false });
+                        toggleModal('peek-request-modal');
+                    };
+                    document.getElementById('peek-request-modal').style.display = 'flex';
+                }
             }
 
-            // Render Seats
-            let oval = document.getElementById('table-oval-container');
-            oval.querySelectorAll('.seat').forEach(s => s.remove());
-            (lobby.players || []).forEach(p => {
-                let seatDiv = document.createElement('div');
-                seatDiv.className = `seat seat-${p.seat}`;
-                seatDiv.innerHTML = `
-                    <div><b>${p.username}</b> ${p.isMuted ? '🔇' : '🎙️'}</div>
-                    <div style="color:var(--accent-gold);">Lives: ${p.lives}</div>
+            let standUpBtn = document.getElementById('stand-up-btn');
+            let sitBtn = document.getElementById('sit-btn');
+            let readyBtn = document.getElementById('ready-btn');
+            let knockBtn = document.getElementById('knock-btn');
+
+            if (lobby.gameState === 'lobby') {
+                standUpBtn.style.display = me && !isEliminated ? 'inline-block' : 'none';
+                readyBtn.style.display = me && !isEliminated ? 'inline-block' : 'none';
+                sitBtn.style.display = isSpecUser ? 'inline-block' : 'none';
+                knockBtn.style.display = 'none';
+            } else {
+                sitBtn.style.display = 'none';
+                standUpBtn.style.display = 'none';
+                readyBtn.style.display = 'none';
+                knockBtn.style.display = isSpectatorOnly ? 'none' : 'inline-block';
+            }
+
+            let activeCount = lobby.players.filter(p => !p.eliminated).length;
+            let threshold = activeCount > 2 ? 21 : 25;
+            let myScore = (me && me.cards) ? calculateLocalScore(me.cards) : 0;
+            let canKnockNow = lobby.canKnock && (myScore >= threshold) && (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase());
+
+            if (lobby.knockedBy) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `${lobby.knockedBy} knocked!`;
+            } else if (!canKnockNow) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `Knock (${threshold}+)`;
+            } else {
+                knockBtn.disabled = false;
+                knockBtn.innerText = 'Knock!';
+            }
+
+            document.getElementById('lobby-config-bar').style.display = lobby.gameState === 'lobby' ? 'flex' : 'none';
+            document.getElementById('pot-total-banner').innerText = `Pot: $${lobby.potTotal || 0}`;
+
+            let nextHandOverlay = document.getElementById('next-hand-overlay');
+            if (lobby.gameState === 'roundOver' && !isSpectatorOnly) {
+                nextHandOverlay.style.display = 'block';
+                let nextBtn = document.getElementById('next-hand-btn');
+                nextBtn.innerText = me?.nextHandReady ? 'Waiting...' : 'Next Hand';
+                nextBtn.disabled = !!me?.nextHandReady;
+            } else {
+                nextHandOverlay.style.display = 'none';
+            }
+
+            let poolModal = document.getElementById('pool-draw-modal');
+            let revealModal = document.getElementById('tie-breaker-reveal-modal');
+            let turnBanner = document.getElementById('turn-banner');
+
+            if (lobby.phaseMessage && lobby.phaseMessage !== lastPhaseMessage) {
+                showCenterNotification(lobby.phaseMessage);
+                lastPhaseMessage = lobby.phaseMessage;
+            }
+
+            if (lobby.gameState === 'tieBreaker') {
+                poolModal.style.display = 'none';
+                revealModal.style.display = 'flex';
+                let isTied = lobby.tiedParticipantsList.includes(activeUsername);
+                document.getElementById('tie-breaker-stream-msg').innerText = isTied ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
+
+                let streamHtml = '';
+                if (isTied && !lobby.drawResults[activeUsername]) {
+                    streamHtml += `<div style="width:100%; display:grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap:4px; margin-bottom:8px;">`;
+                    lobby.drawPool.forEach((slot) => {
+                        if (!slot.chosenBy) {
+                            streamHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
+                        }
+                    });
+                    streamHtml += `</div>`;
+                }
+
+                lobby.tiedParticipantsList.forEach(uname => {
+                    let card = lobby.drawResults[uname];
+                    streamHtml += `<div style="text-align:center; padding:4px;"><b>${uname}</b>: ${card ? formatCardHtml(card, true) : '<i>Choosing...</i>'}</div>`;
+                });
+                document.getElementById('tie-breaker-stream-grid').innerHTML = streamHtml;
+                turnBanner.innerText = 'Tie-Breaker Draw';
+            } else {
+                poolModal.style.display = 'none';
+                revealModal.style.display = 'none';
+                if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
+                    let isMyTurn = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase());
+                    turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
+                } else if (lobby.gameState === 'roundOver') {
+                    turnBanner.innerText = lobby.phaseMessage || 'Round Over';
+                }
+            }
+
+            let container = document.getElementById('table-oval-container');
+            let discardTopHtml = lobby.discardTop ? formatCardHtml(lobby.discardTop, false) : 'Empty';
+
+            let html = `
+                <div class="pots-container">
+                    <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                </div>
+                <div class="deck-center">
+                    <div class="card-slot back" onclick="drawCard('deck')">DECK<div class="deck-counter">${lobby.deckCount || 0} left</div></div>
+                    <div class="card-slot" onclick="drawCard('discard')">${discardTopHtml}</div>
+                </div>
+            `;
+
+            lobby.players.forEach(p => {
+                let revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">` + p.cards.map(c => formatCardHtml(c, true)).join('') + `</div>` : '';
+                let statusBadge = p.eliminated ? ' [OUT]' : '';
+                let readyStatusIcon = p.ready ? '✅' : '❌';
+                let botBadge = p.isBot ? ' 🤖' : '';
+                let isCurrentTurn = (p.username.toLowerCase() === lobby.currentTurnUser.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+                let isDealer = lobby.dealerName === p.username;
+                let micStatus = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+
+                html += `
+                    <div class="seat seat-${p.seat}${isCurrentTurn ? ' current-turn-seat' : ''}">
+                        <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                            <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${micStatus}${statusBadge}</b>${isDealer ? ' <span class="dealer-badge">D</span>' : ''}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                        </div>
+                        ${revealedCardsHtml}
+                    </div>
                 `;
-                oval.appendChild(seatDiv);
             });
 
-            // Render My Hand
-            let myPlayer = (lobby.players || []).find(p => p.username === clientState.username);
-            let cardsContainer = document.getElementById('my-cards-container');
-            cardsContainer.innerHTML = '';
-            if (myPlayer && myPlayer.cards) {
-                document.getElementById('my-score-display').innerText = myPlayer.score || 0;
-                myPlayer.cards.forEach((c, idx) => {
-                    let cardEl = document.createElement('div');
-                    cardEl.className = `my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}`;
-                    cardEl.innerText = `${c.val}${c.suit}`;
-                    if (myPlayer.cards.length === 4) {
-                        cardEl.onclick = () => discardCard(idx);
-                    }
-                    cardsContainer.appendChild(cardEl);
-                });
-            }
+            container.innerHTML = html;
+            container.appendChild(nextHandOverlay);
 
-            let knockBtn = document.getElementById('knock-btn');
-            knockBtn.disabled = !(lobby.canKnock && lobby.currentTurnUser === clientState.username && !lobby.hasKnockedUser);
+            if (me && me.cards) {
+                let cardsHtml = me.cards.map((c, i) => `
+                    <div class="my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}" onclick="discardCard(${i})">
+                        <span>${c.val}</span><span style="font-size:1.1rem;">${c.suit}</span>
+                    </div>
+                `).join('');
+                document.getElementById('my-cards-container').innerHTML = cardsHtml;
+                document.getElementById('my-score-display').innerText = calculateLocalScore(me.cards);
+            }
+        }
+
+        function tapSeat(targetUsername) {
+            let activeUsername = document.getElementById('username-input').value.trim() || clientState.username;
+            if (targetUsername === activeUsername || clientState.gameState === 'lobby') return;
+
+            let modalTitle = document.getElementById('bet-modal-title');
+            let modalBody = document.getElementById('bet-modal-body');
+            modalTitle.innerText = `Side Bet on ${targetUsername}`;
+            modalBody.innerHTML = `
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager that ${targetUsername} loses before you:</p>
+                <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
+                <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
+                <button class="secondary" onclick="toggleModal('bet-modal')">Cancel</button>
+            `;
+            toggleModal('bet-modal');
+        }
+
+        function submitEliminationProposal(target, wagerAmt) {
+            initSocketAndSend({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt });
+            toggleModal('bet-modal');
+            showCenterNotification(`Side bet proposed to ${target}!`);
+        }
+
+        function choosePoolCard(cardIndex) {
+            initSocketAndSend({ type: 'CHOOSE_POOL_CARD', cardIndex });
+        }
+
+        function calculateLocalScore(cards) {
+            let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
+            if (!scoringCards || scoringCards.length === 0) return 0;
+            let sums = {};
+            scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + c.points; });
+            if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) return 30.5;
+            return Math.max(...Object.values(sums), 0);
+        }
+
+        function drawCard(type) { initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); }
+        function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
+        function knockRound() { initSocketAndSend({ type: 'KNOCK' }); playSound('knock'); }
+        function leaveLobby() { disconnectLiveKit(); initSocketAndSend({ type: 'LEAVE_LOBBY' }); }
+
+        function resetToMainMenu() {
+            currentJoinedCode = null;
+            latestLobbySnapshot = null;
+            document.getElementById('game-view').style.display = 'none';
+            document.getElementById('main-menu').style.display = 'flex';
+            document.getElementById('end-game-btn').style.display = 'none';
+            document.getElementById('leave-lobby-btn').style.display = 'none';
+            document.getElementById('vc-group-container').style.display = 'none';
+            refreshLobbies();
+        }
+
+        function toggleModal(id) {
+            let m = document.getElementById(id);
+            if (m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
 
         function saveInputs() {
@@ -858,13 +1635,9 @@
             win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
         }
 
-        function sendChatMessage() {
-            let input = document.getElementById('chat-input');
-            let text = input.value.trim();
-            if (text) {
-                initSocketAndSend({ type: 'CHAT_MESSAGE', message: text });
-                input.value = '';
-            }
+        function toggleGlobalSidebar() {
+            let sidebar = document.getElementById('global-side-bets-sidebar');
+            if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
         }
 
         window.addEventListener('DOMContentLoaded', () => {
