@@ -2,14 +2,34 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static assets from root, www, or public directories
+app.use(express.static(path.join(__dirname)));
+if (fs.existsSync(path.join(__dirname, 'www'))) {
+    app.use(express.static(path.join(__dirname, 'www')));
+}
+if (fs.existsSync(path.join(__dirname, 'public'))) {
+    app.use(express.static(path.join(__dirname, 'public')));
+}
+
+// Fallback route: dynamically locates index.html
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const candidatePaths = [
+        path.join(__dirname, 'index.html'),
+        path.join(__dirname, 'www', 'index.html'),
+        path.join(__dirname, 'public', 'index.html')
+    ];
+    for (const filePath of candidatePaths) {
+        if (fs.existsSync(filePath)) {
+            return res.sendFile(filePath);
+        }
+    }
+    res.status(404).send('index.html not found. Please ensure index.html exists in your project root or www folder.');
 });
 
 const SUITS = ['♠', '♥', '♦', '♣'];
@@ -26,13 +46,13 @@ function createDeck() {
             let drawVal = 0;
             if (['J', 'Q', 'K'].includes(val)) pts = 10;
             else if (val === 'A') pts = 11;
-            else pts = parseInt(val);
+            else pts = parseInt(val, 10);
 
             if (val === 'A') drawVal = 14;
             else if (val === 'K') drawVal = 13;
             else if (val === 'Q') drawVal = 12;
             else if (val === 'J') drawVal = 11;
-            else drawVal = parseInt(val);
+            else drawVal = parseInt(val, 10);
 
             deck.push({ suit, val, points: pts, drawVal });
         }
@@ -172,7 +192,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
             broadcastLobbyUpdate(lobby.code);
             setTimeout(() => {
                 if (lobbies[lobby.code]) startRound(lobbies[lobby.code]);
-            }, 3500);
+            }, 3000);
         } else if (lobby.gameState === 'tieBreaker' && lobby.tiedParticipantsList.every(u => lobby.drawResults[u])) {
             let entries = lobby.tiedParticipantsList.map(u => ({ username: u, card: lobby.drawResults[u] })).sort((a, b) => a.card.drawVal - b.card.drawVal);
             let loser = lobby.players.find(p => p.username === entries[0].username);
@@ -218,10 +238,12 @@ function handleTurnAction(lobby, wsId, actionType) {
         currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
 
+        // If card picked up is the opening initial deal card, alert top-left modal for all players
         if (lobby.initialDealCard && card.val === lobby.initialDealCard.val && card.suit === lobby.initialDealCard.suit) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
+        // If card was fed by another player, alert that player's top-right modal
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
@@ -398,8 +420,8 @@ function awardTournamentWinner(lobby, winner) {
     lobby.players.forEach(p => {
         if (p.username !== winner.username) {
             let wagerAmt = p.wager || 5;
-            let isBotDebtorOrCreditor = p.isBot || winner.isBot;
-            let targetLedger = isBotDebtorOrCreditor ? lobby.botBetLedger : lobby.mainGameLedger;
+            let isBotInvolved = p.isBot || winner.isBot;
+            let targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
             if (!targetLedger[p.username]) targetLedger[p.username] = {};
             targetLedger[p.username][winner.username] = (targetLedger[p.username][winner.username] || 0) + wagerAmt;
         }
@@ -449,7 +471,7 @@ function checkNextHandReady(lobby) {
     let allReady = activeParts.every(p => p.nextHandReady);
     if (allReady && activeParts.length > 1) {
         startRound(lobby);
-    } else if (activeParts.length <= 1) {
+    } else if (allReady && activeParts.length <= 1) {
         resetLobbyToReadyRoom(lobby, "Match completed! Returned to ready room.");
     } else {
         broadcastLobbyUpdate(lobby.code);
@@ -473,7 +495,7 @@ function resetLobbyToReadyRoom(lobby, msg) {
     broadcastLobbyUpdate(lobby.code);
 }
 
-// Bot AI Engine (Intelligence 7.5 / 10)
+// Bot AI Engine (7.5 Intelligence)
 function scheduleBotActions(lobby) {
     if (!lobby) return;
 
@@ -493,7 +515,7 @@ function scheduleBotActions(lobby) {
                             let chosenIndex = unchosen[Math.floor(Math.random() * unchosen.length)].i;
                             handlePoolCardSelection(curLobby, p.username, chosenIndex);
                         }
-                    }, 600 + Math.random() * 800);
+                    }, 500 + Math.random() * 600);
                 }
             }
         });
@@ -511,7 +533,7 @@ function scheduleBotActions(lobby) {
             if (!bot || bot.id !== cur.id) return;
 
             executeBotTurn(curLobby, bot);
-        }, 850 + Math.random() * 650);
+        }, 700 + Math.random() * 600);
     }
 }
 
@@ -521,7 +543,7 @@ function executeBotTurn(lobby, bot) {
     let minKnockReq = active.length > 2 ? 21 : 25;
     let canKnock = lobby.gameState === 'playing' && !lobby.knockedBy && (lobby.turnsTakenThisRound >= active.length) && (curScore >= minKnockReq);
 
-    // 7.5 Intelligence Knock Strategy
+    // 7.5 AI Knock Decision
     if (canKnock) {
         let knockThreshold = curScore >= 28 ? 0.95 : (curScore >= 26 ? 0.80 : 0.35);
         if (Math.random() < knockThreshold) {
@@ -530,7 +552,7 @@ function executeBotTurn(lobby, bot) {
         }
     }
 
-    // Draw Strategy (7.5 evaluation)
+    // 7.5 AI Draw Decision
     let topDiscard = lobby.discardPile[lobby.discardPile.length - 1];
     let shouldDrawDiscard = false;
 
@@ -550,7 +572,7 @@ function executeBotTurn(lobby, bot) {
 
     if (lobby.gameState === 'roundOver') return;
 
-    // Discard Phase
+    // Discard Decision
     setTimeout(() => {
         let curLobby = lobbies[lobby.code];
         if (!curLobby) return;
@@ -574,7 +596,7 @@ function executeBotTurn(lobby, bot) {
         }
 
         handleDiscardAction(curLobby, activeBot.id, bestDiscardIdx !== -1 ? bestDiscardIdx : 0);
-    }, 700 + Math.random() * 500);
+    }, 600 + Math.random() * 500);
 }
 
 function getPrimarySuit(cards) {
@@ -591,10 +613,9 @@ function getPrimarySuit(cards) {
     return best;
 }
 
-function buildClientPayload(lobby, wsId, myUsername) {
+function buildClientPayload(lobby, myUsername) {
     let activeParts = getActiveParticipants(lobby);
     let myFedReminder = lobby.fedCardReminders?.[myUsername] || null;
-    let myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername);
 
     return {
         code: lobby.code,
@@ -613,8 +634,6 @@ function buildClientPayload(lobby, wsId, myUsername) {
         sideBetLedger: lobby.sideBetLedger || {},
         mainGameLedger: lobby.mainGameLedger || {},
         botBetLedger: lobby.botBetLedger || {},
-        pendingBetsForMe: myUnrespondedBets,
-        globalProposals: lobby.globalProposals || [],
         activeBets: lobby.activeBets || [],
         pendingBets: lobby.pendingBets || [],
         activeParticipantsCount: activeParts.length,
@@ -624,7 +643,6 @@ function buildClientPayload(lobby, wsId, myUsername) {
         drawResults: lobby.drawResults || {},
         discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
         knockedBy: lobby.knockedBy || null,
-        chatHistory: lobby.chatHistory || [],
         players: lobby.players.map(p => ({
             username: p.username,
             lives: Math.max(0, p.lives),
@@ -647,7 +665,7 @@ function broadcastLobbyUpdate(code) {
 
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN && client.lobbyCode === code) {
-            let payload = buildClientPayload(lobby, client.id, client.username);
+            let payload = buildClientPayload(lobby, client.username);
             client.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: payload }));
         }
     });
@@ -709,7 +727,6 @@ wss.on('connection', (ws) => {
                     botBetLedger: {},
                     activeBets: [],
                     pendingBets: [],
-                    globalProposals: [],
                     defaultWager: 5,
                     defaultLives: 2,
                     turnsTakenThisRound: 0,
@@ -814,6 +831,7 @@ wss.on('connection', (ws) => {
                 if (!lobby) return;
                 let targetPlayer = lobby.players.find(pl => pl.username === data.target);
                 if (targetPlayer && targetPlayer.isBot) {
+                    // Bot automatically accepts bets and logs to "Bot Bets"
                     let betObj = {
                         id: 'bet_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                         proposer: ws.username,
@@ -849,22 +867,10 @@ wss.on('connection', (ws) => {
                 if (!lobby) return;
                 lobby.pendingBets = (lobby.pendingBets || []).filter(b => b.id !== data.betId);
                 broadcastLobbyUpdate(lobby.code);
-            } else if (data.type === 'CLEAR_DEBT') {
-                if (!lobby) return;
-                let debtor = ws.username;
-                let creditor = data.targetUser;
-                if (data.category === 'bot' && lobby.botBetLedger?.[debtor]) {
-                    delete lobby.botBetLedger[debtor][creditor];
-                } else if (data.category === 'side' && lobby.sideBetLedger?.[debtor]) {
-                    delete lobby.sideBetLedger[debtor][creditor];
-                } else if (data.category === 'main' && lobby.mainGameLedger?.[debtor]) {
-                    delete lobby.mainGameLedger[debtor][creditor];
-                }
-                broadcastLobbyUpdate(lobby.code);
             } else if (data.type === 'UPDATE_CONFIG') {
                 if (!lobby) return;
-                if (data.wager) lobby.defaultWager = parseInt(data.wager);
-                if (data.lives) lobby.defaultLives = parseInt(data.lives);
+                if (data.wager) lobby.defaultWager = parseInt(data.wager, 10);
+                if (data.lives) lobby.defaultLives = parseInt(data.lives, 10);
                 lobby.players.forEach(p => {
                     p.wager = lobby.defaultWager;
                     p.lives = lobby.defaultLives;
@@ -904,5 +910,5 @@ wss.on('connection', (ws) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`31! Card Game server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
