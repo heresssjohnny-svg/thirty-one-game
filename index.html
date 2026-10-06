@@ -810,7 +810,7 @@
         async function ensureMicrophonePermission() {
             const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
             if (!window.isSecureContext && !isLocal) {
-                alert('Microphone access requires HTTPS on all platforms (iOS PWA, Android, and Web Browsers). If using an IP or domain over HTTP, the browser disables microphone permission prompts completely.');
+                alert('Microphone access requires HTTPS on all platforms. If using an IP or domain over HTTP, the browser disables microphone permission prompts completely.');
                 return false;
             }
 
@@ -1085,7 +1085,7 @@
         // --- LiveKit Client SFU Integration ---
         async function connectLiveKit(host, token) {
             if (!window.LivekitClient) {
-                console.error("LiveKit client SDK not loaded.");
+                alert("LiveKit SDK failed to load from CDN. Check your internet connection.");
                 return;
             }
 
@@ -1123,6 +1123,11 @@
                     track.detach().forEach(el => el.remove());
                 });
 
+                livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
+                    isVoiceChatActive = false;
+                    updateVoiceUI();
+                });
+
                 await livekitRoom.connect(host, token);
                 enableBackgroundAudioKeepAlive();
 
@@ -1132,6 +1137,11 @@
 
             } catch (err) {
                 console.error("LiveKit connection error:", err);
+                alert("LiveKit Connect Failed: " + (err.message || err.name) + "\nTarget: " + host);
+                if (livekitRoom) {
+                    try { await livekitRoom.disconnect(); } catch (e) {}
+                    livekitRoom = null;
+                }
             } finally {
                 isConnectingVoice = false;
             }
@@ -1162,27 +1172,25 @@
                 return;
             }
 
-            // Unmute / Publish mic: Check permissions first
+            // Unmute: check permissions first
             const hasPermission = await ensureMicrophonePermission();
             if (!hasPermission) return;
 
             // Connect LiveKit room if not connected yet
             if (!livekitRoom || livekitRoom.state !== 'connected') {
-                if (currentLivekitHost && currentLivekitToken) {
-                    await connectLiveKit(currentLivekitHost, currentLivekitToken);
-                    let waitCounter = 0;
-                    while ((!livekitRoom || livekitRoom.state !== 'connected') && waitCounter < 20) {
-                        await new Promise(r => setTimeout(r, 100));
-                        waitCounter++;
-                    }
-                } else {
+                if (!currentLivekitHost || !currentLivekitToken) {
                     initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
+                    alert("Fetching voice chat credentials from game server... please tap Voice again in 2 seconds.");
                     return;
                 }
+
+                let btn = document.getElementById('vc-main-btn');
+                if (btn) btn.innerText = 'Connecting...';
+                await connectLiveKit(currentLivekitHost, currentLivekitToken);
             }
 
             if (!livekitRoom || livekitRoom.state !== 'connected') {
-                alert("Voice chat server is still connecting. Please try again in a moment.");
+                updateVoiceUI();
                 return;
             }
 
