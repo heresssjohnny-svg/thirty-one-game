@@ -134,7 +134,10 @@ function getSanitizedLobby(lobby, wsId) {
         livekitHost: config.LIVEKIT_HOST,
         players: lobby.players.map(p => {
             const canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
-            const specAllowed = requestingSpectator && p.peekAllowed?.[requestingSpectator.username];
+            // Case-insensitive check to prevent lingering view permissions
+            const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
+                k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
+            );
             const sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
                 username: p.username,
@@ -226,7 +229,6 @@ function startRound(lobby) {
         return;
     }
 
-    // Reset hand peeks on every new hand start
     lobby.players.forEach(p => {
         p.peekAllowed = {};
         p.peekRequests = {};
@@ -472,6 +474,7 @@ function handleKnock(lobby, wsId) {
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.id !== wsId || lobby.knockedBy) return;
 
+    // Must knock BEFORE drawing (holding exactly 3 cards)
     if (p.cards.length !== 3) {
         return;
     }
