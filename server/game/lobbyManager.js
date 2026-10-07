@@ -72,6 +72,19 @@ function clearRoundOverTimer(lobby) {
     }
 }
 
+function establishDealer(lobby) {
+    if (lobby.lastGameWinner) {
+        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
+        if (winIdx !== -1) {
+            lobby.dealerIndex = winIdx;
+            return;
+        }
+    }
+    if (lobby.dealerIndex >= lobby.players.length || lobby.dealerIndex < 0) {
+        lobby.dealerIndex = 0;
+    }
+}
+
 function getSanitizedLobby(lobby, wsId) {
     const activeParts = getActiveParticipants(lobby);
     const allParticipants = [...lobby.players];
@@ -126,6 +139,7 @@ function getSanitizedLobby(lobby, wsId) {
         sidePotTotal: (lobby.activeBets || []).reduce((sum, b) => sum + (b.wagerAmt || 0), 0),
         lastGameWinner: lobby.lastGameWinner || null,
         tournamentWinner: lobby.tournamentWinner || null,
+        hit31Player: lobby.hit31Player || null,
         myFedCardReminder: myFedReminder,
         sideBetLedger: lobby.sideBetLedger || {},
         mainGameLedger: lobby.mainGameLedger || {},
@@ -211,6 +225,7 @@ function startDealerDrawPhase(lobby) {
     lobby.gameState = 'dealerDraw';
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
+    lobby.hit31Player = null;
     lobby.turnsTakenThisRound = 0;
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
@@ -236,6 +251,7 @@ function startRound(lobby) {
     lobby.fedCardReminders = {};
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
+    lobby.hit31Player = null;
     lobby.gameState = 'playing';
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
@@ -251,9 +267,25 @@ function startRound(lobby) {
         p.peekRequests = {};
     });
 
-    activeParts.forEach(p => {
+    // Ensure winner deals next game
+    establishDealer(lobby);
+
+    // Dealing rotation: Rotate from (dealerIndex + 1), dealing veterans first and new arrivals last
+    const totalPlayers = lobby.players.length;
+    const dealOrder = [];
+    for (let i = 1; i <= totalPlayers; i++) {
+        const idx = (lobby.dealerIndex + i) % totalPlayers;
+        dealOrder.push(lobby.players[idx]);
+    }
+
+    const regularParticipants = dealOrder.filter(p => !p.eliminated && !p.isNewArrival);
+    const newArrivals = dealOrder.filter(p => !p.eliminated && p.isNewArrival);
+    const finalDealOrder = [...regularParticipants, ...newArrivals];
+
+    finalDealOrder.forEach(p => {
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()];
         p.nextHandReady = p.isBot;
+        p.isNewArrival = false;
     });
 
     const firstDiscard = lobby.deck.pop();
@@ -387,7 +419,9 @@ function handleTurnAction(lobby, wsId, actionType) {
         }
     }
 
-    if (calculateBestFourCardScore(currentPlayer.cards) === 31) {
+    if (calculateBestFourCardScore(currentPlayer.cards) === 31 || calculateScore(currentPlayer.cards) === 31) {
+        lobby.hit31Player = currentPlayer.username;
+
         lobby.players.forEach(p => {
             if (p !== currentPlayer && !p.eliminated) {
                 p.lives = Math.max(0, p.lives - 1);
@@ -409,7 +443,7 @@ function handleTurnAction(lobby, wsId, actionType) {
         }
 
         advanceDealerToNextActive(lobby);
-        triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points!`);
+        triggerRoundOver(lobby, `⚡ 31! ${currentPlayer.username} hit 31 points!`);
         return;
     }
 
@@ -459,6 +493,8 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     lobby.turnsTakenThisRound++;
     const score = calculateScore(currentPlayer.cards);
     if (score === 31) {
+        lobby.hit31Player = currentPlayer.username;
+
         lobby.players.forEach(p => {
             if (p !== currentPlayer && !p.eliminated) {
                 p.lives = Math.max(0, p.lives - 1);
@@ -480,7 +516,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
         }
 
         advanceDealerToNextActive(lobby);
-        triggerRoundOver(lobby, `Round Over! ${currentPlayer.username} hit 31 points!`);
+        triggerRoundOver(lobby, `⚡ 31! ${currentPlayer.username} hit 31 points!`);
     } else {
         advanceTurnOrResolve(lobby);
     }
@@ -586,7 +622,6 @@ function triggerRoundOver(lobby, msg) {
 
     const active = getActiveParticipants(lobby);
     if (active.length > 1) {
-        // Auto-start next round in 8 seconds if not everyone pressed Next Hand
         lobby.roundOverAutoTimer = setTimeout(() => {
             const cur = lobbies[lobby.code];
             if (!cur || cur.gameState !== 'roundOver') return;
@@ -658,6 +693,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.globalProposals = [];
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
+    lobby.hit31Player = null;
     lobby.lastDiscardPickup = null;
     lobby.lastDiscardDonor = null;
     lobby.fedCardReminders = {};
@@ -669,10 +705,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.pendingBotDraw = {};
     lobby.livesVote = null;
 
-    if (lobby.lastGameWinner) {
-        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
-        if (winIdx !== -1) lobby.dealerIndex = winIdx;
-    }
+    establishDealer(lobby);
 
     lobby.players.forEach((p, idx) => {
         p.lives = lobby.defaultLives || 2;
@@ -685,7 +718,6 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         p.peekAllowed = {};
     });
 
-    // Retain connected spectator sockets
     lobby.spectators = lobby.spectators.filter(s => {
         return s.idSocket && s.idSocket.readyState === WebSocket.OPEN;
     });
@@ -784,9 +816,7 @@ function leaveLobby(ws, code, broadcastLobbyList) {
         if (lobby.turnIndex >= lobby.players.length) {
             lobby.turnIndex = 0;
         }
-        if (lobby.dealerIndex >= lobby.players.length) {
-            lobby.dealerIndex = 0;
-        }
+        establishDealer(lobby);
         syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
     }
