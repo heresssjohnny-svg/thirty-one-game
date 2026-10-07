@@ -150,7 +150,6 @@ function updateWager() {
     initSocketAndSend({ type: 'UPDATE_WAGER', wager });
 }
 
-// Propose lives update (triggers majority vote across humans)
 function updateSettings() {
     const livesEl = document.getElementById('config-lives');
     const lives = livesEl ? parseInt(livesEl.value, 10) : 2;
@@ -434,10 +433,10 @@ function updateUIFromLobby(lobby) {
         renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying, lobby.currentSongElapsedSeconds || 0);
     }
 
-    // CELEBRATION FIX: Trigger cleanly on tournament victory
-    const hasWinner = lobby.tournamentWinner || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
-    if (hasWinner) {
-        let winnerName = lobby.tournamentWinner;
+    // CELEBRATION TRIGGER: Evaluates both dedicated tournamentEnd state and winner name
+    const isTournamentOver = lobby.gameState === 'tournamentEnd' || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
+    if (isTournamentOver) {
+        let winnerName = lobby.tournamentWinner || lobby.lastGameWinner;
         if (!winnerName && lobby.phaseMessage) {
             const m = lobby.phaseMessage.match(/TOURNAMENT WINNER!\s+(.*?)\s+wins/);
             if (m && m[1]) winnerName = m[1].trim();
@@ -449,8 +448,7 @@ function updateUIFromLobby(lobby) {
                 triggerWinnerCelebration(winnerName);
             }
         }
-    }
-    if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
+    } else if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
         if (window.appGlobals) window.appGlobals.lastCelebratedWinner = null;
     }
 
@@ -464,7 +462,7 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // LIVES VOTING MODAL HANDLING
+    // Lives voting modal
     const voteModal = document.getElementById('lives-vote-modal');
     if (voteModal) {
         if (lobby.livesVote && lobby.gameState === 'lobby') {
@@ -485,7 +483,6 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Update config lives dropdown to match server state
     const configLivesSelect = document.getElementById('config-lives');
     if (configLivesSelect && lobby.defaultLives) {
         configLivesSelect.value = String(lobby.defaultLives);
@@ -790,7 +787,7 @@ function updateUIFromLobby(lobby) {
         if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
             const isMyTurn = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase());
             turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-        } else if (lobby.gameState === 'roundOver') {
+        } else if (lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd') {
             turnBanner.innerText = lobby.phaseMessage || 'Round Over';
         }
     }
