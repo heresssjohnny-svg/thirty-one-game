@@ -86,7 +86,7 @@ function getSanitizedLobby(lobby, wsId) {
     });
 
     let myFedReminder = null;
-    if (myUsername && lobby.fedCardReminders?.[myUsername] && lobby.gameState !== 'roundOver') {
+    if (myUsername && lobby.fedCardReminders?.[myUsername] && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd') {
         const rem = lobby.fedCardReminders[myUsername];
         const targetPlayer = lobby.players.find(p => p.username === rem.target);
         if (targetPlayer?.cards?.some(c => c.val === rem.card.val && c.suit === rem.card.suit)) {
@@ -142,7 +142,7 @@ function getSanitizedLobby(lobby, wsId) {
         livekitHost: config.LIVEKIT_HOST,
         livesVote: lobby.livesVote || null,
         players: lobby.players.map(p => {
-            const canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
+            const canSee = lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd' || p.username === myUsername;
             const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
                 k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
             );
@@ -602,7 +602,8 @@ function awardTournamentWinner(lobby, winner) {
     const winIdx = lobby.players.findIndex(p => p.username === winner.username);
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
-    lobby.gameState = 'roundOver';
+    // Set dedicated state to give clients time to play celebration
+    lobby.gameState = 'tournamentEnd';
     lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 6s...`;
     broadcastLobbyUpdate(lobby.code);
 
@@ -647,7 +648,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     }
 
     lobby.players.forEach((p, idx) => {
-        p.lives = lobby.defaultLives || 2; // Defaults strictly to 2 lives
+        p.lives = lobby.defaultLives || 2;
         p.eliminated = false;
         p.cards = [];
         p.ready = false;
