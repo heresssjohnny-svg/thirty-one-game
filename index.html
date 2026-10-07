@@ -25,6 +25,16 @@
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
+    <!-- Celebration Screen Overlay -->
+    <div id="winner-celebration-overlay">
+        <canvas id="celebration-canvas"></canvas>
+        <div id="winner-celebration-card">
+            <div style="font-size: 2.2rem; margin-bottom: 6px;">🏆 👑 🏆</div>
+            <div id="celebration-winner-title" style="font-size: 2.2rem; font-weight: 900; color: var(--accent-gold); text-shadow: 0 0 25px rgba(250,204,21,0.9), 0 3px 6px #000; letter-spacing: 1px;"></div>
+            <div style="font-size: 1.2rem; color: #fff; font-weight: 800; margin-top: 8px; text-shadow: 0 2px 4px #000; letter-spacing: 0.5px;">TOURNAMENT CHAMPION!</div>
+        </div>
+    </div>
+
     <header>
         <!-- Primary Row: Title, Rules & Session Exits -->
         <div class="header-row-primary">
@@ -151,7 +161,7 @@
                     <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
                 </select>
                 <select id="config-lives" onchange="updateSettings()" style="padding:3px; font-size:0.75rem;">
-                    <option value="2">2 Lives</option><option value="3" selected>3 Lives</option><option value="5">5 Lives</option>
+                    <option value="2" selected>2 Lives</option><option value="3">3 Lives</option><option value="5">5 Lives</option>
                 </select>
                 <button class="secondary" onclick="addBot()" style="padding:3px 7px; font-size:0.75rem;">+ Bot</button>
                 <button class="secondary" onclick="removeBot()" style="padding:3px 7px; font-size:0.75rem;">- Bot</button>
@@ -190,18 +200,18 @@
             <div id="global-side-bets-list" style="display:flex; flex-direction:column; gap:3px;"></div>
         </div>
 
-<div id="lives-vote-modal" class="modal">
-        <div class="modal-content" style="max-width:330px;">
-            <h3 style="color:var(--accent-gold);">🗳️ Vote on Starting Lives</h3>
-            <p id="lives-vote-prompt" style="font-size:0.85rem; color:var(--text-muted); margin: 6px 0 12px 0;">
-                Player wants to set starting lives.
-            </p>
-            <div style="display:flex; gap:10px; justify-content:center;">
-                <button onclick="submitLivesVote(true)" style="background:#10b981; flex:1;">Accept</button>
-                <button class="danger" onclick="submitLivesVote(false)" style="flex:1;">Decline</button>
+        <div id="lives-vote-modal" class="modal">
+            <div class="modal-content" style="max-width:330px;">
+                <h3 style="color:var(--accent-gold);">🗳️ Vote on Starting Lives</h3>
+                <p id="lives-vote-prompt" style="font-size:0.85rem; color:var(--text-muted); margin: 6px 0 12px 0;">
+                    Player wants to set starting lives.
+                </p>
+                <div style="display:flex; gap:10px; justify-content:center;">
+                    <button onclick="submitLivesVote(true)" style="background:#10b981; flex:1;">Accept</button>
+                    <button class="danger" onclick="submitLivesVote(false)" style="flex:1;">Decline</button>
+                </div>
             </div>
         </div>
-    </div>
     </main>
 
     <!-- Dialog Modals -->
@@ -211,7 +221,7 @@
             <div class="rules-scrollable-body">
                 <div class="rule-block">
                     <h4>🎯 The Objective</h4>
-                    <p>Be the last player standing with lives remaining! Each player starts with 3 lives. At the end of each round, the player(s) with the lowest hand score lose a life. Reach 0 lives and you're eliminated.</p>
+                    <p>Be the last player standing with lives remaining! Each player starts with 2 lives by default. At the end of each round, the player(s) with the lowest hand score lose a life. Reach 0 lives and you're eliminated.</p>
                 </div>
                 <div class="rule-block">
                     <h4>🃏 Hand Scoring</h4>
@@ -318,7 +328,7 @@
     <div id="tie-breaker-reveal-modal" class="modal">
         <div class="modal-content">
             <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
-            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select their cards...</p>
+            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select cards...</p>
             <div id="tie-breaker-stream-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:8px; background:rgba(15,23,42,0.6); border-radius:6px;"></div>
         </div>
     </div>
