@@ -1,17 +1,19 @@
-// public/js/music.js
-function parseYouTubeEmbedUrl(url, autoplay = true) {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+let currentPlaylistQueue = [];
+let activeSyncedSongKey = '';
+let individualVolume = 0.8;
+let isIndividualMuted = false;
+
+function extractYouTubeVideoId(url) {
+    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
     const match = url.match(regExp);
-    const autoStr = autoplay ? '1' : '0';
-    if (match && match[2].length === 11) {
-        return `https://www.youtube.com/embed/${match[2]}?autoplay=${autoStr}&enablejsapi=1`;
-    }
-    return url;
+    return (match && match[1]) ? match[1] : null;
 }
 
 function addNewSongToPlaylist() {
     const titleInput = document.getElementById('new-song-title');
     const urlInput = document.getElementById('new-song-url');
+    if (!titleInput || !urlInput) return;
+
     const title = titleInput.value.trim();
     const rawUrl = urlInput.value.trim();
 
@@ -20,11 +22,23 @@ function addNewSongToPlaylist() {
         return;
     }
 
-    const embedUrl = parseYouTubeEmbedUrl(rawUrl, true);
-    initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: embedUrl });
+    const videoId = extractYouTubeVideoId(rawUrl);
+    if (!videoId) {
+        alert("Could not recognize YouTube URL. Please use a link from youtu.be or youtube.com");
+        return;
+    }
+
+    const cleanEmbedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+    initSocketAndSend({ type: 'ADD_PLAYLIST_SONG', title, url: cleanEmbedUrl });
     titleInput.value = '';
     urlInput.value = '';
-    showCenterNotification(`Added "${title}" to queue!`);
+    if (typeof showCenterNotification === 'function') {
+        showCenterNotification(`Added "${title}" to queue!`);
+    }
+}
+
+function removeSongFromPlaylist(index) {
+    initSocketAndSend({ type: 'REMOVE_PLAYLIST_SONG', index });
 }
 
 function sendMusicControl(action, index = null) {
@@ -32,29 +46,31 @@ function sendMusicControl(action, index = null) {
 }
 
 function adjustIndividualVolume(val) {
-    window.appGlobals.individualVolume = parseFloat(val);
+    individualVolume = parseFloat(val);
     const slider = document.getElementById('individual-volume-slider');
-    if (slider) slider.value = window.appGlobals.individualVolume;
+    if (slider) slider.value = individualVolume;
+
     const iframe = document.querySelector('#youtube-embed-container iframe');
-    if (iframe?.contentWindow) {
+    if (iframe && iframe.contentWindow) {
         try {
             iframe.contentWindow.postMessage(JSON.stringify({
                 event: 'command',
                 func: 'setVolume',
-                args: [window.appGlobals.individualVolume * 100]
+                args: [individualVolume * 100]
             }), '*');
         } catch (e) {}
     }
 }
 
 function toggleIndividualMusicMute() {
-    window.appGlobals.isIndividualMuted = !window.appGlobals.isIndividualMuted;
+    isIndividualMuted = !isIndividualMuted;
     const btn = document.getElementById('individual-mute-btn');
-    if (btn) btn.innerText = window.appGlobals.isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+    if (btn) btn.innerText = isIndividualMuted ? 'Vol: Off' : 'Vol: On';
+
     const iframe = document.querySelector('#youtube-embed-container iframe');
-    if (iframe?.contentWindow) {
+    if (iframe && iframe.contentWindow) {
         try {
-            const funcName = window.appGlobals.isIndividualMuted ? 'mute' : 'unMute';
+            const funcName = isIndividualMuted ? 'mute' : 'unMute';
             iframe.contentWindow.postMessage(JSON.stringify({
                 event: 'command',
                 func: funcName,
@@ -64,24 +80,50 @@ function toggleIndividualMusicMute() {
     }
 }
 
-function renderYouTubePlayer(playlist, currentIndex, isPlaying) {
+function renderYouTubePlayer(playlist, currentIndex, isPlaying, elapsedSeconds = 0) {
     const container = document.getElementById('youtube-embed-container');
+    const queueContainer = document.getElementById('playlist-container');
+
+    if (queueContainer) {
+        if (!playlist || playlist.length === 0) {
+            queueContainer.innerHTML = '<div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>';
+        } else {
+            queueContainer.innerHTML = playlist.map((s, i) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:3px; ${i === currentIndex ? 'color:var(--accent-gold); font-weight:bold; background:rgba(250,204,21,0.1); border-radius:4px;' : ''}">
+                    <span onclick="sendMusicControl('SELECT', ${i})" style="cursor:pointer; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${i + 1}. ${s.title}</span>
+                    <button class="secondary" style="font-size:0.6rem; padding:1px 5px; margin-left:4px;" onclick="removeSongFromPlaylist(${i})">✕</button>
+                </div>
+            `).join('');
+        }
+    }
+
     if (!container) return;
     if (!playlist || playlist.length === 0 || !isPlaying) {
         container.innerHTML = '<div style="color:#64748b; font-size:0.75rem;">No song playing (Paused)</div>';
-        window.appGlobals.activeSyncedSongKey = '';
+        activeSyncedSongKey = '';
         return;
     }
 
     const currentSong = playlist[currentIndex] || playlist[0];
     const songUniqueKey = `${currentIndex}_${currentSong.url}_${isPlaying}`;
-    const embedUrl = parseYouTubeEmbedUrl(currentSong.url, isPlaying);
 
-    if (window.appGlobals.activeSyncedSongKey !== songUniqueKey) {
-        window.appGlobals.activeSyncedSongKey = songUniqueKey;
+    if (activeSyncedSongKey !== songUniqueKey) {
+        activeSyncedSongKey = songUniqueKey;
+        const separator = currentSong.url.includes('?') ? '&' : '?';
+        const syncedUrl = `${currentSong.url}${separator}start=${elapsedSeconds}&autoplay=1`;
         container.innerHTML = `
-            <iframe width="100%" height="100%" src="${embedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            <iframe width="100%" height="100%" src="${syncedUrl}" title="${currentSong.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         `;
+    } else {
+        const iframe = document.querySelector('#youtube-embed-container iframe');
+        if (iframe && iframe.contentWindow && elapsedSeconds > 0) {
+            try {
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'seekTo',
+                    args: [elapsedSeconds, true]
+                }), '*');
+            } catch (e) {}
+        }
     }
 }
-
