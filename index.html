@@ -2,61 +2,52 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>31!</title>
-    <link rel="manifest" href="/manifest.json">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>31! Card Game</title>
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#044e36">
-    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="31!">
-
-    <!-- LiveKit Client SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
-
-    <!-- Modular Stylesheets -->
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/table.css">
     <link rel="stylesheet" href="css/modals.css">
 </head>
 <body>
+    <input type="checkbox" id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
+
+    <!-- Ambient Card Decorations -->
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    <!-- Celebration Screen Overlay -->
-    <div id="winner-celebration-overlay">
-        <canvas id="celebration-canvas"></canvas>
-        <div id="winner-celebration-card">
-            <div style="font-size: 2.2rem; margin-bottom: 6px;">🏆 👑 🏆</div>
-            <div id="celebration-winner-title" style="font-size: 2.2rem; font-weight: 900; color: var(--accent-gold); text-shadow: 0 0 25px rgba(250,204,21,0.9), 0 3px 6px #000; letter-spacing: 1px;"></div>
-            <div style="font-size: 1.2rem; color: #fff; font-weight: 800; margin-top: 8px; text-shadow: 0 2px 4px #000; letter-spacing: 0.5px;">TOURNAMENT CHAMPION!</div>
-        </div>
-    </div>
-
     <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
+            <!-- Rules always visible -->
             <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
-            <button class="secondary" onclick="openLedgerModal()">Ledger</button>
-            
-            <div class="vc-control-group" id="vc-group-container">
-                <span id="vc-led" class="led-indicator"></span>
-                <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
-                <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Participants">...</button>
-            </div>
 
-            <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
-            
-            <div id="chat-container">
-                <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
-            </div>
+            <!-- In-game only buttons (Hidden on main menu) -->
+            <div id="in-game-header-btns" style="display:none; align-items:center; gap:5px;">
+                <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
+                <button class="secondary" onclick="openLedgerModal()">Ledger</button>
+                
+                <div class="vc-control-group" id="vc-group-container" style="display:inline-flex;">
+                    <span id="vc-led" class="led-indicator"></span>
+                    <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
+                    <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
+                </div>
 
-            <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End</button>
-            <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
+                <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
+                
+                <div id="chat-container">
+                    <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
+                </div>
+
+                <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End</button>
+                <button class="danger" id="leave-lobby-btn" style="display:none;" onclick="leaveLobby()">Leave</button>
+            </div>
         </div>
 
         <div id="chat-window">
@@ -73,77 +64,93 @@
     </header>
 
     <main>
+        <div id="center-notification-banner">NOTIFICATION</div>
+        <div id="knock-alert-modal">🔔 KNOCKED!</div>
+
+        <!-- Discard and Fed Card Modals -->
         <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
             <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
             <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
         <div id="fed-card-topright-modal" class="fed-card-modal-topright" style="display:none;">
-            <span id="fed-card-label" style="color:var(--accent-gold); font-size:0.75rem; font-weight:bold;">Next player took:</span>
+            <span id="fed-card-label" style="font-size:0.65rem; color:var(--text-muted);">Card Taken</span>
             <div id="fed-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
-        <div id="main-menu">
-            <h2>Lobby Menu</h2>
-            <div class="input-group">
-                <label>Username</label>
-                <input type="text" id="username-input" oninput="saveInputs()" value="Player1">
-            </div>
-            <div class="input-group">
-                <label>Lobby Name</label>
-                <input type="text" id="lobby-name-input" oninput="saveInputs()" value="My Table">
-            </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <button onclick="createLobby()" style="flex:1;">Create Lobby</button>
-                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size:0.75rem;">
-                    <input type="checkbox" id="private-lobby-checkbox"> Private
-                </label>
+        <!-- Redesigned Casino Felt Main Menu Screen -->
+        <div id="main-menu" class="casino-main-menu">
+            <div class="casino-menu-header">
+                <span class="casino-felt-badge">ROYAL CLUB</span>
+                <h2>Thirty-One</h2>
+                <p class="casino-subtitle">Classic 3-Card Casino Elimination</p>
             </div>
 
-            <div class="input-group">
-                <label>Join Code</label>
-                <div style="display: flex; gap: 5px;">
-                    <input type="text" id="lobby-code-input" placeholder="CODE" style="flex:1;">
-                    <button onclick="joinLobby()">Join</button>
+            <div class="casino-form-section">
+                <div class="input-group">
+                    <label>Player Name</label>
+                    <input type="text" id="username-input" placeholder="Enter your callsign..." oninput="saveInputs()">
+                </div>
+
+                <div class="input-group">
+                    <label>Table Title</label>
+                    <input type="text" id="lobby-name-input" placeholder="e.g. High Rollers Felt" oninput="saveInputs()">
+                </div>
+
+                <div class="casino-action-row">
+                    <button class="casino-btn-gold" onclick="createLobby()">Create Table</button>
+                    <label class="casino-checkbox-label">
+                        <input type="checkbox" id="private-lobby-checkbox"> 
+                        <span>Private</span>
+                    </label>
                 </div>
             </div>
 
-            <div class="input-group">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <label>Public Lobbies</label>
-                    <button class="secondary" style="padding: 2px 5px; font-size: 0.7rem;" onclick="refreshLobbies()">Refresh</button>
+            <div class="casino-divider"><span>OR JOIN TABLE</span></div>
+
+            <div class="casino-form-section">
+                <div class="input-group">
+                    <label>Table Passcode</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="text" id="lobby-code-input" placeholder="ENTER CODE" style="flex:1; text-transform:uppercase; letter-spacing:1.5px; font-weight:bold;">
+                        <button class="casino-btn-green" onclick="joinLobby()">Join</button>
+                    </div>
                 </div>
-                <div class="lobby-list-container" id="lobby-list">
-                    <div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>
+
+                <div class="input-group" style="margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label style="margin:0;">Active Public Tables</label>
+                        <button class="secondary" style="padding: 3px 8px; font-size: 0.7rem;" onclick="refreshLobbies()">🔄 Refresh</button>
+                    </div>
+                    <div class="lobby-list-container" id="lobby-list">
+                        <div style="text-align:center; color:#64748b; padding:10px; font-size:0.75rem;">Scanning tables...</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div id="game-view">
-            <div id="center-notification-banner">NOTIFICATION</div>
-            <div id="knock-alert-modal">🔔 Knock Alert</div>
-
-            <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
-                <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
-                <div id="turn-banner" style="font-size:0.75rem;">Turn: Waiting...</div>
+        <!-- Active Game Table Screen -->
+        <div id="game-view" style="display:none; flex-direction:column; align-items:center; width:100%; height:100%;">
+            <div style="display:flex; justify-content:space-between; width:100%; max-width:650px; align-items:center; flex-shrink:0; padding:0 8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="room-title-display" style="font-size:0.8rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
+                    <div id="active-peeking-banner">
+                        <span>👀 Viewing Hand</span>
+                        <button onclick="stopPeekingAction()" style="background:#ef4444; border:none; color:#fff; border-radius:3px; padding:2px 6px; font-size:0.6rem; cursor:pointer;">Stop</button>
+                    </div>
+                </div>
+                <div id="turn-banner">Turn: Waiting...</div>
             </div>
 
-            <div id="active-peeking-banner" style="display:none; background:rgba(30,58,138,0.95); border:1px solid var(--accent-cyan); padding:4px 12px; border-radius:14px; font-size:0.75rem; color:#fff; align-items:center; gap:8px; margin-top:2px;">
-                <span>👀 Viewing Player Hand</span>
-                <button class="secondary" onclick="stopPeekingAction()" style="padding:2px 6px; font-size:0.65rem; background:#ef4444;">Stop Peeking</button>
-            </div>
-
-            <div id="lobby-config-bar" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+            <div id="lobby-config-bar" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:4px 0;">
                 <select id="config-wager" onchange="updateWager()" style="padding:3px; font-size:0.75rem;">
                     <option value="5">$5 Wager</option><option value="10">$10 Wager</option><option value="20">$20 Wager</option><option value="50">$50 Wager</option>
                 </select>
                 <select id="config-lives" onchange="updateSettings()" style="padding:3px; font-size:0.75rem;">
-                    <option value="2">2 Lives</option><option value="3">3 Lives</option><option value="5">5 Lives</option>
+                    <option value="2">2 Lives</option><option value="3" selected>3 Lives</option><option value="5">5 Lives</option>
                 </select>
-                <div style="display:inline-flex; gap:4px; margin-left:4px;">
-                    <button type="button" class="secondary" onclick="addBot()" style="padding:3px 8px; font-size:0.75rem; background:#2563eb; color:#fff; border:1px solid #3b82f6;">+bot</button>
-                    <button type="button" class="secondary" onclick="removeBot()" style="padding:3px 8px; font-size:0.75rem; background:#475569; color:#fff; border:1px solid #64748b;">-bot</button>
-                </div>
+                <button class="secondary" onclick="addBot()" style="padding:3px 7px; font-size:0.75rem;">+ Bot</button>
+                <button class="secondary" onclick="removeBot()" style="padding:3px 7px; font-size:0.75rem;">- Bot</button>
             </div>
             
             <div class="table-oval" id="table-oval-container">
@@ -158,7 +165,7 @@
 
             <div class="my-hand-area" id="my-hand-control-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: var(--text-muted);">
-                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>) - Draw & discard</span>
+                    <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>) - Tap card to discard</span>
                 </div>
                 <div class="cards-flex" id="my-cards-container"></div>
                 <div class="bottom-action-bar" id="my-action-buttons">
@@ -180,7 +187,59 @@
         </div>
     </main>
 
-    <!-- Modals -->
+    <!-- Dialog Modals -->
+    <div id="rules-modal" class="modal">
+        <div class="modal-content" style="max-width:440px; text-align:left;">
+            <h3 style="text-align:center; color:var(--accent-gold); font-size:1.2rem; margin-bottom:6px;">How to Play 31!</h3>
+            <div class="rules-scrollable-body">
+                <div class="rule-block">
+                    <h4>🎯 The Objective</h4>
+                    <p>Be the last player standing with lives remaining! Each player starts with 3 lives. At the end of each round, the player(s) with the lowest hand score lose a life. Reach 0 lives and you're eliminated.</p>
+                </div>
+
+                <div class="rule-block">
+                    <h4>🃏 Hand Scoring</h4>
+                    <p>Only cards of the <b>same suit</b> are added together towards your score (Clubs, Diamonds, Hearts, or Spades):</p>
+                    <ul>
+                        <li><b>Aces:</b> 11 points</li>
+                        <li><b>Face Cards (K, Q, J):</b> 10 points each</li>
+                        <li><b>Number Cards (2–10):</b> Face value</li>
+                        <li><b>Triplets (Special):</b> 3 cards of the exact same number or face rank (e.g. 7♠ 7♥ 7♦) are worth <b>30.5 points</b> across any suits!</li>
+                    </ul>
+                </div>
+
+                <div class="rule-block">
+                    <h4>🔄 Gameplay Flow</h4>
+                    <p>On your turn, you must perform two actions in order:</p>
+                    <ol>
+                        <li><b>Draw 1 Card:</b> Take either the top face-down card from the deck OR the top face-up card from the discard pile (holding 4 cards total).</li>
+                        <li><b>Discard 1 Card:</b> Select 1 of your 4 cards to discard back to the center (leaving you with exactly 3 cards).</li>
+                    </ol>
+                </div>
+
+                <div class="rule-block">
+                    <h4>🔔 Knocking (Closing the Round)</h4>
+                    <ul>
+                        <li>You may only knock <b>before</b> you pick up a card on your turn (with exactly 3 cards in hand).</li>
+                        <li><b>Minimum Score to Knock:</b> You must have at least <b>21 points</b> (in 3+ player games) or <b>25 points</b> (in heads-up 2-player games).</li>
+                        <li>Every other player receives exactly <b>one final turn</b> to draw and discard. Hands are then revealed.</li>
+                    </ul>
+                </div>
+
+                <div class="rule-block">
+                    <h4>⚡ The Blitz (Instant Win)</h4>
+                    <p>If any player holds an exact <b>31</b> (an Ace plus two 10-point cards in the exact same suit), they score a Blitz! The round ends immediately, and <i>all other players</i> instantly lose a life.</p>
+                </div>
+
+                <div class="rule-block">
+                    <h4>⚔️ Tie-Breakers</h4>
+                    <p>If multiple players tie for the lowest score in a multi-player game, a live tie-breaker card draw triggers. Each tied player draws from a face-down deck pool—lowest draw loses the life (Ace is high)!</p>
+                </div>
+            </div>
+            <button onclick="toggleModal('rules-modal')" style="margin-top:8px; width:100%;">Got It</button>
+        </div>
+    </div>
+
     <div id="vc-participants-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
             <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
@@ -202,7 +261,7 @@
             <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
-                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️️ Skip</button>
+                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
@@ -219,7 +278,7 @@
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
-                <label style="text-align:left; font-size:0.75rem;">Add YouTube Song</label>
+                <label style="text-align:left;">Add YouTube Song</label>
                 <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
                 <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
                 <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
@@ -274,32 +333,15 @@
     <div id="tie-breaker-reveal-modal" class="modal">
         <div class="modal-content">
             <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
-            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select cards...</p>
+            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select their cards...</p>
             <div id="tie-breaker-stream-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:8px; background:rgba(15,23,42,0.6); border-radius:6px;"></div>
         </div>
     </div>
 
-    <div id="rules-modal" class="modal">
-        <div class="modal-content" style="max-width:350px; text-align:left;">
-            <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:4px;">How to Play 31!</h3>
-            <div style="font-size:0.75rem; color:var(--text-muted); max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
-                <p><b>Objective:</b> Collect 31 points in a single suit or achieve a higher hand score than your opponents before the round ends.</p>
-                <p><b>Scoring:</b></p>
-                <ul style="padding-left:14px;">
-                    <li>Numbered cards (2-10) are worth face value.</li>
-                    <li>Face cards (Jack, Queen, King) are worth 10 points.</li>
-                    <li>Aces are worth 11 points.</li>
-                    <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
-                </ul>
-            </div>
-            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
-        </div>
-    </div>
-
     <div id="ledger-modal" class="modal">
-        <div class="modal-content" style="max-width:340px;">
+        <div class="modal-content" style="max-width:330px;">
             <h3>Ledger & Balances</h3>
-            <div id="ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:230px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
+            <div id="ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No wagers recorded yet.</div>
             <button onclick="saveLedgerScreenshot()">Save Snapshot</button>
             <button class="secondary" onclick="toggleModal('ledger-modal')">Close</button>
         </div>
@@ -313,15 +355,15 @@
         </div>
     </div>
 
-    <!-- Client-Side Script Modules (Loaded in dependency sequence) -->
+    <!-- Script Bundles -->
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/celebration.js"></script>
-    <script src="js/voice.js"></script>
     <script src="js/music.js"></script>
     <script src="js/ledger.js"></script>
     <script src="js/network.js"></script>
     <script src="js/ui.js"></script>
+    <script src="js/voice.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
