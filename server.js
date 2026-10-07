@@ -8,6 +8,7 @@ const fs = require('fs');
 const config = require('./server/config');
 const { generateLiveKitToken } = require('./server/services/livekit');
 const { setupWebSocket } = require('./server/game/wsHandler');
+const { getPublicLobbiesList } = require('./server/game/lobbyManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,7 +17,7 @@ const wss = new WebSocket.Server({ server });
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
-// Serve static assets from public/ or root
+// Serve static assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname)));
 if (fs.existsSync(path.join(__dirname, 'www'))) {
@@ -36,6 +37,7 @@ app.get('/token', async (req, res) => {
     }
 });
 
+// Fallback to index.html
 app.get('*', (req, res) => {
     const candidates = [
         path.join(__dirname, 'public', 'index.html'),
@@ -47,6 +49,17 @@ app.get('*', (req, res) => {
     }
     res.status(404).send('index.html not found.');
 });
+
+// Broadcast public lobbies to all connected clients
+function broadcastLobbyList() {
+    const list = getPublicLobbiesList();
+    const payload = JSON.stringify({ type: 'LOBBY_LIST', lobbies: list });
+    wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(payload);
+        }
+    });
+}
 
 // WebSocket heartbeat watchdog
 const heartbeatInterval = setInterval(() => {
@@ -60,8 +73,9 @@ const heartbeatInterval = setInterval(() => {
 wss.on('close', () => clearInterval(heartbeatInterval));
 
 // Initialize WS message dispatcher
-setupWebSocket(wss);
+setupWebSocket(wss, broadcastLobbyList);
 
-server.listen(config.PORT, '0.0.0.0', () => {
-    console.log(`31! Card Game server running on port ${config.PORT}`);
+const PORT = (config && config.PORT) || process.env.PORT || 10000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`31! Card Game server running on port ${PORT}`);
 });
