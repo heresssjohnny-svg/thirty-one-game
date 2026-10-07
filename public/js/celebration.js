@@ -58,7 +58,9 @@ function triggerWinnerCelebration(winnerName) {
         if (overlay.style.display === 'flex') spawnFireworkBurst();
     }, 700);
 
-    playCelebrationFanfare();
+    if (typeof playCelebrationFanfare === 'function') {
+        playCelebrationFanfare();
+    }
 
     function renderCelebration() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
