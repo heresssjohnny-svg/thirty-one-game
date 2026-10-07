@@ -1,5 +1,3 @@
-// public/js/ui.js
-
 function toggleModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
@@ -82,7 +80,7 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
     const myScore = me?.cards ? calculateLocalScore(me.cards) : 0;
     const turnsConditionMet = !!lobby.canKnock;
     const scoreConditionMet = myScore >= threshold;
-    const hasNotDrawn = me && me.cards && me.cards.length === 3; // Must hold 3 cards
+    const hasNotDrawn = me && me.cards && me.cards.length === 3;
 
     if (lobby.knockedBy) {
         knockBtn.disabled = true;
@@ -97,7 +95,7 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
 }
 
 function knockRound() {
-    const activeUsername = document.getElementById('username-input').value.trim() || window.clientState.username;
+    const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
     const me = window.appGlobals.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
 
     if (!me || !me.cards || me.cards.length !== 3) {
@@ -119,6 +117,8 @@ function knockRound() {
         if (!confirmKnock) return;
     }
 
+    if (typeof playSound === 'function') playSound('knock');
+    if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
     initSocketAndSend({ type: 'KNOCK' });
 }
 
@@ -130,7 +130,11 @@ function updateUIFromLobby(lobby) {
     document.getElementById('vc-group-container').style.display = 'inline-flex';
     document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
-    const activeUsername = document.getElementById('username-input').value.trim() || window.clientState.username;
+    const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
+
+    if (typeof renderYouTubePlayer === 'function') {
+        renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying, lobby.currentSongElapsedSeconds || 0);
+    }
 
     if (lobby.gameState !== window.appGlobals.lastGameState) {
         window.appGlobals.hasChosenPoolCard = false;
@@ -143,7 +147,6 @@ function updateUIFromLobby(lobby) {
 
     updateKnockAlertAndAudio(lobby);
 
-    // Initial discard pickup modal
     const topleftModal = document.getElementById('discard-pickup-topleft-modal');
     const topleftCardContent = document.getElementById('discard-pickup-card-content');
     if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
@@ -153,7 +156,6 @@ function updateUIFromLobby(lobby) {
         topleftModal.style.display = 'none';
     }
 
-    // Fed card modal
     const fedModal = document.getElementById('fed-card-topright-modal');
     const fedContent = document.getElementById('fed-card-content');
     const fedLabel = document.getElementById('fed-card-label');
@@ -184,6 +186,43 @@ function updateUIFromLobby(lobby) {
     const isEliminated = me && me.eliminated;
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
     window.clientState.isSpectator = isSpectatorOnly;
+
+    const peekingBanner = document.getElementById('active-peeking-banner');
+    let activelyPeekingTarget = null;
+    if (isSpectatorOnly) {
+        lobby.players.forEach(pl => {
+            if (pl.peekAllowed && Object.keys(pl.peekAllowed).some(k => k.toLowerCase() === activeUsername.toLowerCase())) {
+                activelyPeekingTarget = pl.username;
+            }
+        });
+    }
+    if (activelyPeekingTarget) {
+        peekingBanner.style.display = 'inline-flex';
+        peekingBanner.querySelector('span').innerText = `👀 Viewing ${activelyPeekingTarget}'s Hand`;
+    } else {
+        peekingBanner.style.display = 'none';
+    }
+
+    if (me) {
+        window.clientState.isReady = me.ready;
+        const readyBtn = document.getElementById('ready-btn');
+        if (readyBtn) readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
+
+        if (me.peekIncoming && Object.keys(me.peekIncoming).length > 0) {
+            const requester = Object.keys(me.peekIncoming)[0];
+            const peekModal = document.getElementById('peek-request-modal');
+            document.getElementById('peek-modal-msg').innerText = `${requester} wants to peek at your hand.`;
+            document.getElementById('peek-allow-btn').onclick = () => {
+                initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: true });
+                toggleModal('peek-request-modal');
+            };
+            document.getElementById('peek-deny-btn').onclick = () => {
+                initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername: requester, allow: false });
+                toggleModal('peek-request-modal');
+            };
+            peekModal.style.display = 'flex';
+        }
+    }
 
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
@@ -316,7 +355,7 @@ function openVcParticipantsModal() {
 
 function tapSeat(targetUsername) {
     if (window.clientState.gameState === 'lobby') return;
-    const activeUsername = document.getElementById('username-input').value.trim() || window.clientState.username;
+    const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
     if (targetUsername === activeUsername) return;
 
     const modalTitle = document.getElementById('bet-modal-title');
