@@ -5,9 +5,68 @@ let currentVoiceRoomCode = null;
 let cachedLiveKitToken = null;
 let cachedLiveKitHost = null;
 
+// Background keep-alive audio element & WakeLock
+let backgroundKeepAliveAudio = null;
+let wakeLock = null;
+
 // Safe accessor for LiveKit Client SDK from CDN
 function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || (window.livekit?.Room ? window.livekit : null);
+}
+
+/**
+ * Activates an audible near-silent audio loop and MediaSession metadata
+ * to grant the browser PWA background audio execution permissions.
+ */
+function enableBackgroundAudioKeepAlive() {
+    try {
+        if (!backgroundKeepAliveAudio) {
+            // Low-volume 1-second silent WAV base64 loop
+            backgroundKeepAliveAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
+            backgroundKeepAliveAudio.loop = true;
+            backgroundKeepAliveAudio.volume = 0.01;
+        }
+        backgroundKeepAliveAudio.play().catch(() => {});
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'Table Voice Room',
+                artist: '31! Card Game',
+                album: 'Live Voice Chat'
+            });
+        }
+    } catch (e) {
+        console.warn("Background audio keep-alive notice:", e);
+    }
+}
+
+function disableBackgroundAudioKeepAlive() {
+    try {
+        if (backgroundKeepAliveAudio) {
+            backgroundKeepAliveAudio.pause();
+            backgroundKeepAliveAudio = null;
+        }
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'none';
+        }
+    } catch (e) {}
+}
+
+async function requestScreenWakeLock() {
+    if ('wakeLock' in navigator) {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+        } catch (err) {}
+    }
+}
+
+function releaseScreenWakeLock() {
+    if (wakeLock) {
+        try { wakeLock.release(); } catch (e) {}
+        wakeLock = null;
+    }
 }
 
 /**
@@ -66,15 +125,21 @@ async function connectLiveKit(token, host, lobbyCode) {
         livekitRoom.on(LK.RoomEvent.Disconnected, () => {
             isMicActive = false;
             updateVoiceButtonUI();
+            disableBackgroundAudioKeepAlive();
+            releaseScreenWakeLock();
         });
 
         // Connect specifically to the lobby room
         await livekitRoom.connect(host, token);
 
-        // Ensure player is MUTED by default upon joining
+        // Ensure player is MUTED by default upon joining while keeping connection open
         await livekitRoom.localParticipant.setMicrophoneEnabled(false);
         isMicActive = false;
         updateVoiceButtonUI();
+
+        // Start background keep-alive audio & wake lock to prevent background drop
+        enableBackgroundAudioKeepAlive();
+        requestScreenWakeLock();
 
         // Broadcast muted in-VC status to the server
         if (typeof initSocketAndSend === 'function') {
@@ -89,6 +154,7 @@ async function connectLiveKit(token, host, lobbyCode) {
 
 /**
  * Toggles microphone recording on/off via LiveKit local participant tracks.
+ * Does NOT disconnect from the room.
  */
 async function toggleVoiceOnOff() {
     const LK = getLiveKitSDK();
@@ -99,7 +165,7 @@ async function toggleVoiceOnOff() {
             showCenterNotification("Connecting voice room...");
             await connectLiveKit(cachedLiveKitToken, cachedLiveKitHost, currentVoiceRoomCode);
         } else {
-            showCenterNotification("Voice server unavailable.");
+            showCenterNotification("Voice room unavailable.");
             return;
         }
     }
@@ -114,11 +180,11 @@ async function toggleVoiceOnOff() {
 
     try {
         if (isMicActive) {
-            // MUTE MICROPHONE
+            // MUTE MICROPHONE (Stops publishing mic stream; preserves room connection & incoming audio)
             await livekitRoom.localParticipant.setMicrophoneEnabled(false);
             isMicActive = false;
         } else {
-            // UNMUTE MICROPHONE
+            // UNMUTE MICROPHONE (Enables publishing mic stream)
             if (livekitRoom.startAudio) {
                 await livekitRoom.startAudio();
             }
@@ -161,6 +227,10 @@ function updateVoiceButtonUI() {
     }
 }
 
+/**
+ * Completely disconnects and cleans up the voice session.
+ * Called when leaving the lobby or resetting to the main menu.
+ */
 function disconnectLiveKit() {
     if (livekitRoom) {
         try {
@@ -173,6 +243,8 @@ function disconnectLiveKit() {
     cachedLiveKitHost = null;
     currentVoiceRoomCode = null;
     updateVoiceButtonUI();
+    disableBackgroundAudioKeepAlive();
+    releaseScreenWakeLock();
 }
 
 function openVcParticipantsModal() {
@@ -205,3 +277,17 @@ function triggerVoiceReconnect() {
     }
     toggleModal('vc-participants-modal');
 }
+
+// Background tab restoration handler
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        // Re-acquire screen wake lock on return
+        if (livekitRoom && livekitRoom.state === 'connected') {
+            requestScreenWakeLock();
+            enableBackgroundAudioKeepAlive();
+        } else if (cachedLiveKitToken && cachedLiveKitHost && window.appGlobals?.currentJoinedCode) {
+            // Re-establish session if dropped during an extended background period
+            connectLiveKit(cachedLiveKitToken, cachedLiveKitHost, window.appGlobals.currentJoinedCode);
+        }
+    }
+});
