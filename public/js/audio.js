@@ -30,32 +30,41 @@ function playSound(type) {
             const gain = ctx.createGain();
             osc.connect(gain);
             gain.connect(ctx.destination);
-            osc.frequency.setValueAtTime(300, now);
-            gain.gain.setValueAtTime(0.4, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
+            gain.gain.setValueAtTime(0.85, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
             osc.start(now);
-            osc.stop(now + 0.2);
-        }
-    } catch (e) {}
-}
-
-function playCelebrationFanfare() {
-    try {
-        const ctx = getAudioContext();
-        const now = ctx.currentTime;
-        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
-        notes.forEach((freq, idx) => {
+            osc.stop(now + 0.12);
+        } else if (type === 'card') {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
             gain.connect(ctx.destination);
-            osc.frequency.setValueAtTime(freq, now + idx * 0.16);
-            gain.gain.setValueAtTime(0.3, now + idx * 0.16);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.16 + 0.9);
-            osc.start(now + idx * 0.16);
-            osc.stop(now + idx * 0.16 + 0.9);
-        });
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
+            gain.gain.setValueAtTime(0.6, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+            osc.start(now);
+            osc.stop(now + 0.08);
+        }
     } catch (e) {}
+}
+
+function speakKnockedCue() {
+    if ('speechSynthesis' in window) {
+        try {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance("Knocked");
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+            window.speechSynthesis.speak(utterance);
+        } catch (e) {
+            console.warn("Speech synthesis unavailable:", e);
+        }
+    }
 }
 
 function triggerVibration(pattern) {
@@ -70,4 +79,3 @@ function enableBackgroundAudioKeepAlive() {
         if (ctx && ctx.state === 'suspended') ctx.resume();
     } catch (e) {}
 }
-
