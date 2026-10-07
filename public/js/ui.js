@@ -41,7 +41,6 @@ function toggleChatWindow() {
     const isVisible = win.style.display === 'flex';
     win.style.display = isVisible ? 'none' : 'flex';
     
-    // Clear unread badge when chat window opens
     if (!isVisible) {
         const chatBtn = document.getElementById('chat-toggle-btn');
         if (chatBtn) {
@@ -72,7 +71,6 @@ function appendChatMessage(user, msg) {
     box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
     box.scrollTop = box.scrollHeight;
 
-    // If chat window is closed, flash unread badge and update button icon text
     const win = document.getElementById('chat-window');
     if (!win || win.style.display !== 'flex') {
         const chatBtn = document.getElementById('chat-toggle-btn');
@@ -152,10 +150,17 @@ function updateWager() {
     initSocketAndSend({ type: 'UPDATE_WAGER', wager });
 }
 
+// Propose lives update (triggers majority vote across humans)
 function updateSettings() {
     const livesEl = document.getElementById('config-lives');
-    const lives = livesEl ? livesEl.value : 3;
+    const lives = livesEl ? parseInt(livesEl.value, 10) : 2;
     initSocketAndSend({ type: 'UPDATE_SETTINGS', lives });
+}
+
+function submitLivesVote(agree) {
+    initSocketAndSend({ type: 'VOTE_LIVES', agree });
+    const modal = document.getElementById('lives-vote-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
@@ -187,13 +192,8 @@ function proposeEndGame() {
 }
 
 function leaveLobby() {
-    // 1. Immediately disconnect audio and close WebRTC/LiveKit
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
-
-    // 2. Notify server to release seat
     initSocketAndSend({ type: 'LEAVE_LOBBY' });
-
-    // 3. Reset client state back to main menu
     resetToMainMenu();
 }
 
@@ -421,7 +421,6 @@ function updateUIFromLobby(lobby) {
     document.getElementById('end-game-btn').style.display = 'inline-block';
     document.getElementById('leave-lobby-btn').style.display = 'inline-block';
     
-    // Reveal top and bottom in-game header control rows
     const topRowBtns = document.getElementById('in-game-top-row-btns');
     if (topRowBtns) topRowBtns.style.display = 'inline-flex';
 
@@ -435,6 +434,7 @@ function updateUIFromLobby(lobby) {
         renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying, lobby.currentSongElapsedSeconds || 0);
     }
 
+    // CELEBRATION FIX: Trigger cleanly on tournament victory
     const hasWinner = lobby.tournamentWinner || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
     if (hasWinner) {
         let winnerName = lobby.tournamentWinner;
@@ -445,7 +445,9 @@ function updateUIFromLobby(lobby) {
         if (winnerName && window.appGlobals?.lastCelebratedWinner !== winnerName) {
             if (!window.appGlobals) window.appGlobals = {};
             window.appGlobals.lastCelebratedWinner = winnerName;
-            if (typeof triggerWinnerCelebration === 'function') triggerWinnerCelebration(winnerName);
+            if (typeof triggerWinnerCelebration === 'function') {
+                triggerWinnerCelebration(winnerName);
+            }
         }
     }
     if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
@@ -460,6 +462,33 @@ function updateUIFromLobby(lobby) {
             document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
             document.getElementById('fed-card-topright-modal').style.display = 'none';
         }
+    }
+
+    // LIVES VOTING MODAL HANDLING
+    const voteModal = document.getElementById('lives-vote-modal');
+    if (voteModal) {
+        if (lobby.livesVote && lobby.gameState === 'lobby') {
+            const hasVoted = lobby.livesVote.votes && lobby.livesVote.votes[activeUsername] !== undefined;
+            const isSeatedHuman = lobby.players.some(p => p.username.toLowerCase() === activeUsername.toLowerCase() && !p.isBot);
+
+            if (isSeatedHuman && !hasVoted) {
+                const promptEl = document.getElementById('lives-vote-prompt');
+                if (promptEl) {
+                    promptEl.innerText = `${lobby.livesVote.proposer} proposed setting starting lives to ${lobby.livesVote.proposedLives}. Do you agree?`;
+                }
+                voteModal.style.display = 'flex';
+            } else {
+                voteModal.style.display = 'none';
+            }
+        } else {
+            voteModal.style.display = 'none';
+        }
+    }
+
+    // Update config lives dropdown to match server state
+    const configLivesSelect = document.getElementById('config-lives');
+    if (configLivesSelect && lobby.defaultLives) {
+        configLivesSelect.value = String(lobby.defaultLives);
     }
 
     // Knock alert modal
@@ -833,20 +862,17 @@ function resetToMainMenu() {
     window.appGlobals.currentJoinedCode = null;
     window.appGlobals.latestLobbySnapshot = null;
     
-    // Hide game view and return to main menu
     document.getElementById('game-view').style.display = 'none';
     document.getElementById('main-menu').style.display = 'flex';
     document.getElementById('end-game-btn').style.display = 'none';
     document.getElementById('leave-lobby-btn').style.display = 'none';
     
-    // Hide in-game header control rows
     const topRowBtns = document.getElementById('in-game-top-row-btns');
     if (topRowBtns) topRowBtns.style.display = 'none';
 
     const toolsRow = document.getElementById('in-game-tools-row');
     if (toolsRow) toolsRow.style.display = 'none';
 
-    // Close chat if open
     const chatWin = document.getElementById('chat-window');
     if (chatWin) chatWin.style.display = 'none';
 
