@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
 
-// Auto-resolve config whether located in root or server/
+// Auto-resolve config from root or server/
 let config;
 if (fs.existsSync(path.join(__dirname, 'config.js'))) {
     config = require('./config');
@@ -23,12 +23,14 @@ if (fs.existsSync(path.join(__dirname, 'config.js'))) {
 
 // Auto-resolve lobbyManager
 let lobbyManager;
-if (fs.existsSync(path.join(__dirname, 'game', 'lobbyManager.js'))) {
+if (fs.existsSync(path.join(__dirname, 'lobbyManager.js'))) {
+    lobbyManager = require('./lobbyManager');
+} else if (fs.existsSync(path.join(__dirname, 'game', 'lobbyManager.js'))) {
     lobbyManager = require('./game/lobbyManager');
 } else if (fs.existsSync(path.join(__dirname, 'server', 'game', 'lobbyManager.js'))) {
     lobbyManager = require('./server/game/lobbyManager');
 } else {
-    throw new Error("Could not find lobbyManager.js in ./game/ or ./server/game/");
+    throw new Error("Could not find lobbyManager.js");
 }
 
 const {
@@ -64,23 +66,12 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Determine the actual path to the public directory
-let publicPath = path.join(__dirname, 'public');
-if (!fs.existsSync(publicPath) && fs.existsSync(path.join(__dirname, '..', 'public'))) {
-    publicPath = path.join(__dirname, '..', 'public');
-}
+// Serve static assets (js, css, mp3s, manifest) directly from root directory
+app.use(express.static(__dirname));
 
-// Serve all static assets (js, css, mp3s, manifest)
-app.use(express.static(publicPath));
-
-// Explicit route to guarantee index.html is served on "/"
+// Serve index.html directly from root directory
 app.get('/', (req, res) => {
-    const indexPath = path.join(publicPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(404).send('index.html not found in ' + publicPath);
-    }
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 function broadcastLobbyList() {
