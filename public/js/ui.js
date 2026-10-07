@@ -476,7 +476,20 @@ function updateUIFromLobby(lobby) {
 
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
 
-    // CELEBRATION TRIGGER
+    // 1. CELEBRATION TRIGGER: HIT 31
+    if (lobby.hit31Player) {
+        if (!window.appGlobals) window.appGlobals = {};
+        if (window.appGlobals.lastCelebrated31 !== lobby.hit31Player) {
+            window.appGlobals.lastCelebrated31 = lobby.hit31Player;
+            if (typeof trigger31Celebration === 'function') {
+                trigger31Celebration(lobby.hit31Player);
+            }
+        }
+    } else {
+        if (window.appGlobals) window.appGlobals.lastCelebrated31 = null;
+    }
+
+    // 2. CELEBRATION TRIGGER: TOURNAMENT END
     const isTournamentOver = lobby.gameState === 'tournamentEnd' || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
     if (isTournamentOver) {
         let winnerName = lobby.tournamentWinner || lobby.lastGameWinner;
@@ -488,7 +501,7 @@ function updateUIFromLobby(lobby) {
             if (!window.appGlobals) window.appGlobals = {};
             window.appGlobals.lastCelebratedWinner = winnerName;
             if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(winnerName);
+                triggerWinnerCelebration(winnerName, "TOURNAMENT CHAMPION!");
             }
         }
     } else if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
@@ -768,7 +781,7 @@ function updateUIFromLobby(lobby) {
         sidePotBanner.style.display = 'none';
     }
 
-    // NEXT HAND OVERLAY (Supports direct active-player check & 8s auto-start)
+    // NEXT HAND OVERLAY (Guaranteed active seated visibility & auto-start notice)
     const nextHandOverlay = document.getElementById('next-hand-overlay');
     const nextBtn = document.getElementById('next-hand-btn');
 
@@ -832,7 +845,7 @@ function updateUIFromLobby(lobby) {
         poolModal.style.display = 'none';
         revealModal.style.display = 'flex';
         const isTiedParticipant = lobby.tiedParticipantsList.includes(activeUsername);
-        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to select cards...';
+        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
         
         let streamHtml = '';
         if (isTiedParticipant && !lobby.drawResults[activeUsername]) {
