@@ -64,11 +64,24 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static assets from public/ directory
-const publicPath = fs.existsSync(path.join(__dirname, 'public')) 
-    ? path.join(__dirname, 'public') 
-    : path.join(__dirname, '../public');
+// Determine the actual path to the public directory
+let publicPath = path.join(__dirname, 'public');
+if (!fs.existsSync(publicPath) && fs.existsSync(path.join(__dirname, '..', 'public'))) {
+    publicPath = path.join(__dirname, '..', 'public');
+}
+
+// Serve all static assets (js, css, mp3s, manifest)
 app.use(express.static(publicPath));
+
+// Explicit route to guarantee index.html is served on "/"
+app.get('/', (req, res) => {
+    const indexPath = path.join(publicPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('index.html not found in ' + publicPath);
+    }
+});
 
 function broadcastLobbyList() {
     const list = getPublicLobbiesList();
@@ -325,7 +338,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Side bets
         if (data.type === 'PROPOSE_ELIMINATION_BET') {
             const proposer = lobby.players.find(p => p.id === ws);
             if (proposer) {
@@ -418,7 +430,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Hand peeking
         if (data.type === 'REQUEST_PEEK') {
             const spec = lobby.spectators.find(s => s.idSocket === ws);
             const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
@@ -463,7 +474,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // End Game / Lives votes
         if (data.type === 'END_GAME_PROPOSAL') {
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
