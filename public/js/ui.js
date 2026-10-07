@@ -75,6 +75,12 @@ function stopPeekingAction() {
     initSocketAndSend({ type: 'STOP_PEEK' });
     const banner = document.getElementById('active-peeking-banner');
     if (banner) banner.style.display = 'none';
+    showCenterNotification("Stopped peeking.");
+}
+
+function kickPeekerAction(spectatorUsername) {
+    initSocketAndSend({ type: 'KICK_PEEKER', spectatorUsername });
+    showCenterNotification(`Removed ${spectatorUsername} from peeking your hand.`);
 }
 
 function renderLobbyList(lobbies) {
@@ -171,7 +177,6 @@ function drawCard(type) {
 function discardCard(cardIndex) {
     if (typeof playSound === 'function') playSound('card');
     if (typeof triggerVibration === 'function') triggerVibration(30);
-    // Payload supports both 'index' and 'cardIndex' for backend compatibility
     initSocketAndSend({ type: 'DISCARD_CARD', index: cardIndex, cardIndex: cardIndex });
 }
 
@@ -356,7 +361,6 @@ function knockRound() {
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
     const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
 
-    // Strict rule: Cannot knock if holding a 4th card (after drawing)
     if (!me || !me.cards || me.cards.length !== 3) {
         showCenterNotification("You cannot knock after picking up a card!");
         return;
@@ -422,7 +426,7 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Knock alert & voice cue
+    // Knock alert & audio
     const knockAlertModal = document.getElementById('knock-alert-modal');
     if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
         knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
@@ -477,6 +481,26 @@ function updateUIFromLobby(lobby) {
     const isEliminated = me && me.eliminated;
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
     window.clientState.isSpectator = isSpectatorOnly;
+
+    // Check if spectator is currently peeking at a player's hand
+    const peekingBanner = document.getElementById('active-peeking-banner');
+    let activelyPeekingTarget = null;
+    if (isSpectatorOnly && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+        lobby.players.forEach(pl => {
+            if (pl.peekAllowed && Object.keys(pl.peekAllowed).some(k => k.toLowerCase() === activeUsername.toLowerCase())) {
+                activelyPeekingTarget = pl.username;
+            }
+        });
+    }
+    if (peekingBanner) {
+        if (activelyPeekingTarget) {
+            peekingBanner.style.display = 'inline-flex';
+            const spanEl = peekingBanner.querySelector('span');
+            if (spanEl) spanEl.innerText = `👀 Viewing ${activelyPeekingTarget}'s Hand`;
+        } else {
+            peekingBanner.style.display = 'none';
+        }
+    }
 
     if (me) {
         window.clientState.isReady = me.ready;
@@ -536,11 +560,11 @@ function updateUIFromLobby(lobby) {
     const turnsConditionMet = !!lobby.canKnock;
     const scoreConditionMet = myScore >= threshold;
     const isMyTurnPlaying = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-    const hasNotDrawn = me && me.cards && me.cards.length === 3; // Must be holding exactly 3 cards
+    const hasNotDrawn = me && me.cards && me.cards.length === 3;
 
     if (lobby.knockedBy) {
         knockBtn.disabled = true;
-        knockBtn.innerText = `${lobby.knockedBy} knocked!`;
+        knockBtn.innerText = `${lobby.knockedBy} knocked!;`;
     } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying || !hasNotDrawn) {
         knockBtn.disabled = true;
         knockBtn.innerText = `Knock (${threshold}+)`;
