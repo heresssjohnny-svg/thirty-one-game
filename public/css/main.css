@@ -45,7 +45,12 @@ body {
 }
 
 header {
-    height: 48px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: 8px;
+    height: auto;
+    min-height: calc(48px + env(safe-area-inset-top));
     background: rgba(2, 44, 30, 0.95);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -53,7 +58,6 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 12px;
     z-index: 1000;
     flex-shrink: 0;
 }
@@ -276,7 +280,7 @@ main {
 /* ==========================================================================
    Buttons & General Controls
    ========================================================================== */
-button {
+button, .btn-link {
     background: #2563eb;
     color: white;
     border: none;
@@ -285,6 +289,10 @@ button {
     font-weight: 600;
     cursor: pointer;
     font-size: 0.75rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 button.secondary {
@@ -301,7 +309,16 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* Voice indicator led */
+/* Voice Indicator LED */
+.vc-control-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(30, 41, 59, 0.7);
+    padding: 2px 5px;
+    border-radius: 6px;
+}
+
 .led-indicator {
     width: 7px;
     height: 7px;
