@@ -1,4 +1,4 @@
-// js/voice.js
+// public/js/voice.js
 
 let liveKitRoom = null;
 let currentVoiceToken = null;
@@ -21,7 +21,9 @@ function formatLiveKitUrl(hostUrl) {
 async function connectToVoiceChat(host, token) {
     if (!host || !token) {
         console.warn('[Voice] Cannot connect: Missing host or token');
-        showCenterNotification("Voice chat credentials unavailable");
+        if (typeof showCenterNotification === 'function') {
+            showCenterNotification("Voice chat credentials unavailable");
+        }
         updateVoiceUiState(false, true);
         return;
     }
@@ -75,13 +77,15 @@ async function connectToVoiceChat(host, token) {
         await liveKitRoom.connect(wsUrl, token);
         console.log('[Voice] Connected to LiveKit room');
 
-        // Publish local mic (muted by default until toggled)
+        // Publish local mic (muted by default until user toggles)
         await liveKitRoom.localParticipant.setMicrophoneEnabled(false);
         updateVoiceUiState(true, false);
         updateVcParticipantsList();
     } catch (err) {
         console.error('[Voice] LiveKit connection error:', err);
-        showCenterNotification("Voice room unavailable");
+        if (typeof showCenterNotification === 'function') {
+            showCenterNotification("Voice room unavailable");
+        }
         updateVoiceUiState(false, true);
     }
 }
@@ -91,7 +95,9 @@ async function toggleVoiceOnOff() {
         if (currentVoiceHost && currentVoiceToken) {
             await connectToVoiceChat(currentVoiceHost, currentVoiceToken);
         } else {
-            showCenterNotification("Voice server not configured.");
+            if (typeof showCenterNotification === 'function') {
+                showCenterNotification("Voice server not configured.");
+            }
         }
         return;
     }
@@ -102,11 +108,13 @@ async function toggleVoiceOnOff() {
         const micActive = !isEnabled;
         updateVoiceUiState(true, micActive);
 
-        initSocketAndSend({
-            type: 'VC_STATUS_UPDATE',
-            inVC: true,
-            isMuted: !micActive
-        });
+        if (typeof initSocketAndSend === 'function') {
+            initSocketAndSend({
+                type: 'VC_STATUS_UPDATE',
+                inVC: true,
+                isMuted: !micActive
+            });
+        }
     } catch (err) {
         console.error('[Voice] Failed to toggle mic:', err);
     }
@@ -119,12 +127,13 @@ function updateVoiceUiState(connected, micActive) {
     if (led) {
         if (connected && micActive) {
             led.className = 'led-indicator active';
+            led.style.background = '#22c55e'; // Green when transmitting
         } else if (connected) {
             led.className = 'led-indicator';
             led.style.background = '#f59e0b'; // Amber for muted/listening
         } else {
             led.className = 'led-indicator';
-            led.style.background = '#64748b'; // Gray for off
+            led.style.background = '#64748b'; // Gray for disconnected
         }
     }
 
@@ -178,7 +187,9 @@ function triggerVoiceReconnect() {
     if (currentVoiceHost && currentVoiceToken) {
         connectToVoiceChat(currentVoiceHost, currentVoiceToken);
     } else {
-        showCenterNotification("No voice session to reconnect.");
+        if (typeof showCenterNotification === 'function') {
+            showCenterNotification("No voice session to reconnect.");
+        }
     }
 }
 
