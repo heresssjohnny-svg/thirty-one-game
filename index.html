@@ -18,7 +18,7 @@
 <body>
     <input type="checkbox" id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
 
-    <!-- Ambient Card Decorations -->
+    <!-- Ambient Card Background Decorations -->
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
@@ -228,6 +228,14 @@
                     <input type="range" id="lk-volume-slider" min="0" max="1" step="0.05" value="1.0" oninput="setVoiceChatVolume(this.value)" style="width:100%; accent-color:var(--accent-cyan);">
                 </div>
 
+                <!-- Audio Output Route / Speaker Selector -->
+                <div style="background:rgba(15,23,42,0.7); padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.2);">
+                    <label style="font-weight:bold; color:var(--accent-cyan); display:block; margin-bottom:4px;">🔊 Audio Output (Speaker / Headset)</label>
+                    <select id="audio-output-select" onchange="setAudioOutputDevice(this.value)" style="width:100%; padding:6px; font-size:0.75rem; background:#0f172a; color:#fff; border:1px solid #334155; border-radius:6px;">
+                        <option value="default">Phone Speaker / Default</option>
+                    </select>
+                </div>
+
                 <!-- Game MP3 / SFX Volume Slider -->
                 <div style="background:rgba(15,23,42,0.7); padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.2);">
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
@@ -241,7 +249,7 @@
                 <div style="background:rgba(15,23,42,0.7); padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.2);">
                     <div style="font-weight:bold; color:var(--text-main); margin-bottom:4px;">Active Voice Participants:</div>
                     <div id="vc-participants-list" style="font-size:0.75rem; color:var(--text-muted); max-height:85px; overflow-y:auto; padding:2px;">
-                        No one currently in voice chat.
+                        Not connected to voice chat.
                     </div>
                     <button onclick="triggerVoiceReconnect()" style="background:#2563eb; width:100%; margin-top:6px; padding:5px; font-size:0.72rem;">🔄 Reconnect Voice Chat</button>
                 </div>
