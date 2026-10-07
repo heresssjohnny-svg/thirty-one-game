@@ -1,106 +1,109 @@
 // public/js/audio.js
 let audioCtx = null;
+let speechInitialized = false;
 
 function getAudioContext() {
     if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+        }
     }
-    if (audioCtx.state === 'suspended') {
+    if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
     return audioCtx;
 }
 
-function playSound(type) {
-    try {
-        const ctx = getAudioContext();
-        const now = ctx.currentTime;
-        if (type === 'ding') {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.setValueAtTime(587.33, now);
-            gain.gain.setValueAtTime(0.2, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-            osc.start(now);
-            osc.stop(now + 0.4);
-        } else if (type === 'knock') {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.setValueAtTime(300, now);
-            gain.gain.setValueAtTime(0.4, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-            osc.start(now);
-            osc.stop(now + 0.2);
-        } else if (type === 'card') {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(420, now);
-            osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
-            gain.gain.setValueAtTime(0.6, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
-            osc.start(now);
-            osc.stop(now + 0.08);
-        }
-    } catch (e) {}
-}
+// Unlock audio and speech synthesis on user interaction
+function unlockAudioEngine() {
+    getAudioContext();
 
-function speakKnockedCue() {
-    if ('speechSynthesis' in window) {
-        try {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("Knocked");
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.volume = 1.0;
-            window.speechSynthesis.speak(utterance);
-        } catch (e) {
-            console.warn("Speech synthesis unavailable:", e);
-        }
+    if ('speechSynthesis' in window && !speechInitialized) {
+        const silentUtterance = new SpeechSynthesisUtterance('');
+        silentUtterance.volume = 0;
+        window.speechSynthesis.speak(silentUtterance);
+        speechInitialized = true;
     }
 }
 
-function playCelebrationFanfare() {
+document.addEventListener('pointerdown', unlockAudioEngine, { once: false, passive: true });
+document.addEventListener('touchstart', unlockAudioEngine, { once: false, passive: true });
+
+function speakKnockedCue() {
+    if (!('speechSynthesis' in window)) return;
+
+    window.speechSynthesis.cancel(); // Stop any pending speech
+
+    const utterance = new SpeechSynthesisUtterance("Knocked!");
+    utterance.volume = 1.0;
+    utterance.rate = 0.95;  // Slightly deliberate pace
+    utterance.pitch = 0.65; // Lower pitch for a deep male voice tone
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+        // Attempt to select an English male voice if available on system
+        const maleVoice = voices.find(v => 
+            v.lang.startsWith('en') && 
+            (v.name.toLowerCase().includes('male') || 
+             v.name.toLowerCase().includes('david') || 
+             v.name.toLowerCase().includes('george') || 
+             v.name.toLowerCase().includes('daniel') ||
+             v.name.toLowerCase().includes('james'))
+        );
+        if (maleVoice) {
+            utterance.voice = maleVoice;
+        }
+    }
+
+    window.speechSynthesis.speak(utterance);
+}
+
+// Pre-load voices for browsers that fetch them asynchronously
+if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+    };
+}
+
+function playSound(type) {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
     try {
-        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
         const now = ctx.currentTime;
-        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
-        notes.forEach((freq, idx) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.setValueAtTime(freq, now + idx * 0.16);
-            gain.gain.setValueAtTime(0.3, now + idx * 0.16);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.16 + 0.9);
-            osc.start(now + idx * 0.16);
-            osc.stop(now + idx * 0.16 + 0.9);
-        });
-    } catch (e) {}
+
+        if (type === 'card') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(320, now);
+            osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+            osc.start(now);
+            osc.stop(now + 0.08);
+        } else if (type === 'knock') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(160, now);
+            osc.frequency.exponentialRampToValueAtTime(45, now + 0.22);
+            gain.gain.setValueAtTime(0.6, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.22);
+            osc.start(now);
+            osc.stop(now + 0.22);
+        }
+    } catch (e) {
+        console.warn("Sound play error:", e);
+    }
 }
 
 function triggerVibration(pattern) {
-    if (navigator.vibrate) {
-        try { navigator.vibrate(pattern); } catch (e) {}
-    }
-    const iosTrigger = document.getElementById('ios-haptic-trigger');
-    if (iosTrigger) {
+    if ('vibrate' in navigator) {
         try {
-            iosTrigger.checked = !iosTrigger.checked;
-            iosTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            navigator.vibrate(pattern);
         } catch (e) {}
     }
-}
-
-function enableBackgroundAudioKeepAlive() {
-    try {
-        const ctx = getAudioContext();
-        if (ctx && ctx.state === 'suspended') ctx.resume();
-    } catch (e) {}
 }
