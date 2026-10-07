@@ -1,207 +1,240 @@
-#game-view {
-    display: none;
-    width: 100%;
-    height: 100%;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    position: relative;
-    padding-bottom: 5px;
-    z-index: 10;
-}
+/* public/css/table.css */
 
 .table-oval {
+    width: 95%;
+    max-width: 650px;
+    height: 46vh;
+    min-height: 250px;
+    background: radial-gradient(ellipse at center, #065f46 0%, #044e36 60%, #022c1e 100%);
+    border: 8px solid #5c3a21;
+    border-radius: 180px;
     position: relative;
-    width: 620px;
-    max-width: 96vw;
-    height: 260px;
-    background: radial-gradient(circle, #065f46 0%, #044e36 100%);
-    border: 6px solid #78350f;
-    border-radius: 140px;
-    margin: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.6);
+    /* Pushed down to completely prevent modal/badge overlap */
+    margin: 38px auto 8px auto;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
 }
 
+#game-view {
+    padding-top: 6px;
+    overflow-y: hidden;
+}
+
+/* Pots in Center Table */
 .pots-container {
     position: absolute;
-    top: 6px;
+    top: 24%;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    gap: 6px;
+    flex-direction: column;
+    gap: 3px;
     align-items: center;
+    pointer-events: none;
     z-index: 10;
 }
 
-.pot-total-display, .side-pot-total-display {
-    font-size: 0.8rem;
-    font-weight: bold;
-    color: var(--accent-gold);
+.pot-total-display {
     background: rgba(15, 23, 42, 0.85);
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
+    border: 1.5px solid var(--accent-gold);
+    color: var(--accent-gold);
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 10px;
+    border-radius: 12px;
 }
 
-.deck-center { display: flex; gap: 16px; align-items: center; z-index: 5; }
+.side-pot-total-display {
+    background: rgba(4, 78, 54, 0.9);
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 10px;
+}
+
+/* Deck & Discard Center Layout */
+.deck-center {
+    position: absolute;
+    top: 54%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    z-index: 20;
+}
 
 .card-slot {
-    width: 55px;
-    height: 80px;
+    width: 52px;
+    height: 72px;
     border-radius: 6px;
-    background: #fff;
-    color: #000;
-    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 1.1rem;
-    font-weight: bold;
     cursor: pointer;
-    position: relative;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    transition: transform 0.15s ease;
+}
+
+.card-slot:active {
+    transform: scale(0.95);
 }
 
 .card-slot.back {
-    background: #1e3a8a;
-    border: 2px solid #93c5fd;
+    background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
     color: #93c5fd;
+    font-weight: 900;
     font-size: 0.7rem;
+    border: 2px solid #60a5fa;
+    flex-direction: column;
 }
 
 .deck-counter {
-    position: absolute;
-    bottom: 2px;
     font-size: 0.55rem;
-    color: #fff;
+    color: #bfdbfe;
+    margin-top: 2px;
 }
 
+#center-turn-indicator {
+    position: absolute;
+    top: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent-gold);
+    color: #0f172a;
+    font-weight: 900;
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 8px;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+    animation: bounceTurn 1s infinite alternate;
+}
+
+@keyframes bounceTurn {
+    from { transform: translateX(-50%) translateY(0); }
+    to { transform: translateX(-50%) translateY(-3px); }
+}
+
+/* ==========================================================================
+   Seat Geometry (6 Positions around Oval)
+   ========================================================================== */
 .seat {
     position: absolute;
-    background: rgba(15, 23, 42, 0.9);
-    border: 2px solid #475569;
-    padding: 3px 6px;
-    border-radius: 6px;
-    font-size: 0.65rem;
-    text-align: center;
-    width: 110px;
-    z-index: 5;
     display: flex;
     flex-direction: column;
     align-items: center;
-    transition: all 0.3s ease;
+    gap: 2px;
+    z-index: 30;
 }
 
-.seat:hover { border-color: var(--accent-gold); }
-
-.seat.current-turn-seat {
-    background: rgba(250, 204, 21, 0.95) !important;
-    border: 2px solid #ffffff !important;
-    box-shadow: 0 0 20px rgba(250, 204, 21, 0.9);
-    color: #0f172a !important;
-    transform: scale(1.08);
+.seat-name-area {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(250, 204, 21, 0.35);
+    border-radius: 6px;
+    padding: 3px 6px;
+    font-size: 0.65rem;
+    color: var(--text-main);
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+    max-width: 120px;
 }
 
-.seat-0 { bottom: -5px; left: calc(50% - 55px); }
-.seat-1 { bottom: 25px; left: 6px; }
-.seat-2 { top: 25px; left: 8px; }
-.seat-3 { top: -10px; left: calc(50% - 55px); }
-.seat-4 { top: 25px; right: 8px; }
-.seat-5 { bottom: 25px; right: 6px; }
+.current-turn-seat .seat-name-area {
+    border-color: var(--accent-gold);
+    box-shadow: 0 0 12px rgba(250, 204, 21, 0.8);
+}
 
-.seat-name-area { cursor: pointer; width: 100%; }
-.seat-cards { display: flex; gap: 1px; justify-content: center; margin-top: 1px; }
+.dealer-badge {
+    color: #0f172a;
+    background: var(--accent-gold);
+    font-weight: 900;
+    border-radius: 50%;
+    padding: 0 4px;
+    font-size: 0.6rem;
+    margin-left: 2px;
+}
+
+.seat-cards {
+    display: flex;
+    gap: 2px;
+    margin-top: 1px;
+}
+
+/* Responsive Oval Positions */
+.seat-0 { bottom: -14px; left: 50%; transform: translateX(-50%); }
+.seat-1 { bottom: 18%; left: 3%; }
+.seat-2 { top: 12%; left: 6%; }
+.seat-3 { top: -14px; left: 50%; transform: translateX(-50%); }
+.seat-4 { top: 12%; right: 6%; }
+.seat-5 { bottom: 18%; right: 3%; }
+
+/* ==========================================================================
+   My Hand Control Dock (Bottom of Screen)
+   ========================================================================== */
+.my-hand-area {
+    width: 100%;
+    max-width: 650px;
+    background: rgba(2, 44, 30, 0.95);
+    border-top: 2px solid rgba(250, 204, 21, 0.3);
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+    z-index: 500;
+}
+
+.cards-flex {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin: 3px 0;
+}
+
+.my-card {
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 4px 6px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.my-card:active {
+    transform: translateY(-8px);
+}
 
 .mini-card {
-    width: 18px;
-    height: 26px;
-    background: #fff;
-    font-size: 0.45rem;
-    font-weight: bold;
-    border-radius: 2px;
+    width: 24px;
+    height: 34px;
+    background: #ffffff;
+    border-radius: 3px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid #cbd5e1;
+    justify-content: space-between;
+    padding: 1px 2px;
+    font-size: 0.55rem;
+    font-weight: 800;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
 }
 
 .red-suit { color: #dc2626; }
 .black-suit { color: #0f172a; }
 
-.dealer-badge {
-    background: var(--accent-gold);
-    color: #000;
-    font-size: 0.55rem;
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-weight: bold;
-    margin-left: 3px;
-}
-
-.my-hand-area {
-    background: rgba(4, 78, 54, 0.9);
-    padding: 8px;
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    width: 100%;
-    max-width: 450px;
-    border: 1px solid var(--border-color);
-    flex-shrink: 0;
-    z-index: 100;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-
-.cards-flex {
-    display: flex !important;
-    gap: 6px;
-    min-height: 70px;
-    align-items: center;
-    justify-content: center;
-}
-
-.my-card {
-    width: 50px;
-    height: 72px;
-    background: #fff;
-    border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 1rem;
-    cursor: pointer;
-    border: 2px solid #cbd5e1;
-    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.3);
-}
-
-.my-card:hover {
-    transform: translateY(-3px);
-    border-color: var(--accent-gold);
-}
-
 .bottom-action-bar {
     display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
     justify-content: center;
-    align-items: center;
-}
-
-#turn-banner {
-    background: rgba(4, 78, 54, 0.9);
-    border: 1px solid var(--accent-gold);
-    padding: 3px 10px;
-    border-radius: 16px;
-    font-size: 0.75rem;
-    color: var(--accent-gold);
-    font-weight: bold;
-    flex-shrink: 0;
 }
