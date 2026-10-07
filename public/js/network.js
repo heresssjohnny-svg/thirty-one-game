@@ -1,5 +1,3 @@
-// public/js/network.js
-
 function connectSocket() {
     if (window.appGlobals.ws && (window.appGlobals.ws.readyState === WebSocket.OPEN || window.appGlobals.ws.readyState === WebSocket.CONNECTING)) {
         return;
@@ -98,7 +96,7 @@ function refreshLobbies() {
 function createLobby() {
     const username = document.getElementById('username-input').value.trim() || 'Player1';
     const lobbyName = document.getElementById('lobby-name-input').value.trim() || 'My Table';
-    const isPrivate = document.getElementById('private-lobby-checkbox').checked;
+    const isPrivate = document.getElementById('private-lobby-checkbox')?.checked || false;
     initSocketAndSend({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
 }
 
