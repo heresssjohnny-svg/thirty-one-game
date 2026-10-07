@@ -29,15 +29,21 @@ body {
     overflow: hidden;
     position: relative;
     user-select: none;
+    /* Prevent accidental overscroll bounces interfering with bottom gestures */
+    overscroll-behavior: none;
 }
 
 /* ==========================================================================
-   Header & Action Nav
+   Header & Action Nav (With Notch/Status Bar Safe Area Inset)
    ========================================================================== */
 header {
     background: rgba(15, 23, 42, 0.95);
     border-bottom: 1.5px solid var(--border-color);
-    padding: 6px 12px;
+    /* Safe area inset pushes header below camera punch-hole / status icons */
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: 6px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -149,10 +155,10 @@ button:disabled {
    Floating Popup Chat Overlay (Zero Screen Displacement)
    ========================================================================== */
 #chat-window {
-    display: none; /* Controlled via toggleChatWindow() */
+    display: none;
     position: fixed;
-    top: 72px;
-    right: 12px;
+    top: calc(max(8px, env(safe-area-inset-top)) + 58px);
+    right: max(12px, env(safe-area-inset-right));
     width: min(88vw, 320px);
     height: 380px;
     background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
@@ -161,7 +167,7 @@ button:disabled {
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85), 0 0 16px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    z-index: 2500; /* Floats above game canvas, table, and controls */
+    z-index: 2500;
     flex-direction: column;
     overflow: hidden;
     animation: chatSlideIn 0.18s ease-out;
