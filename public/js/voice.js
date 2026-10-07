@@ -1,9 +1,10 @@
-// public/js/voice.js
+// js/voice.js
 
 let liveKitRoom = null;
 let currentVoiceToken = null;
 let currentVoiceHost = null;
 let voiceChatVolume = 1.0;
+let preferredAudioOutputDeviceId = 'default';
 
 function formatLiveKitUrl(hostUrl) {
     if (!hostUrl) return '';
@@ -18,19 +19,24 @@ function formatLiveKitUrl(hostUrl) {
     return url;
 }
 
+// Attach output device routing (supports routing to phone speaker / Bluetooth)
+async function applyAudioOutputDevice(audioElement) {
+    if (!audioElement || typeof audioElement.setSinkId !== 'function') return;
+    try {
+        await audioElement.setSinkId(preferredAudioOutputDeviceId);
+    } catch (err) {
+        console.warn('[Voice] setSinkId not supported or failed, falling back to default:', err);
+    }
+}
+
 async function connectToVoiceChat(host, token) {
     if (!host || !token) {
         console.warn('[Voice] Cannot connect: Missing host or token');
-        if (typeof showCenterNotification === 'function') {
-            showCenterNotification("Voice chat credentials unavailable");
-        }
-        updateVoiceUiState(false, true);
         return;
     }
 
     currentVoiceHost = host;
     currentVoiceToken = token;
-
     const wsUrl = formatLiveKitUrl(host);
 
     try {
@@ -39,7 +45,6 @@ async function connectToVoiceChat(host, token) {
             liveKitRoom = null;
         }
 
-        // LiveKit Client SDK instance
         liveKitRoom = new LivekitClient.Room({
             adaptiveStream: true,
             dynacast: true,
@@ -50,18 +55,18 @@ async function connectToVoiceChat(host, token) {
             }
         });
 
-        // Track audio level / publication events
-        liveKitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        liveKitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, async (track, publication, participant) => {
             if (track.kind === LivekitClient.Track.Kind.Audio) {
                 const element = track.attach();
                 element.volume = voiceChatVolume;
                 element.id = `lk-audio-${participant.identity}`;
                 document.body.appendChild(element);
+                await applyAudioOutputDevice(element);
                 updateVcParticipantsList();
             }
         });
 
-        liveKitRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        liveKitRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
             track.detach().forEach(el => el.remove());
             updateVcParticipantsList();
         });
@@ -70,23 +75,102 @@ async function connectToVoiceChat(host, token) {
         liveKitRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected, () => updateVcParticipantsList());
 
         liveKitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
-            updateVoiceUiState(false, true);
+            updateVoiceUiState(false, false);
             updateVcParticipantsList();
         });
 
         await liveKitRoom.connect(wsUrl, token);
         console.log('[Voice] Connected to LiveKit room');
 
-        // Publish local mic (muted by default until user toggles)
-        await liveKitRoom.localParticipant.setMicrophoneEnabled(false);
+        // Requirement 1: Microphone activated and immediately placed into muted state
+        try {
+            await liveKitRoom.localParticipant.setMicrophoneEnabled(true);
+            await liveKitRoom.localParticipant.setMicrophoneEnabled(false);
+        } catch (micErr) {
+            console.warn('[Voice] Mic initialization deferred:', micErr);
+        }
+
+        // Inform UI and websocket that user is connected and muted
         updateVoiceUiState(true, false);
         updateVcParticipantsList();
+        populateAudioOutputDevices();
+
+        if (typeof initSocketAndSend === 'function') {
+            initSocketAndSend({
+                type: 'VC_STATUS_UPDATE',
+                inVC: true,
+                isMuted: true
+            });
+        }
     } catch (err) {
         console.error('[Voice] LiveKit connection error:', err);
-        if (typeof showCenterNotification === 'function') {
-            showCenterNotification("Voice room unavailable");
+        updateVoiceUiState(false, false);
+    }
+}
+
+// Requirement 2: Detect Bluetooth / peripheral disconnect and fall back to speaker
+if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
+    navigator.mediaDevices.ondevicechange = async () => {
+        console.log('[Voice] Audio device change detected (e.g. Bluetooth disconnect)');
+        await populateAudioOutputDevices();
+
+        // Check if preferred output still exists; if not, route back to default/phone speaker
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const stillExists = devices.some(d => d.kind === 'audiooutput' && d.deviceId === preferredAudioOutputDeviceId);
+
+            if (!stillExists) {
+                preferredAudioOutputDeviceId = 'default';
+                const outputSelect = document.getElementById('audio-output-select');
+                if (outputSelect) outputSelect.value = 'default';
+            }
+
+            // Re-apply sink ID to all active room audio elements
+            const audioElements = document.querySelectorAll('audio[id^="lk-audio-"]');
+            for (const el of audioElements) {
+                await applyAudioOutputDevice(el);
+            }
+        } catch (err) {
+            console.warn('[Voice] Error updating audio route on device change:', err);
         }
-        updateVoiceUiState(false, true);
+    };
+}
+
+async function populateAudioOutputDevices() {
+    const select = document.getElementById('audio-output-select');
+    if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        select.innerHTML = '';
+        if (outputs.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = 'default';
+            opt.text = 'Default Phone Speaker';
+            select.appendChild(opt);
+            return;
+        }
+
+        outputs.forEach((device, idx) => {
+            const opt = document.createElement('option');
+            opt.value = device.deviceId;
+            opt.text = device.label || (idx === 0 ? 'Phone Speaker / Default' : `Speaker ${idx + 1}`);
+            select.appendChild(opt);
+        });
+
+        select.value = preferredAudioOutputDeviceId;
+    } catch (e) {
+        console.warn('[Voice] Could not enumerate audio output devices:', e);
+    }
+}
+
+async function setAudioOutputDevice(deviceId) {
+    preferredAudioOutputDeviceId = deviceId || 'default';
+    const audioElements = document.querySelectorAll('audio[id^="lk-audio-"]');
+    for (const el of audioElements) {
+        await applyAudioOutputDevice(el);
     }
 }
 
@@ -94,10 +178,6 @@ async function toggleVoiceOnOff() {
     if (!liveKitRoom || liveKitRoom.state !== LivekitClient.ConnectionState.Connected) {
         if (currentVoiceHost && currentVoiceToken) {
             await connectToVoiceChat(currentVoiceHost, currentVoiceToken);
-        } else {
-            if (typeof showCenterNotification === 'function') {
-                showCenterNotification("Voice server not configured.");
-            }
         }
         return;
     }
@@ -127,13 +207,13 @@ function updateVoiceUiState(connected, micActive) {
     if (led) {
         if (connected && micActive) {
             led.className = 'led-indicator active';
-            led.style.background = '#22c55e'; // Green when transmitting
+            led.style.background = '#22c55e';
         } else if (connected) {
             led.className = 'led-indicator';
-            led.style.background = '#f59e0b'; // Amber for muted/listening
+            led.style.background = '#f59e0b';
         } else {
             led.className = 'led-indicator';
-            led.style.background = '#64748b'; // Gray for disconnected
+            led.style.background = '#64748b';
         }
     }
 
@@ -186,10 +266,6 @@ function updateVcParticipantsList() {
 function triggerVoiceReconnect() {
     if (currentVoiceHost && currentVoiceToken) {
         connectToVoiceChat(currentVoiceHost, currentVoiceToken);
-    } else {
-        if (typeof showCenterNotification === 'function') {
-            showCenterNotification("No voice session to reconnect.");
-        }
     }
 }
 
