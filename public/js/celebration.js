@@ -6,7 +6,7 @@ function triggerWinnerCelebration(winnerName) {
     const overlay = document.getElementById('winner-celebration-overlay');
     const title = document.getElementById('celebration-winner-title');
     const canvas = document.getElementById('celebration-canvas');
-    if (!overlay || !canvas) return;
+    if (!overlay || !canvas || !title) return;
 
     title.innerText = `${winnerName} Wins!`;
     overlay.style.display = 'flex';
@@ -18,7 +18,8 @@ function triggerWinnerCelebration(winnerName) {
     celebrationParticles = [];
     const colors = ['#facc15', '#ef4444', '#38bdf8', '#10b981', '#ec4899', '#a855f7', '#fb923c'];
 
-    for (let i = 0; i < 90; i++) {
+    // Spawn initial confetti batch
+    for (let i = 0; i < 110; i++) {
         celebrationParticles.push({
             type: 'confetti',
             x: Math.random() * canvas.width,
@@ -53,6 +54,7 @@ function triggerWinnerCelebration(winnerName) {
         }
     }
 
+    // Launch firework bursts
     for (let b = 0; b < 3; b++) spawnFireworkBurst();
     const burstTimer = setInterval(() => {
         if (overlay.style.display === 'flex') spawnFireworkBurst();
