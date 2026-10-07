@@ -237,4 +237,3 @@ function saveLedgerScreenshot() {
 
     toggleModal('ledger-modal');
 }
-
