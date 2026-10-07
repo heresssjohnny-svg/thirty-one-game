@@ -1,140 +1,123 @@
 // public/js/network.js
-function connectSocket() {
-    if (window.appGlobals.ws && (window.appGlobals.ws.readyState === WebSocket.OPEN || window.appGlobals.ws.readyState === WebSocket.CONNECTING)) return;
-    const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    window.appGlobals.ws = new WebSocket(protocol + location.host);
+let ws = null;
+let isConnected = false;
+const pendingQueue = [];
 
-    window.appGlobals.ws.onopen = () => {
-        window.appGlobals.isConnected = true;
-        while (window.appGlobals.pendingQueue.length > 0) {
-            const msg = window.appGlobals.pendingQueue.shift();
-            window.appGlobals.ws.send(JSON.stringify(msg));
+function connectSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        isConnected = true;
+        while (pendingQueue.length > 0) {
+            const msg = pendingQueue.shift();
+            ws.send(JSON.stringify(msg));
         }
-        if (window.appGlobals.currentJoinedCode) {
+
+        // Fetch public lobbies upon opening
+        initSocketAndSend({ type: 'GET_LOBBIES' });
+
+        // Auto re-bind seat if returning to an active room
+        if (window.appGlobals?.currentJoinedCode) {
+            const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
             initSocketAndSend({
                 type: 'JOIN_LOBBY',
                 code: window.appGlobals.currentJoinedCode,
-                username: document.getElementById('username-input').value.trim() || window.clientState.username
+                username: activeUsername
             });
         }
     };
 
-    window.appGlobals.ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'LOBBY_LIST') {
-            renderLobbyList(data.lobbies);
-        } else if (data.type === 'LOBBY_JOINED' || data.type === 'GAME_STATE_UPDATE' || data.type === 'LOBBY_UPDATE') {
-            if (data.lobby && data.lobby.code) window.appGlobals.currentJoinedCode = data.lobby.code;
-            window.appGlobals.latestLobbySnapshot = data.lobby;
-            updateUIFromLobby(data.lobby);
+    ws.onmessage = (event) => {
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            return;
+        }
 
-            const host = data.livekitHost || window.appGlobals.latestLiveKitHost;
-            const token = data.livekitToken || data.token || window.appGlobals.latestLiveKitToken;
-            if (host && token) {
-                window.appGlobals.latestLiveKitHost = host;
-                window.appGlobals.latestLiveKitToken = token;
-                if (!window.appGlobals.isLiveKitConnected && !window.appGlobals.isConnectingVoice) {
-                    connectToLiveKit(host, token);
-                }
+        if (data.type === 'LOBBY_LIST') {
+            if (typeof renderLobbyList === 'function') {
+                renderLobbyList(data.lobbies);
             }
-        } else if (data.type === 'LIVEKIT_TOKEN') {
-            const host = data.livekitHost || window.appGlobals.latestLiveKitHost;
-            const token = data.livekitToken || data.token;
-            if (host && token) {
-                window.appGlobals.latestLiveKitHost = host;
-                window.appGlobals.latestLiveKitToken = token;
-                connectToLiveKit(host, token);
+        } else if (data.type === 'LOBBY_CREATED' || data.type === 'LOBBY_JOINED') {
+            if (!window.appGlobals) window.appGlobals = {};
+            window.appGlobals.currentJoinedCode = data.code;
+            if (typeof connectLiveKit === 'function' && data.livekitToken) {
+                connectLiveKit(data.livekitToken, data.livekitHost);
+            }
+        } else if (data.type === 'GAME_STATE_UPDATE' || data.type === 'LOBBY_UPDATE') {
+            if (!window.appGlobals) window.appGlobals = {};
+            window.appGlobals.latestLobbySnapshot = data.lobby;
+            if (typeof updateUIFromLobby === 'function') {
+                updateUIFromLobby(data.lobby);
             }
         } else if (data.type === 'CHAT_MESSAGE') {
-            appendChatMessage(data.username, data.message);
+            if (typeof appendChatMessage === 'function') {
+                appendChatMessage(data.user, data.text);
+            }
+            const chatWin = document.getElementById('chat-window');
+            if (chatWin && chatWin.style.display !== 'flex') {
+                const chatBtn = document.getElementById('chat-toggle-btn');
+                if (chatBtn) {
+                    chatBtn.classList.add('unread');
+                    chatBtn.innerText = '💬 Chat (!)';
+                }
+            }
         } else if (data.type === 'LEFT_LOBBY') {
-            window.appGlobals.currentJoinedCode = null;
-            window.appGlobals.latestLobbySnapshot = null;
-            disconnectLiveKit();
-            resetToMainMenu();
+            if (typeof resetToMainMenu === 'function') {
+                resetToMainMenu();
+            }
         } else if (data.type === 'ERROR') {
-            alert(data.message);
+            if (typeof showCenterNotification === 'function') {
+                showCenterNotification(data.message);
+            }
         }
     };
 
-    window.appGlobals.ws.onclose = () => {
-        window.appGlobals.isConnected = false;
-        setTimeout(() => { connectSocket(); }, 2500);
+    ws.onclose = () => {
+        isConnected = false;
+        setTimeout(() => {
+            if (!isConnected) connectSocket();
+        }, 1500);
+    };
+
+    ws.onerror = () => {
+        if (ws) ws.close();
     };
 }
 
 function initSocketAndSend(payload) {
-    saveInputs();
-    window.clientState.username = document.getElementById('username-input').value.trim() || 'Player1';
-    
-    if (payload.type === 'CREATE_LOBBY' || payload.type === 'JOIN_LOBBY') {
-        if (payload.code) window.appGlobals.currentJoinedCode = payload.code;
-    }
-
-    if (window.appGlobals.ws && window.appGlobals.ws.readyState === WebSocket.OPEN) {
-        window.appGlobals.ws.send(JSON.stringify(payload));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
     } else {
-        window.appGlobals.pendingQueue.push(payload);
-        connectSocket();
+        pendingQueue.push(payload);
+        if (!ws || ws.readyState === WebSocket.CLOSED) {
+            connectSocket();
+        }
     }
 }
 
-function refreshLobbies() { initSocketAndSend({ type: 'REFRESH_LOBBIES' }); }
-function createLobby() {
-    const username = document.getElementById('username-input').value.trim() || 'Player1';
-    const lobbyName = document.getElementById('lobby-name-input').value.trim() || 'My Table';
-    const isPrivate = document.getElementById('private-lobby-checkbox').checked;
-    initSocketAndSend({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
-}
-function joinLobby() {
-    const code = document.getElementById('lobby-code-input').value.toUpperCase();
-    if (code) joinLobbyCode(code);
-}
-function joinLobbyCode(code) {
-    window.appGlobals.currentJoinedCode = code;
-    initSocketAndSend({ type: 'JOIN_LOBBY', code, username: document.getElementById('username-input').value.trim() || 'Player1' });
-}
-function standUp() { initSocketAndSend({ type: 'STAND_UP' }); }
-function sitDown() { initSocketAndSend({ type: 'SIT_DOWN' }); }
-function updateWager() {
-    const wager = document.getElementById('config-wager').value;
-    initSocketAndSend({ type: 'UPDATE_WAGER', wager });
-}
-function updateSettings() {
-    const lives = document.getElementById('config-lives').value;
-    initSocketAndSend({ type: 'UPDATE_SETTINGS', lives });
-}
-function toggleReady() {
-    window.clientState.isReady = !window.clientState.isReady;
-    document.getElementById('ready-btn').innerText = window.clientState.isReady ? 'Unready' : 'Ready Up';
-    window.appGlobals.hasChosenPoolCard = false;
-    initSocketAndSend({ type: 'SET_READY', ready: window.clientState.isReady });
-}
-function clickNextHand() {
-    const btn = document.getElementById('next-hand-btn');
-    btn.innerText = 'Waiting...';
-    btn.disabled = true;
-    initSocketAndSend({ type: 'NEXT_HAND_READY' });
-}
-function proposeEndGame() {
-    if (confirm("Propose ending the game?")) {
-        initSocketAndSend({ type: 'END_GAME_PROPOSAL' });
+// Mobile OS backgrounding/foregrounding watchdogs
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            connectSocket();
+        } else {
+            initSocketAndSend({ type: 'GET_LOBBIES' });
+            if (window.appGlobals?.currentJoinedCode) {
+                const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
+                initSocketAndSend({
+                    type: 'JOIN_LOBBY',
+                    code: window.appGlobals.currentJoinedCode,
+                    username: activeUsername
+                });
+            }
+        }
     }
-}
-function drawCard(type) { initSocketAndSend({ type: type === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' }); }
-function discardCard(cardIndex) { initSocketAndSend({ type: 'DISCARD_CARD', cardIndex }); }
-function knockRound() {
-    initSocketAndSend({ type: 'KNOCK' });
-    playSound('knock');
-}
-function leaveLobby() {
-    disconnectLiveKit();
-    initSocketAndSend({ type: 'LEAVE_LOBBY' });
-}
-function choosePoolCard(cardIndex) {
-    if (window.appGlobals.hasChosenPoolCard) return;
-    window.appGlobals.hasChosenPoolCard = true;
-    initSocketAndSend({ type: 'CHOOSE_POOL_CARD', cardIndex });
-}
-function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
-function removeBot() { initSocketAndSend({ type: 'REMOVE_BOT' }); }
+});
+
+window.addEventListener('pageshow', () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) connectSocket();
+});
