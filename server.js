@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
 
-// Load config
+// Auto-resolve config from server/ or root
 let config;
 if (fs.existsSync(path.join(__dirname, 'server', 'config.js'))) {
     config = require('./server/config');
@@ -21,7 +21,7 @@ if (fs.existsSync(path.join(__dirname, 'server', 'config.js'))) {
     };
 }
 
-// Load lobbyManager
+// Auto-resolve lobbyManager
 let lobbyManager;
 if (fs.existsSync(path.join(__dirname, 'server', 'game', 'lobbyManager.js'))) {
     lobbyManager = require('./server/game/lobbyManager');
@@ -50,7 +50,7 @@ const {
     leaveLobby
 } = lobbyManager;
 
-// Load livekit helper
+// Auto-resolve livekit module
 let generateLiveKitToken;
 if (fs.existsSync(path.join(__dirname, 'server', 'livekit.js'))) {
     generateLiveKitToken = require('./server/livekit').generateLiveKitToken;
@@ -64,15 +64,15 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// 1. Serve static files from public/ if present (for css/, js/)
+// Serve static assets from public/ if present (for css/, js/)
 if (fs.existsSync(path.join(__dirname, 'public'))) {
     app.use(express.static(path.join(__dirname, 'public')));
 }
 
-// 2. Serve static files from root (for index.html, mp3s/, icons, manifest)
+// Serve static assets directly from root (for index.html, mp3s/, icons, manifest)
 app.use(express.static(__dirname));
 
-// 3. Explicitly serve index.html from root for "/"
+// Explicit route to serve index.html on root GET
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -155,11 +155,13 @@ wss.on('connection', (ws) => {
             touchLobbyActivity(newLobby, broadcastLobbyList);
 
             const token = await generateLiveKitToken(code, username);
+            const livekitHost = process.env.LIVEKIT_HOST || config.LIVEKIT_HOST || '';
+
             ws.send(JSON.stringify({
                 type: 'LOBBY_CREATED',
                 code,
                 livekitToken: token,
-                livekitHost: config.LIVEKIT_HOST
+                livekitHost
             }));
 
             broadcastLobbyUpdate(code);
@@ -216,11 +218,13 @@ wss.on('connection', (ws) => {
             }
 
             const token = await generateLiveKitToken(code, username);
+            const livekitHost = process.env.LIVEKIT_HOST || config.LIVEKIT_HOST || '';
+
             ws.send(JSON.stringify({
                 type: 'LOBBY_JOINED',
                 code,
                 livekitToken: token,
-                livekitHost: config.LIVEKIT_HOST
+                livekitHost
             }));
 
             broadcastLobbyUpdate(code);
@@ -425,7 +429,7 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Peeking hand
+        // Peeking hand permissions
         if (data.type === 'REQUEST_PEEK') {
             const spec = lobby.spectators.find(s => s.idSocket === ws);
             const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
@@ -470,7 +474,7 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // End Game / Lives votes
+        // Voting handlers
         if (data.type === 'END_GAME_PROPOSAL') {
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
