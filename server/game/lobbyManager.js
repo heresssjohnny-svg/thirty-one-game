@@ -22,7 +22,7 @@ function handleKnock(lobby, ws, broadcastCallback) {
     let p = lobby.players[lobby.turnIndex];
     if (!p || p.id !== ws || lobby.knockedBy) return;
 
-    // Rule: Must knock BEFORE drawing (cannot knock after drawing from deck or discard)
+    // Rule: Must knock BEFORE drawing (cannot knock after drawing 4th card)
     if (p.cards.length !== 3) {
         return;
     }
@@ -44,7 +44,6 @@ function handleKnock(lobby, ws, broadcastCallback) {
         broadcastCallback(lobby.code);
     }
 
-    // Trigger next turn if current active player is a bot
     let nextPlayer = lobby.players[lobby.turnIndex];
     if (nextPlayer && nextPlayer.isBot && !nextPlayer.eliminated) {
         setTimeout(() => {
@@ -90,7 +89,7 @@ function resolveRoundEnd(lobby, broadcastCallback) {
     let minScore = Math.min(...scores.map(s => s.score));
     let lowest = scores.filter(s => s.score === minScore);
 
-    // Check for blitz: 31 points instant win
+    // Blitz check: 31 points
     let blitzWinner = scores.find(s => s.score === 31);
     if (blitzWinner) {
         lobby.phaseMessage = `⚡ BLITZ 31! ${blitzWinner.p.username} reached 31! All other players lose a life.`;
@@ -104,7 +103,7 @@ function resolveRoundEnd(lobby, broadcastCallback) {
         return;
     }
 
-    // Tie-breaker condition for lowest score in multi-player games
+    // Tie-breaker check for lowest score in multi-player games
     if (lowest.length > 1 && active.length > 2) {
         lobby.gameState = 'tieBreaker';
         lobby.tiedParticipantsList = lowest.map(l => l.p.username);
@@ -117,7 +116,6 @@ function resolveRoundEnd(lobby, broadcastCallback) {
         return;
     }
 
-    // Standard loss deduction
     lowest.forEach(l => {
         l.p.lives--;
         if (l.p.lives <= 0) l.p.eliminated = true;
