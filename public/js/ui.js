@@ -87,7 +87,6 @@ function knockRound() {
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
     const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
 
-    // Prevent knocking after a card has been picked up
     if (!me || !me.cards || me.cards.length !== 3) {
         showCenterNotification("You cannot knock after picking up a card!");
         return;
@@ -239,7 +238,8 @@ function drawCard(source) {
 function discardCard(index) {
     if (typeof playSound === 'function') playSound('card');
     if (typeof triggerVibration === 'function') triggerVibration(40);
-    initSocketAndSend({ type: 'DISCARD_CARD', cardIndex: index });
+    // Fixed: Payload parameter must match server 'index' expectation
+    initSocketAndSend({ type: 'DISCARD_CARD', index });
 }
 
 function choosePoolCard(cardIndex) {
