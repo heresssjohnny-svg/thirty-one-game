@@ -11,6 +11,17 @@ function getAudioContext() {
     return audioCtx;
 }
 
+// User-gesture touch unlock for Safari/WebKit/Mobile Chrome
+window.addEventListener('touchstart', () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+}, { once: true, passive: true });
+
+window.addEventListener('pointerdown', () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+}, { once: true, passive: true });
+
 function playSound(type) {
     try {
         const ctx = getAudioContext();
@@ -69,7 +80,6 @@ function playSound(type) {
 function speakKnockedCue() {
     if ('speechSynthesis' in window) {
         try {
-            window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance("Knocked");
             utterance.rate = 1.0;
             utterance.pitch = 1.0;
