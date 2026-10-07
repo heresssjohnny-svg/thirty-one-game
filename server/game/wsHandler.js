@@ -17,7 +17,7 @@ const {
     checkNextHandReady
 } = require('./lobbyManager');
 const { generateLiveKitToken } = require('../services/livekit');
-const { syncBotReadiness } = require('./bot');
+const { BOT_NAMES, syncBotReadiness } = require('./bot');
 const { clearDebts, recordDebt } = require('./ledger');
 const config = require('../config');
 
@@ -33,6 +33,11 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     let currentUsername = ws.currentUsername || null;
 
     switch (data.type) {
+        case 'GET_LOBBIES': {
+            if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
+            break;
+        }
+
         case 'CREATE_LOBBY': {
             const code = Math.random().toString(36).substring(2, 7).toUpperCase();
             const username = (data.username || 'Player1').trim();
@@ -45,6 +50,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 host: username,
                 isPrivate,
                 gameState: 'lobby',
+                defaultLives: 3,
                 deck: [],
                 discardPile: [],
                 turnIndex: 0,
@@ -118,7 +124,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
             if (existingPlayer) {
-                existingPlayer.id = ws;
+                existingPlayer.id = ws; // Reconnect socket to existing seat without wiping player
             } else if (existingSpec) {
                 existingSpec.idSocket = ws;
             } else {
@@ -179,6 +185,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const player = lobby.players.find(p => p.id === ws);
                 if (player && lobby.gameState === 'lobby') {
                     player.ready = !!data.ready;
+                    
+                    // Rule: Sync bot readiness to match human status (bots ready only if all humans ready)
+                    syncBotReadiness(lobby);
                     broadcastLobbyUpdate(currentLobbyCode);
 
                     const activePlayers = lobby.players.filter(p => !p.eliminated);
@@ -340,14 +349,17 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                    const botCount = lobby.players.filter(p => p.isBot).length + 1;
+                    const availableNames = BOT_NAMES.filter(n => !lobby.players.some(p => p.username.startsWith(n)));
+                    const chosenName = (availableNames[Math.floor(Math.random() * availableNames.length)] || ('Bot ' + (lobby.players.length + 1))) + ' (B)';
+
+                    // Rule: Bot is added unready; will ready up only when all humans ready
                     lobby.players.push({
                         id: `bot_${Date.now()}_${Math.random()}`,
-                        username: `Bot ${botCount}`,
+                        username: chosenName,
                         lives: lobby.defaultLives || 3,
                         wager: 5,
                         cards: [],
-                        ready: true,
+                        ready: false,
                         seat: findOpenSeat(lobby),
                         eliminated: false,
                         isBot: true,
@@ -357,8 +369,16 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         peekRequests: {},
                         peekAllowed: {}
                     });
+
+                    syncBotReadiness(lobby);
+                    lobby.phaseMessage = `🤖 ${chosenName} joined the table.`;
                     broadcastLobbyUpdate(currentLobbyCode);
                     if (broadcastLobbyList) broadcastLobbyList();
+
+                    const activePlayers = lobby.players.filter(p => !p.eliminated);
+                    if (activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
+                        startDealerDrawPhase(lobby);
+                    }
                 }
             }
             break;
@@ -369,9 +389,17 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (lobby.gameState === 'lobby') {
-                    const bIdx = lobby.players.map(p => p.isBot).lastIndexOf(true);
-                    if (bIdx !== -1) {
-                        lobby.players.splice(bIdx, 1);
+                    let botIdx = -1;
+                    for (let i = lobby.players.length - 1; i >= 0; i--) {
+                        if (lobby.players[i].isBot) {
+                            botIdx = i;
+                            break;
+                        }
+                    }
+                    if (botIdx !== -1) {
+                        const removed = lobby.players.splice(botIdx, 1)[0];
+                        lobby.phaseMessage = `🤖 ${removed.username} was removed.`;
+                        syncBotReadiness(lobby);
                         broadcastLobbyUpdate(currentLobbyCode);
                         if (broadcastLobbyList) broadcastLobbyList();
                     }
@@ -462,17 +490,33 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
-                const newBet = {
-                    id: `bet_${Date.now()}_${Math.random()}`,
-                    type: 'eliminate',
-                    proposer: currentUsername,
-                    target: data.target,
-                    pickUser: data.target,
-                    targetSurvivor: currentUsername,
-                    wagerAmt
-                };
-                if (!lobby.pendingBets) lobby.pendingBets = [];
-                lobby.pendingBets.push(newBet);
+                const targetPlayer = lobby.players.find(p => p.username === data.target);
+
+                if (targetPlayer && targetPlayer.isBot) {
+                    if (!lobby.activeBets) lobby.activeBets = [];
+                    lobby.activeBets.push({
+                        id: `bet_${Date.now()}_${Math.random()}`,
+                        type: 'eliminate',
+                        proposer: currentUsername,
+                        target: data.target,
+                        pickUser: data.target,
+                        targetSurvivor: currentUsername,
+                        wagerAmt,
+                        isBotBet: true
+                    });
+                    lobby.phaseMessage = `🤝 Bot Bet Accepted! ${targetPlayer.username} accepted ${currentUsername}'s $${wagerAmt} bet!`;
+                } else {
+                    if (!lobby.pendingBets) lobby.pendingBets = [];
+                    lobby.pendingBets.push({
+                        id: `bet_${Date.now()}_${Math.random()}`,
+                        type: 'eliminate',
+                        proposer: currentUsername,
+                        target: data.target,
+                        pickUser: data.target,
+                        targetSurvivor: currentUsername,
+                        wagerAmt
+                    });
+                }
                 broadcastLobbyUpdate(currentLobbyCode);
             }
             break;
@@ -676,8 +720,13 @@ function setupWebSocket(wss, broadcastLobbyList) {
         });
 
         ws.on('close', () => {
+            // Unbind socket on backgrounding/drop without kicking the player from their seat
             if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
-                leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
+                const lobby = lobbies[ws.currentLobbyCode];
+                const p = lobby.players.find(pl => pl.id === ws);
+                if (p) p.id = null; // Keeps user seated, hand/score/lives preserved
+                const s = lobby.spectators.find(spec => spec.idSocket === ws);
+                if (s) s.idSocket = null;
             }
         });
     });
@@ -687,4 +736,3 @@ module.exports = {
     handleWebSocketMessage,
     setupWebSocket
 };
- 
