@@ -35,6 +35,13 @@ function toggleModal(id) {
     m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
 }
 
+function openSettingsModal() {
+    if (typeof updateVcParticipantsList === 'function') {
+        updateVcParticipantsList();
+    }
+    toggleModal('settings-modal');
+}
+
 function toggleChatWindow() {
     const win = document.getElementById('chat-window');
     if (!win) return;
@@ -405,10 +412,6 @@ function openSpectatorListModal() {
         content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
     }
     toggleModal('spectators-modal');
-}
-
-function openVcParticipantsModal() {
-    toggleModal('vc-participants-modal');
 }
 
 function knockRound() {
