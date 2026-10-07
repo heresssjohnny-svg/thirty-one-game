@@ -47,6 +47,8 @@ function toggleChatWindow() {
             chatBtn.classList.remove('unread');
             chatBtn.innerText = '💬 Chat';
         }
+        const box = document.getElementById('chat-messages');
+        if (box) box.scrollTop = box.scrollHeight;
     }
 }
 
@@ -78,6 +80,30 @@ function appendChatMessage(user, msg) {
             chatBtn.classList.add('unread');
             chatBtn.innerText = '💬 Chat (!)';
         }
+    }
+}
+
+function syncChatHistory(history) {
+    if (!Array.isArray(history)) return;
+    const box = document.getElementById('chat-messages');
+    if (!box) return;
+
+    if (!window.appGlobals) window.appGlobals = {};
+    const lastCount = window.appGlobals.lastChatCount || 0;
+
+    if (history.length !== lastCount) {
+        box.innerHTML = history.map(m => `<div><b>${m.user}:</b> ${m.text}</div>`).join('');
+        box.scrollTop = box.scrollHeight;
+
+        const win = document.getElementById('chat-window');
+        if (history.length > lastCount && (!win || win.style.display !== 'flex')) {
+            const chatBtn = document.getElementById('chat-toggle-btn');
+            if (chatBtn) {
+                chatBtn.classList.add('unread');
+                chatBtn.innerText = '💬 Chat (!)';
+            }
+        }
+        window.appGlobals.lastChatCount = history.length;
     }
 }
 
@@ -428,12 +454,17 @@ function updateUIFromLobby(lobby) {
 
     document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
+    // Sync persistent chat history from lobby state
+    if (lobby.chatHistory) {
+        syncChatHistory(lobby.chatHistory);
+    }
+
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
     if (typeof renderYouTubePlayer === 'function') {
         renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying, lobby.currentSongElapsedSeconds || 0);
     }
 
-    // CELEBRATION TRIGGER: Evaluates both dedicated tournamentEnd state and winner name
+    // CELEBRATION TRIGGER
     const isTournamentOver = lobby.gameState === 'tournamentEnd' || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
     if (isTournamentOver) {
         let winnerName = lobby.tournamentWinner || lobby.lastGameWinner;
@@ -488,7 +519,7 @@ function updateUIFromLobby(lobby) {
         configLivesSelect.value = String(lobby.defaultLives);
     }
 
-    // Knock alert modal
+    // Knock alert modal & audio cues
     const knockAlertModal = document.getElementById('knock-alert-modal');
     if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
         knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
@@ -507,7 +538,7 @@ function updateUIFromLobby(lobby) {
 
     const topleftModal = document.getElementById('discard-pickup-topleft-modal');
     const topleftCardContent = document.getElementById('discard-pickup-card-content');
-    if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+    if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
         const cardHtml = formatCardHtml(lobby.lastDiscardPickup.card, true);
         topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b>:</span> ${cardHtml}`;
         topleftModal.style.display = 'flex';
@@ -518,7 +549,7 @@ function updateUIFromLobby(lobby) {
     const fedModal = document.getElementById('fed-card-topright-modal');
     const fedContent = document.getElementById('fed-card-content');
     const fedLabel = document.getElementById('fed-card-label');
-    if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+    if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
         fedLabel.innerText = `${lobby.myFedCardReminder.target} took your:`;
         fedContent.innerHTML = formatCardHtml(lobby.myFedCardReminder.card, true);
         fedModal.style.display = 'flex';
@@ -547,7 +578,7 @@ function updateUIFromLobby(lobby) {
     // Active hand peeking indicator
     const peekingBanner = document.getElementById('active-peeking-banner');
     let activelyPeekingTarget = null;
-    if (isSpectatorOnly && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
+    if (isSpectatorOnly && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
         lobby.players.forEach(pl => {
             if (pl.peekAllowed && Object.keys(pl.peekAllowed).some(k => k.toLowerCase() === activeUsername.toLowerCase())) {
                 activelyPeekingTarget = pl.username;
@@ -762,7 +793,7 @@ function updateUIFromLobby(lobby) {
         poolModal.style.display = 'none';
         revealModal.style.display = 'flex';
         const isTiedParticipant = lobby.tiedParticipantsList.includes(activeUsername);
-        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
+        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to select cards...';
         
         let streamHtml = '';
         if (isTiedParticipant && !lobby.drawResults[activeUsername]) {
@@ -858,6 +889,7 @@ function resetToMainMenu() {
     if (!window.appGlobals) window.appGlobals = {};
     window.appGlobals.currentJoinedCode = null;
     window.appGlobals.latestLobbySnapshot = null;
+    window.appGlobals.lastChatCount = 0;
     
     document.getElementById('game-view').style.display = 'none';
     document.getElementById('main-menu').style.display = 'flex';
@@ -872,6 +904,9 @@ function resetToMainMenu() {
 
     const chatWin = document.getElementById('chat-window');
     if (chatWin) chatWin.style.display = 'none';
+
+    const box = document.getElementById('chat-messages');
+    if (box) box.innerHTML = '';
 
     window.clientState.isReady = false;
     window.appGlobals.hasChosenPoolCard = false;
