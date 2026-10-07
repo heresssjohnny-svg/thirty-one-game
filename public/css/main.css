@@ -44,58 +44,54 @@ body {
     transform: rotate(-15deg);
 }
 
+/* Two-Row Responsive Header */
 header {
-    padding-top: max(6px, env(safe-area-inset-top));
-    padding-left: max(8px, env(safe-area-inset-left));
-    padding-right: max(8px, env(safe-area-inset-right));
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
     padding-bottom: 6px;
-    height: auto;
-    min-height: calc(44px + env(safe-area-inset-top));
     background: rgba(2, 44, 30, 0.95);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border-bottom: 2px solid rgba(250, 204, 21, 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 1000;
+    flex-shrink: 0;
+    width: 100%;
+}
+
+.header-row-primary {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    z-index: 1000;
-    flex-shrink: 0;
-    gap: 6px;
     width: 100%;
 }
 
 .logo {
-    font-size: 1.25rem;
+    font-size: 1.35rem;
     font-weight: 900;
     color: var(--accent-gold);
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
     flex-shrink: 0;
 }
 
-/* Responsive Top Menu Container */
-.top-menu-btns {
+.header-row-actions {
     display: flex;
-    gap: 4px;
     align-items: center;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none; /* Firefox */
-    max-width: calc(100vw - 65px);
-    padding: 2px 0;
+    gap: 6px;
 }
 
-.top-menu-btns::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
-}
-
-#in-game-header-btns {
-    display: none;
+/* Secondary Row: Game Controls */
+.header-row-secondary {
+    display: flex;
+    justify-content: flex-end;
     align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
+    gap: 6px;
+    flex-wrap: wrap;
+    width: 100%;
 }
 
 main {
@@ -125,7 +121,7 @@ main {
     flex-direction: column;
     gap: 14px;
     z-index: 50;
-    max-height: 90vh;
+    max-height: 88vh;
     overflow-y: auto;
 }
 
@@ -307,10 +303,10 @@ button, .btn-link {
     color: white;
     border: none;
     border-radius: 6px;
-    padding: 5px 8px;
+    padding: 5px 9px;
     font-weight: 600;
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
@@ -335,30 +331,64 @@ button:disabled {
 
 /* Voice Indicator LED */
 .vc-control-group {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 3px;
-    background: rgba(30, 41, 59, 0.7);
-    padding: 2px 4px;
+    gap: 4px;
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid #475569;
+    padding: 2px 6px;
     border-radius: 6px;
     flex-shrink: 0;
 }
 
 .led-indicator {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: #64748b;
+    background: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
     display: inline-block;
-    margin-right: 1px;
+    transition: 0.3s;
 }
 
 .led-indicator.active {
     background: #22c55e;
-    box-shadow: 0 0 6px #22c55e;
+    box-shadow: 0 0 8px #22c55e;
 }
 
-/* Rules Modal Tutorial Styling */
+/* Chat Toggle & Pulse */
+#chat-container {
+    position: relative;
+    display: inline-block;
+}
+
+#chat-toggle-btn {
+    background: #475569;
+    border: none;
+    color: #fff;
+    font-size: 0.75rem;
+    padding: 5px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#chat-toggle-btn.unread {
+    background: #ef4444 !important;
+    color: #fff !important;
+    animation: pulseChat 1.2s infinite;
+}
+
+@keyframes pulseChat {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* Rules Modal Tutorial */
 .rules-scrollable-body {
     max-height: 60vh;
     overflow-y: auto;
@@ -389,31 +419,4 @@ button:disabled {
     display: flex;
     flex-direction: column;
     gap: 2px;
-}
-
-/* ==========================================================================
-   Mobile Optimization (@media max-width: 600px)
-   ========================================================================== */
-@media (max-width: 600px) {
-    header {
-        padding-left: 6px;
-        padding-right: 6px;
-    }
-
-    .logo {
-        font-size: 1.15rem;
-    }
-
-    button, .btn-link {
-        padding: 4px 6px;
-        font-size: 0.68rem;
-    }
-
-    .top-menu-btns {
-        gap: 3px;
-    }
-
-    .vc-control-group {
-        padding: 1px 3px;
-    }
 }
