@@ -109,7 +109,7 @@ function getSanitizedLobby(lobby, wsId) {
         host: lobby.host,
         gameState: lobby.gameState,
         defaultLives: lobby.defaultLives || 2,
-        deckCount: lobby.deck.length,
+        deckCount: lobby.deck ? lobby.deck.length : 0,
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
         currentTurnUser: allParticipants[lobby.turnIndex]?.username || '',
@@ -132,7 +132,7 @@ function getSanitizedLobby(lobby, wsId) {
         tiedParticipantsList: lobby.tiedParticipantsList || [],
         drawPool: (lobby.drawPool || []).map((c, i) => ({ index: i, chosenBy: c.chosenBy })),
         drawResults: lobby.drawResults || {},
-        discardTop: lobby.discardPile[lobby.discardPile.length - 1] || null,
+        discardTop: lobby.discardPile ? (lobby.discardPile[lobby.discardPile.length - 1] || null) : null,
         knockedBy: lobby.knockedBy || null,
         chatHistory: lobby.chatHistory || [],
         playlist: lobby.playlist || [],
@@ -151,7 +151,7 @@ function getSanitizedLobby(lobby, wsId) {
                 username: p.username,
                 lives: Math.max(0, p.lives),
                 wager: p.wager || 5,
-                cardCount: p.cards.length,
+                cardCount: p.cards ? p.cards.length : 0,
                 ready: p.ready,
                 seat: sortedRef ? sortedRef.seat : p.seat,
                 nextHandReady: p.nextHandReady,
@@ -161,7 +161,7 @@ function getSanitizedLobby(lobby, wsId) {
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
                 peekIncoming: wsId === p.id ? (p.peekRequests || {}) : {},
                 peekAllowed: p.peekAllowed || {},
-                cards: (canSee || specAllowed) ? p.cards : []
+                cards: (canSee || specAllowed) ? (p.cards || []) : []
             };
         }),
         spectators: lobby.spectators.map(s => ({
@@ -602,7 +602,6 @@ function awardTournamentWinner(lobby, winner) {
     const winIdx = lobby.players.findIndex(p => p.username === winner.username);
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
-    // Set dedicated state to give clients time to play celebration
     lobby.gameState = 'tournamentEnd';
     lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 6s...`;
     broadcastLobbyUpdate(lobby.code);
@@ -615,10 +614,16 @@ function awardTournamentWinner(lobby, winner) {
 
 function checkNextHandReady(lobby) {
     const active = getActiveParticipants(lobby);
-    if (active.every(p => p.nextHandReady) && active.length > 1) {
+    if (active.length <= 1) {
+        if (active.length === 1) {
+            awardTournamentWinner(lobby, active[0]);
+        } else {
+            resetLobbyToReadyRoom(lobby, "All players eliminated. Returning to ready room.");
+        }
+        return;
+    }
+    if (active.every(p => p.nextHandReady)) {
         startRound(lobby);
-    } else if (active.length <= 1) {
-        resetLobbyToReadyRoom(lobby, "Match completed! Returning to ready room.");
     }
 }
 
@@ -657,7 +662,13 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         p.peekRequests = {};
         p.peekAllowed = {};
     });
-    lobby.spectators = [];
+
+    // KEEP SPECTATORS INTACT (Do not erase connected spectator sockets!)
+    // If eliminated players were moved to spectators, promote them back to full spectators
+    lobby.spectators = lobby.spectators.filter(s => {
+        return s.idSocket && s.idSocket.readyState === WebSocket.OPEN;
+    });
+
     syncBotReadiness(lobby);
     broadcastLobbyUpdate(lobby.code);
     if (broadcastLobbyList) broadcastLobbyList();
@@ -716,9 +727,14 @@ function scheduleBotActions(lobby) {
     }
 }
 
+// FIX: Safe player exit during any game phase (especially roundOver before next hand)
 function leaveLobby(ws, code, broadcastLobbyList) {
     if (!lobbies[code]) return;
     const lobby = lobbies[code];
+
+    const leavingPlayerIndex = lobby.players.findIndex(p => p.id === ws);
+    const leavingUsername = leavingPlayerIndex !== -1 ? lobby.players[leavingPlayerIndex].username : null;
+
     lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
 
@@ -726,10 +742,37 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     if (remainingHumans.length === 0) {
         if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
         delete lobbies[code];
+        if (broadcastLobbyList) broadcastLobbyList();
+        return;
+    }
+
+    // Re-index seats cleanly
+    lobby.players.forEach((p, idx) => { p.seat = idx; });
+
+    // Handle departure during active roundOver (before next hand clicked)
+    if (lobby.gameState === 'roundOver') {
+        lobby.phaseMessage = `${leavingUsername || 'A player'} left the game.`;
+        checkNextHandReady(lobby);
+        broadcastLobbyUpdate(code);
+        if (broadcastLobbyList) broadcastLobbyList();
+        return;
+    }
+
+    // Handle departure during live game play
+    const activeParts = getActiveParticipants(lobby);
+    if (activeParts.length <= 1 && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn' || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker')) {
+        awardTournamentWinner(lobby, activeParts[0]);
     } else {
+        if (lobby.turnIndex >= lobby.players.length) {
+            lobby.turnIndex = 0;
+        }
+        if (lobby.dealerIndex >= lobby.players.length) {
+            lobby.dealerIndex = 0;
+        }
         syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
     }
+
     if (broadcastLobbyList) broadcastLobbyList();
 }
 
