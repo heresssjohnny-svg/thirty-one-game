@@ -67,9 +67,3 @@ const PORT = (config && config.PORT) || process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`31! Card Game server running on port ${PORT}`);
 });
-```[span_4](start_span)[span_4](end_span)
-
-### Verification Checklist
-1. Verify that lines 65–67 (`server.listen(...)` through `});`) are present at the bottom of the file in your repository[span_5](start_span)[span_5](end_span).
-2. Commit and push the file to trigger a redeploy on Render[span_6](start_span)[span_6](end_span)[span_7](start_span)[span_7](end_span).
-3. The Render deploy log will transition from `Running 'node server.js'` to `31! Card Game server running on port ...` without exiting[span_8](start_span)[span_8](end_span).
