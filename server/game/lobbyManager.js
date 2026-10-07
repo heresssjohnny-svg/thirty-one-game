@@ -2,7 +2,7 @@
 const WebSocket = require('ws');
 const { createDeck, calculateScore, calculateBestFourCardScore } = require('./deck');
 const { recordDebt, resolveFirstToLoseBets, resolveWinSideBets } = require('./ledger');
-const { executeBotTurn } = require('./bot');
+const { executeBotTurn, syncBotReadiness } = require('./bot');
 const config = require('../config');
 
 const lobbies = {};
@@ -31,6 +31,11 @@ function touchLobbyActivity(lobby, broadcastLobbyList) {
 function closeInactiveLobby(code, broadcastLobbyList) {
     const lobby = lobbies[code];
     if (!lobby) return;
+
+    // Do not close lobby if any human socket is currently connected and active
+    const hasActiveHumanSocket = lobby.players.some(p => !p.isBot && p.id && p.id.readyState === WebSocket.OPEN);
+    if (hasActiveHumanSocket) return;
+
     const closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to inactivity.' });
     lobby.players.forEach(p => {
         if (p.id?.readyState === WebSocket.OPEN) {
@@ -48,13 +53,17 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     if (broadcastLobbyList) broadcastLobbyList();
 }
 
+// Fixed: Aligned keys so public lobby list renders seamlessly on all clients
 function getPublicLobbiesList() {
     return Object.values(lobbies).filter(l => !l.isPrivate).map(l => ({
         code: l.code,
         name: l.name,
         host: l.host,
         count: l.players.length,
-        state: l.gameState
+        playerCount: l.players.length,
+        maxPlayers: 6,
+        state: l.gameState,
+        gameState: l.gameState
     }));
 }
 
@@ -134,7 +143,6 @@ function getSanitizedLobby(lobby, wsId) {
         livekitHost: config.LIVEKIT_HOST,
         players: lobby.players.map(p => {
             const canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
-            // Case-insensitive check to prevent lingering view permissions
             const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
                 k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
             );
@@ -474,7 +482,6 @@ function handleKnock(lobby, wsId) {
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.id !== wsId || lobby.knockedBy) return;
 
-    // Must knock BEFORE drawing (holding exactly 3 cards)
     if (p.cards.length !== 3) {
         return;
     }
@@ -560,7 +567,6 @@ function triggerRoundOver(lobby, msg) {
     lobby.fedCardReminders = {};
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
-    // Clear peeking permissions for all players when the round ends
     lobby.players.forEach(p => { 
         p.peekAllowed = {};
         p.peekRequests = {};
@@ -640,17 +646,17 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     }
 
     lobby.players.forEach((p, idx) => {
-        p.lives = lobby.defaultLives || 2;
+        p.lives = lobby.defaultLives || 3;
         p.eliminated = false;
         p.cards = [];
-        p.ready = false;
+        p.ready = false; // Bots and humans reset to unready
         p.seat = idx;
         p.nextHandReady = false;
         p.peekRequests = {};
         p.peekAllowed = {};
     });
     lobby.spectators = [];
-    require('./bot').syncBotReadiness(lobby);
+    syncBotReadiness(lobby);
     broadcastLobbyUpdate(lobby.code);
     if (broadcastLobbyList) broadcastLobbyList();
 }
@@ -713,10 +719,14 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     const lobby = lobbies[code];
     lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
-    if (lobby.players.length === 0) {
+
+    // Only delete lobby if there are no human players left
+    const remainingHumans = lobby.players.filter(p => !p.isBot);
+    if (remainingHumans.length === 0) {
+        if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
         delete lobbies[code];
     } else {
-        require('./bot').syncBotReadiness(lobby);
+        syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
     }
     if (broadcastLobbyList) broadcastLobbyList();
@@ -744,4 +754,3 @@ module.exports = {
     scheduleBotActions,
     leaveLobby
 };
- 
