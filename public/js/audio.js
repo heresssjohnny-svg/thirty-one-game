@@ -1,6 +1,19 @@
 // public/js/audio.js
 let audioCtx = null;
-let speechInitialized = false;
+let speechUnlocked = false;
+let availableVoices = [];
+
+// Populate voice cache immediately
+function loadVoices() {
+    if ('speechSynthesis' in window) {
+        availableVoices = window.speechSynthesis.getVoices() || [];
+    }
+}
+
+if ('speechSynthesis' in window) {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+}
 
 function getAudioContext() {
     if (!audioCtx) {
@@ -15,55 +28,77 @@ function getAudioContext() {
     return audioCtx;
 }
 
-// Unlock audio and speech synthesis on user interaction
+// User-gesture unlock for both Web Audio and Speech Synthesis
 function unlockAudioEngine() {
     getAudioContext();
 
-    if ('speechSynthesis' in window && !speechInitialized) {
-        const silentUtterance = new SpeechSynthesisUtterance('');
-        silentUtterance.volume = 0;
-        window.speechSynthesis.speak(silentUtterance);
-        speechInitialized = true;
+    if ('speechSynthesis' in window && !speechUnlocked) {
+        // Trigger getVoices to populate engine cache
+        loadVoices();
+
+        // Speak an audible non-breaking space with tiny volume to satisfy mobile policies
+        const warmUp = new SpeechSynthesisUtterance(' ');
+        warmUp.volume = 0.01;
+        warmUp.rate = 1.0;
+        
+        // Ensure voice queue is clear before speaking warmup
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(warmUp);
+        speechUnlocked = true;
     }
 }
 
+// Attach listeners across all touch/click gestures
 document.addEventListener('pointerdown', unlockAudioEngine, { once: false, passive: true });
 document.addEventListener('touchstart', unlockAudioEngine, { once: false, passive: true });
 
 function speakKnockedCue() {
     if (!('speechSynthesis' in window)) return;
 
-    window.speechSynthesis.cancel(); // Stop any pending speech
+    // Refresh voices if array is still empty
+    if (!availableVoices || availableVoices.length === 0) {
+        loadVoices();
+    }
+
+    // Clear queue to ensure immediate playback
+    window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance("Knocked!");
     utterance.volume = 1.0;
-    utterance.rate = 0.95;  // Slightly deliberate pace
-    utterance.pitch = 0.65; // Lower pitch for a deep male voice tone
+    utterance.rate = 0.95;
+    utterance.pitch = 0.65; // Lower pitch to simulate deep male voice
 
-    const voices = window.speechSynthesis.getVoices();
-    if (voices && voices.length > 0) {
-        // Attempt to select an English male voice if available on system
-        const maleVoice = voices.find(v => 
-            v.lang.startsWith('en') && 
+    if (availableVoices && availableVoices.length > 0) {
+        // Find best match for English male voice across platforms
+        const maleVoice = availableVoices.find(v => 
+            (v.lang.startsWith('en') || v.lang.startsWith('en-US')) && 
             (v.name.toLowerCase().includes('male') || 
              v.name.toLowerCase().includes('david') || 
              v.name.toLowerCase().includes('george') || 
              v.name.toLowerCase().includes('daniel') ||
+             v.name.toLowerCase().includes('aaron') ||
              v.name.toLowerCase().includes('james'))
         );
+
         if (maleVoice) {
             utterance.voice = maleVoice;
+        } else {
+            // Fallback: pick any English voice available
+            const defaultEn = availableVoices.find(v => v.lang.startsWith('en'));
+            if (defaultEn) utterance.voice = defaultEn;
         }
     }
 
-    window.speechSynthesis.speak(utterance);
-}
-
-// Pre-load voices for browsers that fetch them asynchronously
-if ('speechSynthesis' in window) {
-    window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
+    // Workaround for mobile browsers garbage collecting utterances mid-speech
+    window._knockUtteranceHolder = utterance;
+    utterance.onend = () => {
+        window._knockUtteranceHolder = null;
     };
+    utterance.onerror = () => {
+        window._knockUtteranceHolder = null;
+    };
+
+    window.speechSynthesis.speak(utterance);
 }
 
 function playSound(type) {
