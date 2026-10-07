@@ -9,7 +9,7 @@
     border: 8px solid #5c3a21;
     border-radius: 180px;
     position: relative;
-    /* Pushed down to completely prevent modal/badge overlap */
+    /* Spaced down to prevent modal and header collision */
     margin: 38px auto 8px auto;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
@@ -67,16 +67,16 @@
 }
 
 .card-slot {
-    width: 52px;
-    height: 72px;
-    border-radius: 6px;
+    width: 58px;
+    height: 82px;
+    border-radius: 7px;
     background: #ffffff;
     border: 2px solid #cbd5e1;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.55);
     transition: transform 0.15s ease;
 }
 
@@ -121,7 +121,7 @@
 }
 
 /* ==========================================================================
-   Seat Geometry (6 Positions around Oval)
+   Seat Geometry (6 Positions around Oval Table)
    ========================================================================== */
 .seat {
     position: absolute;
@@ -162,8 +162,8 @@
 
 .seat-cards {
     display: flex;
-    gap: 2px;
-    margin-top: 1px;
+    gap: 3px;
+    margin-top: 2px;
 }
 
 /* Responsive Oval Positions */
@@ -193,44 +193,86 @@
 
 .cards-flex {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     justify-content: center;
-    margin: 3px 0;
+    margin: 4px 0;
 }
 
+/* Player Hand Large Cards */
 .my-card {
-    border-radius: 6px;
+    border-radius: 8px;
     background: #ffffff;
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.65);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 4px 6px;
+    align-items: center;
+    padding: 6px 8px;
     font-weight: 900;
     cursor: pointer;
-    transition: transform 0.15s ease;
+    width: 68px;
+    height: 98px;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .my-card:active {
-    transform: translateY(-8px);
+    transform: translateY(-10px) scale(1.05);
 }
 
+.my-card .card-value {
+    font-size: 1.15rem;
+    font-weight: 900;
+    align-self: flex-start;
+    line-height: 1;
+}
+
+.my-card .card-suit-large {
+    font-size: 2.1rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: auto 0;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+
+/* Compact Seat Cards */
 .mini-card {
-    width: 24px;
-    height: 34px;
+    width: 30px;
+    height: 42px;
     background: #ffffff;
-    border-radius: 3px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 1px 2px;
-    font-size: 0.55rem;
-    font-weight: 800;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+    align-items: center;
+    padding: 2px 3px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
 }
 
-.red-suit { color: #dc2626; }
-.black-suit { color: #0f172a; }
+.mini-card .mini-val {
+    font-size: 0.65rem;
+    font-weight: 900;
+    line-height: 1;
+    align-self: flex-start;
+}
+
+.mini-card .mini-suit {
+    font-size: 1.15rem;
+    line-height: 1;
+    margin-top: -2px;
+}
+
+/* High-Contrast Colors */
+.red-suit {
+    color: #e11d48 !important; /* Crimson Red */
+}
+
+.black-suit {
+    color: #0f172a !important; /* Jet Black */
+}
 
 .bottom-action-bar {
     display: flex;
