@@ -22,27 +22,27 @@
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    <header>
+        <header>
         <div class="logo">31!</div>
         <div class="top-menu-btns">
-            <!-- Rules always visible -->
-            <button class="secondary" onclick="toggleModal('rules-modal')">Rules</button>
+            <!-- Rules button (always visible) -->
+            <button class="secondary" onclick="toggleModal('rules-modal')">📜 Rules</button>
 
-            <!-- In-game only buttons (Hidden on main menu) -->
-            <div id="in-game-header-btns" style="display:none; align-items:center; gap:5px;">
-                <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
+            <!-- In-game only buttons -->
+            <div id="in-game-header-btns">
+                <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵</button>
                 <button class="secondary" onclick="openLedgerModal()">Ledger</button>
                 
-                <div class="vc-control-group" id="vc-group-container" style="display:inline-flex;">
+                <div class="vc-control-group" id="vc-group-container">
                     <span id="vc-led" class="led-indicator"></span>
-                    <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
-                    <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Chat Participants">...</button>
+                    <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 2px 5px; font-size: 0.68rem;">🎙️</button>
+                    <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 2px 4px; font-size: 0.68rem;" title="View Voice Participants">...</button>
                 </div>
 
-                <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
+                <button class="secondary" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></button>
                 
                 <div id="chat-container">
-                    <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬 Chat</button>
+                    <button id="chat-toggle-btn" onclick="toggleChatWindow()">💬</button>
                 </div>
 
                 <button class="danger" id="end-game-btn" style="display:none;" onclick="proposeEndGame()">End</button>
@@ -62,6 +62,7 @@
             </div>
         </div>
     </header>
+
 
     <main>
         <div id="center-notification-banner">NOTIFICATION</div>
