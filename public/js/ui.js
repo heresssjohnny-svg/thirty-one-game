@@ -4,10 +4,22 @@ function formatCardHtml(card, isMini = false) {
     if (!card) return '';
     const isRed = ['♥', '♦'].includes(card.suit);
     const suitClass = isRed ? 'red-suit' : 'black-suit';
+
     if (isMini) {
-        return `<div class="mini-card ${suitClass}"><span>${card.val}</span><span>${card.suit}</span></div>`;
+        return `
+            <div class="mini-card ${suitClass}">
+                <span class="mini-val">${card.val}</span>
+                <span class="mini-suit">${card.suit}</span>
+            </div>
+        `;
     }
-    return `<div class="my-card ${suitClass}" style="width:60px; height:85px; font-size:1.1rem;"><span>${card.val}</span><span style="font-size:1.4rem;">${card.suit}</span></div>`;
+
+    return `
+        <div class="my-card ${suitClass}">
+            <span class="card-value">${card.val}</span>
+            <span class="card-suit-large">${card.suit}</span>
+        </div>
+    `;
 }
 
 function calculateLocalScore(cards) {
@@ -463,9 +475,6 @@ function updateUIFromLobby(lobby) {
     }
 
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
-    if (typeof renderYouTubePlayer === 'function') {
-        renderYouTubePlayer(lobby.playlist, lobby.currentSongIndex, lobby.isPlaying, lobby.currentSongElapsedSeconds || 0);
-    }
 
     // CELEBRATION TRIGGER
     const isTournamentOver = lobby.gameState === 'tournamentEnd' || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
@@ -624,7 +633,7 @@ function updateUIFromLobby(lobby) {
     const readyBtn = document.getElementById('ready-btn');
     const knockBtn = document.getElementById('knock-btn');
 
-    // FIX: Make sure any spectator sees Sit button in lobby
+    // Seat / Sit Button Visibility
     if (lobby.gameState === 'lobby') {
         if (me) {
             standUpBtn.style.display = 'inline-block';
@@ -759,22 +768,30 @@ function updateUIFromLobby(lobby) {
         sidePotBanner.style.display = 'none';
     }
 
+    // NEXT HAND OVERLAY (Supports direct active-player check & 8s auto-start)
     const nextHandOverlay = document.getElementById('next-hand-overlay');
+    const nextBtn = document.getElementById('next-hand-btn');
+
     if (lobby.gameState === 'roundOver') {
+        const myPlayer = lobby.players.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+        const isPermanentlyOut = myPlayer && myPlayer.eliminated;
+
         if (lobby.activeParticipantsCount <= 1) {
             nextHandOverlay.style.display = 'block';
-            const nextBtn = document.getElementById('next-hand-btn');
-            nextBtn.innerText = 'Returning to Ready Room...';
-            nextBtn.disabled = true;
-        } else if (!isSpectatorOnly) {
-            nextHandOverlay.style.display = 'block';
-            const nextBtn = document.getElementById('next-hand-btn');
-            if (me && me.nextHandReady) {
-                nextBtn.innerText = 'Waiting...';
+            if (nextBtn) {
+                nextBtn.innerText = 'Returning to Ready Room...';
                 nextBtn.disabled = true;
-            } else {
-                nextBtn.innerText = 'Next Hand';
-                nextBtn.disabled = false;
+            }
+        } else if (myPlayer && !isPermanentlyOut) {
+            nextHandOverlay.style.display = 'block';
+            if (nextBtn) {
+                if (myPlayer.nextHandReady) {
+                    nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
+                    nextBtn.disabled = true;
+                } else {
+                    nextBtn.innerText = 'Next Hand (Auto in 8s)';
+                    nextBtn.disabled = false;
+                }
             }
         } else {
             nextHandOverlay.style.display = 'none';
@@ -815,7 +832,7 @@ function updateUIFromLobby(lobby) {
         poolModal.style.display = 'none';
         revealModal.style.display = 'flex';
         const isTiedParticipant = lobby.tiedParticipantsList.includes(activeUsername);
-        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
+        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to select cards...';
         
         let streamHtml = '';
         if (isTiedParticipant && !lobby.drawResults[activeUsername]) {
@@ -895,7 +912,8 @@ function updateUIFromLobby(lobby) {
     if (me && me.cards) {
         const cardsHtml = me.cards.map((c, i) => `
             <div class="my-card ${['♥', '♦'].includes(c.suit) ? 'red-suit' : 'black-suit'}" onclick="discardCard(${i})">
-                <span>${c.val}</span><span style="font-size:1.1rem;">${c.suit}</span>
+                <span class="card-value">${c.val}</span>
+                <span class="card-suit-large">${c.suit}</span>
             </div>
         `).join('');
         document.getElementById('my-cards-container').innerHTML = cardsHtml;
