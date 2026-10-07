@@ -47,7 +47,7 @@
 }
 
 /* ==========================================================================
-   2. In-Game Floating Alerts & Banners (Separated Coordinate Positions)
+   2. In-Game Floating Alerts & Banners (Non-overlapping positions)
    ========================================================================== */
 
 /* Top Center Notification Banner */
@@ -70,7 +70,7 @@
     pointer-events: none;
 }
 
-/* Conspicuous Knock Alert Modal (Positioned below center banner) */
+/* Conspicuous Knock Alert Modal (Positioned clearly below top notification) */
 #knock-alert-modal {
     position: absolute;
     top: 75px;
@@ -102,7 +102,8 @@
     }
 }
 
-/* Discard Pickup Alert (Top-Left under header) */
+/* Discard Pickup Alert (Both ID and Class styled identically at top-left) */
+#discard-pickup-topleft-modal,
 .discard-pickup-modal-topleft {
     position: absolute;
     top: 60px;
