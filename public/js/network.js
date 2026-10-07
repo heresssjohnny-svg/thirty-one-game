@@ -12,15 +12,47 @@ window.clientState = window.clientState || {
     selectedDiscardIndex: null
 };
 
+// Form persistence helper required by index.html oninput
+function saveInputs() {
+    try {
+        const u = document.getElementById('username-input');
+        const l = document.getElementById('lobby-name-input');
+        if (u) localStorage.setItem('blitz31_username', u.value);
+        if (l) localStorage.setItem('blitz31_lobby_name', l.value);
+    } catch (e) {
+        // Storage access handled gracefully
+    }
+}
+
+function restoreSavedInputs() {
+    try {
+        const u = document.getElementById('username-input');
+        const l = document.getElementById('lobby-name-input');
+        const savedU = localStorage.getItem('blitz31_username');
+        const savedL = localStorage.getItem('blitz31_lobby_name');
+        if (u && savedU) u.value = savedU;
+        if (l && savedL) l.value = savedL;
+    } catch (e) {}
+}
+
 function getWebSocketUrl() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${window.location.host}`;
 }
 
 function initWebSocket(onOpenCallback) {
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        if (ws.readyState === WebSocket.OPEN && onOpenCallback) {
-            onOpenCallback();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        if (onOpenCallback) onOpenCallback();
+        return;
+    }
+
+    if (ws && ws.readyState === WebSocket.CONNECTING) {
+        if (onOpenCallback) {
+            const prevOpen = ws.onopen;
+            ws.onopen = (e) => {
+                if (prevOpen) prevOpen(e);
+                onOpenCallback();
+            };
         }
         return;
     }
@@ -36,7 +68,7 @@ function initWebSocket(onOpenCallback) {
         }
         isReconnecting = false;
 
-        // If reconnecting to an active game session
+        // Auto-rejoin if connection dropped mid-game
         if (window.clientState.currentLobbyCode && window.clientState.myUsername) {
             sendSocketMessage({
                 type: 'JOIN_LOBBY',
@@ -45,9 +77,7 @@ function initWebSocket(onOpenCallback) {
             });
         }
 
-        if (onOpenCallback) {
-            onOpenCallback();
-        }
+        if (onOpenCallback) onOpenCallback();
     };
 
     ws.onmessage = (event) => {
@@ -90,7 +120,6 @@ function sendSocketMessage(msgObj) {
     }
 }
 
-// Global hook for sending messages from other modules
 function initSocketAndSend(msgObj) {
     sendSocketMessage(msgObj);
 }
@@ -107,12 +136,11 @@ function handleServerMessage(data) {
         case 'LOBBY_JOINED':
             window.clientState.currentLobbyCode = data.code;
             
-            // Switch UI from casino menu to game table
             if (typeof showGameScreen === 'function') {
                 showGameScreen(data.code);
             }
 
-            // Lobby-specific Voice Chat auto-connect (starts activated & muted)
+            // Auto-connect voice chat activated & muted
             if (data.livekitHost && data.livekitToken && typeof connectToVoiceChat === 'function') {
                 connectToVoiceChat(data.livekitHost, data.livekitToken);
             }
@@ -150,7 +178,6 @@ function handleServerMessage(data) {
             break;
 
         default:
-            console.log('[WS] Received unhandled message:', data);
             break;
     }
 }
@@ -166,14 +193,13 @@ function createLobby() {
     const isPrivate = privIn ? privIn.checked : false;
 
     window.clientState.myUsername = username;
+    saveInputs();
 
-    initWebSocket(() => {
-        sendSocketMessage({
-            type: 'CREATE_LOBBY',
-            username,
-            lobbyName,
-            isPrivate
-        });
+    sendSocketMessage({
+        type: 'CREATE_LOBBY',
+        username,
+        lobbyName,
+        isPrivate
     });
 }
 
@@ -192,13 +218,12 @@ function joinLobby() {
     }
 
     window.clientState.myUsername = username;
+    saveInputs();
 
-    initWebSocket(() => {
-        sendSocketMessage({
-            type: 'JOIN_LOBBY',
-            code,
-            username
-        });
+    sendSocketMessage({
+        type: 'JOIN_LOBBY',
+        code,
+        username
     });
 }
 
@@ -207,20 +232,17 @@ function joinLobbyDirect(code) {
     const username = (userIn ? userIn.value : '').trim() || 'Player';
 
     window.clientState.myUsername = username;
+    saveInputs();
 
-    initWebSocket(() => {
-        sendSocketMessage({
-            type: 'JOIN_LOBBY',
-            code: code.trim().toUpperCase(),
-            username
-        });
+    sendSocketMessage({
+        type: 'JOIN_LOBBY',
+        code: code.trim().toUpperCase(),
+        username
     });
 }
 
 function refreshLobbies() {
-    initWebSocket(() => {
-        sendSocketMessage({ type: 'GET_LOBBIES' });
-    });
+    sendSocketMessage({ type: 'GET_LOBBIES' });
 }
 
 function leaveLobby() {
@@ -341,7 +363,6 @@ function sendChatMessage() {
     input.value = '';
 }
 
-// Request and responses for peeking
 function requestPeekAction(targetUsername) {
     sendSocketMessage({
         type: 'REQUEST_PEEK',
@@ -370,7 +391,8 @@ function kickPeekerAction(spectatorUsername) {
     });
 }
 
-// Global initialization
+// Lifecycle Init
 document.addEventListener('DOMContentLoaded', () => {
+    restoreSavedInputs();
     initWebSocket();
 });
