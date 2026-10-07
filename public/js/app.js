@@ -1,5 +1,3 @@
-// public/js/app.js
-
 function saveInputs() {
     const u = document.getElementById('username-input');
     const l = document.getElementById('lobby-name-input');
