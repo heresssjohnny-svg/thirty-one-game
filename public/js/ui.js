@@ -655,6 +655,24 @@ function updateUIFromLobby(lobby) {
     const isMyTurnPlaying = (lobby.currentTurnUser.toLowerCase() === activeUsername.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
     const hasNotDrawn = me && me.cards && me.cards.length === 3;
 
+    // Trigger your-turn MP3 audio cue and haptic pattern when turn becomes yours
+    if (isMyTurnPlaying) {
+        if (!window.appGlobals) window.appGlobals = {};
+        if (!window.appGlobals.wasMyTurn) {
+            window.appGlobals.wasMyTurn = true;
+            if (typeof playYourTurnCue === 'function') {
+                playYourTurnCue();
+            }
+            if (typeof triggerVibration === 'function') {
+                triggerVibration([60, 40, 60]);
+            }
+        }
+    } else {
+        if (window.appGlobals) {
+            window.appGlobals.wasMyTurn = false;
+        }
+    }
+
     if (lobby.knockedBy) {
         knockBtn.disabled = true;
         knockBtn.innerText = `${lobby.knockedBy} knocked!`;
@@ -793,7 +811,7 @@ function updateUIFromLobby(lobby) {
         poolModal.style.display = 'none';
         revealModal.style.display = 'flex';
         const isTiedParticipant = lobby.tiedParticipantsList.includes(activeUsername);
-        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to select cards...';
+        document.getElementById('tie-breaker-stream-msg').innerText = isTiedParticipant ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
         
         let streamHtml = '';
         if (isTiedParticipant && !lobby.drawResults[activeUsername]) {
