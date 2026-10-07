@@ -32,7 +32,6 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     const lobby = lobbies[code];
     if (!lobby) return;
 
-    // Do not close lobby if any human socket is currently connected and active
     const hasActiveHumanSocket = lobby.players.some(p => !p.isBot && p.id && p.id.readyState === WebSocket.OPEN);
     if (hasActiveHumanSocket) return;
 
@@ -53,7 +52,6 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     if (broadcastLobbyList) broadcastLobbyList();
 }
 
-// Fixed: Aligned keys so public lobby list renders seamlessly on all clients
 function getPublicLobbiesList() {
     return Object.values(lobbies).filter(l => !l.isPrivate).map(l => ({
         code: l.code,
@@ -110,6 +108,7 @@ function getSanitizedLobby(lobby, wsId) {
         name: lobby.name,
         host: lobby.host,
         gameState: lobby.gameState,
+        defaultLives: lobby.defaultLives || 2,
         deckCount: lobby.deck.length,
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
@@ -141,6 +140,7 @@ function getSanitizedLobby(lobby, wsId) {
         isPlaying: !!lobby.isPlaying,
         currentSongElapsedSeconds: elapsedSeconds,
         livekitHost: config.LIVEKIT_HOST,
+        livesVote: lobby.livesVote || null,
         players: lobby.players.map(p => {
             const canSee = lobby.gameState === 'roundOver' || p.username === myUsername;
             const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
@@ -639,6 +639,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.drawOrderSequence = [];
     lobby.tiedParticipantsList = [];
     lobby.pendingBotDraw = {};
+    lobby.livesVote = null;
 
     if (lobby.lastGameWinner) {
         const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
@@ -646,10 +647,10 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     }
 
     lobby.players.forEach((p, idx) => {
-        p.lives = lobby.defaultLives || 3;
+        p.lives = lobby.defaultLives || 2; // Defaults strictly to 2 lives
         p.eliminated = false;
         p.cards = [];
-        p.ready = false; // Bots and humans reset to unready
+        p.ready = false;
         p.seat = idx;
         p.nextHandReady = false;
         p.peekRequests = {};
@@ -720,7 +721,6 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
 
-    // Only delete lobby if there are no human players left
     const remainingHumans = lobby.players.filter(p => !p.isBot);
     if (remainingHumans.length === 0) {
         if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
