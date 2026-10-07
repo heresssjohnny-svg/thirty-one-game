@@ -100,7 +100,8 @@ wss.on('connection', (ws) => {
                 spectators: [],
                 activeBets: [],
                 pendingBets: [],
-                globalProposals: []
+                globalProposals: [],
+                endGameVotes: {}
             };
 
             lobbies[code] = newLobby;
@@ -133,7 +134,6 @@ wss.on('connection', (ws) => {
             currentLobbyCode = code;
             touchLobbyActivity(lobby, broadcastLobbyList);
 
-            // Check if player already exists in the lobby
             let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
             let existingSpectator = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
@@ -142,7 +142,6 @@ wss.on('connection', (ws) => {
             } else if (existingSpectator) {
                 existingSpectator.idSocket = ws;
             } else {
-                // Determine whether user joins as seated or spectator
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
                     const seatNum = findOpenSeat(lobby);
                     lobby.players.push({
@@ -238,7 +237,6 @@ wss.on('connection', (ws) => {
                 player.ready = !!data.ready;
                 broadcastLobbyUpdate(lobby.code);
 
-                // Auto-start game if all seated active players are ready
                 const seatedHumans = lobby.players.filter(p => !p.isBot);
                 if (seatedHumans.length >= 1 && lobby.players.every(p => p.ready)) {
                     if (lobby.players.length >= 2) {
@@ -288,6 +286,184 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        // Side bets handling
+        if (data.type === 'PROPOSE_ELIMINATION_BET') {
+            const proposer = lobby.players.find(p => p.id === ws);
+            if (proposer) {
+                const betId = `bet_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+                if (!lobby.pendingBets) lobby.pendingBets = [];
+                lobby.pendingBets.push({
+                    id: betId,
+                    type: 'eliminate',
+                    proposer: proposer.username,
+                    target: data.target,
+                    pickUser: data.target,
+                    targetSurvivor: proposer.username,
+                    wagerAmt: parseInt(data.wagerAmt, 10) || 5,
+                    delivered: {}
+                });
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
+        if (data.type === 'PROPOSE_GLOBAL_SIDE_BET') {
+            const proposer = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws);
+            if (proposer) {
+                const propId = `gprop_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+                if (!lobby.globalProposals) lobby.globalProposals = [];
+                lobby.globalProposals.push({
+                    id: propId,
+                    proposer: proposer.username,
+                    pickUser: data.pickUser,
+                    wagerAmt: parseInt(data.wagerAmt, 10) || 5,
+                    acceptedBy: []
+                });
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
+        if (data.type === 'ACCEPT_GLOBAL_PROPOSAL') {
+            const acceptor = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws);
+            if (acceptor && lobby.globalProposals) {
+                const prop = lobby.globalProposals.find(g => g.id === data.proposalId);
+                if (prop && prop.proposer !== acceptor.username && !prop.acceptedBy.includes(acceptor.username)) {
+                    prop.acceptedBy.push(acceptor.username);
+                    broadcastLobbyUpdate(lobby.code);
+                }
+            }
+            return;
+        }
+
+        if (data.type === 'CONFIRM_GLOBAL_BET') {
+            const proposer = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws);
+            if (proposer && lobby.globalProposals) {
+                const propIdx = lobby.globalProposals.findIndex(g => g.id === data.proposalId);
+                if (propIdx !== -1) {
+                    const prop = lobby.globalProposals[propIdx];
+                    if (data.confirm) {
+                        if (!lobby.activeBets) lobby.activeBets = [];
+                        lobby.activeBets.push({
+                            id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                            type: 'win',
+                            proposer: prop.proposer,
+                            target: data.acceptedUser,
+                            pickUser: prop.pickUser,
+                            wagerAmt: prop.wagerAmt
+                        });
+                    }
+                    prop.acceptedBy = prop.acceptedBy.filter(u => u !== data.acceptedUser);
+                    if (prop.acceptedBy.length === 0) {
+                        lobby.globalProposals.splice(propIdx, 1);
+                    }
+                    broadcastLobbyUpdate(lobby.code);
+                }
+            }
+            return;
+        }
+
+        if (data.type === 'RESPOND_BET') {
+            const responder = lobby.players.find(p => p.id === ws);
+            if (responder && lobby.pendingBets) {
+                const bIdx = lobby.pendingBets.findIndex(b => b.id === data.betId);
+                if (bIdx !== -1) {
+                    const bet = lobby.pendingBets.splice(bIdx, 1)[0];
+                    if (data.accept) {
+                        if (!lobby.activeBets) lobby.activeBets = [];
+                        lobby.activeBets.push(bet);
+                    }
+                    broadcastLobbyUpdate(lobby.code);
+                }
+            }
+            return;
+        }
+
+        // Peeking hand features
+        if (data.type === 'REQUEST_PEEK') {
+            const spec = lobby.spectators.find(s => s.idSocket === ws);
+            const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
+            if (spec && targetPlayer) {
+                if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
+                targetPlayer.peekRequests[spec.username] = true;
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
+        if (data.type === 'RESPOND_PEEK') {
+            const player = lobby.players.find(p => p.id === ws);
+            if (player && player.peekRequests) {
+                delete player.peekRequests[data.spectatorUsername];
+                if (data.allow) {
+                    if (!player.peekAllowed) player.peekAllowed = {};
+                    player.peekAllowed[data.spectatorUsername] = true;
+                }
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
+        if (data.type === 'STOP_PEEK') {
+            const spec = lobby.spectators.find(s => s.idSocket === ws);
+            if (spec) {
+                lobby.players.forEach(p => {
+                    if (p.peekAllowed) delete p.peekAllowed[spec.username];
+                });
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
+        if (data.type === 'KICK_PEEKER') {
+            const player = lobby.players.find(p => p.id === ws);
+            if (player && player.peekAllowed && data.spectatorUsername) {
+                delete player.peekAllowed[data.spectatorUsername];
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
+        // Voting handlers
+        if (data.type === 'END_GAME_PROPOSAL') {
+            const player = lobby.players.find(p => p.id === ws);
+            if (player) {
+                if (!lobby.endGameVotes) lobby.endGameVotes = {};
+                lobby.endGameVotes[player.username] = true;
+                const activeHumanPlayers = lobby.players.filter(p => !p.isBot && !p.eliminated);
+                const votesCount = Object.keys(lobby.endGameVotes).length;
+                if (votesCount >= Math.ceil(activeHumanPlayers.length / 2)) {
+                    resetLobbyToReadyRoom(lobby, "Game ended by majority vote.");
+                } else {
+                    lobby.phaseMessage = `End game proposal: ${votesCount}/${activeHumanPlayers.length} voted.`;
+                    broadcastLobbyUpdate(lobby.code);
+                }
+            }
+            return;
+        }
+
+        if (data.type === 'VOTE_LIVES') {
+            const player = lobby.players.find(p => p.id === ws);
+            if (player && lobby.livesVote) {
+                lobby.livesVote.votes[player.username] = !!data.agree;
+                const humanSeated = lobby.players.filter(p => !p.isBot);
+                const voteVals = Object.values(lobby.livesVote.votes);
+                if (voteVals.length >= humanSeated.length) {
+                    const agrees = voteVals.filter(v => v === true).length;
+                    if (agrees > humanSeated.length / 2) {
+                        lobby.defaultLives = lobby.livesVote.proposedLives;
+                        lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
+                        lobby.phaseMessage = `Starting lives updated to ${lobby.defaultLives}.`;
+                    } else {
+                        lobby.phaseMessage = `Starting lives proposal declined.`;
+                    }
+                    lobby.livesVote = null;
+                }
+                broadcastLobbyUpdate(lobby.code);
+            }
+            return;
+        }
+
         if (data.type === 'VC_STATUS_UPDATE') {
             const player = lobby.players.find(p => p.id === ws);
             const spec = lobby.spectators.find(s => s.idSocket === ws);
@@ -322,8 +498,20 @@ wss.on('connection', (ws) => {
 
         if (data.type === 'UPDATE_SETTINGS') {
             if (lobby.gameState === 'lobby') {
-                lobby.defaultLives = data.lives ? parseInt(data.lives, 10) : 2;
-                lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
+                const targetLives = data.lives ? parseInt(data.lives, 10) : 2;
+                const humanSeated = lobby.players.filter(p => !p.isBot);
+                const proposer = lobby.players.find(p => p.id === ws);
+
+                if (humanSeated.length > 1 && proposer) {
+                    lobby.livesVote = {
+                        proposer: proposer.username,
+                        proposedLives: targetLives,
+                        votes: { [proposer.username]: true }
+                    };
+                } else {
+                    lobby.defaultLives = targetLives;
+                    lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
+                }
                 broadcastLobbyUpdate(lobby.code);
             }
             return;
