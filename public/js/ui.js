@@ -624,8 +624,9 @@ function updateUIFromLobby(lobby) {
     const readyBtn = document.getElementById('ready-btn');
     const knockBtn = document.getElementById('knock-btn');
 
+    // FIX: Make sure any spectator sees Sit button in lobby
     if (lobby.gameState === 'lobby') {
-        if (me && !isEliminated) {
+        if (me) {
             standUpBtn.style.display = 'inline-block';
             sitBtn.style.display = 'none';
             readyBtn.style.display = 'inline-block';
@@ -634,7 +635,7 @@ function updateUIFromLobby(lobby) {
             standUpBtn.style.display = 'none';
             readyBtn.style.display = 'none';
             knockBtn.style.display = 'none';
-            sitBtn.style.display = isSpecUser ? 'inline-block' : 'none';
+            sitBtn.style.display = 'inline-block';
             sitBtn.disabled = lobby.players.length >= 6;
         }
     } else {
