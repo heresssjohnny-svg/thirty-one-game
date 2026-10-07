@@ -189,6 +189,19 @@
             </div>
             <div id="global-side-bets-list" style="display:flex; flex-direction:column; gap:3px;"></div>
         </div>
+
+<div id="lives-vote-modal" class="modal">
+        <div class="modal-content" style="max-width:330px;">
+            <h3 style="color:var(--accent-gold);">🗳️ Vote on Starting Lives</h3>
+            <p id="lives-vote-prompt" style="font-size:0.85rem; color:var(--text-muted); margin: 6px 0 12px 0;">
+                Player wants to set starting lives.
+            </p>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button onclick="submitLivesVote(true)" style="background:#10b981; flex:1;">Accept</button>
+                <button class="danger" onclick="submitLivesVote(false)" style="flex:1;">Decline</button>
+            </div>
+        </div>
+    </div>
     </main>
 
     <!-- Dialog Modals -->
