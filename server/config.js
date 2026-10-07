@@ -6,4 +6,3 @@ module.exports = {
     LIVEKIT_HOST: process.env.LIVEKIT_HOST || 'wss://31game.duckdns.org',
     INACTIVITY_TIMEOUT_MS: 20 * 60 * 1000 // 20 minutes
 };
-
