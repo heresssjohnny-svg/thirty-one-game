@@ -71,7 +71,7 @@ function triggerWinnerCelebration(winnerName, customSubtitle = "TOURNAMENT CHAMP
 
     render();
 
-    // Auto-dismiss after 4.5 seconds
+    // Auto-dismiss celebration overlay after 4.5 seconds
     setTimeout(() => {
         if (overlay) overlay.style.display = 'none';
         if (celebrationAnimationId) cancelAnimationFrame(celebrationAnimationId);
