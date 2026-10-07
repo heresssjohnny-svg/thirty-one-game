@@ -5,12 +5,12 @@ const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
 
-// Auto-resolve config from root or server/
+// Load config
 let config;
-if (fs.existsSync(path.join(__dirname, 'config.js'))) {
-    config = require('./config');
-} else if (fs.existsSync(path.join(__dirname, 'server', 'config.js'))) {
+if (fs.existsSync(path.join(__dirname, 'server', 'config.js'))) {
     config = require('./server/config');
+} else if (fs.existsSync(path.join(__dirname, 'config.js'))) {
+    config = require('./config');
 } else {
     config = {
         PORT: process.env.PORT || 10000,
@@ -21,16 +21,14 @@ if (fs.existsSync(path.join(__dirname, 'config.js'))) {
     };
 }
 
-// Auto-resolve lobbyManager
+// Load lobbyManager
 let lobbyManager;
-if (fs.existsSync(path.join(__dirname, 'lobbyManager.js'))) {
-    lobbyManager = require('./lobbyManager');
+if (fs.existsSync(path.join(__dirname, 'server', 'game', 'lobbyManager.js'))) {
+    lobbyManager = require('./server/game/lobbyManager');
 } else if (fs.existsSync(path.join(__dirname, 'game', 'lobbyManager.js'))) {
     lobbyManager = require('./game/lobbyManager');
-} else if (fs.existsSync(path.join(__dirname, 'server', 'game', 'lobbyManager.js'))) {
-    lobbyManager = require('./server/game/lobbyManager');
 } else {
-    throw new Error("Could not find lobbyManager.js");
+    lobbyManager = require('./lobbyManager');
 }
 
 const {
@@ -52,12 +50,12 @@ const {
     leaveLobby
 } = lobbyManager;
 
-// Auto-resolve livekit module
+// Load livekit helper
 let generateLiveKitToken;
-if (fs.existsSync(path.join(__dirname, 'livekit.js'))) {
-    generateLiveKitToken = require('./livekit').generateLiveKitToken;
-} else if (fs.existsSync(path.join(__dirname, 'server', 'livekit.js'))) {
+if (fs.existsSync(path.join(__dirname, 'server', 'livekit.js'))) {
     generateLiveKitToken = require('./server/livekit').generateLiveKitToken;
+} else if (fs.existsSync(path.join(__dirname, 'livekit.js'))) {
+    generateLiveKitToken = require('./livekit').generateLiveKitToken;
 } else {
     generateLiveKitToken = async () => null;
 }
@@ -66,10 +64,15 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static assets (js, css, mp3s, manifest) directly from root directory
+// 1. Serve static files from public/ if present (for css/, js/)
+if (fs.existsSync(path.join(__dirname, 'public'))) {
+    app.use(express.static(path.join(__dirname, 'public')));
+}
+
+// 2. Serve static files from root (for index.html, mp3s/, icons, manifest)
 app.use(express.static(__dirname));
 
-// Serve index.html directly from root directory
+// 3. Explicitly serve index.html from root for "/"
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -329,6 +332,7 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        // Side bets
         if (data.type === 'PROPOSE_ELIMINATION_BET') {
             const proposer = lobby.players.find(p => p.id === ws);
             if (proposer) {
@@ -421,6 +425,7 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        // Peeking hand
         if (data.type === 'REQUEST_PEEK') {
             const spec = lobby.spectators.find(s => s.idSocket === ws);
             const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
@@ -465,6 +470,7 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        // End Game / Lives votes
         if (data.type === 'END_GAME_PROPOSAL') {
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
