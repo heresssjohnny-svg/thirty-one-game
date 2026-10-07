@@ -196,6 +196,8 @@ function startDealerDrawPhase(lobby) {
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
     lobby.players.forEach(p => {
+        p.peekAllowed = {};
+        p.peekRequests = {};
         if (!p.eliminated) p.nextHandReady = p.isBot;
     });
     broadcastLobbyUpdate(lobby.code);
@@ -223,6 +225,12 @@ function startRound(lobby) {
         awardTournamentWinner(lobby, activeParts[0]);
         return;
     }
+
+    // Reset hand peeks on every new hand start
+    lobby.players.forEach(p => {
+        p.peekAllowed = {};
+        p.peekRequests = {};
+    });
 
     activeParts.forEach(p => {
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()];
@@ -464,7 +472,6 @@ function handleKnock(lobby, wsId) {
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.id !== wsId || lobby.knockedBy) return;
 
-    // Strict rule: You can only knock BEFORE drawing a card (must have exactly 3 cards)
     if (p.cards.length !== 3) {
         return;
     }
@@ -550,7 +557,12 @@ function triggerRoundOver(lobby, msg) {
     lobby.fedCardReminders = {};
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
-    lobby.players.forEach(p => { p.nextHandReady = p.isBot; });
+    // Clear peeking permissions for all players when the round ends
+    lobby.players.forEach(p => { 
+        p.peekAllowed = {};
+        p.peekRequests = {};
+        p.nextHandReady = p.isBot; 
+    });
     broadcastLobbyUpdate(lobby.code);
 
     const active = getActiveParticipants(lobby);
