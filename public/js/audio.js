@@ -1,19 +1,12 @@
 // public/js/audio.js
 let audioCtx = null;
-let speechUnlocked = false;
-let availableVoices = [];
+let knockAudioBuffer = null;
+let yourTurnAudioBuffer = null;
 
-// Populate voice cache immediately
-function loadVoices() {
-    if ('speechSynthesis' in window) {
-        availableVoices = window.speechSynthesis.getVoices() || [];
-    }
-}
-
-if ('speechSynthesis' in window) {
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-}
+// Paths to your uploaded audio files
+const KNOCK_AUDIO_PATH = '/mp3s/knock.mp3';
+const YOUR_TURN_AUDIO_PATH = '/mp3s/yourturn.mp3';
+const YOUR_TURN_FALLBACK_PATH = '/mp3/yourturn.mp3';
 
 function getAudioContext() {
     if (!audioCtx) {
@@ -28,77 +21,78 @@ function getAudioContext() {
     return audioCtx;
 }
 
-// User-gesture unlock for both Web Audio and Speech Synthesis
-function unlockAudioEngine() {
-    getAudioContext();
-
-    if ('speechSynthesis' in window && !speechUnlocked) {
-        // Trigger getVoices to populate engine cache
-        loadVoices();
-
-        // Speak an audible non-breaking space with tiny volume to satisfy mobile policies
-        const warmUp = new SpeechSynthesisUtterance(' ');
-        warmUp.volume = 0.01;
-        warmUp.rate = 1.0;
-        
-        // Ensure voice queue is clear before speaking warmup
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(warmUp);
-        speechUnlocked = true;
+// Fetch and decode an audio file into an AudioBuffer
+async function loadAudioBuffer(url) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        const ctx = getAudioContext();
+        if (!ctx) return null;
+        return await ctx.decodeAudioData(arrayBuffer);
+    } catch (err) {
+        return null;
     }
 }
 
-// Attach listeners across all touch/click gestures
+// Preload both MP3 files into memory
+async function preloadAudioFiles() {
+    if (!knockAudioBuffer) {
+        knockAudioBuffer = await loadAudioBuffer(KNOCK_AUDIO_PATH);
+    }
+    if (!yourTurnAudioBuffer) {
+        yourTurnAudioBuffer = await loadAudioBuffer(YOUR_TURN_AUDIO_PATH);
+        if (!yourTurnAudioBuffer) {
+            yourTurnAudioBuffer = await loadAudioBuffer(YOUR_TURN_FALLBACK_PATH);
+        }
+    }
+}
+
+// Unlock Web Audio context and trigger buffering on first user touch/click
+function unlockAudioEngine() {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+        ctx.resume();
+    }
+    if (!knockAudioBuffer || !yourTurnAudioBuffer) {
+        preloadAudioFiles();
+    }
+}
+
 document.addEventListener('pointerdown', unlockAudioEngine, { once: false, passive: true });
 document.addEventListener('touchstart', unlockAudioEngine, { once: false, passive: true });
 
-function speakKnockedCue() {
-    if (!('speechSynthesis' in window)) return;
+// Pre-fetch on initial page load
+preloadAudioFiles();
 
-    // Refresh voices if array is still empty
-    if (!availableVoices || availableVoices.length === 0) {
-        loadVoices();
-    }
-
-    // Clear queue to ensure immediate playback
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance("Knocked!");
-    utterance.volume = 1.0;
-    utterance.rate = 0.95;
-    utterance.pitch = 0.65; // Lower pitch to simulate deep male voice
-
-    if (availableVoices && availableVoices.length > 0) {
-        // Find best match for English male voice across platforms
-        const maleVoice = availableVoices.find(v => 
-            (v.lang.startsWith('en') || v.lang.startsWith('en-US')) && 
-            (v.name.toLowerCase().includes('male') || 
-             v.name.toLowerCase().includes('david') || 
-             v.name.toLowerCase().includes('george') || 
-             v.name.toLowerCase().includes('daniel') ||
-             v.name.toLowerCase().includes('aaron') ||
-             v.name.toLowerCase().includes('james'))
-        );
-
-        if (maleVoice) {
-            utterance.voice = maleVoice;
-        } else {
-            // Fallback: pick any English voice available
-            const defaultEn = availableVoices.find(v => v.lang.startsWith('en'));
-            if (defaultEn) utterance.voice = defaultEn;
+// Play buffer through Web Audio API with HTML5 audio fallback
+function playBufferOrAudio(buffer, fallbackUrl) {
+    const ctx = getAudioContext();
+    if (ctx && buffer) {
+        try {
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.start(0);
+            return;
+        } catch (e) {
+            console.warn("Buffer playback error, falling back to Audio element:", e);
         }
     }
 
-    // Workaround for mobile browsers garbage collecting utterances mid-speech
-    window._knockUtteranceHolder = utterance;
-    utterance.onend = () => {
-        window._knockUtteranceHolder = null;
-    };
-    utterance.onerror = () => {
-        window._knockUtteranceHolder = null;
-    };
+    try {
+        const audio = new Audio(fallbackUrl);
+        audio.volume = 1.0;
+        audio.play().catch(() => {});
+    } catch (e) {}
+}
 
-    window.speechSynthesis.speak(utterance);
+function speakKnockedCue() {
+    playBufferOrAudio(knockAudioBuffer, KNOCK_AUDIO_PATH);
+}
+
+function playYourTurnCue() {
+    playBufferOrAudio(yourTurnAudioBuffer, YOUR_TURN_AUDIO_PATH);
 }
 
 function playSound(type) {
@@ -122,13 +116,7 @@ function playSound(type) {
             osc.start(now);
             osc.stop(now + 0.08);
         } else if (type === 'knock') {
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(160, now);
-            osc.frequency.exponentialRampToValueAtTime(45, now + 0.22);
-            gain.gain.setValueAtTime(0.6, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.22);
-            osc.start(now);
-            osc.stop(now + 0.22);
+            speakKnockedCue();
         }
     } catch (e) {
         console.warn("Sound play error:", e);
