@@ -91,13 +91,13 @@ function renderLobbyList(lobbies) {
     const container = document.getElementById('lobby-list');
     if (!container) return;
     if (!lobbies || lobbies.length === 0) {
-        container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>';
+        container.innerHTML = '<div style="text-align:center; color:#64748b; padding:10px; font-size:0.75rem;">No active lobbies found</div>';
         return;
     }
     container.innerHTML = lobbies.map(l => {
         const count = l.count !== undefined ? l.count : (l.playerCount || 0);
         const stateText = (l.state === 'lobby' || l.gameState === 'lobby') ? 'Open' : 'In-Progress';
-        return `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${count}/6) - ${stateText}</span><span style="color:#38bdf8;">Join</span></div>`;
+        return `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span><b>${l.name}</b> (${count}/6) - ${stateText}</span><span style="color:#38bdf8; font-weight:bold;">Join</span></div>`;
     }).join('');
 }
 
@@ -402,6 +402,11 @@ function updateUIFromLobby(lobby) {
     document.getElementById('game-view').style.display = 'flex';
     document.getElementById('end-game-btn').style.display = 'inline-block';
     document.getElementById('leave-lobby-btn').style.display = 'inline-block';
+    
+    // Reveal all in-game header controls when seated in game
+    const inGameHeader = document.getElementById('in-game-header-btns');
+    if (inGameHeader) inGameHeader.style.display = 'inline-flex';
+
     document.getElementById('vc-group-container').style.display = 'inline-flex';
     document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
@@ -437,7 +442,7 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Knock alert & audio
+    // Knock alert modal
     const knockAlertModal = document.getElementById('knock-alert-modal');
     if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
         knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
@@ -493,7 +498,7 @@ function updateUIFromLobby(lobby) {
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
     window.clientState.isSpectator = isSpectatorOnly;
 
-    // Check if spectator is currently peeking at a player's hand
+    // Active hand peeking indicator
     const peekingBanner = document.getElementById('active-peeking-banner');
     let activelyPeekingTarget = null;
     if (isSpectatorOnly && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
@@ -812,6 +817,11 @@ function resetToMainMenu() {
     document.getElementById('end-game-btn').style.display = 'none';
     document.getElementById('leave-lobby-btn').style.display = 'none';
     document.getElementById('vc-group-container').style.display = 'none';
+    
+    // Hide all in-game header buttons when returning to the main menu
+    const inGameHeader = document.getElementById('in-game-header-btns');
+    if (inGameHeader) inGameHeader.style.display = 'none';
+
     window.clientState.isReady = false;
     window.appGlobals.hasChosenPoolCard = false;
     const readyBtn = document.getElementById('ready-btn');
