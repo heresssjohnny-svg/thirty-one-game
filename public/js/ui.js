@@ -83,6 +83,10 @@ function kickPeekerAction(spectatorUsername) {
     showCenterNotification(`Removed ${spectatorUsername} from peeking your hand.`);
 }
 
+function refreshLobbies() {
+    initSocketAndSend({ type: 'GET_LOBBIES' });
+}
+
 function renderLobbyList(lobbies) {
     const container = document.getElementById('lobby-list');
     if (!container) return;
@@ -90,7 +94,11 @@ function renderLobbyList(lobbies) {
         container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>';
         return;
     }
-    container.innerHTML = lobbies.map(l => `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span><span style="color:#38bdf8;">Join</span></div>`).join('');
+    container.innerHTML = lobbies.map(l => {
+        const count = l.count !== undefined ? l.count : (l.playerCount || 0);
+        const stateText = (l.state === 'lobby' || l.gameState === 'lobby') ? 'Open' : 'In-Progress';
+        return `<div class="lobby-item" onclick="joinLobbyCode('${l.code}')"><span>${l.name} (${count}/6) - ${stateText}</span><span style="color:#38bdf8;">Join</span></div>`;
+    }).join('');
 }
 
 function createLobby() {
@@ -137,6 +145,9 @@ function updateSettings() {
     const lives = livesEl ? livesEl.value : 3;
     initSocketAndSend({ type: 'UPDATE_SETTINGS', lives });
 }
+
+function addBot() { initSocketAndSend({ type: 'ADD_BOT' }); }
+function removeBot() { initSocketAndSend({ type: 'REMOVE_BOT' }); }
 
 function toggleReady() {
     if (!window.clientState) window.clientState = {};
@@ -564,7 +575,7 @@ function updateUIFromLobby(lobby) {
 
     if (lobby.knockedBy) {
         knockBtn.disabled = true;
-        knockBtn.innerText = `${lobby.knockedBy} knocked!;`;
+        knockBtn.innerText = `${lobby.knockedBy} knocked!`;
     } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying || !hasNotDrawn) {
         knockBtn.disabled = true;
         knockBtn.innerText = `Knock (${threshold}+)`;
@@ -805,5 +816,5 @@ function resetToMainMenu() {
     window.appGlobals.hasChosenPoolCard = false;
     const readyBtn = document.getElementById('ready-btn');
     if (readyBtn) readyBtn.innerText = 'Ready Up';
-    if (typeof refreshLobbies === 'function') refreshLobbies();
+    refreshLobbies();
 }
