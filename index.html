@@ -36,12 +36,11 @@
     </div>
 
     <header>
-        <!-- Primary Row: Title, Rules, Settings, Voice & Session Exits -->
+        <!-- Primary Row: Title, Rules, Voice & Session Exits -->
         <div class="header-row-primary">
             <div class="logo">31!</div>
             <div class="header-row-actions">
                 <button class="secondary" onclick="toggleModal('rules-modal')">📜 Rules</button>
-                <button class="secondary" onclick="openSettingsModal()">⚙️ Settings</button>
 
                 <div id="in-game-top-row-btns" style="display:none; align-items:center; gap:6px;">
                     <div class="vc-control-group" id="vc-group-container">
@@ -54,9 +53,9 @@
             </div>
         </div>
 
-        <!-- Secondary Row: Table Tools (Music, Ledger, Spectators, Chat) -->
+        <!-- Secondary Row: Table Tools (Settings, Ledger, Spectators, Chat) -->
         <div class="header-row-secondary" id="in-game-tools-row" style="display:none;">
-            <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
+            <button class="secondary" onclick="openSettingsModal()" style="background:#065f46; border:1px solid var(--accent-gold);">⚙️ Settings</button>
             <button class="secondary" onclick="openLedgerModal()">📊 Ledger</button>
             <button class="secondary" onclick="openSpectatorListModal()">👀 Specs (<span id="spec-count">0</span>)</button>
             <div id="chat-container">
@@ -295,23 +294,6 @@
         </div>
     </div>
 
-    <div id="music-modal" class="modal">
-        <div class="modal-content" style="max-width:360px;">
-            <h3 style="color:var(--accent-gold);">🎵 Lobby YouTube Music Player</h3>
-            <div id="youtube-player-wrapper" style="width:100%; height:160px; background:#000; border-radius:6px; overflow:hidden; border:1px solid rgba(250,204,21,0.3); display:flex; align-items:center; justify-content:center;">
-                <div id="youtube-embed-container" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:0.75rem;">
-                    No song playing
-                </div>
-            </div>
-            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px; margin-top:6px;">
-                <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
-                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
-            </div>
-            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:6px;">Close</button>
-        </div>
-    </div>
-
     <div id="bet-modal" class="modal">
         <div class="modal-content">
             <h3 id="bet-modal-title">Propose Bet</h3>
@@ -382,7 +364,6 @@
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/celebration.js"></script>
-    <script src="js/music.js"></script>
     <script src="js/ledger.js"></script>
     <script src="js/network.js"></script>
     <script src="js/ui.js"></script>
