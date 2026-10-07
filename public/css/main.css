@@ -45,12 +45,12 @@ body {
 }
 
 header {
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-left: max(12px, env(safe-area-inset-left));
-    padding-right: max(12px, env(safe-area-inset-right));
-    padding-bottom: 8px;
+    padding-top: max(6px, env(safe-area-inset-top));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: 6px;
     height: auto;
-    min-height: calc(48px + env(safe-area-inset-top));
+    min-height: calc(44px + env(safe-area-inset-top));
     background: rgba(2, 44, 30, 0.95);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -60,20 +60,42 @@ header {
     align-items: center;
     z-index: 1000;
     flex-shrink: 0;
+    gap: 6px;
+    width: 100%;
 }
 
 .logo {
-    font-size: 1.4rem;
+    font-size: 1.25rem;
     font-weight: 900;
     color: var(--accent-gold);
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
+    flex-shrink: 0;
 }
 
+/* Responsive Top Menu Container */
 .top-menu-btns {
     display: flex;
-    gap: 5px;
+    gap: 4px;
     align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    max-width: calc(100vw - 65px);
+    padding: 2px 0;
+}
+
+.top-menu-btns::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+}
+
+#in-game-header-btns {
+    display: none;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
 main {
@@ -285,14 +307,16 @@ button, .btn-link {
     color: white;
     border: none;
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 5px 8px;
     font-weight: 600;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 button.secondary {
@@ -313,19 +337,20 @@ button:disabled {
 .vc-control-group {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     background: rgba(30, 41, 59, 0.7);
-    padding: 2px 5px;
+    padding: 2px 4px;
     border-radius: 6px;
+    flex-shrink: 0;
 }
 
 .led-indicator {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: #64748b;
     display: inline-block;
-    margin-right: 2px;
+    margin-right: 1px;
 }
 
 .led-indicator.active {
@@ -364,4 +389,31 @@ button:disabled {
     display: flex;
     flex-direction: column;
     gap: 2px;
+}
+
+/* ==========================================================================
+   Mobile Optimization (@media max-width: 600px)
+   ========================================================================== */
+@media (max-width: 600px) {
+    header {
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+
+    .logo {
+        font-size: 1.15rem;
+    }
+
+    button, .btn-link {
+        padding: 4px 6px;
+        font-size: 0.68rem;
+    }
+
+    .top-menu-btns {
+        gap: 3px;
+    }
+
+    .vc-control-group {
+        padding: 1px 3px;
+    }
 }
