@@ -11,6 +11,9 @@
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/table.css">
     <link rel="stylesheet" href="css/modals.css">
+
+    <!-- LiveKit Client SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
     <input type="checkbox" id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
@@ -22,10 +25,8 @@
     <div class="bg-card" style="top: 65%; right: 15%;">7♣</div>
     <div class="bg-card" style="top: 45%; left: 2%;">J♠</div>
 
-    
-      
     <header>
-        <!-- Top Row: Branding, Rules, Voice Control & Room Exits -->
+        <!-- Primary Row: Title, Rules & Session Exits -->
         <div class="header-row-primary">
             <div class="logo">31!</div>
             <div class="header-row-actions">
@@ -43,7 +44,7 @@
             </div>
         </div>
 
-        <!-- Bottom Row: Table Tools (Music, Ledger, Spectators, Chat) - Only shown in game -->
+        <!-- Secondary Row: Table Tools (Music, Ledger, Spectators, Chat) -->
         <div class="header-row-secondary" id="in-game-tools-row" style="display:none;">
             <button class="secondary" onclick="toggleModal('music-modal')" style="background:#065f46; border:1px solid var(--accent-gold);">🎵 Music</button>
             <button class="secondary" onclick="openLedgerModal()">📊 Ledger</button>
@@ -53,7 +54,6 @@
             </div>
         </div>
 
-        <!-- Floating Chat Popup -->
         <div id="chat-window">
             <div class="chat-header-row">
                 <span>Chat Room</span>
@@ -67,13 +67,11 @@
         </div>
     </header>
 
-
-
     <main>
         <div id="center-notification-banner">NOTIFICATION</div>
         <div id="knock-alert-modal">🔔 KNOCKED!</div>
 
-        <!-- Discard and Fed Card Modals -->
+        <!-- Overlay Modals -->
         <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
             <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
             <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
@@ -84,7 +82,7 @@
             <div id="fed-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
-        <!-- Redesigned Casino Felt Main Menu Screen -->
+        <!-- Casino Green Felt Main Menu -->
         <div id="main-menu" class="casino-main-menu">
             <div class="casino-menu-header">
                 <span class="casino-felt-badge">ROYAL CLUB</span>
@@ -95,7 +93,7 @@
             <div class="casino-form-section">
                 <div class="input-group">
                     <label>Player Name</label>
-                    <input type="text" id="username-input" placeholder="Enter your callsign..." oninput="saveInputs()">
+                    <input type="text" id="username-input" placeholder="Enter callsign..." oninput="saveInputs()">
                 </div>
 
                 <div class="input-group">
@@ -202,7 +200,6 @@
                     <h4>🎯 The Objective</h4>
                     <p>Be the last player standing with lives remaining! Each player starts with 3 lives. At the end of each round, the player(s) with the lowest hand score lose a life. Reach 0 lives and you're eliminated.</p>
                 </div>
-
                 <div class="rule-block">
                     <h4>🃏 Hand Scoring</h4>
                     <p>Only cards of the <b>same suit</b> are added together towards your score (Clubs, Diamonds, Hearts, or Spades):</p>
@@ -210,36 +207,28 @@
                         <li><b>Aces:</b> 11 points</li>
                         <li><b>Face Cards (K, Q, J):</b> 10 points each</li>
                         <li><b>Number Cards (2–10):</b> Face value</li>
-                        <li><b>Triplets (Special):</b> 3 cards of the exact same number or face rank (e.g. 7♠ 7♥ 7♦) are worth <b>30.5 points</b> across any suits!</li>
+                        <li><b>Triplets (Special):</b> 3 cards of the exact same rank (e.g. 7♠ 7♥ 7♦) are worth <b>30.5 points</b> across any suits!</li>
                     </ul>
                 </div>
-
                 <div class="rule-block">
                     <h4>🔄 Gameplay Flow</h4>
                     <p>On your turn, you must perform two actions in order:</p>
                     <ol>
-                        <li><b>Draw 1 Card:</b> Take either the top face-down card from the deck OR the top face-up card from the discard pile (holding 4 cards total).</li>
-                        <li><b>Discard 1 Card:</b> Select 1 of your 4 cards to discard back to the center (leaving you with exactly 3 cards).</li>
+                        <li><b>Draw 1 Card:</b> Take either the top card from the deck OR the top face-up card from the discard pile (holding 4 cards total).</li>
+                        <li><b>Discard 1 Card:</b> Tap 1 of your 4 cards to discard back to the center (leaving you with exactly 3 cards).</li>
                     </ol>
                 </div>
-
                 <div class="rule-block">
-                    <h4>🔔 Knocking (Closing the Round)</h4>
+                    <h4>🔔 Knocking</h4>
                     <ul>
-                        <li>You may only knock <b>before</b> you pick up a card on your turn (with exactly 3 cards in hand).</li>
-                        <li><b>Minimum Score to Knock:</b> You must have at least <b>21 points</b> (in 3+ player games) or <b>25 points</b> (in heads-up 2-player games).</li>
-                        <li>Every other player receives exactly <b>one final turn</b> to draw and discard. Hands are then revealed.</li>
+                        <li>You may only knock <b>before</b> picking up a card on your turn (with exactly 3 cards in hand).</li>
+                        <li><b>Minimum Score to Knock:</b> You must have at least <b>21 points</b> (in 3+ player games) or <b>25 points</b> (in 2-player games).</li>
+                        <li>Every other player gets one final turn to draw and discard before hands are revealed.</li>
                     </ul>
                 </div>
-
                 <div class="rule-block">
                     <h4>⚡ The Blitz (Instant Win)</h4>
-                    <p>If any player holds an exact <b>31</b> (an Ace plus two 10-point cards in the exact same suit), they score a Blitz! The round ends immediately, and <i>all other players</i> instantly lose a life.</p>
-                </div>
-
-                <div class="rule-block">
-                    <h4>⚔️ Tie-Breakers</h4>
-                    <p>If multiple players tie for the lowest score in a multi-player game, a live tie-breaker card draw triggers. Each tied player draws from a face-down deck pool—lowest draw loses the life (Ace is high)!</p>
+                    <p>Holding 31 points (Ace + two 10-point cards in the same suit) triggers an immediate Blitz win! All other active players instantly lose a life.</p>
                 </div>
             </div>
             <button onclick="toggleModal('rules-modal')" style="margin-top:8px; width:100%;">Got It</button>
@@ -263,34 +252,12 @@
                     No song playing
                 </div>
             </div>
-
-            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
+            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px; margin-top:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
                 <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
                 <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
-                <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="font-size:0.7rem; color:var(--text-muted);">Personal Vol:</span>
-                    <input type="range" id="individual-volume-slider" min="0" max="1" step="0.01" value="0.8" oninput="adjustIndividualVolume(this.value)" style="width:80px; accent-color:var(--accent-gold);">
-                </div>
-            </div>
-
-            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:2px;">Shared Lobby Queue:</div>
-            <div id="playlist-container" style="max-height:100px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
-                <div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
-                <label style="text-align:left;">Add YouTube Song</label>
-                <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
-                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
-                <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
-            </div>
-
-            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:4px;">Close</button>
+            <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:6px;">Close</button>
         </div>
     </div>
 
@@ -332,7 +299,6 @@
             <h3 id="pool-modal-title" style="font-size: 1.25rem;">Card Selection</h3>
             <p id="pool-modal-instruction" style="font-size: 0.85rem; color: var(--text-muted);">Select a face-down card from the deck pool.</p>
             <div class="pool-cards-grid" id="pool-cards-container"></div>
-            <div id="pool-announcement" style="font-size: 0.95rem; font-weight: 800; color: var(--accent-gold);"></div>
         </div>
     </div>
 
@@ -361,7 +327,7 @@
         </div>
     </div>
 
-    <!-- Script Bundles -->
+    <!-- Script Modules -->
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/celebration.js"></script>
