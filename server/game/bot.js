@@ -4,15 +4,17 @@ const { calculateScore, calculateBestFourCardScore } = require('./deck');
 const BOT_NAMES = ['Liam', 'Emma', 'Noah', 'Olivia', 'Ethan', 'Sophia', 'Marcus', 'Ava', 'Lucas', 'Chloe', 'Jackson', 'Mia', 'Leo', 'Harper', 'Aiden', 'Ella'];
 
 function syncBotReadiness(lobby) {
-    if (lobby.gameState !== 'lobby') return false;
-    const humans = lobby.players.filter(p => !p.isBot);
+    if (!lobby || lobby.gameState !== 'lobby') return false;
+    const humans = lobby.players.filter(p => !p.isBot && !p.eliminated);
     const allHumansReady = humans.length > 0 && humans.every(p => p.ready);
 
     let changed = false;
     lobby.players.forEach(p => {
-        if (p.isBot && p.ready !== allHumansReady) {
-            p.ready = allHumansReady;
-            changed = true;
+        if (p.isBot) {
+            if (p.ready !== allHumansReady) {
+                p.ready = allHumansReady;
+                changed = true;
+            }
         }
     });
     return changed;
@@ -20,10 +22,10 @@ function syncBotReadiness(lobby) {
 
 function getPrimarySuit(cards) {
     const suitCounts = {};
-    cards.forEach(c => { suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1; });
+    cards.forEach(c => suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1);
     let best = cards[0]?.suit || '♠';
     let max = 0;
-    for (const s in suitCounts) {
+    for (let s in suitCounts) {
         if (suitCounts[s] > max) {
             max = suitCounts[s];
             best = s;
@@ -32,20 +34,23 @@ function getPrimarySuit(cards) {
     return best;
 }
 
-function executeBotTurn(lobby, bot, callbacks) {
+function executeBotTurn(lobby, bot, handlers) {
+    if (!lobby || !bot || bot.eliminated || !handlers) return;
     const active = lobby.players.filter(p => !p.eliminated);
     const curScore = calculateScore(bot.cards);
     const minKnockReq = active.length > 2 ? 21 : 25;
     const canKnock = lobby.gameState === 'playing' && !lobby.knockedBy && (lobby.turnsTakenThisRound >= active.length) && (curScore >= minKnockReq);
 
-    if (canKnock) {
-        const knockThreshold = curScore >= 28 ? 0.95 : (curScore >= 26 ? 0.80 : 0.35);
+    // Rule: Bots can only knock BEFORE drawing (holding exactly 3 cards)
+    if (canKnock && bot.cards.length === 3) {
+        const knockThreshold = curScore >= 28 ? 0.95 : (curScore >= 26 ? 0.75 : 0.30);
         if (Math.random() < knockThreshold) {
-            callbacks.handleKnock(lobby, bot.id);
+            handlers.handleKnock(lobby, bot.id);
             return;
         }
     }
 
+    // Bot Draw Evaluation (7.5/10 intelligence)
     const topDiscard = lobby.discardPile[lobby.discardPile.length - 1];
     let shouldDrawDiscard = false;
 
@@ -61,10 +66,13 @@ function executeBotTurn(lobby, bot, callbacks) {
         }
     }
 
-    callbacks.handleTurnAction(lobby, bot.id, shouldDrawDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK');
+    handlers.handleTurnAction(lobby, bot.id, shouldDrawDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK');
+
     if (lobby.gameState === 'roundOver') return;
 
+    // Bot Discard Evaluation
     setTimeout(() => {
+        if (!lobby || (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn')) return;
         const activeBot = lobby.players[lobby.turnIndex];
         if (!activeBot || activeBot.id !== bot.id || activeBot.cards.length !== 4) return;
 
@@ -84,8 +92,8 @@ function executeBotTurn(lobby, bot, callbacks) {
             }
         }
 
-        callbacks.handleDiscardAction(lobby, activeBot.id, bestDiscardIdx !== -1 ? bestDiscardIdx : 0);
-    }, 600 + Math.random() * 400);
+        handlers.handleDiscardAction(lobby, activeBot.id, bestDiscardIdx !== -1 ? bestDiscardIdx : 0);
+    }, 700 + Math.random() * 500);
 }
 
 module.exports = {
