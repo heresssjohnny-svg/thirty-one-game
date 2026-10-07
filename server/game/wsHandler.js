@@ -666,4 +666,24 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     }
 }
 
-module.exports = { handleWebSocketMessage };
+function setupWebSocket(wss, broadcastLobbyList) {
+    wss.on('connection', (ws) => {
+        ws.isAlive = true;
+        ws.on('pong', () => { ws.isAlive = true; });
+
+        ws.on('message', (message) => {
+            handleWebSocketMessage(ws, message, broadcastLobbyList);
+        });
+
+        ws.on('close', () => {
+            if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
+                leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
+            }
+        });
+    });
+}
+
+module.exports = {
+    handleWebSocketMessage,
+    setupWebSocket
+};
