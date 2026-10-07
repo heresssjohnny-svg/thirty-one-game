@@ -50,17 +50,18 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 host: username,
                 isPrivate,
                 gameState: 'lobby',
-                defaultLives: 3,
+                defaultLives: 2, // Default strictly 2 lives
                 deck: [],
                 discardPile: [],
                 turnIndex: 0,
                 dealerIndex: 0,
                 phaseMessage: 'Waiting for players to ready up...',
                 turnsTakenThisRound: 0,
+                livesVote: null,
                 players: [{
                     id: ws,
                     username,
-                    lives: 3,
+                    lives: 2,
                     wager: 5,
                     cards: [],
                     ready: false,
@@ -124,7 +125,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
             if (existingPlayer) {
-                existingPlayer.id = ws; // Reconnect socket to existing seat without wiping player
+                existingPlayer.id = ws;
             } else if (existingSpec) {
                 existingSpec.idSocket = ws;
             } else {
@@ -132,7 +133,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     lobby.players.push({
                         id: ws,
                         username,
-                        lives: lobby.defaultLives || 3,
+                        lives: lobby.defaultLives || 2,
                         wager: 5,
                         cards: [],
                         ready: false,
@@ -185,8 +186,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const player = lobby.players.find(p => p.id === ws);
                 if (player && lobby.gameState === 'lobby') {
                     player.ready = !!data.ready;
-                    
-                    // Rule: Sync bot readiness to match human status (bots ready only if all humans ready)
                     syncBotReadiness(lobby);
                     broadcastLobbyUpdate(currentLobbyCode);
 
@@ -233,7 +232,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         lobby.players.push({
                             id: ws,
                             username: spec.username,
-                            lives: lobby.defaultLives || 3,
+                            lives: lobby.defaultLives || 2,
                             wager: 5,
                             cards: [],
                             ready: false,
@@ -331,15 +330,68 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        // LIVES VOTING PROTOCOL
         case 'UPDATE_SETTINGS': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                if (lobby.host === currentUsername && lobby.gameState === 'lobby') {
-                    lobby.defaultLives = Math.max(1, parseInt(data.lives, 10) || 3);
-                    lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
+                if (lobby.gameState !== 'lobby') return;
+
+                const requestedLives = parseInt(data.lives, 10) || 2;
+                if (requestedLives === lobby.defaultLives) return;
+
+                const seatedHumans = lobby.players.filter(p => !p.isBot);
+                // If only 1 human is at the table, allow immediate update
+                if (seatedHumans.length <= 1) {
+                    lobby.defaultLives = requestedLives;
+                    lobby.players.forEach(p => { p.lives = requestedLives; });
+                    lobby.phaseMessage = `Starting lives updated to ${requestedLives}.`;
                     broadcastLobbyUpdate(currentLobbyCode);
+                    return;
                 }
+
+                // Multiple seated humans: Initiate majority vote
+                lobby.livesVote = {
+                    proposer: currentUsername,
+                    proposedLives: requestedLives,
+                    votes: { [currentUsername]: true }, // Proposer automatically votes Yes
+                    totalVoters: seatedHumans.length
+                };
+
+                lobby.phaseMessage = `🗳️ ${currentUsername} proposed changing starting lives to ${requestedLives}!`;
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'VOTE_LIVES': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (!lobby.livesVote || lobby.gameState !== 'lobby') return;
+
+                const seatedHuman = lobby.players.find(p => p.id === ws && !p.isBot);
+                if (!seatedHuman) return;
+
+                lobby.livesVote.votes[seatedHuman.username] = !!data.agree;
+
+                const seatedHumans = lobby.players.filter(p => !p.isBot);
+                const yesCount = Object.values(lobby.livesVote.votes).filter(v => v === true).length;
+                const noCount = Object.values(lobby.livesVote.votes).filter(v => v === false).length;
+                const majorityNeeded = Math.floor(seatedHumans.length / 2) + 1;
+
+                if (yesCount >= majorityNeeded) {
+                    const newLives = lobby.livesVote.proposedLives;
+                    lobby.defaultLives = newLives;
+                    lobby.players.forEach(p => { p.lives = newLives; });
+                    lobby.phaseMessage = `✅ Vote passed! Starting lives set to ${newLives}.`;
+                    lobby.livesVote = null;
+                } else if (noCount >= majorityNeeded || Object.keys(lobby.livesVote.votes).length >= seatedHumans.length) {
+                    lobby.phaseMessage = `❌ Vote failed. Starting lives remain ${lobby.defaultLives || 2}.`;
+                    lobby.livesVote = null;
+                }
+
+                broadcastLobbyUpdate(currentLobbyCode);
             }
             break;
         }
@@ -352,11 +404,10 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     const availableNames = BOT_NAMES.filter(n => !lobby.players.some(p => p.username.startsWith(n)));
                     const chosenName = (availableNames[Math.floor(Math.random() * availableNames.length)] || ('Bot ' + (lobby.players.length + 1))) + ' (B)';
 
-                    // Rule: Bot is added unready; will ready up only when all humans ready
                     lobby.players.push({
                         id: `bot_${Date.now()}_${Math.random()}`,
                         username: chosenName,
-                        lives: lobby.defaultLives || 3,
+                        lives: lobby.defaultLives || 2,
                         wager: 5,
                         cards: [],
                         ready: false,
@@ -374,11 +425,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     lobby.phaseMessage = `🤖 ${chosenName} joined the table.`;
                     broadcastLobbyUpdate(currentLobbyCode);
                     if (broadcastLobbyList) broadcastLobbyList();
-
-                    const activePlayers = lobby.players.filter(p => !p.eliminated);
-                    if (activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
-                        startDealerDrawPhase(lobby);
-                    }
                 }
             }
             break;
@@ -720,11 +766,10 @@ function setupWebSocket(wss, broadcastLobbyList) {
         });
 
         ws.on('close', () => {
-            // Unbind socket on backgrounding/drop without kicking the player from their seat
             if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
                 const lobby = lobbies[ws.currentLobbyCode];
                 const p = lobby.players.find(pl => pl.id === ws);
-                if (p) p.id = null; // Keeps user seated, hand/score/lives preserved
+                if (p) p.id = null;
                 const s = lobby.spectators.find(spec => spec.idSocket === ws);
                 if (s) s.idSocket = null;
             }
