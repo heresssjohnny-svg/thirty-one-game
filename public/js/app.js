@@ -1,37 +1,46 @@
 // public/js/app.js
+
 function saveInputs() {
-    localStorage.setItem('saved_username', document.getElementById('username-input').value);
-    localStorage.setItem('saved_lobby_name', document.getElementById('lobby-name-input').value);
+    const u = document.getElementById('username-input');
+    const l = document.getElementById('lobby-name-input');
+    if (u) localStorage.setItem('saved_username', u.value);
+    if (l) localStorage.setItem('saved_lobby_name', l.value);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    if (localStorage.getItem('saved_username')) {
-        document.getElementById('username-input').value = localStorage.getItem('saved_username');
+    const savedUser = localStorage.getItem('saved_username');
+    const savedLobby = localStorage.getItem('saved_lobby_name');
+    if (savedUser && document.getElementById('username-input')) {
+        document.getElementById('username-input').value = savedUser;
     }
-    if (localStorage.getItem('saved_lobby_name')) {
-        document.getElementById('lobby-name-input').value = localStorage.getItem('saved_lobby_name');
+    if (savedLobby && document.getElementById('lobby-name-input')) {
+        document.getElementById('lobby-name-input').value = savedLobby;
     }
+
     connectSocket();
     refreshLobbies();
 });
 
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-        if (!window.appGlobals.ws || window.appGlobals.ws.readyState !== WebSocket.OPEN) {
+        const ws = window.appGlobals?.ws;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
             connectSocket();
-        } else if (window.appGlobals.currentJoinedCode) {
+        } else if (window.appGlobals?.currentJoinedCode) {
+            const usernameInput = document.getElementById('username-input');
+            const username = usernameInput ? usernameInput.value.trim() : window.clientState.username;
             initSocketAndSend({
                 type: 'JOIN_LOBBY',
                 code: window.appGlobals.currentJoinedCode,
-                username: document.getElementById('username-input').value.trim() || window.clientState.username
+                username: username
             });
         }
     }
 });
 
 window.addEventListener('pageshow', () => {
-    if (!window.appGlobals.ws || window.appGlobals.ws.readyState !== WebSocket.OPEN) {
+    const ws = window.appGlobals?.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
         connectSocket();
     }
 });
-
