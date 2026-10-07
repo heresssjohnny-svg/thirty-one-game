@@ -65,6 +65,13 @@ function getPublicLobbiesList() {
     }));
 }
 
+function clearRoundOverTimer(lobby) {
+    if (lobby && lobby.roundOverAutoTimer) {
+        clearTimeout(lobby.roundOverAutoTimer);
+        lobby.roundOverAutoTimer = null;
+    }
+}
+
 function getSanitizedLobby(lobby, wsId) {
     const activeParts = getActiveParticipants(lobby);
     const allParticipants = [...lobby.players];
@@ -193,6 +200,7 @@ function broadcastLobbyUpdate(code) {
 }
 
 function startDealerDrawPhase(lobby) {
+    clearRoundOverTimer(lobby);
     const deck = createDeck();
     lobby.drawPool = deck.map(c => ({ card: c, chosenBy: null }));
     lobby.drawResults = {};
@@ -216,6 +224,7 @@ function startDealerDrawPhase(lobby) {
 }
 
 function startRound(lobby) {
+    clearRoundOverTimer(lobby);
     lobby.deck = createDeck();
     lobby.discardPile = [];
     lobby.drawPool = [];
@@ -564,6 +573,7 @@ function resolveRoundEnd(lobby) {
 }
 
 function triggerRoundOver(lobby, msg) {
+    clearRoundOverTimer(lobby);
     lobby.fedCardReminders = {};
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
@@ -575,15 +585,24 @@ function triggerRoundOver(lobby, msg) {
     broadcastLobbyUpdate(lobby.code);
 
     const active = getActiveParticipants(lobby);
-    if (active.length > 1 && active.every(p => p.isBot)) {
-        setTimeout(() => {
-            if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'roundOver') return;
-            startRound(lobbies[lobby.code]);
-        }, 3000);
+    if (active.length > 1) {
+        // Auto-start next round in 8 seconds if not everyone pressed Next Hand
+        lobby.roundOverAutoTimer = setTimeout(() => {
+            const cur = lobbies[lobby.code];
+            if (!cur || cur.gameState !== 'roundOver') return;
+
+            const remainingActive = getActiveParticipants(cur);
+            if (remainingActive.length > 1) {
+                remainingActive.forEach(p => { p.nextHandReady = true; });
+                broadcastLobbyUpdate(cur.code);
+                startRound(cur);
+            }
+        }, 8000);
     }
 }
 
 function awardTournamentWinner(lobby, winner) {
+    clearRoundOverTimer(lobby);
     if (!winner) return;
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
@@ -615,6 +634,7 @@ function awardTournamentWinner(lobby, winner) {
 function checkNextHandReady(lobby) {
     const active = getActiveParticipants(lobby);
     if (active.length <= 1) {
+        clearRoundOverTimer(lobby);
         if (active.length === 1) {
             awardTournamentWinner(lobby, active[0]);
         } else {
@@ -623,11 +643,13 @@ function checkNextHandReady(lobby) {
         return;
     }
     if (active.every(p => p.nextHandReady)) {
+        clearRoundOverTimer(lobby);
         startRound(lobby);
     }
 }
 
 function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
+    clearRoundOverTimer(lobby);
     lobby.gameState = 'lobby';
     lobby.phaseMessage = msg || "Returned to waiting room.";
     lobby.endGameVotes = {};
@@ -663,8 +685,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         p.peekAllowed = {};
     });
 
-    // KEEP SPECTATORS INTACT (Do not erase connected spectator sockets!)
-    // If eliminated players were moved to spectators, promote them back to full spectators
+    // Retain connected spectator sockets
     lobby.spectators = lobby.spectators.filter(s => {
         return s.idSocket && s.idSocket.readyState === WebSocket.OPEN;
     });
@@ -727,7 +748,6 @@ function scheduleBotActions(lobby) {
     }
 }
 
-// FIX: Safe player exit during any game phase (especially roundOver before next hand)
 function leaveLobby(ws, code, broadcastLobbyList) {
     if (!lobbies[code]) return;
     const lobby = lobbies[code];
@@ -740,16 +760,15 @@ function leaveLobby(ws, code, broadcastLobbyList) {
 
     const remainingHumans = lobby.players.filter(p => !p.isBot);
     if (remainingHumans.length === 0) {
+        clearRoundOverTimer(lobby);
         if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
         delete lobbies[code];
         if (broadcastLobbyList) broadcastLobbyList();
         return;
     }
 
-    // Re-index seats cleanly
     lobby.players.forEach((p, idx) => { p.seat = idx; });
 
-    // Handle departure during active roundOver (before next hand clicked)
     if (lobby.gameState === 'roundOver') {
         lobby.phaseMessage = `${leavingUsername || 'A player'} left the game.`;
         checkNextHandReady(lobby);
@@ -758,7 +777,6 @@ function leaveLobby(ws, code, broadcastLobbyList) {
         return;
     }
 
-    // Handle departure during live game play
     const activeParts = getActiveParticipants(lobby);
     if (activeParts.length <= 1 && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn' || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker')) {
         awardTournamentWinner(lobby, activeParts[0]);
