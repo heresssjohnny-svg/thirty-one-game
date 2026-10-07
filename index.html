@@ -23,7 +23,6 @@
 <body>
     <input type="checkbox" switch id="ios-haptic-trigger" style="position: absolute; opacity: 0; pointer-events: none; z-index: -9999;" />
 
-    <!-- Ambient Felt Cards -->
     <div class="bg-card" style="top: 10%; left: 5%;">A♠</div>
     <div class="bg-card" style="top: 75%; left: 12%;">10♥</div>
     <div class="bg-card" style="top: 20%; right: 8%;">K♦</div>
@@ -40,7 +39,7 @@
             <div class="vc-control-group" id="vc-group-container">
                 <span id="vc-led" class="led-indicator"></span>
                 <button class="secondary" id="vc-main-btn" onclick="toggleVoiceOnOff()" style="padding: 3px 8px; font-size: 0.7rem;">🎙️ Voice: Off</button>
-                <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="Voice Participants">...</button>
+                <button class="secondary" onclick="openVcParticipantsModal()" style="padding: 3px 5px; font-size: 0.7rem;" title="View Voice Participants">...</button>
             </div>
 
             <button class="secondary" onclick="openSpectatorListModal()">Specs (<span id="spec-count">0</span>)</button>
@@ -67,21 +66,19 @@
     </header>
 
     <main>
-        <!-- In-game notification banners & alerts -->
         <div id="center-notification-banner">NOTIFICATION</div>
-        <div id="knock-alert-modal">🔔 KNOCK ALERT</div>
+        <div id="knock-alert-modal">🔔 Knock Alert</div>
 
         <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
             <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
             <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
-        <div id="fed-card-topright-modal" style="display:none;">
-            <span id="fed-card-label" style="font-size:0.65rem; color:var(--text-muted);">Next player took:</span>
-            <div id="fed-card-content" style="display:flex; align-items:center; gap:4px;"></div>
+        <div id="fed-card-topright-modal" class="fed-card-modal-topright" style="display:none;">
+            <span id="fed-card-label" style="color:var(--accent-gold); font-size:0.75rem; font-weight:bold;">Next player took:</span>
+            <div id="fed-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
-        <!-- Waiting Room / Lobby Creation -->
         <div id="main-menu">
             <h2>Lobby Menu</h2>
             <div class="input-group">
@@ -118,7 +115,6 @@
             </div>
         </div>
 
-        <!-- Live Game Arena -->
         <div id="game-view">
             <div style="display:flex; justify-content:space-between; width:100%; max-width:600px; align-items:center; flex-shrink:0;">
                 <span id="room-title-display" style="font-size:0.75rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
@@ -177,11 +173,10 @@
         </div>
     </main>
 
-    <!-- Modals -->
     <div id="vc-participants-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
             <h3 style="color:var(--accent-gold);">🎙️ Voice Chat Participants</h3>
-            <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one in voice chat.</div>
+            <div id="vc-participants-list" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:160px; overflow-y:auto; padding:4px;">No one currently in voice chat.</div>
             <button onclick="triggerVoiceReconnect()" style="background:#2563eb; margin-top:6px; padding:6px; font-size:0.75rem;">🔄 Reconnect Voice Chat</button>
             <button class="secondary" onclick="toggleModal('vc-participants-modal')" style="margin-top:4px;">Close</button>
         </div>
@@ -196,13 +191,13 @@
                 </div>
             </div>
 
-            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px; margin-top:4px;">
+            <div style="display:flex; justify-content:center; gap:6px; align-items:center; background:rgba(15,23,42,0.8); padding:6px; border-radius:6px;">
                 <button class="secondary" onclick="sendMusicControl('PLAY')" style="padding:4px 8px; font-size:0.7rem; background:#10b981;">▶ Play</button>
-                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸ Pause</button>
-                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭ Skip</button>
+                <button class="secondary" onclick="sendMusicControl('PAUSE')" style="padding:4px 8px; font-size:0.7rem; background:#ef4444;">⏸️ Pause</button>
+                <button class="secondary" onclick="sendMusicControl('SKIP')" style="padding:4px 8px; font-size:0.7rem;">⏭️ Skip</button>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px; margin-top:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.85); padding:6px 10px; border-radius:6px;">
                 <button class="secondary" onclick="toggleIndividualMusicMute()" id="individual-mute-btn" style="padding: 3px 6px; font-size:0.7rem;">Vol: On</button>
                 <div style="display:flex; align-items:center; gap:6px;">
                     <span style="font-size:0.7rem; color:var(--text-muted);">Personal Vol:</span>
@@ -210,15 +205,16 @@
                 </div>
             </div>
 
-            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:4px;">Queue:</div>
+            <div style="font-size:0.75rem; font-weight:bold; color:var(--accent-cyan); text-align:left; margin-top:2px;">Shared Lobby Queue:</div>
             <div id="playlist-container" style="max-height:100px; overflow-y:auto; background:rgba(15,23,42,0.6); border:1px solid rgba(250,204,21,0.2); border-radius:6px; padding:4px; text-align:left; font-size:0.75rem;">
-                <div style="padding:4px; color:#64748b;">No songs in queue. Add one below.</div>
+                <div style="padding:4px; color:#64748b;">No songs in queue. Add a YouTube song below.</div>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                <label style="text-align:left; font-size:0.75rem;">Add YouTube Song</label>
                 <input type="text" id="new-song-title" placeholder="Song Title" style="font-size:0.75rem; padding:5px;">
-                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. youtu.be/...)" style="font-size:0.75rem; padding:5px;">
-                <button onclick="addNewSongToPlaylist()" style="background:#10b981; padding:6px;">Add to Queue</button>
+                <input type="text" id="new-song-url" placeholder="YouTube Link (e.g. https://youtu.be/...)" style="font-size:0.75rem; padding:5px;">
+                <button onclick="addNewSongToPlaylist()" style="background:#10b981; margin-top:2px; padding:6px;">Add to Queue</button>
             </div>
 
             <button class="secondary" onclick="toggleModal('music-modal')" style="margin-top:4px;">Close</button>
@@ -241,8 +237,8 @@
 
     <div id="peek-request-modal" class="modal">
         <div class="modal-content" style="max-width:320px;">
-            <h3 style="color:var(--accent-gold);">Peek Request</h3>
-            <p id="peek-modal-msg" style="font-size:0.85rem; color:var(--text-muted);"></p>
+            <h3 style="color:var(--accent-gold);">Peek Permission Request</h3>
+            <p id="peek-modal-msg" style="font-size:0.85rem; color:var(--text-muted);">Spectator wants to peek at your hand.</p>
             <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
                 <button id="peek-allow-btn" style="background:#10b981;">Allow</button>
                 <button class="danger" id="peek-deny-btn">Deny</button>
@@ -252,8 +248,8 @@
 
     <div id="active-bets-modal" class="modal">
         <div class="modal-content" style="max-width:350px;">
-            <h3>My Active & Pending Bets</h3>
-            <div id="active-bets-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No active bets.</div>
+            <h3>My Active & Pending Side Bets</h3>
+            <div id="active-bets-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:220px; overflow-y:auto; padding:4px;">No active side bets.</div>
             <button class="secondary" onclick="toggleModal('active-bets-modal')">Close</button>
         </div>
     </div>
@@ -261,7 +257,7 @@
     <div id="pool-draw-modal" class="modal">
         <div class="modal-content">
             <h3 id="pool-modal-title" style="font-size: 1.25rem;">Card Selection</h3>
-            <p id="pool-modal-instruction" style="font-size: 0.85rem; color: var(--text-muted);">Select a card from the deck pool.</p>
+            <p id="pool-modal-instruction" style="font-size: 0.85rem; color: var(--text-muted);">Select a face-down card from the deck pool.</p>
             <div class="pool-cards-grid" id="pool-cards-container"></div>
             <div id="pool-announcement" style="font-size: 0.95rem; font-weight: 800; color: var(--accent-gold);"></div>
         </div>
@@ -269,8 +265,8 @@
 
     <div id="tie-breaker-reveal-modal" class="modal">
         <div class="modal-content">
-            <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw</h3>
-            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for selections...</p>
+            <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
+            <p id="tie-breaker-stream-msg" style="font-size: 0.85rem; color: var(--text-muted);">Waiting for tied participants to select cards...</p>
             <div id="tie-breaker-stream-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:8px; background:rgba(15,23,42,0.6); border-radius:6px;"></div>
         </div>
     </div>
@@ -278,14 +274,14 @@
     <div id="rules-modal" class="modal">
         <div class="modal-content" style="max-width:350px; text-align:left;">
             <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:4px;">How to Play 31!</h3>
-            <div style="font-size:0.75rem; color:var(--text-muted); max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
-                <p><b>Objective:</b> Collect 31 points in a single suit or achieve a higher hand score than opponents before the round ends.</p>
+            <div style="font-size:0.75rem; color:var(--text-muted); max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
+                <p><b>Objective:</b> Collect 31 points in a single suit or achieve a higher hand score than your opponents before the round ends.</p>
                 <p><b>Scoring:</b></p>
                 <ul style="padding-left:14px;">
-                    <li>Cards 2–10 are face value.</li>
-                    <li>J, Q, K are worth 10.</li>
-                    <li>Aces are worth 11.</li>
-                    <li>Three matching ranks (e.g., three 8s) score 30.5.</li>
+                    <li>Numbered cards (2-10) are worth face value.</li>
+                    <li>Face cards (Jack, Queen, King) are worth 10 points.</li>
+                    <li>Aces are worth 11 points.</li>
+                    <li>Three matching cards of the same rank (e.g., three 8s) score 30.5 points.</li>
                 </ul>
             </div>
             <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
@@ -304,10 +300,18 @@
     <div id="screenshot-modal" class="modal" style="z-index: 7000;">
         <div class="modal-content" style="max-width: 380px; user-select: auto; -webkit-user-select: auto;">
             <h3 style="color: var(--accent-gold);">📸 Ledger Snapshot</h3>
-            <div style="max-height: 48vh; overflow-y: auto; border-radius: 6px; border: 1px solid rgba(250,204,21,0.3); background: #022c22; padding: 4px;">
-                <img id="screenshot-preview-img" alt="Ledger Snapshot" style="width: 100%; height: auto; display: block; border-radius: 4px;" />
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+                Tap <b>Download</b> or <b>Share</b> below. On mobile, you can also touch and hold the preview image to save it.
+            </p>
+            
+            <div style="max-height: 48vh; overflow-y: auto; border-radius: 6px; border: 1px solid rgba(250,204,21,0.3); background: #022c22; padding: 4px; user-select: auto; -webkit-user-select: auto;">
+                <img id="screenshot-preview-img" 
+                     alt="Ledger Snapshot" 
+                     style="width: 100%; height: auto; display: block; border-radius: 4px; pointer-events: auto !important; user-select: auto !important; -webkit-user-select: auto !important; -webkit-touch-callout: default !important;" />
             </div>
+
             <div id="screenshot-status-text" style="font-size: 0.75rem; font-weight: bold; color: var(--accent-gold); min-height: 18px; margin-top: 4px;"></div>
+
             <div style="display: flex; gap: 6px; margin-top: 6px;">
                 <button id="screenshot-share-btn" type="button" style="flex: 1; background: #10b981; padding: 8px;">📤 Share / Save</button>
                 <a id="screenshot-download-link" class="btn-link" style="flex: 1; background: #2563eb; padding: 8px;">💾 Download</a>
@@ -324,7 +328,7 @@
         </div>
     </div>
 
-    <!-- Modular JavaScript Engine (Strict Load Sequence) -->
+    <!-- Modular Script Pipeline -->
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/celebration.js"></script>
