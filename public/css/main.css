@@ -1,65 +1,48 @@
-/* public/css/main.css */
+/* css/main.css */
+
 :root {
-    --felt-color: #044e36;
-    --felt-edge: #022c1e;
-    --border-color: rgba(250, 204, 21, 0.4);
+    --bg-dark: #0f172a;
+    --felt-green: #065f46;
     --accent-gold: #facc15;
-    --accent-gold-dark: #ca8a04;
     --accent-cyan: #38bdf8;
-    --panel-bg: rgba(6, 78, 54, 0.96);
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
+    --border-color: rgba(250, 204, 21, 0.25);
+    --danger: #ef4444;
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    user-select: none;
-    -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
 }
 
 body {
-    background: radial-gradient(circle at center, #065f46 0%, var(--felt-color) 45%, var(--felt-edge) 100%);
+    background-color: var(--bg-dark);
     color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    height: -webkit-fill-available;
-    width: 100vw;
     overflow: hidden;
     position: relative;
+    user-select: none;
 }
 
-/* Ambient Casino Felt Background Cards */
-.bg-card {
-    position: absolute;
-    font-size: 5rem;
-    font-weight: 900;
-    color: rgba(255, 255, 255, 0.03);
-    pointer-events: none;
-    z-index: 1;
-    transform: rotate(-15deg);
-}
-
-/* Two-Row Responsive Header */
+/* ==========================================================================
+   Header & Action Nav
+   ========================================================================== */
 header {
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
-    padding-bottom: 6px;
-    background: rgba(2, 44, 30, 0.95);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-bottom: 2px solid rgba(250, 204, 21, 0.3);
+    background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1.5px solid var(--border-color);
+    padding: 6px 12px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    z-index: 1000;
+    gap: 4px;
+    z-index: 100;
     flex-shrink: 0;
-    width: 100%;
 }
 
 .header-row-primary {
@@ -70,12 +53,11 @@ header {
 }
 
 .logo {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
     font-weight: 900;
+    letter-spacing: 1px;
     color: var(--accent-gold);
-    letter-spacing: 1.5px;
-    text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
-    flex-shrink: 0;
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
 }
 
 .header-row-actions {
@@ -84,53 +66,218 @@ header {
     gap: 6px;
 }
 
-/* Secondary Row: Game Controls */
 .header-row-secondary {
     display: flex;
-    justify-content: flex-end;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
-    flex-wrap: wrap;
     width: 100%;
 }
 
+/* ==========================================================================
+   Buttons & Micro-Controls
+   ========================================================================== */
+button {
+    background: var(--accent-gold);
+    color: #0f172a;
+    font-weight: 800;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: transform 0.1s ease, filter 0.1s ease;
+}
+
+button:active {
+    transform: scale(0.96);
+}
+
+button.secondary {
+    background: #1e293b;
+    color: var(--text-main);
+    border: 1px solid #334155;
+}
+
+button.danger {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Voice Chat Status Pill */
+.vc-control-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(30, 41, 59, 0.85);
+    padding: 2px 4px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+}
+
+.led-indicator {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #64748b;
+}
+
+.led-indicator.active {
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+}
+
+/* Unread Badge for Chat Button */
+#chat-toggle-btn.unread {
+    background: #e11d48;
+    color: #ffffff;
+    animation: pulseChat 1s infinite alternate;
+}
+
+@keyframes pulseChat {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+}
+
+/* ==========================================================================
+   Floating Popup Chat Overlay (Zero Screen Displacement)
+   ========================================================================== */
+#chat-window {
+    display: none; /* Controlled via toggleChatWindow() */
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    width: min(88vw, 320px);
+    height: 380px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+    border: 1.5px solid var(--accent-gold);
+    border-radius: 12px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85), 0 0 16px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 2500; /* Floats above game canvas, table, and controls */
+    flex-direction: column;
+    overflow: hidden;
+    animation: chatSlideIn 0.18s ease-out;
+}
+
+@keyframes chatSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.chat-header-row {
+    background: rgba(15, 23, 42, 0.85);
+    padding: 8px 12px;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: var(--accent-gold);
+    border-bottom: 1px solid rgba(250, 204, 21, 0.25);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+#chat-messages {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: #e2e8f0;
+    word-break: break-word;
+}
+
+#chat-messages div {
+    background: rgba(30, 41, 59, 0.65);
+    padding: 4px 8px;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent-cyan);
+}
+
+#chat-messages div b {
+    color: var(--accent-gold);
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    background: rgba(15, 23, 42, 0.95);
+    border-top: 1px solid rgba(250, 204, 21, 0.2);
+}
+
+.chat-input-row input {
+    flex: 1;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: #fff;
+    font-size: 0.78rem;
+    outline: none;
+}
+
+.chat-input-row input:focus {
+    border-color: var(--accent-gold);
+}
+
+.chat-input-row button {
+    background: var(--accent-gold);
+    color: #0f172a;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: 800;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   Casino Welcome View (Main Menu)
+   ========================================================================== */
 main {
     flex: 1;
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    position: relative;
-    padding: 8px;
     overflow: hidden;
-    z-index: 10;
+    width: 100%;
 }
 
-/* ==========================================================================
-   Casino Green Felt Main Menu Styling
-   ========================================================================== */
 .casino-main-menu {
-    width: 95%;
-    max-width: 440px;
-    background: radial-gradient(circle at 50% 30%, rgba(6, 95, 70, 0.98) 0%, rgba(4, 78, 54, 0.98) 75%, rgba(2, 44, 30, 0.99) 100%);
-    border: 3px solid var(--accent-gold);
-    border-radius: 18px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), inset 0 0 30px rgba(0, 0, 0, 0.5), 0 0 25px rgba(250, 204, 21, 0.25);
-    padding: 20px 22px;
+    width: 90%;
+    max-width: 390px;
+    background: linear-gradient(135deg, rgba(6, 95, 70, 0.95) 0%, rgba(2, 44, 30, 0.95) 100%);
+    border: 2px solid var(--accent-gold);
+    border-radius: 16px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7);
+    padding: 18px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    z-index: 50;
-    max-height: 88vh;
-    overflow-y: auto;
+    gap: 12px;
+    z-index: 10;
 }
 
 .casino-menu-header {
     text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
 }
 
 .casino-felt-badge {
@@ -139,284 +286,130 @@ main {
     font-size: 0.6rem;
     font-weight: 900;
     padding: 2px 8px;
-    border-radius: 10px;
-    letter-spacing: 2px;
+    border-radius: 8px;
+    letter-spacing: 1px;
 }
 
 .casino-menu-header h2 {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
     color: #ffffff;
     font-weight: 900;
-    letter-spacing: 2px;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(250, 204, 21, 0.4);
+    margin-top: 4px;
 }
 
 .casino-subtitle {
-    font-size: 0.75rem;
-    color: var(--accent-cyan);
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
-.casino-form-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    font-size: 0.72rem;
+    color: #94a3b8;
 }
 
 .input-group {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     text-align: left;
 }
 
 .input-group label {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 800;
     color: var(--accent-gold);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
 }
 
 .input-group input {
-    background: rgba(15, 23, 42, 0.85);
-    border: 1.5px solid rgba(250, 204, 21, 0.35);
-    color: #ffffff;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 0.85rem;
+    background: #0f172a;
+    border: 1.5px solid #334155;
+    border-radius: 6px;
+    padding: 7px 9px;
+    color: #fff;
+    font-size: 0.8rem;
     outline: none;
-    transition: all 0.2s ease;
 }
 
 .input-group input:focus {
     border-color: var(--accent-gold);
-    box-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
 }
 
 .casino-action-row {
     display: flex;
-    gap: 8px;
+    justify-content: space-between;
     align-items: center;
+    margin-top: 6px;
+}
+
+.casino-btn-gold {
+    background: var(--accent-gold);
+    color: #0f172a;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+}
+
+.casino-btn-green {
+    background: #10b981;
+    color: #ffffff;
+    padding: 7px 14px;
 }
 
 .casino-checkbox-label {
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--text-muted);
+    gap: 4px;
+    font-size: 0.72rem;
+    color: #cbd5e1;
     cursor: pointer;
-}
-
-.casino-checkbox-label input {
-    accent-color: var(--accent-gold);
-}
-
-.casino-btn-gold {
-    flex: 1;
-    background: linear-gradient(180deg, #fde047 0%, #eab308 50%, #ca8a04 100%);
-    color: #0f172a;
-    font-weight: 900;
-    font-size: 0.88rem;
-    padding: 9px 16px;
-    border-radius: 8px;
-    border: 1px solid #fef08a;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-    cursor: pointer;
-    letter-spacing: 0.5px;
-    transition: all 0.15s ease;
-}
-
-.casino-btn-gold:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(250, 204, 21, 0.5);
-}
-
-.casino-btn-green {
-    background: linear-gradient(180deg, #34d399 0%, #10b981 50%, #059669 100%);
-    color: #ffffff;
-    font-weight: 800;
-    font-size: 0.85rem;
-    padding: 8px 16px;
-    border-radius: 8px;
-    border: 1px solid #6ee7b7;
-    cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
 .casino-divider {
-    display: flex;
-    align-items: center;
     text-align: center;
-    margin: 2px 0;
-}
-
-.casino-divider::before, .casino-divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid rgba(250, 204, 21, 0.25);
+    position: relative;
+    margin: 4px 0;
 }
 
 .casino-divider span {
-    padding: 0 10px;
+    background: #044e36;
+    padding: 0 8px;
     font-size: 0.65rem;
-    font-weight: 900;
-    letter-spacing: 1.5px;
-    color: rgba(250, 204, 21, 0.7);
+    color: #94a3b8;
+    position: relative;
+    z-index: 2;
+}
+
+.casino-divider::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(250, 204, 21, 0.2);
 }
 
 .lobby-list-container {
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(250, 204, 21, 0.25);
-    border-radius: 8px;
-    max-height: 120px;
+    max-height: 110px;
     overflow-y: auto;
-    padding: 4px;
+    background: rgba(15, 23, 42, 0.7);
+    border-radius: 6px;
+    border: 1px solid #334155;
 }
 
 .lobby-item {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 6px 10px;
-    border-radius: 6px;
-    background: rgba(30, 41, 59, 0.75);
-    margin-bottom: 4px;
-    cursor: pointer;
+    padding: 6px 8px;
     font-size: 0.75rem;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
 }
 
 .lobby-item:hover {
-    border-color: var(--accent-gold);
-    background: rgba(30, 41, 59, 1);
+    background: rgba(250, 204, 21, 0.1);
 }
 
-/* ==========================================================================
-   Buttons & General Controls
-   ========================================================================== */
-button, .btn-link {
-    background: #2563eb;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 5px 9px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 0.75rem;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-button.secondary {
-    background: #334155;
-    border: 1px solid #64748b;
-}
-
-button.danger {
-    background: #dc2626;
-}
-
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* Voice Indicator LED */
-.vc-control-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(30, 41, 59, 0.85);
-    border: 1px solid #475569;
-    padding: 2px 6px;
-    border-radius: 6px;
-    flex-shrink: 0;
-}
-
-.led-indicator {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #ef4444;
-    box-shadow: 0 0 6px #ef4444;
-    display: inline-block;
-    transition: 0.3s;
-}
-
-.led-indicator.active {
-    background: #22c55e;
-    box-shadow: 0 0 8px #22c55e;
-}
-
-/* Chat Toggle & Pulse */
-#chat-container {
-    position: relative;
-    display: inline-block;
-}
-
-#chat-toggle-btn {
-    background: #475569;
-    border: none;
-    color: #fff;
-    font-size: 0.75rem;
-    padding: 5px 9px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-#chat-toggle-btn.unread {
-    background: #ef4444 !important;
-    color: #fff !important;
-    animation: pulseChat 1.2s infinite;
-}
-
-@keyframes pulseChat {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-    70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-
-/* Rules Modal Tutorial */
-.rules-scrollable-body {
-    max-height: 60vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    padding-right: 4px;
-}
-
-.rule-block {
-    background: rgba(15, 23, 42, 0.7);
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid rgba(250, 204, 21, 0.2);
-}
-
-.rule-block h4 {
-    color: var(--accent-gold);
-    font-size: 0.85rem;
-    margin-bottom: 4px;
-}
-
-.rule-block ul, .rule-block ol {
-    margin-left: 18px;
-    margin-top: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+/* Background Ambient Card Symbols */
+.bg-card {
+    position: absolute;
+    font-size: 3rem;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.02);
+    pointer-events: none;
+    user-select: none;
 }
