@@ -40,6 +40,8 @@ function toggleChatWindow() {
     if (!win) return;
     const isVisible = win.style.display === 'flex';
     win.style.display = isVisible ? 'none' : 'flex';
+    
+    // Clear unread badge when chat window opens
     if (!isVisible) {
         const chatBtn = document.getElementById('chat-toggle-btn');
         if (chatBtn) {
@@ -69,6 +71,16 @@ function appendChatMessage(user, msg) {
     if (!box) return;
     box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
     box.scrollTop = box.scrollHeight;
+
+    // If chat window is closed, flash unread badge and update button icon text
+    const win = document.getElementById('chat-window');
+    if (!win || win.style.display !== 'flex') {
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.add('unread');
+            chatBtn.innerText = '💬 Chat (!)';
+        }
+    }
 }
 
 function stopPeekingAction() {
@@ -175,8 +187,14 @@ function proposeEndGame() {
 }
 
 function leaveLobby() {
+    // 1. Immediately disconnect audio and close WebRTC/LiveKit
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
+
+    // 2. Notify server to release seat
     initSocketAndSend({ type: 'LEAVE_LOBBY' });
+
+    // 3. Reset client state back to main menu
+    resetToMainMenu();
 }
 
 function drawCard(type) {
@@ -403,11 +421,13 @@ function updateUIFromLobby(lobby) {
     document.getElementById('end-game-btn').style.display = 'inline-block';
     document.getElementById('leave-lobby-btn').style.display = 'inline-block';
     
-    // Reveal all in-game header controls when seated in game
-    const inGameHeader = document.getElementById('in-game-header-btns');
-    if (inGameHeader) inGameHeader.style.display = 'inline-flex';
+    // Reveal top and bottom in-game header control rows
+    const topRowBtns = document.getElementById('in-game-top-row-btns');
+    if (topRowBtns) topRowBtns.style.display = 'inline-flex';
 
-    document.getElementById('vc-group-container').style.display = 'inline-flex';
+    const toolsRow = document.getElementById('in-game-tools-row');
+    if (toolsRow) toolsRow.style.display = 'flex';
+
     document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
 
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
@@ -812,15 +832,23 @@ function resetToMainMenu() {
     if (!window.appGlobals) window.appGlobals = {};
     window.appGlobals.currentJoinedCode = null;
     window.appGlobals.latestLobbySnapshot = null;
+    
+    // Hide game view and return to main menu
     document.getElementById('game-view').style.display = 'none';
     document.getElementById('main-menu').style.display = 'flex';
     document.getElementById('end-game-btn').style.display = 'none';
     document.getElementById('leave-lobby-btn').style.display = 'none';
-    document.getElementById('vc-group-container').style.display = 'none';
     
-    // Hide all in-game header buttons when returning to the main menu
-    const inGameHeader = document.getElementById('in-game-header-btns');
-    if (inGameHeader) inGameHeader.style.display = 'none';
+    // Hide in-game header control rows
+    const topRowBtns = document.getElementById('in-game-top-row-btns');
+    if (topRowBtns) topRowBtns.style.display = 'none';
+
+    const toolsRow = document.getElementById('in-game-tools-row');
+    if (toolsRow) toolsRow.style.display = 'none';
+
+    // Close chat if open
+    const chatWin = document.getElementById('chat-window');
+    if (chatWin) chatWin.style.display = 'none';
 
     window.clientState.isReady = false;
     window.appGlobals.hasChosenPoolCard = false;
