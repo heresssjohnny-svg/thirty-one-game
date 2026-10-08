@@ -75,56 +75,88 @@
 }
 
 /* ==========================================================================
-   2. Dealer Draw & Tie-Breaker Card Selection & Showcase
+   2. Dealer Draw & Tie-Breaker Split Showcase (Showcase Left, Pool Right)
    ========================================================================== */
 #pool-draw-modal .modal-content,
 #tie-breaker-reveal-modal .modal-content {
-    max-width: min(94vw, 560px);
+    max-width: min(96vw, 620px);
     max-height: 88vh;
-    padding: 14px 12px;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-/* Prominent Showcase displaying each picker and their revealed card */
-.draw-showcase-container {
+.draw-modal-split-layout {
     display: flex;
-    gap: 12px;
-    justify-content: center;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    margin: 8px 0 12px 0;
-    padding: 10px;
+    flex-direction: row;
+    gap: 10px;
+    width: 100%;
+    max-height: 68vh;
+    align-items: stretch;
+    justify-content: space-between;
+    box-sizing: border-box;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+/* Left Panel: Pickers & Large Playing Cards */
+.draw-showcase-sidebar {
+    width: 110px;
+    min-width: 100px;
+    max-width: 125px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    padding: 6px;
     background: rgba(15, 23, 42, 0.75);
-    border: 1.5px solid rgba(250, 204, 21, 0.3);
+    border: 1.5px solid rgba(250, 204, 21, 0.35);
     border-radius: 10px;
-    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.6);
+    box-sizing: border-box;
+    align-items: center;
+    flex-shrink: 0;
 }
 
 .draw-showcase-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    min-width: 68px;
+    gap: 4px;
+    width: 100%;
 }
 
 .draw-picker-badge {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 800;
     color: var(--accent-gold, #facc15);
     background: rgba(15, 23, 42, 0.95);
     border: 1px solid rgba(250, 204, 21, 0.5);
-    padding: 2px 8px;
-    border-radius: 12px;
+    padding: 2px 6px;
+    border-radius: 10px;
     white-space: nowrap;
-    max-width: 110px;
+    max-width: 95px;
     overflow: hidden;
     text-overflow: ellipsis;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
-.draw-card-waiting {
-    width: 64px;
-    height: 92px;
+.draw-showcase-item .playing-card {
+    width: 60px;
+    height: 86px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+    cursor: default;
+    flex-shrink: 0;
+}
+
+.draw-showcase-item .playing-card .card-center-pip {
+    font-size: 1.85rem;
+}
+
+.draw-showcase-item .draw-card-waiting {
+    width: 60px;
+    height: 86px;
     border-radius: 7px;
     border: 1.5px dashed #60a5fa;
     background: rgba(30, 58, 138, 0.35);
@@ -144,58 +176,77 @@
     100% { border-color: #60a5fa; box-shadow: 0 0 4px rgba(96, 165, 250, 0.3); }
 }
 
-/* Interactive Card Pool Grid */
-.pool-cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
-    gap: 4px;
-    justify-content: center;
-    align-content: center;
-    overflow-y: auto;
-    max-height: 44vh;
+/* Right Panel: Card Selection Grid */
+.draw-pool-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(250, 204, 21, 0.25);
+    border-radius: 10px;
     padding: 6px;
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 8px;
-    border: 1px solid rgba(250, 204, 21, 0.2);
     box-sizing: border-box;
 }
 
+.pool-52-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    overflow-y: auto;
+    flex: 1;
+    padding: 3px;
+    align-content: start;
+    box-sizing: border-box;
+}
+
+@media (min-width: 480px) {
+    .pool-52-grid {
+        grid-template-columns: repeat(8, 1fr);
+        gap: 5px;
+    }
+}
+
 .pool-card-item {
-    width: 100%;
-    height: 48px;
+    aspect-ratio: 5 / 7;
+    height: auto;
+    min-height: 32px;
+    max-height: 44px;
     background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
     border: 1.5px solid #60a5fa;
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     color: #93c5fd;
     font-weight: 900;
     cursor: pointer;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-    transition: transform 0.1s ease;
+    transition: transform 0.1s ease, border-color 0.1s ease;
     user-select: none;
 }
 
 .pool-card-item:hover, .pool-card-item:active {
-    transform: scale(1.08);
+    transform: scale(1.12);
     border-color: var(--accent-gold, #facc15);
+    color: #ffffff;
+    z-index: 5;
 }
 
-.pool-card-item.revealed {
-    background: #ffffff;
-    color: #0f172a;
-    flex-direction: column;
-    font-size: 0.5rem;
-    border-color: #cbd5e1;
+.pool-card-item.taken {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.2);
+    cursor: not-allowed;
+    pointer-events: none;
+    box-shadow: none;
+    transform: none;
 }
 
 /* ==========================================================================
    3. In-Game Floating Alerts & Banners
    ========================================================================== */
-
-/* Top Center Notification Banner */
 #center-notification-banner {
     position: absolute;
     top: 12px;
@@ -215,7 +266,6 @@
     pointer-events: none;
 }
 
-/* Prominent Knock Alert Modal */
 #knock-alert-modal {
     position: absolute;
     top: 75px;
@@ -247,7 +297,6 @@
     }
 }
 
-/* Discard Pickup Alert (Top-Left under header bar) */
 #discard-pickup-topleft-modal,
 .discard-pickup-modal-topleft {
     position: absolute;
@@ -274,7 +323,6 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Fed Card Reminder Modal (Top-Right under turn keeper) */
 #fed-card-topright-modal,
 .fed-card-modal-topright {
     position: absolute;
@@ -301,7 +349,6 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Peeking Notification Banner */
 #active-peeking-banner {
     display: none;
     background: rgba(30, 58, 138, 0.95);
@@ -317,7 +364,7 @@
 
 /* ==========================================================================
    4. Chat Window & Floating Sidebar
-   ========================================================================== */
+   ========================================================================= */
 #chat-container {
     position: relative;
     display: inline-block;
@@ -497,7 +544,7 @@
 }
 
 /* ==========================================================================
-   6. Rules & Ledger Snapshot Modals
+   6. Rules & Ledger Modals
    ========================================================================== */
 .rules-scrollable-body {
     max-height: 52vh;
