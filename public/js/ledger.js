@@ -131,3 +131,26 @@ module.exports = {
     resolveFirstToLoseBets,
     resolveWinSideBets
 };
+
+// In server/game/ledger.js inside persistToLifetimeLedger
+if (debtorId && creditorId && typeof db.recordDebt === 'function') {
+    db.recordDebt(debtorId, creditorId, Number(amount));
+    console.log(`[LIFETIME LEDGER] Persisted P2P bet: ${debtorUsername} owes ${creditorUsername} $${amount}`);
+
+    // Push real-time balance refresh to all connected clients involved
+    if (global.wss) {
+        global.wss.clients.forEach(client => {
+            if (client.readyState === 1 && client.user) {
+                const cId = client.user.userId || client.user.id;
+                if (cId === debtorId || cId === creditorId) {
+                    const freshBalances = db.getLifetimeBalances(cId);
+                    client.send(JSON.stringify({
+                        type: 'LIFETIME_LEDGER_DATA',
+                        balances: freshBalances || [],
+                        isGuest: false
+                    }));
+                }
+            }
+        });
+    }
+}
