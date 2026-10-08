@@ -103,26 +103,26 @@ window.connectSocket = function() {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Flush queued messages
+        // 2. Auto-rejoin active table on mobile reconnect / focus recovery
+        if (window.appGlobals.currentJoinedCode) {
+            const usernameInput = document.getElementById('username-input');
+            const activeUsername = usernameInput ? usernameInput.value.trim() : (window.clientState.username || 'Player1');
+            ws.send(JSON.stringify({
+                type: 'JOIN_LOBBY',
+                code: window.appGlobals.currentJoinedCode,
+                username: activeUsername
+            }));
+        }
+
+        // 3. Flush queued messages
         while (window.appGlobals.pendingQueue.length > 0) {
             const msg = window.appGlobals.pendingQueue.shift();
             ws.send(JSON.stringify(msg));
         }
 
-        // 3. Query public lobbies
+        // 4. Query public lobbies
         window.initSocketAndSend({ type: 'GET_LOBBIES' });
         window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
-
-        // 4. Auto-rejoin active table on mobile reconnect / focus recovery
-        if (window.appGlobals.currentJoinedCode) {
-            const usernameInput = document.getElementById('username-input');
-            const activeUsername = usernameInput ? usernameInput.value.trim() : (window.clientState.username || 'Player1');
-            window.initSocketAndSend({
-                type: 'JOIN_LOBBY',
-                code: window.appGlobals.currentJoinedCode,
-                username: activeUsername
-            });
-        }
     };
 
     ws.onmessage = (event) => {
@@ -148,7 +148,7 @@ window.connectSocket = function() {
                 if (window.userSession || window.appGlobals.currentJoinedCode) {
                     window.connectSocket();
                 }
-            }, 2000);
+            }, 1500);
         }
     };
 
@@ -236,8 +236,11 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'LIFETIME_LEDGER_DATA':
-            if (typeof window.renderLifetimeLedger === 'function') {
-                window.renderLifetimeLedger(data.balances || []);
+            if (data.balances) {
+                window.cachedLifetimeBalances = data.balances;
+                if (typeof window.renderLifetimeLedger === 'function') {
+                    window.renderLifetimeLedger(data.balances);
+                }
             }
             break;
 
@@ -518,6 +521,33 @@ window.kickPeekerAction = function(spectatorUsername) {
         spectatorUsername: spectatorUsername
     });
 };
+
+// -------------------------------------------------------------
+// 5. MOBILE VISIBILITY & TAB LIFECYCLE AUTO-SYNC
+// -------------------------------------------------------------
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        const ws = window.appGlobals.ws;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            window.connectSocket();
+        } else if (window.appGlobals.currentJoinedCode) {
+            const usernameInput = document.getElementById('username-input');
+            const activeUsername = usernameInput ? usernameInput.value.trim() : (window.clientState.username || 'Player1');
+            window.initSocketAndSend({
+                type: 'JOIN_LOBBY',
+                code: window.appGlobals.currentJoinedCode,
+                username: activeUsername
+            });
+        }
+    }
+});
+
+window.addEventListener('pageshow', () => {
+    const ws = window.appGlobals.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        window.connectSocket();
+    }
+});
 
 // Auto-run input restoration on script load
 window.restoreSavedInputs();
