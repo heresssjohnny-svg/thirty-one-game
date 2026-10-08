@@ -9,7 +9,7 @@ process.on('uncaughtException', (err) => console.error('[SERVER] Uncaught Except
 process.on('unhandledRejection', (reason, promise) => console.error('[SERVER] Unhandled Rejection at:', promise, 'reason:', reason));
 
 // -------------------------------------------------------------
-// 1. DYNAMIC CONFIGURATION & MODULE RESOLUTION
+// 1. CONFIGURATION & MODULE RESOLUTION
 // -------------------------------------------------------------
 let config = {
     PORT: process.env.PORT || 10000,
@@ -18,38 +18,27 @@ let config = {
     LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e'
 };
 
-const configPaths = ['./server/config', './config'];
-for (const p of configPaths) {
+for (const p of ['./server/config', './config']) {
     try {
-        const loaded = require(p);
-        config = { ...config, ...loaded };
+        config = { ...config, ...require(p) };
         break;
     } catch (e) {}
 }
 
 // Resilient Database & Auth Loaders
 let db = null;
-const dbPaths = ['./server/db', './db'];
-for (const p of dbPaths) {
-    try {
-        db = require(p);
-        break;
-    } catch (e) {}
+for (const p of ['./server/db', './db']) {
+    try { db = require(p); break; } catch (e) {}
 }
 
 let auth = null;
-const authPaths = ['./server/auth', './auth'];
-for (const p of authPaths) {
-    try {
-        auth = require(p);
-        break;
-    } catch (e) {}
+for (const p of ['./server/auth', './auth']) {
+    try { auth = require(p); break; } catch (e) {}
 }
 
-// Resilient LiveKit Token Generator Loader
+// Resilient LiveKit Token Generator
 let generateLiveKitToken = null;
-const livekitPaths = ['./server/services/livekit', './services/livekit', './server/livekit'];
-for (const p of livekitPaths) {
+for (const p of ['./server/services/livekit', './services/livekit', './server/livekit']) {
     try {
         const mod = require(p);
         if (typeof mod.generateLiveKitToken === 'function') {
@@ -59,7 +48,6 @@ for (const p of livekitPaths) {
     } catch (e) {}
 }
 
-// Fallback LiveKit SDK generation if service module is not present
 if (!generateLiveKitToken) {
     try {
         const { AccessToken } = require('livekit-server-sdk');
@@ -78,19 +66,28 @@ if (!generateLiveKitToken) {
             }
         };
     } catch (err) {
-        console.warn('[LIVEKIT] livekit-server-sdk not found; voice tokens will be disabled.');
         generateLiveKitToken = async () => null;
     }
 }
 
-// Resilient WebSocket Game Handler Loader
+// Resilient Game Engine Loaders
 let setupWebSocket = null;
-const wsHandlerPaths = ['./server/game/wsHandler', './game/wsHandler', './server/wsHandler'];
-for (const p of wsHandlerPaths) {
+for (const p of ['./server/game/wsHandler', './game/wsHandler', './server/wsHandler']) {
     try {
         const mod = require(p);
         if (typeof mod.setupWebSocket === 'function') {
             setupWebSocket = mod.setupWebSocket;
+            break;
+        }
+    } catch (e) {}
+}
+
+let getPublicLobbiesList = null;
+for (const p of ['./server/game/lobbyManager', './game/lobbyManager', './server/lobbyManager']) {
+    try {
+        const mod = require(p);
+        if (typeof mod.getPublicLobbiesList === 'function') {
+            getPublicLobbiesList = mod.getPublicLobbiesList;
             break;
         }
     } catch (e) {}
@@ -103,23 +100,22 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// JSON & URL-encoded request body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Mount Auth routes (/auth/register, /auth/login, /auth/guest, /auth/social, /auth/me)
+// Mount Authentication Endpoints (/auth/register, /auth/login, /auth/guest, /auth/social)
 if (auth && auth.router) {
     app.use(auth.router);
 }
 
-// Serve static assets from public, root, and www
+// Serve static assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname)));
 if (fs.existsSync(path.join(__dirname, 'www'))) {
     app.use(express.static(path.join(__dirname, 'www')));
 }
 
-// REST route for LiveKit room voice tokens
+// REST Route for LiveKit Tokens
 app.get('/token', async (req, res) => {
     const room = (req.query.room || 'test-room').trim();
     const username = (req.query.username || `User-${Math.floor(Math.random() * 1000)}`).trim();
@@ -132,7 +128,6 @@ app.get('/token', async (req, res) => {
     }
 });
 
-// Single-page application route fallback
 app.get('*', (req, res) => {
     const candidates = [
         path.join(__dirname, 'public', 'index.html'),
@@ -146,7 +141,7 @@ app.get('*', (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 3. WEBSOCKET HEARTBEAT & LIFETIME LEDGER COORDINATOR
+// 3. WEBSOCKET HEARTBEAT & LIFETIME LEDGER LISTENER
 // -------------------------------------------------------------
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
@@ -158,7 +153,19 @@ const heartbeatInterval = setInterval(() => {
 
 wss.on('close', () => clearInterval(heartbeatInterval));
 
-// Lifetime Ledger & Auth State Listener
+function broadcastLobbyList() {
+    if (typeof getPublicLobbiesList === 'function') {
+        const list = getPublicLobbiesList();
+        const payload = JSON.stringify({ type: 'LOBBY_LIST', lobbies: list });
+        wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(payload);
+            }
+        });
+    }
+}
+
+// Global WebSocket handler for Auth & Lifetime Ledger queries
 wss.on('connection', (ws) => {
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
@@ -168,12 +175,10 @@ wss.on('connection', (ws) => {
             const data = JSON.parse(message);
             if (!data || typeof data !== 'object') return;
 
-            // 1. Handle Token Authentication over WebSocket
+            // 1. Authenticate WebSocket Connection
             if (data.type === 'AUTH_TOKEN' && auth && typeof auth.verifyToken === 'function') {
                 const decoded = auth.verifyToken(data.token);
-                if (decoded) {
-                    ws.user = decoded;
-                }
+                if (decoded) ws.user = decoded;
             }
 
             // 2. Query Lifetime Ledger Balances
@@ -193,7 +198,7 @@ wss.on('connection', (ws) => {
                 }
             }
 
-            // 3. Apply Credit towards user debt
+            // 3. Apply Credit towards Opponent Debt
             if (data.type === 'APPLY_CREDIT' && db) {
                 const creditorId = (ws.user && ws.user.userId) || data.userId;
                 const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
@@ -206,37 +211,19 @@ wss.on('connection', (ws) => {
                     }
                 }
             }
-        } catch (err) {
-            // Ignore parse errors from non-JSON or other socket handlers
-        }
+        } catch (err) {}
     });
 });
 
-// Broadcast lobby discovery list helper
-function broadcastLobbyList() {
-    try {
-        const lm = require('./server/game/lobbyManager') || require('./game/lobbyManager');
-        if (lm && typeof lm.getPublicLobbiesList === 'function') {
-            const list = lm.getPublicLobbiesList();
-            const payload = JSON.stringify({ type: 'LOBBY_LIST', lobbies: list });
-            wss.clients.forEach((client) => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(payload);
-                }
-            });
-        }
-    } catch (e) {}
-}
-
-// Mount modular gameplay WebSocket listeners
+// Mount the Modular Gameplay Engine
 if (typeof setupWebSocket === 'function') {
     setupWebSocket(wss, broadcastLobbyList);
 }
 
 // -------------------------------------------------------------
-// 4. PORT BINDING & SERVER BOOT
+// 4. SERVER LAUNCH
 // -------------------------------------------------------------
-const PORT = (config && config.PORT) || process.env.PORT || 10000;
+const PORT = config.PORT || process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`31! Card Game server running on port ${PORT}`);
 });
