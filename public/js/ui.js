@@ -486,7 +486,7 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
     const myScore = (me && me.cards) ? window.calculateLocalScore(me.cards) : 0;
     const turnsConditionMet = !!lobby.canKnock;
     const scoreConditionMet = myScore >= threshold;
-    const hasNotDrawn = me && me.cards && me.cards.length === 3; // Strict 3-card rule
+    const hasNotDrawn = me && me.cards && me.cards.length === 3;
 
     if (lobby.knockedBy) {
         knockBtn.disabled = true;
@@ -660,7 +660,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER & GAME STATE WATCHDOG
+// 8. MASTER TABLE RENDER & HIGH-FIDELITY DRAW SHOWCASES
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -890,7 +890,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 10. TURN ACTION & yourturn.mp3 TRIGGER
+    // 10. TURN ACTION & AUDIO TRIGGER
     const isMyTurnPlaying = ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
@@ -989,7 +989,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 13. NEXT HAND OVERLAY (Guaranteed active player visibility & 8s auto-countdown)
+    // 13. NEXT HAND OVERLAY
     const nextHandOverlay = document.getElementById('next-hand-overlay');
     const nextBtn = document.getElementById('next-hand-btn');
 
@@ -1021,7 +1021,7 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. DEALER DRAW & TIE BREAKER MODALS
+    // 14. UPGRADED HIGH-CONTRAST DEALER DRAW & TIE BREAKER MODALS
     const poolModal = document.getElementById('pool-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
@@ -1031,6 +1031,7 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
     }
 
+    // --- A. DEALER DRAW SHOWCASE ---
     if (lobby.gameState === 'dealerDraw') {
         if (poolModal) poolModal.style.display = 'flex';
         if (revealModal) revealModal.style.display = 'none';
@@ -1038,45 +1039,82 @@ window.updateUIFromLobby = function(lobby) {
         const pTitle = document.getElementById('pool-modal-title');
         const pInstr = document.getElementById('pool-modal-instruction');
         if (pTitle) pTitle.innerText = 'Picking for Dealer';
-        if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Select a card from the deck pool.';
+        if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace is high). Tap a face-down card!';
 
-        let gridHtml = '';
+        const activeParts = (lobby.players || []).filter(p => !p.eliminated);
+        
+        // 1. Prominent Showcase of Pickers and their Cards
+        let showcaseHtml = '<div class="draw-showcase-container">';
+        activeParts.forEach(p => {
+            const card = lobby.drawResults?.[p.username];
+            const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
+            showcaseHtml += `
+                <div class="draw-showcase-item">
+                    <span class="draw-picker-badge" style="${isMe ? 'border-color:#38bdf8; color:#38bdf8;' : ''}">${p.username}${p.isBot ? ' 🤖' : ''}</span>
+                    ${card ? window.formatCardHtml(card, false) : '<div class="draw-card-waiting"><span>Waiting...</span></div>'}
+                </div>
+            `;
+        });
+        showcaseHtml += '</div>';
+
+        // 2. Interactive Unpicked Deck Pool
+        let poolHtml = '';
         (lobby.drawPool || []).forEach((slot) => {
-            if (slot.chosenBy) {
-                const revealedCard = lobby.drawResults?.[slot.chosenBy];
-                const cardHtmlStr = revealedCard ? window.formatCardHtml(revealedCard, true) : '';
-                gridHtml += `<div class="pool-card-item revealed" style="background:#fff; border-radius:4px; padding:3px; text-align:center;"><span style="font-size:0.55rem; color:#475569;">${slot.chosenBy}</span>${cardHtmlStr}</div>`;
-            } else {
+            if (!slot.chosenBy) {
                 const clickable = !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-                gridHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
+                poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
             }
         });
+
         const poolContainer = document.getElementById('pool-cards-container');
-        if (poolContainer) poolContainer.innerHTML = gridHtml;
+        if (poolContainer) {
+            poolContainer.innerHTML = `
+                ${showcaseHtml}
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px; font-weight:bold;">Available Deck Pool:</div>
+                <div class="pool-cards-grid">${poolHtml}</div>
+            `;
+        }
         if (turnBanner) turnBanner.innerText = 'Dealer Draw Phase';
-    } else if (lobby.gameState === 'tieBreaker') {
+    } 
+    // --- B. TIE BREAKER SHOWCASE ---
+    else if (lobby.gameState === 'tieBreaker') {
         if (poolModal) poolModal.style.display = 'none';
         if (revealModal) revealModal.style.display = 'flex';
 
         const isTied = (lobby.tiedParticipantsList || []).includes(activeUsername);
         const tMsg = document.getElementById('tie-breaker-stream-msg');
-        if (tMsg) tMsg.innerText = isTied ? 'You are tied! Pick your tie-breaker card below:' : 'Waiting for tied participants to draw cards...';
+        if (tMsg) tMsg.innerText = isTied ? 'You are tied for lowest score! Pick your card:' : 'Watching tied players draw for elimination...';
 
-        let streamHtml = '';
-        if (isTied && !lobby.drawResults?.[activeUsername]) {
-            streamHtml += `<div style="width:100%; display:grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap:4px; margin-bottom:8px;">`;
-            (lobby.drawPool || []).forEach((slot) => {
-                if (!slot.chosenBy) {
-                    streamHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
-                }
-            });
-            streamHtml += `</div>`;
-        }
-
+        // 1. Prominent Live Stream of Tied Participants and their Picks
+        let streamHtml = '<div class="draw-showcase-container" style="width:100%;">';
         (lobby.tiedParticipantsList || []).forEach(uname => {
             const card = lobby.drawResults?.[uname];
-            streamHtml += `<div style="text-align:center; padding:4px;"><b>${uname}</b>: ${card ? window.formatCardHtml(card, true) : '<i>Choosing...</i>'}</div>`;
+            const isMe = (uname.toLowerCase() === activeUsername.toLowerCase());
+            streamHtml += `
+                <div class="draw-showcase-item">
+                    <span class="draw-picker-badge" style="${isMe ? 'border-color:#38bdf8; color:#38bdf8;' : ''}">${uname}</span>
+                    ${card ? window.formatCardHtml(card, false) : '<div class="draw-card-waiting"><span>Drawing...</span></div>'}
+                </div>
+            `;
         });
+        streamHtml += '</div>';
+
+        // 2. Interactive Pool for Tied Player (if haven't picked yet)
+        if (isTied && !lobby.drawResults?.[activeUsername]) {
+            let poolHtml = '';
+            (lobby.drawPool || []).forEach((slot) => {
+                if (!slot.chosenBy) {
+                    poolHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
+                }
+            });
+            streamHtml += `
+                <div style="width:100%;">
+                    <div style="font-size:0.75rem; color:var(--accent-gold); margin-bottom:4px; font-weight:bold;">Tap a card from the tie-breaker pool:</div>
+                    <div class="pool-cards-grid">${poolHtml}</div>
+                </div>
+            `;
+        }
+
         const tGrid = document.getElementById('tie-breaker-stream-grid');
         if (tGrid) tGrid.innerHTML = streamHtml;
         if (turnBanner) turnBanner.innerText = 'Tie-Breaker Draw';
