@@ -1,4 +1,4 @@
-// public/js/ui.js - Complete DOM Coordinator, Casino Felt Table & Card Visuals
+// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT SAFEGUARDS
@@ -660,7 +660,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER & HIGH-FIDELITY DRAW SHOWCASES
+// 8. MASTER TABLE RENDER & TIE-BREAKER DECK POOL FILTER
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -1021,7 +1021,7 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. UPGRADED HIGH-CONTRAST DEALER DRAW & TIE BREAKER MODALS
+    // 14. DEALER DRAW & TIE BREAKER (CARDS LEFT IN DECK ENFORCEMENT)
     const poolModal = document.getElementById('pool-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
@@ -1039,12 +1039,12 @@ window.updateUIFromLobby = function(lobby) {
         const pTitle = document.getElementById('pool-modal-title');
         const pInstr = document.getElementById('pool-modal-instruction');
         if (pTitle) pTitle.innerText = 'Picking for Dealer';
-        if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace is high). Tap a face-down card!';
+        if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
 
         const activeParts = (lobby.players || []).filter(p => !p.eliminated);
-        
-        // 1. Prominent Showcase of Pickers and their Cards
-        let showcaseHtml = '<div class="draw-showcase-container">';
+
+        let showcaseHtml = '<div class="draw-showcase-sidebar">';
+        showcaseHtml += '<div style="font-size:0.65rem; font-weight:800; color:var(--accent-gold); margin-bottom:2px; text-transform:uppercase;">Players</div>';
         activeParts.forEach(p => {
             const card = lobby.drawResults?.[p.username];
             const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
@@ -1057,10 +1057,12 @@ window.updateUIFromLobby = function(lobby) {
         });
         showcaseHtml += '</div>';
 
-        // 2. Interactive Unpicked Deck Pool
+        // Full 52-card pool
         let poolHtml = '';
         (lobby.drawPool || []).forEach((slot) => {
-            if (!slot.chosenBy) {
+            if (slot.chosenBy) {
+                poolHtml += `<div class="pool-card-item taken" title="Chosen by ${slot.chosenBy}">✓</div>`;
+            } else {
                 const clickable = !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
                 poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
             }
@@ -1068,25 +1070,31 @@ window.updateUIFromLobby = function(lobby) {
 
         const poolContainer = document.getElementById('pool-cards-container');
         if (poolContainer) {
+            poolContainer.className = 'draw-modal-split-layout';
             poolContainer.innerHTML = `
                 ${showcaseHtml}
-                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px; font-weight:bold;">Available Deck Pool:</div>
-                <div class="pool-cards-grid">${poolHtml}</div>
+                <div class="draw-pool-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
+                        <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">Available Deck Pool</span>
+                        <span style="font-size:0.65rem; color:var(--accent-cyan);">Tap a card</span>
+                    </div>
+                    <div class="pool-52-grid">${poolHtml}</div>
+                </div>
             `;
         }
         if (turnBanner) turnBanner.innerText = 'Dealer Draw Phase';
     } 
-    // --- B. TIE BREAKER SHOWCASE ---
+    // --- B. TIE BREAKER SHOWCASE (ONLY CARDS LEFT IN DECK) ---
     else if (lobby.gameState === 'tieBreaker') {
         if (poolModal) poolModal.style.display = 'none';
         if (revealModal) revealModal.style.display = 'flex';
 
         const isTied = (lobby.tiedParticipantsList || []).includes(activeUsername);
         const tMsg = document.getElementById('tie-breaker-stream-msg');
-        if (tMsg) tMsg.innerText = isTied ? 'You are tied for lowest score! Pick your card:' : 'Watching tied players draw for elimination...';
+        if (tMsg) tMsg.innerText = isTied ? 'You are tied for lowest score! Pick your tie-breaker card:' : 'Watching tied players draw for elimination...';
 
-        // 1. Prominent Live Stream of Tied Participants and their Picks
-        let streamHtml = '<div class="draw-showcase-container" style="width:100%;">';
+        let streamHtml = '<div class="draw-showcase-sidebar">';
+        streamHtml += '<div style="font-size:0.65rem; font-weight:800; color:var(--accent-gold); margin-bottom:2px; text-transform:uppercase;">Tied Players</div>';
         (lobby.tiedParticipantsList || []).forEach(uname => {
             const card = lobby.drawResults?.[uname];
             const isMe = (uname.toLowerCase() === activeUsername.toLowerCase());
@@ -1099,24 +1107,33 @@ window.updateUIFromLobby = function(lobby) {
         });
         streamHtml += '</div>';
 
-        // 2. Interactive Pool for Tied Player (if haven't picked yet)
-        if (isTied && !lobby.drawResults?.[activeUsername]) {
-            let poolHtml = '';
-            (lobby.drawPool || []).forEach((slot) => {
-                if (!slot.chosenBy) {
-                    poolHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slot.index})">?</div>`;
-                }
-            });
-            streamHtml += `
-                <div style="width:100%;">
-                    <div style="font-size:0.75rem; color:var(--accent-gold); margin-bottom:4px; font-weight:bold;">Tap a card from the tie-breaker pool:</div>
-                    <div class="pool-cards-grid">${poolHtml}</div>
+        // Filter: isolate strictly unchosen cards remaining in the deck
+        let tieDeckPool = (lobby.drawPool || []).filter(slot => !slot.chosenBy);
+        const countRemaining = lobby.deckCount !== undefined ? lobby.deckCount : tieDeckPool.length;
+        if (tieDeckPool.length > countRemaining) {
+            tieDeckPool = tieDeckPool.slice(0, countRemaining);
+        }
+
+        let poolHtml = '';
+        tieDeckPool.forEach((slot) => {
+            const clickable = isTied && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
+            poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
+        });
+
+        const tGrid = document.getElementById('tie-breaker-stream-grid');
+        if (tGrid) {
+            tGrid.className = 'draw-modal-split-layout';
+            tGrid.innerHTML = `
+                ${streamHtml}
+                <div class="draw-pool-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
+                        <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">Cards Left in Deck (${countRemaining})</span>
+                        <span style="font-size:0.65rem; color:var(--accent-gold);">${isTied ? 'Tap your card' : 'Watching'}</span>
+                    </div>
+                    <div class="pool-52-grid">${poolHtml}</div>
                 </div>
             `;
         }
-
-        const tGrid = document.getElementById('tie-breaker-stream-grid');
-        if (tGrid) tGrid.innerHTML = streamHtml;
         if (turnBanner) turnBanner.innerText = 'Tie-Breaker Draw';
     } else {
         if (poolModal) poolModal.style.display = 'none';
