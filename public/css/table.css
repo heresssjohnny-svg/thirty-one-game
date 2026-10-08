@@ -3,27 +3,32 @@
 .table-oval {
     width: 95%;
     max-width: 650px;
-    height: 46vh;
-    min-height: 250px;
+    /* Scaled dynamically to ensure bottom hand controls are never pushed offscreen */
+    height: clamp(210px, 38vh, 290px);
+    min-height: 210px;
     background: radial-gradient(ellipse at center, #065f46 0%, #044e36 60%, #022c1e 100%);
     border: 8px solid #5c3a21;
     border-radius: 180px;
     position: relative;
-    /* Margin cleared to avoid header/modal collisions */
-    margin: 38px auto 8px auto;
+    /* Clearance to prevent header/modal overlaps */
+    margin: 26px auto 6px auto;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
 }
 
 #game-view {
-    padding-top: 6px;
+    padding-top: 4px;
     overflow-y: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 /* Pots in Center Table */
 .pots-container {
     position: absolute;
-    top: 22%;
+    top: 20%;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -69,8 +74,8 @@
 }
 
 .card-slot {
-    width: 58px;
-    height: 82px;
+    width: 56px;
+    height: 80px;
     border-radius: 7px;
     background: #ffffff;
     border: 2px solid #cbd5e1;
@@ -173,7 +178,7 @@
     margin-top: 2px;
 }
 
-/* Responsive Oval Positions */
+/* Oval Seats */
 .seat-0 { bottom: -14px; left: 50%; transform: translateX(-50%); }
 .seat-1 { bottom: 18%; left: 3%; }
 .seat-2 { top: 10%; left: 6%; }
@@ -222,20 +227,25 @@
 }
 
 /* ==========================================================================
-   My Hand Control Dock (Bottom of Screen)
+   My Hand Control Dock (Lifts buttons above phone menu buttons)
    ========================================================================== */
 .my-hand-area {
     width: 100%;
     max-width: 650px;
     background: rgba(2, 44, 30, 0.95);
     border-top: 2px solid rgba(250, 204, 21, 0.3);
-    padding: 6px 10px;
+    padding-top: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    /* Pushes action buttons cleanly above phone's Android/iOS navigation bar */
+    padding-bottom: max(24px, calc(12px + env(safe-area-inset-bottom)));
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
     margin-top: auto;
     z-index: 500;
+    flex-shrink: 0;
 }
 
 .cards-flex {
@@ -243,7 +253,7 @@
     gap: 8px;
     justify-content: center;
     align-items: center;
-    margin: 4px 0;
+    margin: 3px 0;
     max-width: 100%;
     overflow-x: auto;
     padding: 2px 4px;
@@ -261,8 +271,8 @@
     padding: 6px 8px;
     font-weight: 900;
     cursor: pointer;
-    width: 64px;
-    height: 94px;
+    width: 62px;
+    height: 90px;
     border: 2px solid rgba(0, 0, 0, 0.15);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     flex-shrink: 0;
@@ -282,7 +292,7 @@
 }
 
 .my-card .card-suit-large {
-    font-size: 2rem;
+    font-size: 1.95rem;
     line-height: 1;
     display: flex;
     align-items: center;
@@ -322,11 +332,11 @@
 
 /* High-Contrast Colors */
 .red-suit {
-    color: #e11d48 !important; /* Crimson Red */
+    color: #e11d48 !important;
 }
 
 .black-suit {
-    color: #0f172a !important; /* Jet Black */
+    color: #0f172a !important;
 }
 
 .bottom-action-bar {
@@ -335,4 +345,5 @@
     width: 100%;
     justify-content: center;
     flex-wrap: wrap;
+    padding-bottom: 2px;
 }
