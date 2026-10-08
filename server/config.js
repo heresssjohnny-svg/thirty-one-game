@@ -1,8 +1,17 @@
-// server/config.js
+// server/config.js - Server Configuration & Environment Variables
+
 module.exports = {
-    PORT: process.env.PORT || 3000,
-    LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || 'thirtyone-chat',
-    LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e',
+    // Port binding: Render dynamically assigns PORT, fallback to 10000 / 3000
+    PORT: process.env.PORT || 10000,
+
+    // Critical: Secret key for signing and verifying JWT tokens
+    JWT_SECRET: process.env.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026',
+
+    // Hetzner LiveKit SFU credentials & host
     LIVEKIT_HOST: process.env.LIVEKIT_HOST || 'wss://31game.duckdns.org',
-    INACTIVITY_TIMEOUT_MS: 20 * 60 * 1000 // 20 minutes
+    LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || 'devkey',
+    LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || 'secret',
+
+    // Inactivity threshold before cleaning up empty rooms
+    INACTIVITY_TIMEOUT_MS: 20 * 60 * 1000
 };
