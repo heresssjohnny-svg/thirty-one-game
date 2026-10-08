@@ -1,44 +1,32 @@
-// public/js/config.js
+// public/js/config.js - Client State & Global Config
+
+window.GOOGLE_CLIENT_ID = "420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com";
+
 window.clientState = {
-    username: 'Player1',
-    isReady: false,
-    playersList: [],
-    spectatorsList: [],
-    discardTop: null,
-    sideBetLedger: {},
-    mainGameLedger: {},
-    botBetLedger: {},
-    lastDiscardPickup: null,
+    username: '',
+    lobbyCode: '',
+    seat: null,
+    lives: 2,
+    cards: [],
     gameState: 'lobby',
-    activeParticipantsCount: 3,
-    isSpectator: false,
-    tiedParticipantsList: [],
-    activeBetsList: [],
-    pendingBetsList: []
+    turnIndex: 0,
+    dealerIndex: 0,
+    currentTurnUser: '',
+    knockedBy: null,
+    isBot: false,
+    inVC: false,
+    isMuted: true,
+    lastDiscardPickup: null,
+    fedCardReminder: null,
+    activeBets: [],
+    pendingBets: [],
+    globalProposals: []
 };
 
 window.appGlobals = {
     ws: null,
-    isConnected: false,
-    pendingQueue: [],
-    lastKnownKnockedBy: null,
-    hasChosenPoolCard: false,
-    lastPhaseMessage: '',
-    lastGameState: '',
-    currentJoinedCode: null,
-    latestLobbySnapshot: null,
-    lastCelebratedWinner: null,
-    
-    // LiveKit Voice Chat State
     livekitRoom: null,
-    isLiveKitConnected: false,
-    isVoiceChatActive: false,
-    isConnectingVoice: false,
-    latestLiveKitHost: null,
-    latestLiveKitToken: null,
-
-    // YouTube Audio State
-    activeSyncedSongKey: '',
-    individualVolume: 0.8,
-    isIndividualMuted: false
+    audioContext: null,
+    reconnectAttempts: 0,
+    isTabActive: true
 };
