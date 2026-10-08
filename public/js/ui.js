@@ -1,6 +1,6 @@
 // public/js/ui.js
 
-// Safe message dispatcher ensuring compatibility with all network wrappers
+// Safe message dispatcher with fallback to available sockets
 function safeSend(msgObj) {
     if (typeof window.sendSocketMessage === 'function') {
         window.sendSocketMessage(msgObj);
@@ -13,42 +13,43 @@ function safeSend(msgObj) {
     }
 }
 window.initSocketAndSend = safeSend;
+window.sendSocketMessage = safeSend;
 
 /**
- * Normalizes card data (object or shorthand string) and produces authentic playing card markup
- * @param {string|object} card - e.g. "10H", { val: "A", suit: "♠" }
- * @param {boolean} isMini - if true, renders compact format for seat previews
- * @param {string} extraClass - optional classes like 'discard-card'
+ * Normalizes card data (object or string) and returns authentic playing card HTML.
+ * @param {string|object} card - e.g. "10H", { val: "A", suit: "H" }
+ * @param {boolean} isMini - Compact format for seat avatars
+ * @param {string} extraClass - Custom classes
+ * @param {string} clickAttr - Inline onclick attribute string
  */
-function formatCardHtml(card, isMini = false, extraClass = '') {
+function formatCardHtml(card, isMini = false, extraClass = '', clickAttr = '') {
     if (!card) {
-        return `<div class="card-slot empty-slot ${extraClass}"><span>Empty</span></div>`;
+        return `<div class="card-slot empty-slot ${extraClass}" ${clickAttr}><span>Empty</span></div>`;
     }
 
     let val = '';
-    let suit = '';
+    let rawSuit = '';
 
     if (typeof card === 'string') {
         const raw = card.trim().toUpperCase();
-        const suitChar = raw.slice(-1);
+        rawSuit = raw.slice(-1);
         val = raw.slice(0, -1);
-
-        const suitMap = {
-            'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣',
-            '♠': '♠', '♥': '♥', '♦': '♦', '♣': '♣'
-        };
-        suit = suitMap[suitChar] || suitChar;
     } else if (typeof card === 'object') {
         val = card.val || card.value || card.rank || '';
-        suit = card.suit || '';
+        rawSuit = card.suit || '';
     }
 
-    const isRed = ['♥', '♦', 'H', 'D'].includes(suit);
+    const suitMap = {
+        'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣',
+        '♠': '♠', '♥': '♥', '♦': '♦', '♣': '♣'
+    };
+    const suit = suitMap[rawSuit] || rawSuit;
+    const isRed = (suit === '♥' || suit === '♦' || rawSuit === 'H' || rawSuit === 'D');
     const suitClass = isRed ? 'red-suit' : 'black-suit';
 
     if (isMini) {
         return `
-            <div class="mini-card ${suitClass} ${extraClass}">
+            <div class="mini-card ${suitClass} ${extraClass}" ${clickAttr}>
                 <span class="mini-val">${val}</span>
                 <span class="mini-suit">${suit}</span>
             </div>
@@ -56,7 +57,7 @@ function formatCardHtml(card, isMini = false, extraClass = '') {
     }
 
     return `
-        <div class="playing-card ${suitClass} ${extraClass}">
+        <div class="playing-card ${suitClass} ${extraClass}" ${clickAttr}>
             <div class="card-corner top-left">
                 <span class="corner-val">${val}</span>
                 <span class="corner-suit">${suit}</span>
@@ -78,15 +79,23 @@ function calculateLocalScore(cards) {
     if (!cards || cards.length === 0) return 0;
     const scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
     const sums = {};
-    scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + (c.points || 0); });
-    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) {
+    scoringCards.forEach(c => {
+        const suitMap = { 'S': '♠', 'H': '♥', 'D': '♦', 'C': '♣' };
+        const s = suitMap[c.suit] || c.suit;
+        sums[s] = (sums[s] || 0) + (c.points || 0);
+    });
+    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoring2Valid(scoringCards[2].val)) {
         return 30.5;
     }
     return Math.max(...Object.values(sums), 0);
 }
 
+function scoring2Valid(val) {
+    return val;
+}
+
 function showCenterNotification(msg) {
-    const banner = document.getElementById('center-notification-banner');
+    const banner = document.getElementById('center-notification-banner') || document.getElementById('phase-message-display');
     if (!banner) return;
     banner.innerText = msg;
     banner.style.display = 'block';
@@ -94,7 +103,7 @@ function showCenterNotification(msg) {
     if (window.appGlobals.notificationTimer) clearTimeout(window.appGlobals.notificationTimer);
     window.appGlobals.notificationTimer = setTimeout(() => {
         banner.style.display = 'none';
-    }, 3200);
+    }, 2800);
 }
 
 function toggleModal(id) {
@@ -107,13 +116,13 @@ function renderLobbyList(lobbies) {
     const container = document.getElementById('lobby-list');
     if (!container) return;
     if (!lobbies || lobbies.length === 0) {
-        container.innerHTML = '<div style="text-align:center; color:#64748b; padding:6px;">No lobbies found</div>';
+        container.innerHTML = '<div style="text-align:center; color:#64748b; padding:8px; font-size:0.75rem;">No active lobbies</div>';
         return;
     }
     container.innerHTML = lobbies.map(l => `
         <div class="lobby-item" onclick="joinLobbyCode('${l.code}')">
-            <span>${l.name} (${l.count || l.playerCount || 1}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span>
-            <span style="color:#38bdf8;">Join</span>
+            <span>${l.name || l.code} (${l.count || l.playerCount || 1}/${l.maxPlayers || 6})</span>
+            <span style="color:var(--accent-cyan, #38bdf8); font-weight:bold;">Join</span>
         </div>
     `).join('');
 }
@@ -164,9 +173,7 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
 
 // Player Action Handlers
 function drawCard(source) {
-    const type = source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD';
-    safeSend({ type: type, source: source });
-    safeSend({ type: 'DRAW_CARD', source: source });
+    safeSend({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD', source });
 }
 function drawFromDeck() { drawCard('deck'); }
 function drawFromDiscard() { drawCard('discard'); }
@@ -179,7 +186,7 @@ function choosePoolCard(index) {
     if (window.appGlobals?.hasChosenPoolCard) return;
     if (!window.appGlobals) window.appGlobals = {};
     window.appGlobals.hasChosenPoolCard = true;
-    safeSend({ type: 'CHOOSE_POOL_CARD', index: index });
+    safeSend({ type: 'CHOOSE_POOL_CARD', index: index, cardIndex: index });
 }
 
 function knockRound() {
@@ -211,18 +218,18 @@ function knockRound() {
 function toggleReady() {
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState?.username;
     const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername?.toLowerCase());
-    const ready = !me?.ready;
-    safeSend({ type: 'SET_READY', ready: ready });
-    safeSend({ type: 'TOGGLE_READY' });
+    const isReady = !me?.ready;
+    safeSend({ type: 'SET_READY', ready: isReady });
 }
+function setReady() { toggleReady(); }
 
 function sitDown() { safeSend({ type: 'SIT_DOWN' }); }
 function standUp() { safeSend({ type: 'STAND_UP' }); }
 
 function clickNextHand() {
     safeSend({ type: 'NEXT_HAND_READY' });
-    safeSend({ type: 'NEXT_HAND' });
 }
+function nextHand() { clickNextHand(); }
 
 function leaveLobby() {
     safeSend({ type: 'LEAVE_LOBBY' });
@@ -235,21 +242,55 @@ function proposeEndGame() {
     }
 }
 
+function createLobby(isPrivate = false) {
+    const username = document.getElementById('username-input')?.value.trim() || 'Player1';
+    const lobbyName = document.getElementById('lobby-name-input')?.value.trim() || `${username}'s Table`;
+    if (window.clientState) window.clientState.username = username;
+    safeSend({ type: 'CREATE_LOBBY', username, name: lobbyName, isPrivate });
+}
+
+function joinLobby() {
+    const code = document.getElementById('join-code-input')?.value.trim();
+    if (!code) {
+        alert("Please enter a lobby code");
+        return;
+    }
+    joinLobbyCode(code);
+}
+
 function joinLobbyCode(code) {
     const username = document.getElementById('username-input')?.value.trim() || window.clientState?.username || 'Player1';
-    safeSend({ type: 'JOIN_LOBBY', code: code, username: username });
+    if (window.clientState) window.clientState.username = username;
+    safeSend({ type: 'JOIN_LOBBY', code: code.toUpperCase(), username });
 }
+function joinByCode(code) { joinLobbyCode(code); }
 
 function addBot() { safeSend({ type: 'ADD_BOT' }); }
 function removeBot() { safeSend({ type: 'REMOVE_BOT' }); }
+
+function updateSettings() {
+    const wager = document.getElementById('config-wager')?.value || 5;
+    const lives = document.getElementById('config-lives')?.value || 3;
+    safeSend({ type: 'UPDATE_CONFIG', wager: Number(wager), lives: Number(lives) });
+}
+function updateWager() { updateSettings(); }
+
+function refreshLobbies() {
+    safeSend({ type: 'GET_LOBBIES' });
+}
 
 function submitEliminationProposal(targetUsername, amount) {
     safeSend({ type: 'PROPOSE_SIDE_BET', target: targetUsername, amount: Number(amount) });
     toggleModal('bet-modal');
 }
 
-function kickPeekerAction(spectatorUsername) {
-    safeSend({ type: 'KICK_PEEKER', spectatorUsername: spectatorUsername });
+function submitSideBet() {
+    const target = document.getElementById('bet-target-user')?.value;
+    const betType = document.getElementById('bet-type-select')?.value;
+    const pickUser = document.getElementById('bet-pick-user')?.value;
+    const wagerAmt = document.getElementById('bet-amount-input')?.value || 5;
+    safeSend({ type: 'PROPOSE_BET', target, betType, pickUser, wagerAmt: Number(wagerAmt) });
+    toggleModal('sidebets-modal');
 }
 
 function stopPeekingAction() {
@@ -260,6 +301,7 @@ function stopPeekingAction() {
 
 function openSettingsModal() { toggleModal('settings-modal'); }
 function openActiveBetsModal() { toggleModal('active-bets-modal'); }
+function openSideBetsModal() { toggleModal('sidebets-modal'); }
 function openVcParticipantsModal() { toggleModal('vc-participants-modal'); }
 
 function openLedgerModal() {
@@ -276,27 +318,36 @@ function openSpectatorListModal() {
     toggleModal('spectators-modal');
 }
 
-// Master UI Synchronization
+// Master UI Update Loop
 function updateUIFromLobby(lobby) {
     if (!window.appGlobals) window.appGlobals = {};
     if (!window.clientState) window.clientState = {};
 
     window.appGlobals.latestLobbySnapshot = lobby;
 
-    document.getElementById('main-menu').style.display = 'none';
-    document.getElementById('game-view').style.display = 'flex';
-    document.getElementById('end-game-btn').style.display = 'inline-block';
-    document.getElementById('leave-lobby-btn').style.display = 'inline-block';
-    
+    const mainMenu = document.getElementById('main-menu');
+    const gameView = document.getElementById('game-view');
+    if (mainMenu) mainMenu.style.display = 'none';
+    if (gameView) gameView.style.display = 'flex';
+
+    const endGameBtn = document.getElementById('end-game-btn');
+    const leaveLobbyBtn = document.getElementById('leave-lobby-btn') || document.getElementById('leave-btn');
+    if (endGameBtn) endGameBtn.style.display = 'inline-block';
+    if (leaveLobbyBtn) leaveLobbyBtn.style.display = 'inline-block';
+
     const vcGroup = document.getElementById('vc-group-container');
     if (vcGroup) vcGroup.style.display = 'inline-flex';
 
-    const inGameBtns = document.getElementById('in-game-header-btns');
+    const inGameBtns = document.getElementById('in-game-header-btns') || document.getElementById('in-game-top-row-btns');
     if (inGameBtns) inGameBtns.style.display = 'flex';
 
-    document.getElementById('room-title-display').innerText = `${lobby.name} [${lobby.code}]`;
+    const inGameTools = document.getElementById('in-game-tools-row');
+    if (inGameTools) inGameTools.style.display = 'flex';
 
-    const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username;
+    const roomTitle = document.getElementById('room-title-display');
+    if (roomTitle) roomTitle.innerText = `${lobby.name || lobby.code} [${lobby.code}]`;
+
+    const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState.username || 'Player1';
 
     if (lobby.gameState !== window.appGlobals.lastGameState) {
         window.appGlobals.hasChosenPoolCard = false;
@@ -311,14 +362,14 @@ function updateUIFromLobby(lobby) {
 
     updateKnockAlertAndAudio(lobby);
 
-    // Initial Discard Pickup Notification Modal
+    // Initial Discard Pickup Notification
     const topleftModal = document.getElementById('discard-pickup-topleft-modal');
     if (topleftModal) {
         if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
             topleftModal.innerHTML = `
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <span><b>${lobby.lastDiscardPickup.username}</b> drew:</span>
-                    ${formatCardHtml(lobby.lastDiscardPickup.card, false)}
+                    <span><b>${lobby.lastDiscardPickup.username}</b> drew initial card:</span>
+                    ${formatCardHtml(lobby.lastDiscardPickup.card, true)}
                 </div>
             `;
             topleftModal.style.display = 'flex';
@@ -327,14 +378,14 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Fed Card Reminder Modal
+    // Fed Card Reminder Notification
     const fedModal = document.getElementById('fed-card-topright-modal');
     if (fedModal) {
         if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
             fedModal.innerHTML = `
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <span><b>${lobby.myFedCardReminder.target}</b> took your:</span>
-                    ${formatCardHtml(lobby.myFedCardReminder.card, false)}
+                    <span><b>${lobby.myFedCardReminder.target}</b> took your card:</span>
+                    ${formatCardHtml(lobby.myFedCardReminder.card, true)}
                 </div>
             `;
             fedModal.style.display = 'flex';
@@ -349,17 +400,11 @@ function updateUIFromLobby(lobby) {
     }
 
     window.clientState.gameState = lobby.gameState;
-    window.clientState.playersList = lobby.players.map(p => p.username);
+    window.clientState.playersList = (lobby.players || []).map(p => p.username);
     window.clientState.spectatorsList = lobby.spectators || [];
     window.clientState.activeParticipantsCount = lobby.activeParticipantsCount || 3;
-    window.clientState.tiedParticipantsList = lobby.tiedParticipantsList || [];
-    window.clientState.activeBetsList = lobby.activeBets || [];
-    window.clientState.pendingBetsList = lobby.pendingBets || [];
 
-    const specCountEl = document.getElementById('spec-count');
-    if (specCountEl) specCountEl.innerText = window.clientState.spectatorsList.length;
-
-    const me = lobby.players.find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
+    const me = (lobby.players || []).find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
     const isSpecUser = (lobby.spectators || []).some(s => (s.username || s).trim().toLowerCase() === activeUsername.toLowerCase());
     const isEliminated = me && me.eliminated;
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
@@ -385,8 +430,8 @@ function updateUIFromLobby(lobby) {
             if (readyBtn) readyBtn.style.display = 'none';
             if (knockBtn) knockBtn.style.display = 'none';
             if (sitBtn) {
-                sitBtn.style.display = isSpecUser || !me ? 'inline-block' : 'none';
-                sitBtn.disabled = lobby.players.length >= 6;
+                sitBtn.style.display = (isSpecUser || !me) ? 'inline-block' : 'none';
+                sitBtn.disabled = (lobby.players || []).length >= 6;
             }
         }
     } else {
@@ -425,6 +470,11 @@ function updateUIFromLobby(lobby) {
         turnBanner.innerText = isMyTurn ? "YOUR TURN!" : ((lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') ? `Turn: ${lobby.currentTurnUser}` : 'Turn: Waiting...');
     }
 
+    const centerTurnIndicator = document.getElementById('center-turn-indicator');
+    if (centerTurnIndicator) {
+        centerTurnIndicator.style.display = isMyTurn ? 'block' : 'none';
+    }
+
     updateKnockButtonState(lobby, me, isMyTurn);
 
     const lobbyConfigBar = document.getElementById('lobby-config-bar');
@@ -459,87 +509,62 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Dealer Draw Phase Screen / Pool Modal
-    const poolModal = document.getElementById('pool-draw-modal') || document.getElementById('dealer-draw-modal');
-    if (poolModal) {
-        if (lobby.gameState === 'dealerDraw') {
-            const poolGrid = document.getElementById('pool-cards-grid') || poolModal.querySelector('.pool-grid');
-            const poolCards = lobby.dealerDrawPool || lobby.poolCards || new Array(10).fill(null);
-            if (poolGrid) {
-                poolGrid.innerHTML = poolCards.map((c, idx) => {
-                    if (c && c.card) {
-                        return `
-                            <div class="draw-modal-card-item">
-                                <span class="draw-modal-user-tag">${c.username}</span>
-                                ${formatCardHtml(c.card, false)}
-                            </div>
-                        `;
-                    }
-                    return `
-                        <div class="draw-modal-card-item" onclick="choosePoolCard(${idx})">
-                            <div class="card-slot back"><div class="card-back-inner"></div></div>
-                        </div>
-                    `;
-                }).join('');
+    // Ensure Felt Structure Exists inside #table-oval-container
+    const tableContainer = document.getElementById('table-oval-container');
+    if (tableContainer) {
+        let deckCenter = document.getElementById('deck-center');
+        if (!deckCenter) {
+            deckCenter = document.createElement('div');
+            deckCenter.id = 'deck-center';
+            deckCenter.className = 'deck-center';
+            deckCenter.innerHTML = `
+                <div class="card-slot back" id="deck-pile" onclick="drawCard('deck')">
+                    <div class="card-back-inner"></div>
+                    <div class="deck-counter-badge" id="deck-count-display">0 left</div>
+                </div>
+                <div class="card-slot empty-slot" id="discard-pile" onclick="drawCard('discard')">
+                    <span>Empty</span>
+                </div>
+            `;
+            tableContainer.appendChild(deckCenter);
+        }
+
+        // Ensure 6 static seat slots exist
+        for (let s = 0; s < 6; s++) {
+            if (!document.getElementById(`seat-${s}`)) {
+                const seatDiv = document.createElement('div');
+                seatDiv.id = `seat-${s}`;
+                seatDiv.className = `seat seat-${s}`;
+                tableContainer.appendChild(seatDiv);
             }
-            poolModal.style.display = 'flex';
-        } else {
-            poolModal.style.display = 'none';
         }
     }
 
-    // Tie-Breaker Draw Screen / Modal
-    const tiebreakerModal = document.getElementById('tie-breaker-reveal-modal') || document.getElementById('tiebreaker-modal');
-    if (tiebreakerModal) {
-        const tiebreakerPool = document.getElementById('tie-breaker-pool') || document.getElementById('tiebreaker-pool');
-        if (lobby.gameState === 'tieBreaker' && (lobby.tieBreakerPool || lobby.tieBreakerResults)) {
-            const poolList = lobby.tieBreakerPool || lobby.tieBreakerResults || [];
-            if (tiebreakerPool) {
-                tiebreakerPool.innerHTML = poolList.map(item => `
-                    <div class="draw-modal-card-item">
-                        <span class="draw-modal-user-tag">${item.username}</span>
-                        ${formatCardHtml(item.card, false)}
-                    </div>
-                `).join('');
-            }
-            tiebreakerModal.style.display = 'flex';
-        } else {
-            tiebreakerModal.style.display = 'none';
-        }
-    }
-
-    // Center Felt Deck & Discard Elements
+    // Center Deck & Discard Elements
     const deckCount = (lobby.deck && lobby.deck.length !== undefined) ? lobby.deck.length : (lobby.deckCount || 0);
     const topDiscard = (lobby.discardPile && lobby.discardPile.length > 0)
         ? lobby.discardPile[lobby.discardPile.length - 1]
         : lobby.discardTop;
 
-    const deckPile = document.getElementById('deck-pile');
-    if (deckPile) {
-        deckPile.className = 'card-slot back';
-        deckPile.onclick = () => drawCard('deck');
-        deckPile.innerHTML = `
-            <div class="card-back-inner"></div>
-            <div class="deck-counter-badge" id="deck-count-display">${deckCount} left</div>
-        `;
-    }
+    const deckCountDisplay = document.getElementById('deck-count-display') || document.getElementById('deck-counter-val');
+    if (deckCountDisplay) deckCountDisplay.innerText = `${deckCount} left`;
 
-    const discardPile = document.getElementById('discard-pile');
+    const discardPile = document.getElementById('discard-pile') || document.getElementById('discard-slot');
     if (discardPile) {
         discardPile.onclick = () => drawCard('discard');
         if (!topDiscard) {
             discardPile.className = 'card-slot empty-slot';
             discardPile.innerHTML = '<span>Empty</span>';
         } else {
-            discardPile.className = 'card-slot';
-            discardPile.innerHTML = formatCardHtml(topDiscard, false, 'discard-card-inner');
+            discardPile.className = '';
+            discardPile.innerHTML = formatCardHtml(topDiscard, false, 'table-discard-card');
         }
     }
 
-    // Render 6 Seats with Badges (Dealer [D], VC status, and Bot states)
+    // Render 6 Player Seats
     for (let s = 0; s < 6; s++) {
         const seatNode = document.getElementById(`seat-${s}`);
-        const p = lobby.players.find(player => player.seat === s);
+        const p = (lobby.players || []).find(player => player.seat === s);
 
         if (!seatNode) continue;
 
@@ -569,18 +594,58 @@ function updateUIFromLobby(lobby) {
         `;
     }
 
-    // Local Hand Area (Bottom Controls)
+    // Local Hand (Bottom Dock)
     const myCardsContainer = document.getElementById('my-cards-container');
     const myScoreDisplay = document.getElementById('my-score-display');
     if (me && me.cards && myCardsContainer) {
         myCardsContainer.innerHTML = me.cards.map((c, i) => `
-            <div onclick="discardCard(${i})">
-                ${formatCardHtml(c, false, 'my-card')}
-            </div>
+            ${formatCardHtml(c, false, 'my-card', `onclick="discardCard(${i})"`)}
         `).join('');
         if (myScoreDisplay) myScoreDisplay.innerText = calculateLocalScore(me.cards);
     }
 }
+
+// Global Exports
+window.updateUIFromLobby = updateUIFromLobby;
+window.renderLobbyState = updateUIFromLobby;
+window.renderGameView = updateUIFromLobby;
+window.renderLobbyList = renderLobbyList;
+window.createLobby = createLobby;
+window.joinLobby = joinLobby;
+window.joinLobbyCode = joinLobbyCode;
+window.joinByCode = joinByCode;
+window.drawCard = drawCard;
+window.drawFromDeck = drawFromDeck;
+window.drawFromDiscard = drawFromDiscard;
+window.discardCard = discardCard;
+window.knockRound = knockRound;
+window.toggleReady = toggleReady;
+window.setReady = setReady;
+window.sitDown = sitDown;
+window.standUp = standUp;
+window.clickNextHand = clickNextHand;
+window.nextHand = nextHand;
+window.leaveLobby = leaveLobby;
+window.proposeEndGame = proposeEndGame;
+window.addBot = addBot;
+window.removeBot = removeBot;
+window.updateSettings = updateSettings;
+window.updateWager = updateWager;
+window.refreshLobbies = refreshLobbies;
+window.choosePoolCard = choosePoolCard;
+window.submitEliminationProposal = submitEliminationProposal;
+window.submitSideBet = submitSideBet;
+window.stopPeekingAction = stopPeekingAction;
+window.openSettingsModal = openSettingsModal;
+window.openActiveBetsModal = openActiveBetsModal;
+window.openSideBetsModal = openSideBetsModal;
+window.openVcParticipantsModal = openVcParticipantsModal;
+window.openLedgerModal = openLedgerModal;
+window.openSpectatorListModal = openSpectatorListModal;
+window.toggleModal = toggleModal;
+window.showCenterNotification = showCenterNotification;
+window.formatCardHtml = formatCardHtml;
+window.createCardHTML = createCardHTML;
 
 function resetToMainMenu() {
     if (window.appGlobals) {
@@ -588,20 +653,29 @@ function resetToMainMenu() {
         window.appGlobals.latestLobbySnapshot = null;
         window.appGlobals.wasMyTurn = false;
     }
-    document.getElementById('game-view').style.display = 'none';
-    document.getElementById('main-menu').style.display = 'flex';
-    document.getElementById('end-game-btn').style.display = 'none';
-    document.getElementById('leave-lobby-btn').style.display = 'none';
-    
+    const gameView = document.getElementById('game-view');
+    const mainMenu = document.getElementById('main-menu');
+    if (gameView) gameView.style.display = 'none';
+    if (mainMenu) mainMenu.style.display = 'flex';
+
+    const endGameBtn = document.getElementById('end-game-btn');
+    const leaveLobbyBtn = document.getElementById('leave-lobby-btn') || document.getElementById('leave-btn');
+    if (endGameBtn) endGameBtn.style.display = 'none';
+    if (leaveLobbyBtn) leaveLobbyBtn.style.display = 'none';
+
     const vcGroup = document.getElementById('vc-group-container');
     if (vcGroup) vcGroup.style.display = 'none';
-    
-    const inGameBtns = document.getElementById('in-game-header-btns');
+
+    const inGameBtns = document.getElementById('in-game-header-btns') || document.getElementById('in-game-top-row-btns');
     if (inGameBtns) inGameBtns.style.display = 'none';
 
+    const inGameTools = document.getElementById('in-game-tools-row');
+    if (inGameTools) inGameTools.style.display = 'none';
+
     if (window.clientState) window.clientState.isReady = false;
-    if (typeof refreshLobbies === 'function') refreshLobbies();
+    refreshLobbies();
 }
+window.resetToMainMenu = resetToMainMenu;
 
 function toggleChatWindow() {
     const win = document.getElementById('chat-window');
@@ -616,11 +690,13 @@ function toggleChatWindow() {
         }
     }
 }
+window.toggleChatWindow = toggleChatWindow;
 
 function toggleGlobalSidebar() {
     const sidebar = document.getElementById('global-side-bets-sidebar');
     if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
 }
+window.toggleGlobalSidebar = toggleGlobalSidebar;
 
 function sendChatMessage() {
     const input = document.getElementById('chat-input');
@@ -631,6 +707,7 @@ function sendChatMessage() {
         input.value = '';
     }
 }
+window.sendChatMessage = sendChatMessage;
 
 function appendChatMessage(user, msg) {
     const box = document.getElementById('chat-messages');
@@ -638,14 +715,15 @@ function appendChatMessage(user, msg) {
     box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
     box.scrollTop = box.scrollHeight;
 }
+window.appendChatMessage = appendChatMessage;
 
 function tapSeat(targetUsername) {
     if (window.clientState?.gameState === 'lobby') return;
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState?.username;
     if (targetUsername === activeUsername) return;
 
-    const modalTitle = document.getElementById('bet-modal-title');
-    const modalBody = document.getElementById('bet-modal-body');
+    const modalTitle = document.getElementById('bet-modal-title') || document.getElementById('seat-action-title');
+    const modalBody = document.getElementById('bet-modal-body') || document.getElementById('seat-action-body');
     if (!modalTitle || !modalBody) return;
 
     modalTitle.innerText = `Side Bet on ${targetUsername}`;
@@ -657,3 +735,4 @@ function tapSeat(targetUsername) {
     `;
     toggleModal('bet-modal');
 }
+window.tapSeat = tapSeat;
