@@ -1,25 +1,23 @@
-/* css/table.css */
+/* public/css/table.css */
 
 .table-oval {
     width: 95%;
     max-width: 650px;
-    /* Use clamp so it adapts across diverse screen heights */
-    height: clamp(210px, 39vh, 310px);
-    min-height: 210px;
+    height: 46vh;
+    min-height: 250px;
     background: radial-gradient(ellipse at center, #065f46 0%, #044e36 60%, #022c1e 100%);
-    border: 7px solid #5c3a21;
+    border: 8px solid #5c3a21;
     border-radius: 180px;
     position: relative;
-    margin: 22px auto 6px auto;
+    /* Margin cleared to avoid header/modal collisions */
+    margin: 38px auto 8px auto;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
 }
 
 #game-view {
-    padding-top: 4px;
+    padding-top: 6px;
     overflow-y: hidden;
-    height: 100%;
-    width: 100%;
 }
 
 /* Pots in Center Table */
@@ -40,20 +38,22 @@
     background: rgba(15, 23, 42, 0.85);
     border: 1.5px solid var(--accent-gold);
     color: var(--accent-gold);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-weight: 800;
     padding: 2px 10px;
     border-radius: 12px;
+    white-space: nowrap;
 }
 
 .side-pot-total-display {
     background: rgba(4, 78, 54, 0.9);
     border: 1px solid var(--accent-cyan);
     color: var(--accent-cyan);
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 700;
     padding: 1px 8px;
     border-radius: 10px;
+    white-space: nowrap;
 }
 
 /* Deck & Discard Center Layout */
@@ -63,23 +63,26 @@
     left: 50%;
     transform: translate(-50%, -50%);
     display: flex;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
     z-index: 20;
 }
 
 .card-slot {
-    width: 54px;
-    height: 76px;
+    width: 58px;
+    height: 82px;
     border-radius: 7px;
     background: #ffffff;
     border: 2px solid #cbd5e1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 5px 12px rgba(0, 0, 0, 0.55);
     transition: transform 0.15s ease;
+    user-select: none;
+    touch-action: manipulation;
 }
 
 .card-slot:active {
@@ -90,13 +93,12 @@
     background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
     color: #93c5fd;
     font-weight: 900;
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     border: 2px solid #60a5fa;
-    flex-direction: column;
 }
 
 .deck-counter {
-    font-size: 0.52rem;
+    font-size: 0.55rem;
     color: #bfdbfe;
     margin-top: 2px;
 }
@@ -132,24 +134,26 @@
     align-items: center;
     gap: 2px;
     z-index: 30;
+    user-select: none;
 }
 
 .seat-name-area {
     background: rgba(15, 23, 42, 0.88);
     border: 1px solid rgba(250, 204, 21, 0.35);
     border-radius: 6px;
-    padding: 2px 5px;
-    font-size: 0.62rem;
+    padding: 3px 6px;
+    font-size: 0.65rem;
     color: var(--text-main);
     text-align: center;
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
-    max-width: 110px;
+    max-width: 120px;
+    line-height: 1.2;
 }
 
 .current-turn-seat .seat-name-area {
     border-color: var(--accent-gold);
-    box-shadow: 0 0 12px rgba(250, 204, 21, 0.8);
+    box-shadow: 0 0 12px rgba(250, 204, 21, 0.85);
 }
 
 .dealer-badge {
@@ -158,8 +162,9 @@
     font-weight: 900;
     border-radius: 50%;
     padding: 0 4px;
-    font-size: 0.58rem;
+    font-size: 0.6rem;
     margin-left: 2px;
+    display: inline-block;
 }
 
 .seat-cards {
@@ -170,11 +175,11 @@
 
 /* Responsive Oval Positions */
 .seat-0 { bottom: -14px; left: 50%; transform: translateX(-50%); }
-.seat-1 { bottom: 16%; left: 2%; }
-.seat-2 { top: 10%; left: 4%; }
+.seat-1 { bottom: 18%; left: 3%; }
+.seat-2 { top: 10%; left: 6%; }
 .seat-3 { top: -14px; left: 50%; transform: translateX(-50%); }
-.seat-4 { top: 10%; right: 4%; }
-.seat-5 { bottom: 16%; right: 2%; }
+.seat-4 { top: 10%; right: 6%; }
+.seat-5 { bottom: 18%; right: 3%; }
 
 /* ==========================================================================
    Next Hand Overlay Button
@@ -217,32 +222,31 @@
 }
 
 /* ==========================================================================
-   My Hand Control Dock (Lifts Above Phone Home/Navigation Bar)
+   My Hand Control Dock (Bottom of Screen)
    ========================================================================== */
 .my-hand-area {
     width: 100%;
     max-width: 650px;
-    background: rgba(2, 44, 30, 0.97);
+    background: rgba(2, 44, 30, 0.95);
     border-top: 2px solid rgba(250, 204, 21, 0.3);
-    padding-top: 6px;
-    padding-left: max(10px, env(safe-area-inset-left));
-    padding-right: max(10px, env(safe-area-inset-right));
-    /* Safe area inset ensures buttons are entirely above phone navigation buttons */
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 6px 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
     margin-top: auto;
     z-index: 500;
-    flex-shrink: 0;
 }
 
 .cards-flex {
     display: flex;
     gap: 8px;
     justify-content: center;
-    margin: 3px 0;
+    align-items: center;
+    margin: 4px 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 2px 4px;
 }
 
 /* Player Hand Large Cards */
@@ -254,13 +258,16 @@
     flex-direction: column;
     justify-content: space-between;
     align-items: center;
-    padding: 5px 7px;
+    padding: 6px 8px;
     font-weight: 900;
     cursor: pointer;
     width: 64px;
-    height: 92px;
+    height: 94px;
     border: 2px solid rgba(0, 0, 0, 0.15);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
+    flex-shrink: 0;
+    user-select: none;
+    touch-action: manipulation;
 }
 
 .my-card:active {
@@ -268,7 +275,7 @@
 }
 
 .my-card .card-value {
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     font-weight: 900;
     align-self: flex-start;
     line-height: 1;
@@ -297,6 +304,7 @@
     align-items: center;
     padding: 2px 3px;
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
+    flex-shrink: 0;
 }
 
 .mini-card .mini-val {
@@ -307,7 +315,7 @@
 }
 
 .mini-card .mini-suit {
-    font-size: 1.05rem;
+    font-size: 1.1rem;
     line-height: 1;
     margin-top: -2px;
 }
@@ -326,4 +334,5 @@
     gap: 6px;
     width: 100%;
     justify-content: center;
+    flex-wrap: wrap;
 }
