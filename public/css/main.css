@@ -1,4 +1,4 @@
-/* public/css/main.css - Casino Felt Theme, Typography, Layout & Header Controls */
+/* public/css/main.css - Casino Felt Theme, Double-Row In-Game Header & Form Controls */
 :root {
     --felt-color: #044e36;
     --felt-edge: #022c1e;
@@ -44,7 +44,9 @@ body {
     transform: rotate(-15deg);
 }
 
-/* Header */
+/* ==========================================================================
+   Header Navigation (Primary Row & Secondary In-Game Tools Row)
+   ========================================================================== */
 header {
     padding-top: max(8px, env(safe-area-inset-top));
     padding-left: max(10px, env(safe-area-inset-left));
@@ -81,6 +83,21 @@ header {
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.header-row-secondary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-top: 2px;
+}
+
+.header-row-secondary::-webkit-scrollbar {
+    display: none;
 }
 
 main {
@@ -274,7 +291,7 @@ main {
     font-size: 0.75rem;
 }
 
-/* Buttons */
+/* General Buttons */
 button, .btn-link {
     background: #2563eb;
     color: white;
@@ -339,7 +356,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .chat-input-row { display: flex; gap: 4px; margin-top: 4px; }
 .chat-input-row input { flex: 1; padding: 4px; font-size: 0.7rem; }
 
-/* In-game feeds */
+/* Feeds & Modals */
 .discard-pickup-modal-topleft, .fed-card-modal-topright {
     position: absolute;
     top: 10px;
@@ -373,7 +390,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     overflow-y: auto;
 }
 
-/* Modals */
 .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 10px; }
 .modal-content { background: var(--panel-bg); padding: 16px; border-radius: 12px; width: 95%; max-width: 400px; max-height: 85vh; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); text-align: center; overflow-y: auto; }
 .modal-content h3 { color: var(--accent-gold); font-size: 1.1rem; }
