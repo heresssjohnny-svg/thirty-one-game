@@ -1,4 +1,4 @@
-// server/game/wsHandler.js - Master WebSocket Router & Lifetime Ledger Bridge
+// server/game/wsHandler.js - Master WebSocket Router, Lifetime Ledger & Voice Dispatcher
 const WebSocket = require('ws');
 const path = require('path');
 const lobbyManager = require('./lobbyManager');
@@ -36,12 +36,11 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
-                                if (data.type === 'GET_LIFETIME_LEDGER') {
+                if (data.type === 'GET_LIFETIME_LEDGER') {
                     const username = (data.username || (ws.user && ws.user.username) || '').trim();
                     let userId = (ws.user && (ws.user.userId || ws.user.id)) || data.userId || null;
                     let isGuest = data.isGuest;
 
-                    // Cross-check SQLite: if the user exists in the database, they are NOT a guest
                     if (db) {
                         let userRow = null;
                         if (userId && typeof db.getUserById === 'function') {
@@ -53,7 +52,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
 
                         if (userRow) {
                             userId = userRow.id || userRow.userId;
-                            isGuest = false; // Verified registered account in database
+                            isGuest = false;
                         }
                     }
 
@@ -78,6 +77,29 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
+                if (data.type === 'APPLY_CREDIT' && db && typeof db.applyCredit === 'function') {
+                    let creditorId = (ws.user && (ws.user.userId || ws.user.id)) || data.userId;
+                    const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
+                    const creditorUsername = data.username || (ws.user && ws.user.username);
+
+                    if (!creditorId && creditorUsername && typeof db.getUserByUsername === 'function') {
+                        const userRow = db.getUserByUsername(creditorUsername);
+                        if (userRow) creditorId = userRow.id || userRow.userId;
+                    }
+
+                    if (!isGuest && creditorId && data.debtorId && data.amount) {
+                        const result = db.applyCredit(creditorId, data.debtorId, Number(data.amount));
+                        const balances = db.getLifetimeBalances(creditorId);
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'LIFETIME_LEDGER_DATA',
+                                balances: balances || [],
+                                creditResult: result
+                            }));
+                        }
+                    }
+                    return;
+                }
 
                 // -------------------------------------------------------------
                 // 2. LOBBY BROWSING & TABLE CREATION
@@ -191,7 +213,6 @@ function setupWebSocket(wss, broadcastLobbyList) {
 
                     const username = (data.username || (ws.user && ws.user.username) || 'Player').trim();
 
-                    // Check if player is already seated (reconnecting from background/sleep)
                     const existingPlayer = lobby.players.find(
                         p => p.username.toLowerCase() === username.toLowerCase()
                     );
@@ -199,7 +220,6 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     if (existingPlayer) {
                         existingPlayer.id = ws;
                         existingPlayer.disconnected = false;
-                        // Avoid duplicate presence in spectators list
                         lobby.spectators = lobby.spectators.filter(
                             s => s.username.toLowerCase() !== username.toLowerCase()
                         );
@@ -242,7 +262,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
                 }
 
                 // -------------------------------------------------------------
-                // 4. IN-GAME ACTION ROUTING
+                // 4. IN-GAME ACTION ROUTING & VOICE SYNCHRONIZATION
                 // -------------------------------------------------------------
                 if (currentLobbyCode) {
                     const lobbies = lobbyManager.getLobbies();
@@ -253,8 +273,34 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     const player = lobby.players.find(p => p.id === ws);
                     const activeUsername = player ? player.username : null;
 
+                    // Voice Chat State Synchronization
+                    if (data.type === 'VOICE_STATUS') {
+                        const inVC = !!data.inVC;
+                        const isMuted = data.isMuted !== undefined ? !!data.isMuted : true;
+                        if (player) {
+                            player.inVC = inVC;
+                            player.isMuted = isMuted;
+                        } else {
+                            const spec = lobby.spectators.find(s => s.idSocket === ws);
+                            if (spec) {
+                                spec.inVC = inVC;
+                                spec.isMuted = isMuted;
+                            }
+                        }
+                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
+                    } else if (data.type === 'MUTE_TOGGLE') {
+                        const isMuted = !!data.isMuted;
+                        if (player) {
+                            player.isMuted = isMuted;
+                        } else {
+                            const spec = lobby.spectators.find(s => s.idSocket === ws);
+                            if (spec) spec.isMuted = isMuted;
+                        }
+                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
+                    }
+
                     // Ready Up
-                    if (data.type === 'SET_READY' && player) {
+                    else if (data.type === 'SET_READY' && player) {
                         player.ready = !!data.ready;
                         lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
 
@@ -501,7 +547,6 @@ function setupWebSocket(wss, broadcastLobbyList) {
             }
         });
 
-        // Graceful disconnect on network drop, app backgrounding, or screen sleep
         ws.on('close', () => {
             if (currentLobbyCode) {
                 lobbyManager.handleDisconnect(ws, currentLobbyCode, broadcastLobbyList);
