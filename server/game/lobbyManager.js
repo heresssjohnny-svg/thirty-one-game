@@ -72,6 +72,19 @@ function clearRoundOverTimer(lobby) {
     }
 }
 
+function establishDealer(lobby) {
+    if (lobby.lastGameWinner) {
+        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
+        if (winIdx !== -1) {
+            lobby.dealerIndex = winIdx;
+            return;
+        }
+    }
+    if (lobby.dealerIndex >= lobby.players.length || lobby.dealerIndex < 0) {
+        lobby.dealerIndex = 0;
+    }
+}
+
 function getWinningSuitFor31(cards) {
     const suits = ['♠', '♥', '♦', '♣'];
     for (const s of suits) {
@@ -255,6 +268,7 @@ function startDealerDrawPhase(lobby) {
     lobby.turnsTakenThisRound = 0;
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
+    lobby.fedCardsHistory = {};
     lobby.players.forEach(p => {
         p.peekAllowed = {};
         p.peekRequests = {};
@@ -275,6 +289,7 @@ function startRound(lobby) {
     lobby.pendingBotDraw = {};
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
+    lobby.fedCardsHistory = {};
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
     lobby.hit31Player = null;
@@ -293,9 +308,23 @@ function startRound(lobby) {
         p.peekRequests = {};
     });
 
-    activeParts.forEach(p => {
+    establishDealer(lobby);
+
+    const totalPlayers = lobby.players.length;
+    const dealOrder = [];
+    for (let i = 1; i <= totalPlayers; i++) {
+        const idx = (lobby.dealerIndex + i) % totalPlayers;
+        dealOrder.push(lobby.players[idx]);
+    }
+
+    const regularParticipants = dealOrder.filter(p => !p.eliminated && !p.isNewArrival);
+    const newArrivals = dealOrder.filter(p => !p.eliminated && p.isNewArrival);
+    const finalDealOrder = [...regularParticipants, ...newArrivals];
+
+    finalDealOrder.forEach(p => {
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()];
         p.nextHandReady = p.isBot;
+        p.isNewArrival = false;
     });
 
     const firstDiscard = lobby.deck.pop();
@@ -358,8 +387,8 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                 setTimeout(() => {
                     if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'tieBreaker') return;
                     const cur = lobbies[lobby.code];
-                    const freshDeck = createDeck();
-                    cur.drawPool = freshDeck.map(c => ({ card: c, chosenBy: null }));
+                    const tieDeck = (cur.deck && cur.deck.length >= cur.tiedParticipantsList.length) ? cur.deck : createDeck();
+                    cur.drawPool = tieDeck.map(c => ({ card: c, chosenBy: null }));
                     cur.drawResults = {};
                     cur.drawOrderSequence = [];
                     cur.pendingBotDraw = {};
@@ -421,6 +450,16 @@ function handleTurnAction(lobby, wsId, actionType) {
         }
 
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
+            if (!lobby.fedCardsHistory) lobby.fedCardsHistory = {};
+            if (!lobby.fedCardsHistory[currentPlayer.username]) lobby.fedCardsHistory[currentPlayer.username] = {};
+            if (!lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor]) {
+                lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor] = [];
+            }
+            lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor].push({
+                val: card.val,
+                suit: card.suit
+            });
+
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
                 target: currentPlayer.username,
@@ -437,7 +476,6 @@ function handleTurnAction(lobby, wsId, actionType) {
         if (feeder) {
             feeder.lives = 0;
             feeder.eliminated = true;
-            feeder.cards = [];
             resolveFirstToLoseBets(lobby, feeder.username);
             if (feeder.id && typeof feeder.id === 'object') {
                 lobby.spectators.push({ idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
@@ -449,7 +487,6 @@ function handleTurnAction(lobby, wsId, actionType) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
-                        p.cards = [];
                         resolveFirstToLoseBets(lobby, p.username);
                         if (p.id && typeof p.id === 'object') {
                             lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
@@ -526,7 +563,6 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
         if (feeder) {
             feeder.lives = 0;
             feeder.eliminated = true;
-            feeder.cards = [];
             resolveFirstToLoseBets(lobby, feeder.username);
             if (feeder.id && typeof feeder.id === 'object') {
                 lobby.spectators.push({ idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
@@ -538,7 +574,6 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
-                        p.cards = [];
                         resolveFirstToLoseBets(lobby, p.username);
                         if (p.id && typeof p.id === 'object') {
                             lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
@@ -616,8 +651,8 @@ function resolveRoundEnd(lobby) {
             triggerRoundOver(lobby, `Round tied at ${lowest} pts. No one loses a life!`);
         } else {
             lobby.tiedParticipantsList = tied.map(t => t.p.username);
-            const deck = createDeck();
-            lobby.drawPool = deck.map(c => ({ card: c, chosenBy: null }));
+            const tieDeck = (lobby.deck && lobby.deck.length >= tied.length) ? lobby.deck : createDeck();
+            lobby.drawPool = tieDeck.map(c => ({ card: c, chosenBy: null }));
             lobby.drawResults = {};
             lobby.drawOrderSequence = [];
             lobby.pendingBotDraw = {};
@@ -633,7 +668,6 @@ function resolveRoundEnd(lobby) {
 
         if (loser.lives <= 0 && !loser.eliminated) {
             loser.eliminated = true;
-            loser.cards = [];
             resolveFirstToLoseBets(lobby, loser.username);
             if (loser.id && typeof loser.id === 'object') {
                 lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
@@ -736,9 +770,11 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.globalProposals = [];
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
+    lobby.hit31Player = null;
     lobby.lastDiscardPickup = null;
     lobby.lastDiscardDonor = null;
     lobby.fedCardReminders = {};
+    lobby.fedCardsHistory = {};
     lobby.initialDealCard = null;
     lobby.drawPool = [];
     lobby.drawResults = {};
@@ -747,10 +783,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.pendingBotDraw = {};
     lobby.livesVote = null;
 
-    if (lobby.lastGameWinner) {
-        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
-        if (winIdx !== -1) lobby.dealerIndex = winIdx;
-    }
+    establishDealer(lobby);
 
     lobby.players.forEach((p, idx) => {
         p.lives = lobby.defaultLives || 2;
@@ -861,9 +894,7 @@ function leaveLobby(ws, code, broadcastLobbyList) {
         if (lobby.turnIndex >= lobby.players.length) {
             lobby.turnIndex = 0;
         }
-        if (lobby.dealerIndex >= lobby.players.length) {
-            lobby.dealerIndex = 0;
-        }
+        establishDealer(lobby);
         syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
     }
