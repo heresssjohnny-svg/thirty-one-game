@@ -1,4 +1,4 @@
-// server/auth.js - Authentication Router & Token Verifier
+// server/auth.js - PART 1 OF 2
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
@@ -109,9 +109,11 @@ router.post('/register', async (req, res) => {
             }
         });
     } catch (err) {
+        console.error('[Auth] Register error:', err);
         return res.status(500).json({ error: 'Failed to create user account.' });
     }
 });
+// server/auth.js - PART 2 OF 2
 
 // -------------------------------------------------------------
 // 3. STANDARD LOCAL USER LOGIN
@@ -150,6 +152,7 @@ router.post('/login', async (req, res) => {
             }
         });
     } catch (err) {
+        console.error('[Auth] Login error:', err);
         return res.status(500).json({ error: 'Internal login error.' });
     }
 });
