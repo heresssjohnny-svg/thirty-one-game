@@ -1,714 +1,242 @@
-// server.js
+// server.js - Master Application Coordinator & WebSocket Server
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
 
-// 1. Resolve configuration with environment fallback
-let config;
-if (fs.existsSync(path.join(__dirname, 'server', 'config.js'))) {
-    config = require('./server/config');
-} else if (fs.existsSync(path.join(__dirname, 'config.js'))) {
-    config = require('./config');
-} else {
-    config = {
-        PORT: process.env.PORT || 10000,
-        LIVEKIT_HOST: process.env.LIVEKIT_HOST || '',
-        LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || '',
-        LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || '',
-        INACTIVITY_TIMEOUT_MS: 30 * 60 * 1000
-    };
+process.on('uncaughtException', (err) => console.error('[SERVER] Uncaught Exception:', err));
+process.on('unhandledRejection', (reason, promise) => console.error('[SERVER] Unhandled Rejection at:', promise, 'reason:', reason));
+
+// -------------------------------------------------------------
+// 1. DYNAMIC CONFIGURATION & MODULE RESOLUTION
+// -------------------------------------------------------------
+let config = {
+    PORT: process.env.PORT || 10000,
+    LIVEKIT_HOST: process.env.LIVEKIT_HOST || 'wss://31game.duckdns.org',
+    LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY || 'thirtyone-chat',
+    LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET || '33736f394e4ac3e661285131f11d67a3a97865f80500ba607bb4dca969208e5e'
+};
+
+const configPaths = ['./server/config', './config'];
+for (const p of configPaths) {
+    try {
+        const loaded = require(p);
+        config = { ...config, ...loaded };
+        break;
+    } catch (e) {}
 }
 
-// 2. Resolve lobbyManager across standard modular paths
-let lobbyManager;
-if (fs.existsSync(path.join(__dirname, 'server', 'game', 'lobbyManager.js'))) {
-    lobbyManager = require('./server/game/lobbyManager');
-} else if (fs.existsSync(path.join(__dirname, 'game', 'lobbyManager.js'))) {
-    lobbyManager = require('./game/lobbyManager');
-} else {
-    lobbyManager = require('./lobbyManager');
+// Resilient Database & Auth Loaders
+let db = null;
+const dbPaths = ['./server/db', './db'];
+for (const p of dbPaths) {
+    try {
+        db = require(p);
+        break;
+    } catch (e) {}
 }
 
-const {
-    lobbies,
-    getLobbies,
-    findOpenSeat,
-    touchLobbyActivity,
-    getPublicLobbiesList,
-    getSanitizedLobby,
-    broadcastLobbyUpdate,
-    startDealerDrawPhase,
-    startRound,
-    handlePoolCardSelection,
-    handleTurnAction,
-    handleDiscardAction,
-    handleKnock,
-    checkNextHandReady,
-    resetLobbyToReadyRoom,
-    leaveLobby
-} = lobbyManager;
-
-// 3. Resolve LiveKit token service across modular paths
-let generateLiveKitToken;
-if (fs.existsSync(path.join(__dirname, 'server', 'services', 'livekit.js'))) {
-    generateLiveKitToken = require('./server/services/livekit').generateLiveKitToken;
-} else if (fs.existsSync(path.join(__dirname, 'server', 'livekit.js'))) {
-    generateLiveKitToken = require('./server/livekit').generateLiveKitToken;
-} else if (fs.existsSync(path.join(__dirname, 'livekit.js'))) {
-    generateLiveKitToken = require('./livekit').generateLiveKitToken;
-} else {
-    generateLiveKitToken = async () => null;
+let auth = null;
+const authPaths = ['./server/auth', './auth'];
+for (const p of authPaths) {
+    try {
+        auth = require(p);
+        break;
+    } catch (e) {}
 }
 
+// Resilient LiveKit Token Generator Loader
+let generateLiveKitToken = null;
+const livekitPaths = ['./server/services/livekit', './services/livekit', './server/livekit'];
+for (const p of livekitPaths) {
+    try {
+        const mod = require(p);
+        if (typeof mod.generateLiveKitToken === 'function') {
+            generateLiveKitToken = mod.generateLiveKitToken;
+            break;
+        }
+    } catch (e) {}
+}
+
+// Fallback LiveKit SDK generation if service module is not present
+if (!generateLiveKitToken) {
+    try {
+        const { AccessToken } = require('livekit-server-sdk');
+        generateLiveKitToken = async (roomName, participantName) => {
+            try {
+                const at = new AccessToken(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET, {
+                    identity: participantName,
+                    name: participantName,
+                    ttl: '8h'
+                });
+                at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+                return await at.toJwt();
+            } catch (err) {
+                console.error('[LIVEKIT] Token Generation Error:', err);
+                return null;
+            }
+        };
+    } catch (err) {
+        console.warn('[LIVEKIT] livekit-server-sdk not found; voice tokens will be disabled.');
+        generateLiveKitToken = async () => null;
+    }
+}
+
+// Resilient WebSocket Game Handler Loader
+let setupWebSocket = null;
+const wsHandlerPaths = ['./server/game/wsHandler', './game/wsHandler', './server/wsHandler'];
+for (const p of wsHandlerPaths) {
+    try {
+        const mod = require(p);
+        if (typeof mod.setupWebSocket === 'function') {
+            setupWebSocket = mod.setupWebSocket;
+            break;
+        }
+    } catch (e) {}
+}
+
+// -------------------------------------------------------------
+// 2. EXPRESS APPLICATION & ROUTE DEFINITIONS
+// -------------------------------------------------------------
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static assets from public/ if present, otherwise root
-if (fs.existsSync(path.join(__dirname, 'public'))) {
-    app.use(express.static(path.join(__dirname, 'public')));
-}
-app.use(express.static(__dirname));
+// JSON & URL-encoded request body parsing
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+// Mount Auth routes (/auth/register, /auth/login, /auth/guest, /auth/social, /auth/me)
+if (auth && auth.router) {
+    app.use(auth.router);
+}
+
+// Serve static assets from public, root, and www
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname)));
+if (fs.existsSync(path.join(__dirname, 'www'))) {
+    app.use(express.static(path.join(__dirname, 'www')));
+}
+
+// REST route for LiveKit room voice tokens
+app.get('/token', async (req, res) => {
+    const room = (req.query.room || 'test-room').trim();
+    const username = (req.query.username || `User-${Math.floor(Math.random() * 1000)}`).trim();
+    try {
+        const token = await generateLiveKitToken(room, username);
+        if (!token) return res.status(500).json({ error: 'Failed to generate token' });
+        res.json({ token, host: config.LIVEKIT_HOST, room, username });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
-function broadcastLobbyList() {
-    const list = getPublicLobbiesList();
-    const payload = JSON.stringify({ type: 'LOBBY_LIST', lobbies: list });
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-        }
+// Single-page application route fallback
+app.get('*', (req, res) => {
+    const candidates = [
+        path.join(__dirname, 'public', 'index.html'),
+        path.join(__dirname, 'index.html'),
+        path.join(__dirname, 'www', 'index.html')
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return res.sendFile(p);
+    }
+    res.status(404).send('index.html not found.');
+});
+
+// -------------------------------------------------------------
+// 3. WEBSOCKET HEARTBEAT & LIFETIME LEDGER COORDINATOR
+// -------------------------------------------------------------
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
     });
-}
+}, 10000);
 
-// Helper: Bots only become ready when all seated humans are ready
-function syncBotReadiness(lobby) {
-    if (!lobby || lobby.gameState !== 'lobby') return;
-    const seatedHumans = lobby.players.filter(p => !p.isBot);
-    const allHumansReady = seatedHumans.length > 0 && seatedHumans.every(p => p.ready);
+wss.on('close', () => clearInterval(heartbeatInterval));
 
-    lobby.players.forEach(p => {
-        if (p.isBot) {
-            p.ready = allHumansReady;
-        }
-    });
-}
-
+// Lifetime Ledger & Auth State Listener
 wss.on('connection', (ws) => {
-    let currentLobbyCode = null;
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
 
-    ws.on('message', async (message) => {
-        let data;
+    ws.on('message', (message) => {
         try {
-            data = JSON.parse(message);
-        } catch (e) {
-            return;
-        }
+            const data = JSON.parse(message);
+            if (!data || typeof data !== 'object') return;
 
-        if (data.type === 'GET_LOBBIES' || data.type === 'REFRESH_LOBBIES') {
-            ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
-            return;
-        }
-
-        if (data.type === 'CREATE_LOBBY') {
-            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const username = (data.username || 'Player1').trim();
-            const lobbyName = (data.lobbyName || `${username}'s Table`).trim();
-            const isPrivate = !!data.isPrivate;
-
-            const newLobby = {
-                code,
-                name: lobbyName,
-                host: username,
-                isPrivate,
-                gameState: 'lobby',
-                defaultLives: 2,
-                dealerIndex: 0,
-                turnIndex: 0,
-                deck: [],
-                discardPile: [],
-                drawPool: [],
-                drawResults: {},
-                drawOrderSequence: [],
-                tiedParticipantsList: [],
-                pendingBotDraw: {},
-                phaseMessage: 'Waiting for players to ready up...',
-                turnsTakenThisRound: 0,
-                chatHistory: [],
-                players: [{
-                    id: ws,
-                    username,
-                    lives: 2,
-                    wager: 5,
-                    ready: false,
-                    seat: 0,
-                    cards: [],
-                    eliminated: false,
-                    nextHandReady: false,
-                    isBot: false,
-                    isNewArrival: false,
-                    inVC: false,
-                    isMuted: true
-                }],
-                spectators: [],
-                activeBets: [],
-                pendingBets: [],
-                globalProposals: [],
-                endGameVotes: {},
-                sideBetLedger: {},
-                mainGameLedger: {},
-                botBetLedger: {}
-            };
-
-            lobbies[code] = newLobby;
-            currentLobbyCode = code;
-            touchLobbyActivity(newLobby, broadcastLobbyList);
-
-            const token = await generateLiveKitToken(code, username);
-            ws.send(JSON.stringify({
-                type: 'LOBBY_CREATED',
-                code,
-                livekitToken: token,
-                livekitHost: config.LIVEKIT_HOST
-            }));
-
-            broadcastLobbyUpdate(code);
-            broadcastLobbyList();
-            return;
-        }
-
-        if (data.type === 'JOIN_LOBBY') {
-            const code = (data.code || '').trim().toUpperCase();
-            const username = (data.username || 'Player').trim();
-            const lobby = lobbies[code];
-
-            if (!lobby) {
-                ws.send(JSON.stringify({ type: 'ERROR', message: 'Table not found.' }));
-                return;
+            // 1. Handle Token Authentication over WebSocket
+            if (data.type === 'AUTH_TOKEN' && auth && typeof auth.verifyToken === 'function') {
+                const decoded = auth.verifyToken(data.token);
+                if (decoded) {
+                    ws.user = decoded;
+                }
             }
 
-            currentLobbyCode = code;
-            touchLobbyActivity(lobby, broadcastLobbyList);
+            // 2. Query Lifetime Ledger Balances
+            if (data.type === 'GET_LIFETIME_LEDGER' && db) {
+                const userId = (ws.user && ws.user.userId) || data.userId;
+                const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
 
-            let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
-            let existingSpectator = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
-
-            if (existingPlayer) {
-                existingPlayer.id = ws;
-            } else if (existingSpectator) {
-                existingSpectator.idSocket = ws;
-            } else {
-                if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                    const seatNum = findOpenSeat(lobby);
-                    lobby.players.push({
-                        id: ws,
-                        username,
-                        lives: lobby.defaultLives || 2,
-                        wager: 5,
-                        ready: false,
-                        seat: seatNum,
-                        cards: [],
-                        eliminated: false,
-                        nextHandReady: false,
-                        isBot: false,
-                        isNewArrival: true,
-                        inVC: false,
-                        isMuted: true
-                    });
-                    syncBotReadiness(lobby);
+                if (!isGuest && userId) {
+                    const balances = db.getLifetimeBalances(userId);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+                    }
                 } else {
-                    lobby.spectators.push({
-                        idSocket: ws,
-                        username,
-                        inVC: false,
-                        isMuted: true
-                    });
-                }
-            }
-
-            const token = await generateLiveKitToken(code, username);
-            ws.send(JSON.stringify({
-                type: 'LOBBY_JOINED',
-                code,
-                livekitToken: token,
-                livekitHost: config.LIVEKIT_HOST
-            }));
-
-            broadcastLobbyUpdate(code);
-            broadcastLobbyList();
-            return;
-        }
-
-        const lobby = lobbies[currentLobbyCode];
-        if (!lobby) return;
-        touchLobbyActivity(lobby, broadcastLobbyList);
-
-        if (data.type === 'REQUEST_LIVEKIT_TOKEN') {
-            const player = lobby.players.find(p => p.id === ws);
-            const spec = lobby.spectators.find(s => s.idSocket === ws);
-            const uname = player ? player.username : (spec ? spec.username : 'Player');
-            const token = await generateLiveKitToken(lobby.code, uname);
-            ws.send(JSON.stringify({
-                type: 'LIVEKIT_TOKEN',
-                livekitHost: config.LIVEKIT_HOST,
-                livekitToken: token,
-                token
-            }));
-            return;
-        }
-
-        if (data.type === 'SIT_DOWN') {
-            if (lobby.gameState !== 'lobby' || lobby.players.length >= 6) return;
-            const specIdx = lobby.spectators.findIndex(s => s.idSocket === ws);
-            if (specIdx !== -1) {
-                const spec = lobby.spectators.splice(specIdx, 1)[0];
-                const seatNum = findOpenSeat(lobby);
-                lobby.players.push({
-                    id: ws,
-                    username: spec.username,
-                    lives: lobby.defaultLives || 2,
-                    wager: 5,
-                    ready: false,
-                    seat: seatNum,
-                    cards: [],
-                    eliminated: false,
-                    nextHandReady: false,
-                    isBot: false,
-                    isNewArrival: true,
-                    inVC: spec.inVC,
-                    isMuted: spec.isMuted
-                });
-                syncBotReadiness(lobby);
-                broadcastLobbyUpdate(lobby.code);
-                broadcastLobbyList();
-            }
-            return;
-        }
-
-        if (data.type === 'STAND_UP') {
-            if (lobby.gameState !== 'lobby') return;
-            const pIdx = lobby.players.findIndex(p => p.id === ws);
-            if (pIdx !== -1) {
-                const p = lobby.players.splice(pIdx, 1)[0];
-                lobby.spectators.push({
-                    idSocket: ws,
-                    username: p.username,
-                    inVC: p.inVC,
-                    isMuted: p.isMuted
-                });
-                lobby.players.forEach((pl, idx) => { pl.seat = idx; });
-                syncBotReadiness(lobby);
-                broadcastLobbyUpdate(lobby.code);
-                broadcastLobbyList();
-            }
-            return;
-        }
-
-        if (data.type === 'SET_READY') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player) {
-                player.ready = !!data.ready;
-                syncBotReadiness(lobby);
-                broadcastLobbyUpdate(lobby.code);
-
-                const seatedHumans = lobby.players.filter(p => !p.isBot);
-                if (seatedHumans.length >= 1 && lobby.players.every(p => p.ready)) {
-                    if (lobby.players.length >= 2) {
-                        startDealerDrawPhase(lobby);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances: [], isGuest: true }));
                     }
                 }
             }
-            return;
-        }
 
-        if (data.type === 'NEXT_HAND' || data.type === 'NEXT_HAND_READY') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player && !player.eliminated) {
-                player.nextHandReady = true;
+            // 3. Apply Credit towards user debt
+            if (data.type === 'APPLY_CREDIT' && db) {
+                const creditorId = (ws.user && ws.user.userId) || data.userId;
+                const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
 
-                // Sync bots for the next hand only when all active humans are ready
-                const activeHumans = lobby.players.filter(p => !p.isBot && !p.eliminated);
-                const allActiveHumansNextReady = activeHumans.length > 0 && activeHumans.every(p => p.nextHandReady);
-                if (allActiveHumansNextReady) {
-                    lobby.players.forEach(p => {
-                        if (p.isBot) p.nextHandReady = true;
-                    });
-                }
-
-                broadcastLobbyUpdate(lobby.code);
-                checkNextHandReady(lobby);
-            }
-            return;
-        }
-
-        if (data.type === 'CHOOSE_POOL_CARD') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player) {
-                handlePoolCardSelection(lobby, player.username, data.cardIndex);
-            }
-            return;
-        }
-
-        if (data.type === 'DRAW_DECK') {
-            handleTurnAction(lobby, ws, 'DRAW_DECK');
-            return;
-        }
-
-        if (data.type === 'DRAW_DISCARD') {
-            handleTurnAction(lobby, ws, 'DRAW_DISCARD');
-            return;
-        }
-
-        if (data.type === 'DISCARD_CARD') {
-            const cardIndex = data.cardIndex !== undefined ? data.cardIndex : data.index;
-            handleDiscardAction(lobby, ws, cardIndex);
-            return;
-        }
-
-        if (data.type === 'KNOCK') {
-            handleKnock(lobby, ws);
-            return;
-        }
-
-        if (data.type === 'PROPOSE_ELIMINATION_BET') {
-            const proposer = lobby.players.find(p => p.id === ws);
-            if (proposer) {
-                const betId = `bet_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-                if (!lobby.pendingBets) lobby.pendingBets = [];
-                lobby.pendingBets.push({
-                    id: betId,
-                    type: 'eliminate',
-                    proposer: proposer.username,
-                    target: data.target,
-                    pickUser: data.target,
-                    targetSurvivor: proposer.username,
-                    wagerAmt: parseInt(data.wagerAmt, 10) || 5,
-                    delivered: {}
-                });
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'PROPOSE_GLOBAL_SIDE_BET') {
-            const proposer = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws);
-            if (proposer) {
-                const propId = `gprop_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-                if (!lobby.globalProposals) lobby.globalProposals = [];
-                lobby.globalProposals.push({
-                    id: propId,
-                    proposer: proposer.username,
-                    pickUser: data.pickUser,
-                    wagerAmt: parseInt(data.wagerAmt, 10) || 5,
-                    acceptedBy: []
-                });
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'ACCEPT_GLOBAL_PROPOSAL') {
-            const acceptor = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws);
-            if (acceptor && lobby.globalProposals) {
-                const prop = lobby.globalProposals.find(g => g.id === data.proposalId);
-                if (prop && prop.proposer !== acceptor.username && !prop.acceptedBy.includes(acceptor.username)) {
-                    prop.acceptedBy.push(acceptor.username);
-                    broadcastLobbyUpdate(lobby.code);
-                }
-            }
-            return;
-        }
-
-        if (data.type === 'CONFIRM_GLOBAL_BET') {
-            const proposer = lobby.players.find(p => p.id === ws) || lobby.spectators.find(s => s.idSocket === ws);
-            if (proposer && lobby.globalProposals) {
-                const propIdx = lobby.globalProposals.findIndex(g => g.id === data.proposalId);
-                if (propIdx !== -1) {
-                    const prop = lobby.globalProposals[propIdx];
-                    if (data.confirm) {
-                        if (!lobby.activeBets) lobby.activeBets = [];
-                        lobby.activeBets.push({
-                            id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                            type: 'win',
-                            proposer: prop.proposer,
-                            target: data.acceptedUser,
-                            pickUser: prop.pickUser,
-                            wagerAmt: prop.wagerAmt
-                        });
+                if (!isGuest && creditorId && data.debtorId && data.amount) {
+                    const result = db.applyCredit(creditorId, data.debtorId, Number(data.amount));
+                    const balances = db.getLifetimeBalances(creditorId);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances, creditResult: result }));
                     }
-                    prop.acceptedBy = prop.acceptedBy.filter(u => u !== data.acceptedUser);
-                    if (prop.acceptedBy.length === 0) {
-                        lobby.globalProposals.splice(propIdx, 1);
-                    }
-                    broadcastLobbyUpdate(lobby.code);
                 }
             }
-            return;
-        }
-
-        if (data.type === 'RESPOND_BET') {
-            const responder = lobby.players.find(p => p.id === ws);
-            if (responder && lobby.pendingBets) {
-                const bIdx = lobby.pendingBets.findIndex(b => b.id === data.betId);
-                if (bIdx !== -1) {
-                    const bet = lobby.pendingBets.splice(bIdx, 1)[0];
-                    if (data.accept) {
-                        if (!lobby.activeBets) lobby.activeBets = [];
-                        lobby.activeBets.push(bet);
-                    }
-                    broadcastLobbyUpdate(lobby.code);
-                }
-            }
-            return;
-        }
-
-        if (data.type === 'CLEAR_DEBT') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player && data.targetUser) {
-                const myName = player.username;
-                const target = data.targetUser;
-                const cat = data.category;
-
-                const clearInLedger = (ledgerObj) => {
-                    if (!ledgerObj) return;
-                    if (ledgerObj[target] && ledgerObj[target][myName]) {
-                        ledgerObj[target][myName] = 0;
-                    }
-                };
-
-                if (cat === 'side') clearInLedger(lobby.sideBetLedger);
-                else if (cat === 'main') clearInLedger(lobby.mainGameLedger);
-                else if (cat === 'bot') clearInLedger(lobby.botBetLedger);
-                else {
-                    clearInLedger(lobby.sideBetLedger);
-                    clearInLedger(lobby.mainGameLedger);
-                    clearInLedger(lobby.botBetLedger);
-                }
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'REQUEST_PEEK') {
-            const spec = lobby.spectators.find(s => s.idSocket === ws);
-            const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
-            if (spec && targetPlayer) {
-                if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
-                targetPlayer.peekRequests[spec.username] = true;
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'RESPOND_PEEK') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player && player.peekRequests) {
-                delete player.peekRequests[data.spectatorUsername];
-                if (data.allow) {
-                    if (!player.peekAllowed) player.peekAllowed = {};
-                    player.peekAllowed[data.spectatorUsername] = true;
-                }
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'STOP_PEEK') {
-            const spec = lobby.spectators.find(s => s.idSocket === ws);
-            if (spec) {
-                lobby.players.forEach(p => {
-                    if (p.peekAllowed) delete p.peekAllowed[spec.username];
-                });
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'KICK_PEEKER') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player && player.peekAllowed && data.spectatorUsername) {
-                delete player.peekAllowed[data.spectatorUsername];
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'END_GAME_PROPOSAL') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player) {
-                if (!lobby.endGameVotes) lobby.endGameVotes = {};
-                lobby.endGameVotes[player.username] = true;
-                const activeHumanPlayers = lobby.players.filter(p => !p.isBot && !p.eliminated);
-                const votesCount = Object.keys(lobby.endGameVotes).length;
-                if (votesCount >= Math.ceil(activeHumanPlayers.length / 2)) {
-                    resetLobbyToReadyRoom(lobby, "Game ended by majority vote.");
-                } else {
-                    lobby.phaseMessage = `End game proposal: ${votesCount}/${activeHumanPlayers.length} voted.`;
-                    broadcastLobbyUpdate(lobby.code);
-                }
-            }
-            return;
-        }
-
-        if (data.type === 'VOTE_LIVES') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player && lobby.livesVote) {
-                lobby.livesVote.votes[player.username] = !!data.agree;
-                const humanSeated = lobby.players.filter(p => !p.isBot);
-                const voteVals = Object.values(lobby.livesVote.votes);
-                if (voteVals.length >= humanSeated.length) {
-                    const agrees = voteVals.filter(v => v === true).length;
-                    if (agrees > humanSeated.length / 2) {
-                        lobby.defaultLives = lobby.livesVote.proposedLives;
-                        lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
-                        lobby.phaseMessage = `Starting lives updated to ${lobby.defaultLives}.`;
-                    } else {
-                        lobby.phaseMessage = `Starting lives proposal declined.`;
-                    }
-                    lobby.livesVote = null;
-                }
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'VC_STATUS_UPDATE' || data.type === 'UPDATE_VC_STATUS') {
-            const player = lobby.players.find(p => p.id === ws);
-            const spec = lobby.spectators.find(s => s.idSocket === ws);
-            if (player) {
-                player.inVC = !!data.inVC;
-                player.isMuted = !!data.isMuted;
-            } else if (spec) {
-                spec.inVC = !!data.inVC;
-                spec.isMuted = !!data.isMuted;
-            }
-            broadcastLobbyUpdate(lobby.code);
-            return;
-        }
-
-        if (data.type === 'CHAT_MESSAGE') {
-            const player = lobby.players.find(p => p.id === ws);
-            const spec = lobby.spectators.find(s => s.idSocket === ws);
-            const sender = player ? player.username : (spec ? spec.username : 'Guest');
-            const cleanText = (data.message || '').trim().substring(0, 200);
-
-            if (cleanText) {
-                if (!lobby.chatHistory) lobby.chatHistory = [];
-                lobby.chatHistory.push({ user: sender, text: cleanText });
-                if (lobby.chatHistory.length > 50) lobby.chatHistory.shift();
-
-                const chatPayload = JSON.stringify({ type: 'CHAT_MESSAGE', user: sender, text: cleanText, username: sender, message: cleanText });
-                lobby.players.forEach(p => { if (p.id?.readyState === WebSocket.OPEN) p.id.send(chatPayload); });
-                lobby.spectators.forEach(s => { if (s.idSocket?.readyState === WebSocket.OPEN) s.idSocket.send(chatPayload); });
-            }
-            return;
-        }
-
-        if (data.type === 'UPDATE_SETTINGS') {
-            if (lobby.gameState === 'lobby') {
-                const targetLives = data.lives ? parseInt(data.lives, 10) : 2;
-                const humanSeated = lobby.players.filter(p => !p.isBot);
-                const proposer = lobby.players.find(p => p.id === ws);
-
-                if (humanSeated.length > 1 && proposer) {
-                    lobby.livesVote = {
-                        proposer: proposer.username,
-                        proposedLives: targetLives,
-                        votes: { [proposer.username]: true }
-                    };
-                } else {
-                    lobby.defaultLives = targetLives;
-                    lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
-                }
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'UPDATE_WAGER') {
-            const player = lobby.players.find(p => p.id === ws);
-            if (player && lobby.gameState === 'lobby') {
-                player.wager = parseInt(data.wager, 10) || 5;
-                broadcastLobbyUpdate(lobby.code);
-            }
-            return;
-        }
-
-        if (data.type === 'ADD_BOT') {
-            if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                const botNames = ['Bot Ace', 'Bot Jack', 'Bot Queen', 'Bot King', 'Bot Joker'];
-                const existingBotCount = lobby.players.filter(p => p.isBot).length;
-                const name = botNames[existingBotCount % botNames.length] + ` ${existingBotCount + 1}`;
-                const seatNum = findOpenSeat(lobby);
-
-                lobby.players.push({
-                    id: `bot_${Date.now()}_${Math.random()}`,
-                    username: name,
-                    lives: lobby.defaultLives || 2,
-                    wager: 5,
-                    ready: false, // Initialized false: waits for all seated humans to ready up
-                    seat: seatNum,
-                    cards: [],
-                    eliminated: false,
-                    nextHandReady: false,
-                    isBot: true,
-                    isNewArrival: false,
-                    inVC: false,
-                    isMuted: true
-                });
-                syncBotReadiness(lobby);
-                broadcastLobbyUpdate(lobby.code);
-                broadcastLobbyList();
-            }
-            return;
-        }
-
-        if (data.type === 'REMOVE_BOT') {
-            if (lobby.gameState === 'lobby') {
-                const bIdx = lobby.players.map(p => p.isBot).lastIndexOf(true);
-                if (bIdx !== -1) {
-                    lobby.players.splice(bIdx, 1);
-                    lobby.players.forEach((p, idx) => { p.seat = idx; });
-                    syncBotReadiness(lobby);
-                    broadcastLobbyUpdate(lobby.code);
-                    broadcastLobbyList();
-                }
-            }
-            return;
-        }
-
-        if (data.type === 'LEAVE_LOBBY') {
-            leaveLobby(ws, lobby.code, broadcastLobbyList);
-            ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
-            currentLobbyCode = null;
-            return;
-        }
-    });
-
-    ws.on('close', () => {
-        // Retain seated players on temporary background sleep; only unbind the socket reference
-        if (currentLobbyCode && lobbies[currentLobbyCode]) {
-            const lobby = lobbies[currentLobbyCode];
-            const player = lobby.players.find(p => p.id === ws);
-            if (player) {
-                player.id = null;
-            }
-            const specIdx = lobby.spectators.findIndex(s => s.idSocket === ws);
-            if (specIdx !== -1) {
-                lobby.spectators.splice(specIdx, 1);
-                broadcastLobbyUpdate(lobby.code);
-                broadcastLobbyList();
-            }
+        } catch (err) {
+            // Ignore parse errors from non-JSON or other socket handlers
         }
     });
 });
 
-const PORT = process.env.PORT || config.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+// Broadcast lobby discovery list helper
+function broadcastLobbyList() {
+    try {
+        const lm = require('./server/game/lobbyManager') || require('./game/lobbyManager');
+        if (lm && typeof lm.getPublicLobbiesList === 'function') {
+            const list = lm.getPublicLobbiesList();
+            const payload = JSON.stringify({ type: 'LOBBY_LIST', lobbies: list });
+            wss.clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(payload);
+                }
+            });
+        }
+    } catch (e) {}
+}
+
+// Mount modular gameplay WebSocket listeners
+if (typeof setupWebSocket === 'function') {
+    setupWebSocket(wss, broadcastLobbyList);
+}
+
+// -------------------------------------------------------------
+// 4. PORT BINDING & SERVER BOOT
+// -------------------------------------------------------------
+const PORT = (config && config.PORT) || process.env.PORT || 10000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`31! Card Game server running on port ${PORT}`);
 });
