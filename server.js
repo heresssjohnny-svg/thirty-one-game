@@ -64,7 +64,6 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static assets
 if (fs.existsSync(path.join(__dirname, 'public'))) {
     app.use(express.static(path.join(__dirname, 'public')));
 }
@@ -155,7 +154,6 @@ wss.on('connection', (ws) => {
             const livekitHost = process.env.LIVEKIT_HOST || config.LIVEKIT_HOST || '';
             const initialLobbyData = getSanitizedLobby(newLobby, username);
 
-            // Send full initial state alongside confirmation
             ws.send(JSON.stringify({
                 type: 'LOBBY_CREATED',
                 code,
