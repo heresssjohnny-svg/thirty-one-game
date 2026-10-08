@@ -1,685 +1,783 @@
-// server/game/wsHandler.js - Master WebSocket Router, Lifetime Ledger, LiveKit & Action Dispatcher
+// server/game/wsHandler.js
 const WebSocket = require('ws');
-const path = require('path');
-const lobbyManager = require('./lobbyManager');
+const {
+    lobbies,
+    touchLobbyActivity,
+    getSanitizedLobby,
+    broadcastLobbyUpdate,
+    findOpenSeat,
+    startDealerDrawPhase,
+    startRound,
+    handlePoolCardSelection,
+    handleTurnAction,
+    handleDiscardAction,
+    handleKnock,
+    leaveLobby,
+    resetLobbyToReadyRoom,
+    checkNextHandReady
+} = require('./lobbyManager');
 const { generateLiveKitToken } = require('../services/livekit');
+const { BOT_NAMES, syncBotReadiness } = require('./bot');
+const { clearDebts, recordDebt } = require('./ledger');
 const config = require('../config');
-const ledger = require('./ledger');
 
-// Resilient SQLite Database & Auth Resolvers
-let db = null;
-for (const p of ['../db', '../../db', '../services/db', '../../server/db']) {
-    try { db = require(p); break; } catch (e) {}
-}
-
-let auth = null;
-for (const p of ['../auth', '../../auth', '../services/auth', '../../server/auth']) {
-    try { auth = require(p); break; } catch (e) {}
-}
-
-function generateLobbyCode() {
-    return Math.random().toString(36).substring(2, 7).toUpperCase();
-}
-
-function broadcastLobbyList(wss) {
-    if (typeof lobbyManager.getPublicLobbiesList !== 'function') return;
-    const list = lobbyManager.getPublicLobbiesList();
-    const payload = JSON.stringify({ type: 'LOBBY_LIST', lobbies: list });
-    if (wss && wss.clients) {
-        wss.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(payload);
-            }
-        });
+function handleWebSocketMessage(ws, message, broadcastLobbyList) {
+    let data;
+    try {
+        data = JSON.parse(message);
+    } catch (e) {
+        return;
     }
-}
 
-function setupWebSocket(wss, customBroadcastList) {
-    const triggerBroadcast = customBroadcastList || (() => broadcastLobbyList(wss));
+    let currentLobbyCode = ws.currentLobbyCode || null;
+    let currentUsername = ws.currentUsername || null;
 
-    wss.on('connection', (ws) => {
-        ws.isAlive = true;
-        ws.on('pong', () => { ws.isAlive = true; });
+    switch (data.type) {
+        case 'GET_LOBBIES': {
+            if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
+            break;
+        }
 
-        let currentLobbyCode = null;
-        let currentUsername = null;
+        case 'CREATE_LOBBY': {
+            const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const username = (data.username || 'Player1').trim();
+            const lobbyName = (data.lobbyName || `${username}'s Room`).trim();
+            const isPrivate = !!data.isPrivate;
 
-        ws.on('message', async (message) => {
-            let data;
-            try {
-                data = JSON.parse(message);
-            } catch (e) {
+            const newLobby = {
+                code,
+                name: lobbyName,
+                host: username,
+                isPrivate,
+                gameState: 'lobby',
+                defaultLives: 2, // Default strictly 2 lives
+                deck: [],
+                discardPile: [],
+                turnIndex: 0,
+                dealerIndex: 0,
+                phaseMessage: 'Waiting for players to ready up...',
+                turnsTakenThisRound: 0,
+                livesVote: null,
+                players: [{
+                    id: ws,
+                    username,
+                    lives: 2,
+                    wager: 5,
+                    cards: [],
+                    ready: false,
+                    seat: 0,
+                    eliminated: false,
+                    isBot: false,
+                    inVC: true,
+                    isMuted: true,
+                    nextHandReady: false,
+                    peekRequests: {},
+                    peekAllowed: {}
+                }],
+                spectators: [],
+                activeBets: [],
+                pendingBets: [],
+                globalProposals: [],
+                sideBetLedger: {},
+                mainGameLedger: {},
+                botBetLedger: {},
+                chatHistory: [],
+                playlist: [],
+                currentSongIndex: 0,
+                isPlaying: false,
+                songStartedAt: null,
+                songPausedAtOffset: 0
+            };
+
+            lobbies[code] = newLobby;
+            ws.currentLobbyCode = code;
+            ws.currentUsername = username;
+            touchLobbyActivity(newLobby, broadcastLobbyList);
+
+            generateLiveKitToken(code, username).then(token => {
+                ws.send(JSON.stringify({
+                    type: 'LOBBY_CREATED',
+                    code,
+                    livekitToken: token,
+                    livekitHost: config.LIVEKIT_HOST
+                }));
+                broadcastLobbyUpdate(code);
+                if (broadcastLobbyList) broadcastLobbyList();
+            });
+            break;
+        }
+
+        case 'JOIN_LOBBY': {
+            const code = (data.code || '').trim().toUpperCase();
+            const username = (data.username || 'Player').trim();
+            const lobby = lobbies[code];
+
+            if (!lobby) {
+                ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found.' }));
                 return;
             }
 
-            if (!data || typeof data !== 'object') return;
+            ws.currentLobbyCode = code;
+            ws.currentUsername = username;
+            touchLobbyActivity(lobby, broadcastLobbyList);
 
-            // -------------------------------------------------------------
-            // 1. AUTHENTICATION & LIFETIME LEDGER (SQLITE)
-            // -------------------------------------------------------------
-            if (data.type === 'AUTH_TOKEN' && auth && typeof auth.verifyToken === 'function') {
-                const decoded = auth.verifyToken(data.token);
-                if (decoded) ws.user = decoded;
-                return;
-            }
+            let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
+            let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
-            if (data.type === 'GET_LIFETIME_LEDGER') {
-                const username = (data.username || (ws.user && ws.user.username) || '').trim();
-                let userId = (ws.user && (ws.user.userId || ws.user.id)) || data.userId || null;
-                let isGuest = data.isGuest;
-
-                if (db) {
-                    let userRow = null;
-                    if (userId && typeof db.getUserById === 'function') {
-                        userRow = db.getUserById(userId);
-                    }
-                    if (!userRow && username && typeof db.getUserByUsername === 'function') {
-                        userRow = db.getUserByUsername(username);
-                    }
-
-                    if (userRow) {
-                        userId = userRow.id || userRow.userId;
-                        isGuest = false;
-                    }
-                }
-
-                if (!isGuest && userId && db && typeof db.getLifetimeBalances === 'function') {
-                    const balances = db.getLifetimeBalances(userId);
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'LIFETIME_LEDGER_DATA',
-                            balances: balances || [],
-                            isGuest: false
-                        }));
-                    }
-                } else {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'LIFETIME_LEDGER_DATA',
-                            balances: [],
-                            isGuest: isGuest || !userId
-                        }));
-                    }
-                }
-                return;
-            }
-
-            if (data.type === 'APPLY_CREDIT' && db && typeof db.applyCredit === 'function') {
-                let creditorId = (ws.user && (ws.user.userId || ws.user.id)) || data.userId;
-                const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
-                const creditorUsername = data.username || (ws.user && ws.user.username);
-
-                if (!creditorId && creditorUsername && typeof db.getUserByUsername === 'function') {
-                    const userRow = db.getUserByUsername(creditorUsername);
-                    if (userRow) creditorId = userRow.id || userRow.userId;
-                }
-
-                if (!isGuest && creditorId && data.debtorId && data.amount) {
-                    const result = db.applyCredit(creditorId, data.debtorId, Number(data.amount));
-                    const balances = db.getLifetimeBalances(creditorId);
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'LIFETIME_LEDGER_DATA',
-                            balances: balances || [],
-                            creditResult: result
-                        }));
-                    }
-                }
-                return;
-            }
-
-            // -------------------------------------------------------------
-            // 2. LOBBY BROWSING & TABLE CREATION
-            // -------------------------------------------------------------
-            if (data.type === 'REFRESH_LOBBIES' || data.type === 'GET_LOBBIES') {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'LOBBY_LIST',
-                        lobbies: lobbyManager.getPublicLobbiesList()
-                    }));
-                }
-                return;
-            }
-
-            if (data.type === 'CREATE_LOBBY') {
-                currentUsername = (data.username || (ws.user && ws.user.username) || 'Player1').trim();
-                const lobbyName = (data.lobbyName || `${currentUsername}'s Table`).trim();
-
-                if (typeof lobbyManager.isLobbyNameTaken === 'function' && lobbyManager.isLobbyNameTaken(lobbyName)) {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'ERROR',
-                            message: `A table named "${lobbyName}" already exists. Please choose a different name.`
-                        }));
-                    }
-                    return;
-                }
-
-                currentLobbyCode = generateLobbyCode();
-                const lobbies = lobbyManager.getLobbies();
-
-                lobbies[currentLobbyCode] = {
-                    code: currentLobbyCode,
-                    name: lobbyName,
-                    host: currentUsername,
-                    isPrivate: !!data.isPrivate,
-                    gameState: 'lobby',
-                    defaultLives: 2,
-                    deck: [],
-                    discardPile: [],
-                    drawPool: [],
-                    drawResults: {},
-                    drawOrderSequence: [],
-                    tiedParticipantsList: [],
-                    turnIndex: 0,
-                    dealerIndex: 0,
-                    turnsTakenThisRound: 0,
-                    finalTurnsRemaining: 0,
-                    knockedBy: null,
-                    lastGameWinner: null,
-                    tournamentWinner: null,
-                    hit31Player: null,
-                    phaseMessage: 'Waiting for players to ready up...',
-                    players: [{
-                        id: ws,
-                        username: currentUsername,
-                        lives: 2,
-                        wager: 5,
-                        ready: false,
-                        cards: [],
-                        seat: 0,
-                        eliminated: false,
-                        isBot: false,
-                        disconnected: false,
-                        inVC: true,
-                        isMuted: true,
-                        nextHandReady: false,
-                        peekAllowed: {},
-                        peekRequests: {}
-                    }],
-                    spectators: [],
-                    activeBets: [],
-                    pendingBets: [],
-                    globalProposals: [],
-                    chatHistory: [],
-                    playlist: [],
-                    currentSongIndex: 0,
-                    isPlaying: false,
-                    songStartedAt: null,
-                    songPausedAtOffset: 0,
-                    fedCardReminders: {},
-                    fedCardsHistory: {},
-                    lastDiscardPickup: null,
-                    lastDiscardDonor: null
-                };
-
-                lobbyManager.touchLobbyActivity(lobbies[currentLobbyCode], triggerBroadcast);
-
-                const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'LOBBY_CREATED',
-                        code: currentLobbyCode,
-                        lobby: lobbyManager.getSanitizedLobby(lobbies[currentLobbyCode], ws),
-                        livekitToken: token,
-                        livekitHost: config.LIVEKIT_HOST
-                    }));
-                }
-
-                triggerBroadcast();
-                return;
-            }
-
-            // -------------------------------------------------------------
-            // 3. TABLE JOIN & RECONNECT HANDSHAKE
-            // -------------------------------------------------------------
-            if (data.type === 'JOIN_LOBBY') {
-                const code = (data.code || '').trim().toUpperCase();
-                const lobbies = lobbyManager.getLobbies();
-                const lobby = lobbies[code];
-
-                if (!lobby) {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'ERROR', message: 'Table not found.' }));
-                    }
-                    return;
-                }
-
-                currentUsername = (data.username || (ws.user && ws.user.username) || 'Player').trim();
-                currentLobbyCode = code;
-
-                const existingPlayer = lobby.players.find(
-                    p => p.username.toLowerCase() === currentUsername.toLowerCase()
-                );
-                const existingSpec = lobby.spectators.find(
-                    s => s.username.toLowerCase() === currentUsername.toLowerCase()
-                );
-
-                if (existingPlayer) {
-                    existingPlayer.id = ws;
-                    existingPlayer.disconnected = false;
-                    lobby.spectators = lobby.spectators.filter(
-                        s => s.username.toLowerCase() !== currentUsername.toLowerCase()
-                    );
-                } else if (existingSpec) {
-                    existingSpec.idSocket = ws;
-                } else if (lobby.players.length < 6 && lobby.gameState === 'lobby') {
+            if (existingPlayer) {
+                existingPlayer.id = ws;
+            } else if (existingSpec) {
+                existingSpec.idSocket = ws;
+            } else {
+                if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
                     lobby.players.push({
                         id: ws,
-                        username: currentUsername,
+                        username,
                         lives: lobby.defaultLives || 2,
                         wager: 5,
-                        ready: false,
                         cards: [],
-                        seat: lobbyManager.findOpenSeat(lobby),
+                        ready: false,
+                        seat: findOpenSeat(lobby),
                         eliminated: false,
                         isBot: false,
-                        disconnected: false,
                         inVC: true,
                         isMuted: true,
                         nextHandReady: false,
-                        peekAllowed: {},
-                        peekRequests: {}
+                        peekRequests: {},
+                        peekAllowed: {}
                     });
                 } else {
-                    lobby.spectators.push({ idSocket: ws, username: currentUsername, inVC: true, isMuted: true });
+                    lobby.spectators.push({
+                        idSocket: ws,
+                        username,
+                        inVC: true,
+                        isMuted: true
+                    });
                 }
-
-                lobbyManager.touchLobbyActivity(lobby, triggerBroadcast);
-
-                const token = await generateLiveKitToken(currentLobbyCode, currentUsername);
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'LOBBY_JOINED',
-                        code: currentLobbyCode,
-                        lobby: lobbyManager.getSanitizedLobby(lobby, ws),
-                        livekitToken: token,
-                        livekitHost: config.LIVEKIT_HOST
-                    }));
-                }
-
-                lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                triggerBroadcast();
-                return;
             }
 
-            // -------------------------------------------------------------
-            // 4. IN-GAME ACTION ROUTING
-            // -------------------------------------------------------------
-            const lobbies = lobbyManager.getLobbies();
-            let lobby = currentLobbyCode ? lobbies[currentLobbyCode] : null;
+            syncBotReadiness(lobby);
+            generateLiveKitToken(code, username).then(token => {
+                ws.send(JSON.stringify({
+                    type: 'LOBBY_JOINED',
+                    code,
+                    livekitToken: token,
+                    livekitHost: config.LIVEKIT_HOST
+                }));
+                broadcastLobbyUpdate(code);
+                if (broadcastLobbyList) broadcastLobbyList();
+            });
+            break;
+        }
 
-            if (lobby) {
-                lobbyManager.touchLobbyActivity(lobby, triggerBroadcast);
+        case 'LEAVE_LOBBY': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                leaveLobby(ws, currentLobbyCode, broadcastLobbyList);
+                ws.currentLobbyCode = null;
+                ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
+            }
+            break;
+        }
+
+        case 'SET_READY': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
                 const player = lobby.players.find(p => p.id === ws);
-                const activeUsername = player ? player.username : currentUsername;
-
-                // Voice / VC Status Update[span_8](start_span)[span_8](end_span)
-                if (data.type === 'VOICE_STATUS' || data.type === 'VC_STATUS_UPDATE') {
-                    const inVC = !!data.inVC;
-                    const isMuted = data.isMuted !== undefined ? !!data.isMuted : true;
-                    if (player) {
-                        player.inVC = inVC;
-                        player.isMuted = isMuted;
-                    } else {
-                        const spec = lobby.spectators.find(s => s.idSocket === ws);
-                        if (spec) {
-                            spec.inVC = inVC;
-                            spec.isMuted = isMuted;
-                        }
-                    }
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                } else if (data.type === 'MUTE_TOGGLE') {
-                    const isMuted = !!data.isMuted;
-                    if (player) {
-                        player.isMuted = isMuted;
-                    } else {
-                        const spec = lobby.spectators.find(s => s.idSocket === ws);
-                        if (spec) spec.isMuted = isMuted;
-                    }
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                }
-
-                // Ready Up[span_9](start_span)[span_9](end_span)
-                else if (data.type === 'SET_READY' && player) {
+                if (player && lobby.gameState === 'lobby') {
                     player.ready = !!data.ready;
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
+                    syncBotReadiness(lobby);
+                    broadcastLobbyUpdate(currentLobbyCode);
 
-                    const activeParts = lobbyManager.getActiveParticipants(lobby);
-                    if (activeParts.length >= 2 && activeParts.every(p => p.ready)) {
-                        if (typeof lobbyManager.startRound === 'function') {
-                            lobbyManager.startRound(lobby);
-                        } else if (typeof lobbyManager.startDealerDrawPhase === 'function') {
-                            lobbyManager.startDealerDrawPhase(lobby);
-                        }
+                    const activePlayers = lobby.players.filter(p => !p.eliminated);
+                    if (activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
+                        startDealerDrawPhase(lobby);
                     }
                 }
+            }
+            break;
+        }
 
-                // Card Turn Actions[span_10](start_span)[span_10](end_span)
-                else if (data.type === 'DRAW_DECK' || data.type === 'DRAW_DISCARD') {
-                    lobbyManager.handleTurnAction(lobby, ws, data.type);
-                } else if (data.type === 'DISCARD_CARD') {
-                    const idx = data.index !== undefined ? data.index : data.cardIndex;
-                    lobbyManager.handleDiscardAction(lobby, ws, Number(idx));
-                } else if (data.type === 'KNOCK') {
-                    lobbyManager.handleKnock(lobby, ws, () => lobbyManager.broadcastLobbyUpdate(currentLobbyCode));
-                } else if (data.type === 'CHOOSE_POOL_CARD' && player) {
-                    lobbyManager.handlePoolCardSelection(lobby, activeUsername, Number(data.cardIndex));
-                }
-
-                // Next Hand[span_11](start_span)[span_11](end_span)
-                else if (data.type === 'NEXT_HAND_READY' || data.type === 'NEXT_HAND') {
-                    if (player) {
-                        player.nextHandReady = true;
-                        lobbyManager.checkNextHandReady(lobby);
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
+        case 'STAND_UP': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (lobby.gameState === 'lobby') {
+                    const pIdx = lobby.players.findIndex(p => p.id === ws);
+                    if (pIdx !== -1) {
+                        const removed = lobby.players.splice(pIdx, 1)[0];
+                        lobby.spectators.push({
+                            idSocket: ws,
+                            username: removed.username,
+                            inVC: removed.inVC,
+                            isMuted: removed.isMuted
+                        });
+                        syncBotReadiness(lobby);
+                        broadcastLobbyUpdate(currentLobbyCode);
+                        if (broadcastLobbyList) broadcastLobbyList();
                     }
                 }
+            }
+            break;
+        }
 
-                // Table Seating Controls[span_12](start_span)[span_12](end_span)
-                else if (data.type === 'STAND_UP' && player && lobby.gameState === 'lobby') {
-                    lobby.players = lobby.players.filter(p => p.id !== ws);
-                    lobby.spectators.push({ idSocket: ws, username: player.username, inVC: player.inVC, isMuted: player.isMuted });
-                    lobby.players.forEach((p, idx) => { p.seat = idx; });
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    triggerBroadcast();
-                } else if (data.type === 'SIT_DOWN' && lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                    const specIdx = lobby.spectators.findIndex(s => s.idSocket === ws);
-                    if (specIdx !== -1) {
-                        const spec = lobby.spectators.splice(specIdx, 1)[0];
+        case 'SIT_DOWN': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
+                    const sIdx = lobby.spectators.findIndex(s => s.idSocket === ws);
+                    if (sIdx !== -1) {
+                        const spec = lobby.spectators.splice(sIdx, 1)[0];
                         lobby.players.push({
                             id: ws,
                             username: spec.username,
                             lives: lobby.defaultLives || 2,
                             wager: 5,
-                            ready: false,
                             cards: [],
-                            seat: lobbyManager.findOpenSeat(lobby),
+                            ready: false,
+                            seat: findOpenSeat(lobby),
                             eliminated: false,
                             isBot: false,
-                            disconnected: false,
-                            inVC: !!spec.inVC,
-                            isMuted: spec.isMuted !== undefined ? spec.isMuted : true,
+                            inVC: spec.inVC,
+                            isMuted: spec.isMuted,
                             nextHandReady: false,
-                            peekAllowed: {},
-                            peekRequests: {}
+                            peekRequests: {},
+                            peekAllowed: {}
                         });
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                        triggerBroadcast();
+                        syncBotReadiness(lobby);
+                        broadcastLobbyUpdate(currentLobbyCode);
+                        if (broadcastLobbyList) broadcastLobbyList();
                     }
                 }
+            }
+            break;
+        }
 
-                // Settings & Wagers[span_13](start_span)[span_13](end_span)
-                else if (data.type === 'UPDATE_WAGER' && player && lobby.gameState === 'lobby') {
-                    player.wager = parseInt(data.wager, 10) || 5;
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                } else if (data.type === 'UPDATE_SETTINGS' && lobby.gameState === 'lobby') {
-                    const proposedLives = parseInt(data.lives, 10) || 2;
-                    const humanPlayers = lobby.players.filter(p => !p.isBot);
-                    if (humanPlayers.length <= 1) {
-                        lobby.defaultLives = proposedLives;
-                        lobby.players.forEach(p => { p.lives = proposedLives; });
-                    } else {
-                        lobby.livesVote = {
-                            proposer: activeUsername || 'Host',
-                            proposedLives,
-                            votes: { [activeUsername]: true }
-                        };
-                    }
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                } else if (data.type === 'VOTE_LIVES' && lobby.livesVote && activeUsername) {
-                    lobby.livesVote.votes[activeUsername] = !!data.agree;
-                    const seatedHumans = lobby.players.filter(p => !p.isBot);
-                    if (seatedHumans.every(h => lobby.livesVote.votes[h.username] !== undefined)) {
-                        const agreeCount = Object.values(lobby.livesVote.votes).filter(Boolean).length;
-                        if (agreeCount > seatedHumans.length / 2) {
-                            lobby.defaultLives = lobby.livesVote.proposedLives;
-                            lobby.players.forEach(p => { p.lives = lobby.defaultLives; });
-                            lobby.phaseMessage = `Lives updated to ${lobby.defaultLives}.`;
-                        } else {
-                            lobby.phaseMessage = `Proposed lives vote failed.`;
-                        }
-                        lobby.livesVote = null;
-                    }
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
+        case 'CHOOSE_POOL_CARD': {
+            if (currentLobbyCode && lobbies[currentLobbyCode] && typeof data.cardIndex === 'number') {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
+            }
+            break;
+        }
+
+        case 'DRAW_DECK': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                handleTurnAction(lobby, ws, 'DRAW_DECK');
+            }
+            break;
+        }
+
+        case 'DRAW_DISCARD': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                handleTurnAction(lobby, ws, 'DRAW_DISCARD');
+            }
+            break;
+        }
+
+        case 'DISCARD_CARD': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const cardIdx = (data.index !== undefined) ? data.index : data.cardIndex;
+                if (typeof cardIdx === 'number') {
+                    handleDiscardAction(lobby, ws, cardIdx);
+                }
+            }
+            break;
+        }
+
+        case 'KNOCK': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                handleKnock(lobby, ws);
+            }
+            break;
+        }
+
+        case 'NEXT_HAND_READY':
+        case 'NEXT_HAND': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const player = lobby.players.find(p => p.id === ws);
+                if (player && lobby.gameState === 'roundOver') {
+                    player.nextHandReady = true;
+                    broadcastLobbyUpdate(currentLobbyCode);
+                    checkNextHandReady(lobby);
+                }
+            }
+            break;
+        }
+
+        case 'UPDATE_WAGER': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const player = lobby.players.find(p => p.id === ws);
+                if (player && lobby.gameState === 'lobby') {
+                    player.wager = Math.max(1, parseInt(data.wager, 10) || 5);
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
+            }
+            break;
+        }
+
+        // LIVES VOTING PROTOCOL
+        case 'UPDATE_SETTINGS': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (lobby.gameState !== 'lobby') return;
+
+                const requestedLives = parseInt(data.lives, 10) || 2;
+                if (requestedLives === lobby.defaultLives) return;
+
+                const seatedHumans = lobby.players.filter(p => !p.isBot);
+                // If only 1 human is at the table, allow immediate update
+                if (seatedHumans.length <= 1) {
+                    lobby.defaultLives = requestedLives;
+                    lobby.players.forEach(p => { p.lives = requestedLives; });
+                    lobby.phaseMessage = `Starting lives updated to ${requestedLives}.`;
+                    broadcastLobbyUpdate(currentLobbyCode);
+                    return;
                 }
 
-                // Bot Controls[span_14](start_span)[span_14](end_span)
-                else if (data.type === 'ADD_BOT' && lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                    const botCount = lobby.players.filter(p => p.isBot).length + 1;
+                // Multiple seated humans: Initiate majority vote
+                lobby.livesVote = {
+                    proposer: currentUsername,
+                    proposedLives: requestedLives,
+                    votes: { [currentUsername]: true }, // Proposer automatically votes Yes
+                    totalVoters: seatedHumans.length
+                };
+
+                lobby.phaseMessage = `🗳️ ${currentUsername} proposed changing starting lives to ${requestedLives}!`;
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'VOTE_LIVES': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (!lobby.livesVote || lobby.gameState !== 'lobby') return;
+
+                const seatedHuman = lobby.players.find(p => p.id === ws && !p.isBot);
+                if (!seatedHuman) return;
+
+                lobby.livesVote.votes[seatedHuman.username] = !!data.agree;
+
+                const seatedHumans = lobby.players.filter(p => !p.isBot);
+                const yesCount = Object.values(lobby.livesVote.votes).filter(v => v === true).length;
+                const noCount = Object.values(lobby.livesVote.votes).filter(v => v === false).length;
+                const majorityNeeded = Math.floor(seatedHumans.length / 2) + 1;
+
+                if (yesCount >= majorityNeeded) {
+                    const newLives = lobby.livesVote.proposedLives;
+                    lobby.defaultLives = newLives;
+                    lobby.players.forEach(p => { p.lives = newLives; });
+                    lobby.phaseMessage = `✅ Vote passed! Starting lives set to ${newLives}.`;
+                    lobby.livesVote = null;
+                } else if (noCount >= majorityNeeded || Object.keys(lobby.livesVote.votes).length >= seatedHumans.length) {
+                    lobby.phaseMessage = `❌ Vote failed. Starting lives remain ${lobby.defaultLives || 2}.`;
+                    lobby.livesVote = null;
+                }
+
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'ADD_BOT': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
+                    const availableNames = BOT_NAMES.filter(n => !lobby.players.some(p => p.username.startsWith(n)));
+                    const chosenName = (availableNames[Math.floor(Math.random() * availableNames.length)] || ('Bot ' + (lobby.players.length + 1))) + ' (B)';
+
                     lobby.players.push({
-                        id: null,
-                        username: `Bot-${botCount}`,
+                        id: `bot_${Date.now()}_${Math.random()}`,
+                        username: chosenName,
                         lives: lobby.defaultLives || 2,
                         wager: 5,
-                        ready: true,
                         cards: [],
-                        seat: lobbyManager.findOpenSeat(lobby),
+                        ready: false,
+                        seat: findOpenSeat(lobby),
                         eliminated: false,
                         isBot: true,
-                        disconnected: false,
                         inVC: false,
                         isMuted: true,
                         nextHandReady: true,
-                        peekAllowed: {},
-                        peekRequests: {}
+                        peekRequests: {},
+                        peekAllowed: {}
                     });
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    triggerBroadcast();
-                } else if (data.type === 'REMOVE_BOT' && lobby.gameState === 'lobby') {
-                    const botIdx = lobby.players.map(p => p.isBot).lastIndexOf(true);
-                    if (botIdx !== -1) {
-                        lobby.players.splice(botIdx, 1);
-                        lobby.players.forEach((p, idx) => { p.seat = idx; });
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                        triggerBroadcast();
-                    }
-                }
 
-                // Side Bet Proposals & Directives[span_15](start_span)[span_15](end_span)
-                else if (data.type === 'PROPOSE_ELIMINATION_BET' && activeUsername) {
-                    const target = data.target;
-                    const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
-                    lobby.pendingBets = lobby.pendingBets || [];
-                    lobby.pendingBets.push({
-                        id: `elim_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                        type: 'eliminate',
-                        proposer: activeUsername,
-                        target,
-                        pickUser: target,
-                        targetSurvivor: activeUsername,
-                        wagerAmt
-                    });
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                } else if (data.type === 'PROPOSE_GLOBAL_SIDE_BET' && activeUsername) {
-                    const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
-                    lobby.globalProposals = lobby.globalProposals || [];
-                    lobby.globalProposals.push({
-                        id: `glob_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                        proposer: activeUsername,
-                        pickUser: data.pickUser,
-                        wagerAmt,
-                        acceptedBy: []
-                    });
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                } else if (data.type === 'ACCEPT_GLOBAL_PROPOSAL' && activeUsername) {
-                    const prop = (lobby.globalProposals || []).find(gp => gp.id === data.proposalId);
-                    if (prop && prop.proposer !== activeUsername && !prop.acceptedBy.includes(activeUsername)) {
-                        prop.acceptedBy.push(activeUsername);
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                } else if (data.type === 'CONFIRM_GLOBAL_BET' && activeUsername) {
-                    const propIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === data.proposalId);
-                    if (propIdx !== -1) {
-                        const prop = lobby.globalProposals[propIdx];
-                        if (prop.proposer === activeUsername) {
-                            if (data.confirm) {
-                                lobby.activeBets = lobby.activeBets || [];
-                                lobby.activeBets.push({
-                                    id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                                    type: 'win',
-                                    proposer: prop.proposer,
-                                    target: data.acceptedUser,
-                                    pickUser: prop.pickUser,
-                                    wagerAmt: prop.wagerAmt
-                                });
-                            }
-                            prop.acceptedBy = prop.acceptedBy.filter(u => u !== data.acceptedUser);
-                            if (prop.acceptedBy.length === 0) {
-                                lobby.globalProposals.splice(propIdx, 1);
-                            }
-                            lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                        }
-                    }
-                } else if (data.type === 'RESPOND_BET' && activeUsername) {
-                    const idx = (lobby.pendingBets || []).findIndex(b => b.id === data.betId);
-                    if (idx !== -1) {
-                        const bet = lobby.pendingBets[idx];
-                        lobby.pendingBets.splice(idx, 1);
-                        if (data.accept) {
-                            lobby.activeBets = lobby.activeBets || [];
-                            lobby.activeBets.push(bet);
-                        }
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                } else if (data.type === 'CLEAR_DEBT') {
-                    if (typeof ledger.clearDebt === 'function') {
-                        ledger.clearDebt(lobby, activeUsername, data.targetUser, data.category || data.ledgerType);
-                    } else {
-                        const isBot = lobby.players.some(p => (p.username === data.debtor || p.username === data.creditor) && p.isBot);
-                        const ledgerMap = isBot ? lobby.botBetLedger : (data.ledgerType === 'side' ? lobby.sideBetLedger : lobby.mainGameLedger);
-                        if (typeof ledger.clearDebts === 'function') {
-                            ledger.clearDebts(ledgerMap, data.debtor, data.creditor);
-                        }
-                    }
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                }
-
-                // Peeking Hand Controls[span_16](start_span)[span_16](end_span)
-                else if (data.type === 'REQUEST_PEEK' && activeUsername) {
-                    const targetUser = (data.targetUsername || data.targetUser || '').toLowerCase();
-                    const targetP = lobby.players.find(p => p.username.toLowerCase() === targetUser);
-                    if (targetP) {
-                        targetP.peekRequests = targetP.peekRequests || {};
-                        targetP.peekRequests[activeUsername] = true;
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                } else if (data.type === 'RESPOND_PEEK' || data.type === 'ACCEPT_PEEK') {
-                    const specName = data.spectatorUsername || data.targetUser;
-                    if (player) {
-                        player.peekRequests = player.peekRequests || {};
-                        if (specName) delete player.peekRequests[specName];
-                        if (data.allow || data.type === 'ACCEPT_PEEK') {
-                            player.peekAllowed = player.peekAllowed || {};
-                            if (specName) player.peekAllowed[specName] = true;
-                        }
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                } else if (data.type === 'DENY_PEEK') {
-                    const specName = data.spectatorUsername || data.targetUser;
-                    if (player && player.peekRequests && specName) {
-                        delete player.peekRequests[specName];
-                        lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                    }
-                } else if (data.type === 'STOP_PEEK' && activeUsername) {
-                    lobby.players.forEach(p => {
-                        if (p.peekAllowed) delete p.peekAllowed[activeUsername];
-                        if (p.peekRequests) delete p.peekRequests[activeUsername];
-                    });
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                } else if (data.type === 'KICK_PEEKER' && player) {
-                    const specName = data.spectatorUsername || data.targetUser;
-                    if (player.peekAllowed && specName) delete player.peekAllowed[specName];
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                }
-
-                // End Game Proposal[span_17](start_span)[span_17](end_span)
-                else if (data.type === 'END_GAME_PROPOSAL') {
-                    lobbyManager.resetLobbyToReadyRoom(lobby, 'Game ended by mutual proposal.', triggerBroadcast);
-                }
-
-                // YouTube Player Actions[span_18](start_span)[span_18](end_span)
-                else if ([
-                    'YT_PLAY', 'YT_PAUSE', 'YT_SKIP', 'YT_PREV', 'YT_ADD_SONG', 'YT_REMOVE_SONG'
-                ].includes(data.type)) {
-                    if (data.type === 'YT_PLAY') {
-                        lobby.isPlaying = true;
-                        lobby.songStartedAt = Date.now() - ((lobby.songPausedAtOffset || 0) * 1000);
-                    } else if (data.type === 'YT_PAUSE') {
-                        lobby.isPlaying = false;
-                        if (lobby.songStartedAt) {
-                            lobby.songPausedAtOffset = Math.max(0, Math.floor((Date.now() - lobby.songStartedAt) / 1000));
-                        }
-                    } else if (data.type === 'YT_SKIP') {
-                        if (lobby.playlist && lobby.playlist.length > 0) {
-                            lobby.currentSongIndex = (lobby.currentSongIndex + 1) % lobby.playlist.length;
-                            lobby.songPausedAtOffset = 0;
-                            lobby.songStartedAt = Date.now();
-                            lobby.isPlaying = true;
-                        }
-                    } else if (data.type === 'YT_PREV') {
-                        if (lobby.playlist && lobby.playlist.length > 0) {
-                            lobby.currentSongIndex = (lobby.currentSongIndex - 1 + lobby.playlist.length) % lobby.playlist.length;
-                            lobby.songPausedAtOffset = 0;
-                            lobby.songStartedAt = Date.now();
-                            lobby.isPlaying = true;
-                        }
-                    } else if (data.type === 'YT_ADD_SONG' && data.videoId && data.title) {
-                        if (!lobby.playlist) lobby.playlist = [];
-                        lobby.playlist.push({ videoId: data.videoId, title: data.title });
-                        if (lobby.playlist.length === 1) {
-                            lobby.currentSongIndex = 0;
-                            lobby.songPausedAtOffset = 0;
-                            lobby.songStartedAt = Date.now();
-                            lobby.isPlaying = true;
-                        }
-                    } else if (data.type === 'YT_REMOVE_SONG' && typeof data.index === 'number') {
-                        if (lobby.playlist && lobby.playlist[data.index]) {
-                            lobby.playlist.splice(data.index, 1);
-                            if (lobby.currentSongIndex >= lobby.playlist.length) {
-                                lobby.currentSongIndex = Math.max(0, lobby.playlist.length - 1);
-                            }
-                        }
-                    }
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                }
-
-                // Chat[span_19](start_span)[span_19](end_span)
-                else if (data.type === 'CHAT_MESSAGE') {
-                    const sender = activeUsername || (lobby.spectators.find(s => s.idSocket === ws)?.username) || 'Player';
-                    lobby.chatHistory = lobby.chatHistory || [];
-                    lobby.chatHistory.push({ user: sender, text: String(data.message || '').trim().substring(0, 200) });
-                    if (lobby.chatHistory.length > 50) lobby.chatHistory.shift();
-                    lobbyManager.broadcastLobbyUpdate(currentLobbyCode);
-                }
-
-                // Intentional Exit[span_20](start_span)[span_20](end_span)
-                else if (data.type === 'LEAVE_LOBBY') {
-                    lobbyManager.leaveLobby(ws, currentLobbyCode, triggerBroadcast);
-                    currentLobbyCode = null;
-                    ws.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
+                    syncBotReadiness(lobby);
+                    lobby.phaseMessage = `🤖 ${chosenName} joined the table.`;
+                    broadcastLobbyUpdate(currentLobbyCode);
+                    if (broadcastLobbyList) broadcastLobbyList();
                 }
             }
+            break;
+        }
+
+        case 'REMOVE_BOT': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (lobby.gameState === 'lobby') {
+                    let botIdx = -1;
+                    for (let i = lobby.players.length - 1; i >= 0; i--) {
+                        if (lobby.players[i].isBot) {
+                            botIdx = i;
+                            break;
+                        }
+                    }
+                    if (botIdx !== -1) {
+                        const removed = lobby.players.splice(botIdx, 1)[0];
+                        lobby.phaseMessage = `🤖 ${removed.username} was removed.`;
+                        syncBotReadiness(lobby);
+                        broadcastLobbyUpdate(currentLobbyCode);
+                        if (broadcastLobbyList) broadcastLobbyList();
+                    }
+                }
+            }
+            break;
+        }
+
+        case 'REQUEST_PEEK': {
+            if (currentLobbyCode && lobbies[currentLobbyCode] && data.targetUsername) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const targetLower = data.targetUsername.trim().toLowerCase();
+                const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === targetLower);
+                if (targetPlayer) {
+                    if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
+                    targetPlayer.peekRequests[currentUsername] = true;
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
+            }
+            break;
+        }
+
+        case 'RESPOND_PEEK': {
+            if (currentLobbyCode && lobbies[currentLobbyCode] && data.spectatorUsername) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const player = lobby.players.find(p => p.id === ws);
+                if (player) {
+                    const specName = data.spectatorUsername.trim();
+                    const specLower = specName.toLowerCase();
+
+                    if (player.peekRequests) {
+                        Object.keys(player.peekRequests).forEach(k => {
+                            if (k.toLowerCase() === specLower) delete player.peekRequests[k];
+                        });
+                    }
+
+                    if (data.allow) {
+                        if (!player.peekAllowed) player.peekAllowed = {};
+                        player.peekAllowed[specName] = true;
+                    }
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
+            }
+            break;
+        }
+
+        case 'KICK_PEEKER': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const player = lobby.players.find(p => p.id === ws);
+                if (player && player.peekAllowed) {
+                    const targetName = (data.spectatorUsername || '').trim().toLowerCase();
+                    Object.keys(player.peekAllowed).forEach(k => {
+                        if (k.toLowerCase() === targetName) {
+                            delete player.peekAllowed[k];
+                        }
+                    });
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
+            }
+            break;
+        }
+
+        case 'STOP_PEEK': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const myLower = (currentUsername || '').trim().toLowerCase();
+                lobby.players.forEach(pl => {
+                    if (pl.peekAllowed) {
+                        Object.keys(pl.peekAllowed).forEach(k => {
+                            if (k.toLowerCase() === myLower) {
+                                delete pl.peekAllowed[k];
+                            }
+                        });
+                    }
+                });
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'PROPOSE_ELIMINATION_BET': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
+                const targetPlayer = lobby.players.find(p => p.username === data.target);
+
+                if (targetPlayer && targetPlayer.isBot) {
+                    if (!lobby.activeBets) lobby.activeBets = [];
+                    lobby.activeBets.push({
+                        id: `bet_${Date.now()}_${Math.random()}`,
+                        type: 'eliminate',
+                        proposer: currentUsername,
+                        target: data.target,
+                        pickUser: data.target,
+                        targetSurvivor: currentUsername,
+                        wagerAmt,
+                        isBotBet: true
+                    });
+                    lobby.phaseMessage = `🤝 Bot Bet Accepted! ${targetPlayer.username} accepted ${currentUsername}'s $${wagerAmt} bet!`;
+                } else {
+                    if (!lobby.pendingBets) lobby.pendingBets = [];
+                    lobby.pendingBets.push({
+                        id: `bet_${Date.now()}_${Math.random()}`,
+                        type: 'eliminate',
+                        proposer: currentUsername,
+                        target: data.target,
+                        pickUser: data.target,
+                        targetSurvivor: currentUsername,
+                        wagerAmt
+                    });
+                }
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'PROPOSE_GLOBAL_SIDE_BET': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
+                const newProp = {
+                    id: `prop_${Date.now()}_${Math.random()}`,
+                    proposer: currentUsername,
+                    pickUser: data.pickUser,
+                    wagerAmt,
+                    acceptedBy: []
+                };
+                if (!lobby.globalProposals) lobby.globalProposals = [];
+                lobby.globalProposals.push(newProp);
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'ACCEPT_GLOBAL_PROPOSAL': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const prop = (lobby.globalProposals || []).find(gp => gp.id === data.proposalId);
+                if (prop && prop.proposer !== currentUsername && !prop.acceptedBy.includes(currentUsername)) {
+                    prop.acceptedBy.push(currentUsername);
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
+            }
+            break;
+        }
+
+        case 'CONFIRM_GLOBAL_BET': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const pIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === data.proposalId);
+                if (pIdx !== -1) {
+                    const prop = lobby.globalProposals[pIdx];
+                    if (prop.proposer === currentUsername) {
+                        const accUser = data.acceptedUser;
+                        prop.acceptedBy = prop.acceptedBy.filter(u => u !== accUser);
+                        if (data.confirm) {
+                            if (!lobby.activeBets) lobby.activeBets = [];
+                            lobby.activeBets.push({
+                                id: `gbet_${Date.now()}_${Math.random()}`,
+                                type: 'win',
+                                proposer: prop.proposer,
+                                target: accUser,
+                                pickUser: prop.pickUser,
+                                wagerAmt: prop.wagerAmt
+                            });
+                        }
+                        if (prop.acceptedBy.length === 0) {
+                            lobby.globalProposals.splice(pIdx, 1);
+                        }
+                        broadcastLobbyUpdate(currentLobbyCode);
+                    }
+                }
+            }
+            break;
+        }
+
+        case 'RESPOND_BET': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const bIdx = (lobby.pendingBets || []).findIndex(b => b.id === data.betId);
+                if (bIdx !== -1) {
+                    const bet = lobby.pendingBets.splice(bIdx, 1)[0];
+                    if (data.accept) {
+                        if (!lobby.activeBets) lobby.activeBets = [];
+                        lobby.activeBets.push(bet);
+                    }
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
+            }
+            break;
+        }
+
+        case 'CLEAR_DEBT': {
+            if (currentLobbyCode && lobbies[currentLobbyCode] && data.debtor && data.creditor) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const isBot = lobby.players.some(p => (p.username === data.debtor || p.username === data.creditor) && p.isBot);
+                const ledger = isBot ? lobby.botBetLedger : (data.ledgerType === 'side' ? lobby.sideBetLedger : lobby.mainGameLedger);
+                clearDebts(ledger, data.debtor, data.creditor);
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'CHAT_MESSAGE': {
+            if (currentLobbyCode && lobbies[currentLobbyCode] && data.message) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const msgObj = { user: currentUsername || 'Unknown', text: String(data.message).slice(0, 200) };
+                if (!lobby.chatHistory) lobby.chatHistory = [];
+                lobby.chatHistory.push(msgObj);
+                if (lobby.chatHistory.length > 50) lobby.chatHistory.shift();
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'END_GAME_PROPOSAL': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                resetLobbyToReadyRoom(lobby, `${currentUsername} ended the match.`, broadcastLobbyList);
+            }
+            break;
+        }
+
+        case 'YT_PLAY':
+        case 'YT_PAUSE':
+        case 'YT_SKIP':
+        case 'YT_PREV':
+        case 'YT_ADD_SONG':
+        case 'YT_REMOVE_SONG': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+
+                if (data.type === 'YT_PLAY') {
+                    lobby.isPlaying = true;
+                    lobby.songStartedAt = Date.now() - ((lobby.songPausedAtOffset || 0) * 1000);
+                } else if (data.type === 'YT_PAUSE') {
+                    lobby.isPlaying = false;
+                    if (lobby.songStartedAt) {
+                        lobby.songPausedAtOffset = Math.max(0, Math.floor((Date.now() - lobby.songStartedAt) / 1000));
+                    }
+                } else if (data.type === 'YT_SKIP') {
+                    if (lobby.playlist && lobby.playlist.length > 0) {
+                        lobby.currentSongIndex = (lobby.currentSongIndex + 1) % lobby.playlist.length;
+                        lobby.songPausedAtOffset = 0;
+                        lobby.songStartedAt = Date.now();
+                        lobby.isPlaying = true;
+                    }
+                } else if (data.type === 'YT_PREV') {
+                    if (lobby.playlist && lobby.playlist.length > 0) {
+                        lobby.currentSongIndex = (lobby.currentSongIndex - 1 + lobby.playlist.length) % lobby.playlist.length;
+                        lobby.songPausedAtOffset = 0;
+                        lobby.songStartedAt = Date.now();
+                        lobby.isPlaying = true;
+                    }
+                } else if (data.type === 'YT_ADD_SONG' && data.videoId && data.title) {
+                    if (!lobby.playlist) lobby.playlist = [];
+                    lobby.playlist.push({ videoId: data.videoId, title: data.title });
+                    if (lobby.playlist.length === 1) {
+                        lobby.currentSongIndex = 0;
+                        lobby.songPausedAtOffset = 0;
+                        lobby.songStartedAt = Date.now();
+                        lobby.isPlaying = true;
+                    }
+                } else if (data.type === 'YT_REMOVE_SONG' && typeof data.index === 'number') {
+                    if (lobby.playlist && lobby.playlist[data.index]) {
+                        lobby.playlist.splice(data.index, 1);
+                        if (lobby.currentSongIndex >= lobby.playlist.length) {
+                            lobby.currentSongIndex = Math.max(0, lobby.playlist.length - 1);
+                        }
+                    }
+                }
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'VC_STATUS_UPDATE': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                const player = lobby.players.find(p => p.id === ws);
+                const spec = lobby.spectators.find(s => s.idSocket === ws);
+                if (player) {
+                    player.inVC = !!data.inVC;
+                    player.isMuted = data.isMuted !== undefined ? !!data.isMuted : true;
+                }
+                if (spec) {
+                    spec.inVC = !!data.inVC;
+                    spec.isMuted = data.isMuted !== undefined ? !!data.isMuted : true;
+                }
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+    }
+}
+
+function setupWebSocket(wss, broadcastLobbyList) {
+    wss.on('connection', (ws) => {
+        ws.isAlive = true;
+        ws.on('pong', () => { ws.isAlive = true; });
+
+        ws.on('message', (message) => {
+            handleWebSocketMessage(ws, message, broadcastLobbyList);
         });
 
-        // Graceful disconnect on network drop, app backgrounding, or screen sleep[span_21](start_span)[span_21](end_span)[span_22](start_span)[span_22](end_span)
         ws.on('close', () => {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                if (typeof lobbyManager.handleDisconnect === 'function') {
-                    lobbyManager.handleDisconnect(ws, currentLobbyCode, triggerBroadcast);
-                } else {
-                    const lobby = lobbies[currentLobbyCode];
-                    const p = lobby.players.find(pl => pl.id === ws);
-                    if (p) p.id = null;
-                    const s = lobby.spectators.find(sp => sp.idSocket === ws);
-                    if (s) s.idSocket = null;
-                }
+            if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
+                const lobby = lobbies[ws.currentLobbyCode];
+                const p = lobby.players.find(pl => pl.id === ws);
+                if (p) p.id = null;
+                const s = lobby.spectators.find(spec => spec.idSocket === ws);
+                if (s) s.idSocket = null;
             }
         });
     });
 }
 
 module.exports = {
-    setupWebSocket,
-    broadcastLobbyList
+    handleWebSocketMessage,
+    setupWebSocket
 };
