@@ -1,4 +1,4 @@
-// public/js/app.js - Authentication, Client State & Mobile Lifecycle Coordinator
+// public/js/app.js - Authentication, Client State & Mobile Lifecycle Coordinator (PART 1 OF 2)
 
 window.userSession = null;
 
@@ -6,7 +6,7 @@ window.userSession = null;
 // 1. GOOGLE IDENTITY SERVICES INITIALIZATION
 // -------------------------------------------------------------
 function initializeGoogleIdentity() {
-    // Check if the Google SDK loaded from index.html
+    // Retry briefly if Google SDK is still downloading
     if (typeof window.google === 'undefined' || !window.google.accounts || !window.google.accounts.id) {
         setTimeout(initializeGoogleIdentity, 300);
         return;
@@ -14,34 +14,38 @@ function initializeGoogleIdentity() {
 
     const clientId = window.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
 
-    window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleGoogleCredentialResponse,
-        auto_select: false,
-        cancel_on_tap_outside: true
-    });
-
-    const btnContainer = document.getElementById('google-signin-btn');
-    if (btnContainer) {
-        btnContainer.innerHTML = '';
-        window.google.accounts.id.renderButton(btnContainer, {
-            type: 'standard',
-            theme: 'filled_black',
-            size: 'large',
-            text: 'continue_with',
-            shape: 'rectangular',
-            width: 250
+    try {
+        window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true
         });
-    }
 
-    // Trigger Google One Tap floating dialog
-    window.google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed()) {
-            console.log('[Auth] One Tap prompt not displayed:', notification.getNotDisplayedReason());
-        } else if (notification.isSkippedMoment()) {
-            console.log('[Auth] One Tap prompt skipped:', notification.getSkippedReason());
+        const btnContainer = document.getElementById('google-signin-btn');
+        if (btnContainer) {
+            btnContainer.innerHTML = '';
+            window.google.accounts.id.renderButton(btnContainer, {
+                type: 'standard',
+                theme: 'filled_black',
+                size: 'large',
+                text: 'continue_with',
+                shape: 'rectangular',
+                width: 250
+            });
         }
-    });
+
+        // Trigger Google One Tap floating dialog
+        window.google.accounts.id.prompt((notification) => {
+            if (notification.isNotDisplayed()) {
+                console.log('[Auth] One Tap prompt not displayed:', notification.getNotDisplayedReason());
+            } else if (notification.isSkippedMoment()) {
+                console.log('[Auth] One Tap prompt skipped:', notification.getSkippedReason());
+            }
+        });
+    } catch (e) {
+        console.warn('[Auth] GIS initialization notice:', e);
+    }
 }
 
 async function handleGoogleCredentialResponse(response) {
@@ -104,12 +108,13 @@ function showAuthError(message) {
 }
 
 function updateViewForAuth(user) {
-    const authScreen = document.getElementById('auth-screen');
+    // Targets both id variants to ensure backward and styled compatibility
+    const authOverlay = document.getElementById('auth-overlay') || document.getElementById('auth-screen');
     const mainMenu = document.getElementById('main-menu');
     const badge = document.getElementById('menu-user-badge');
     const usernameInput = document.getElementById('username-input');
 
-    if (authScreen) authScreen.style.display = 'none';
+    if (authOverlay) authOverlay.style.display = 'none';
     if (mainMenu) mainMenu.style.display = 'flex';
 
     if (user) {
@@ -129,6 +134,7 @@ function updateViewForAuth(user) {
         window.refreshLobbies();
     }
 }
+// public/js/app.js - PART 2 OF 2
 
 // -------------------------------------------------------------
 // 3. NATIVE FORM DISPATCHERS (PASSWORD & GUEST)
@@ -224,7 +230,7 @@ function logoutSession() {
 }
 
 // -------------------------------------------------------------
-// 4. SESSION REHYDRATION ON BOOT
+// 4. SESSION REHYDRATION & INITIALIZATION ON BOOT
 // -------------------------------------------------------------
 async function checkExistingAuthToken() {
     const token = localStorage.getItem('31_jwt');
@@ -257,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkExistingAuthToken();
 });
 
-// Expose globals for HTML event attributes
+// Expose handlers globally for inline HTML onclick attributes
 window.switchAuthTab = switchAuthTab;
 window.submitAuthLogin = submitAuthLogin;
 window.submitAuthRegister = submitAuthRegister;
