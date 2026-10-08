@@ -15,7 +15,6 @@ function getWebSocketUrl() {
     const loc = window.location;
     const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
     
-    // In local dev without dedicated port mapping or default port 10000/3000
     if (loc.port && loc.port !== '80' && loc.port !== '443') {
         return `${protocol}//${loc.hostname}:${loc.port}`;
     }
@@ -44,7 +43,6 @@ window.initSocket = function(onOpenCallback) {
         return;
     }
 
-    // Keep global reference in sync
     if (window.appGlobals) {
         window.appGlobals.ws = window.ws;
     }
@@ -54,13 +52,13 @@ window.initSocket = function(onOpenCallback) {
         window.isConnectingSocket = false;
         window.reconnectAttempts = 0;
 
-        // Auto-authenticate socket if user session token exists
+        // Auto-authenticate socket if user session token exists in storage
         const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
         if (token) {
             window.sendSocketMessage({ type: 'AUTH_TOKEN', token });
         }
 
-        // Start heartbeat ping
+        // Heartbeat keep-alive ping
         if (window.socketHeartbeatTimer) clearInterval(window.socketHeartbeatTimer);
         window.socketHeartbeatTimer = setInterval(() => {
             if (window.ws && window.ws.readyState === WebSocket.OPEN) {
@@ -81,7 +79,7 @@ window.initSocket = function(onOpenCallback) {
             // Heartbeat response
             if (data.type === 'PONG') return;
 
-            // Notification / Error banners
+            // Error & Notification banners
             if (data.type === 'ERROR') {
                 if (typeof window.showCenterNotification === 'function') {
                     window.showCenterNotification(data.message || 'An error occurred.');
@@ -115,7 +113,7 @@ window.initSocket = function(onOpenCallback) {
                 return;
             }
 
-            // Lobby room joined
+            // Lobby room joined / re-joined
             if (data.type === 'LOBBY_JOINED') {
                 if (window.appGlobals) {
                     window.appGlobals.currentJoinedCode = data.code;
@@ -131,7 +129,7 @@ window.initSocket = function(onOpenCallback) {
                 return;
             }
 
-            // In-game / lobby state tick
+            // State sync broadcast
             if (data.type === 'GAME_STATE_UPDATE' || data.type === 'LOBBY_UPDATE') {
                 if (window.appGlobals) {
                     window.appGlobals.latestLobbySnapshot = data.lobby;
@@ -158,10 +156,30 @@ window.initSocket = function(onOpenCallback) {
                 return;
             }
 
-            // Lifetime ledger balance payload
+            // Lifetime ledger payload from SQLite
             if (data.type === 'LIFETIME_LEDGER_DATA') {
                 if (typeof window.renderLifetimeLedgerData === 'function') {
                     window.renderLifetimeLedgerData(data.balances || [], data.isGuest);
+                } else if (typeof window.renderLifetimeLedger === 'function') {
+                    window.renderLifetimeLedger(data.balances || [], data.isGuest);
+                } else if (typeof window.renderLifetimeBalances === 'function') {
+                    window.renderLifetimeBalances(data.balances || [], data.isGuest);
+                } else {
+                    const container = document.getElementById('lifetime-ledger-content');
+                    if (container) {
+                        if (data.isGuest) {
+                            container.innerHTML = '<div style="color:var(--text-muted); padding:6px;">Guest accounts do not retain lifetime records. Sign in with a registered account.</div>';
+                        } else if (!data.balances || data.balances.length === 0) {
+                            container.innerHTML = '<div style="color:var(--text-muted); padding:6px;">No lifetime balance records found.</div>';
+                        } else {
+                            container.innerHTML = data.balances.map(b => `
+                                <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.1);">
+                                    <span>${b.opponent || b.username}:</span>
+                                    <b style="color:${b.net >= 0 ? '#34d399' : '#f87171'};">${b.net >= 0 ? '+$' + b.net : '-$' + Math.abs(b.net)}</b>
+                                </div>
+                            `).join('');
+                        }
+                    }
                 }
                 return;
             }
@@ -213,7 +231,13 @@ function verifyAndReconnectSocket() {
     if (isSocketDead) {
         console.log('[NETWORK] App resumed with dormant socket. Re-establishing link...');
         window.initSocket(() => {
-            // Re-join active lobby upon socket recovery so player re-attaches to their seat
+            // Re-authenticate socket credentials upon reconnect
+            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+            if (token) {
+                window.sendSocketMessage({ type: 'AUTH_TOKEN', token });
+            }
+
+            // Re-join active lobby upon recovery so player re-attaches to their seat
             if (window.appGlobals && window.appGlobals.currentJoinedCode) {
                 const activeUser = (document.getElementById('username-input')?.value || window.clientState?.username || 'Player1').trim();
                 window.sendSocketMessage({
@@ -252,7 +276,7 @@ window.addEventListener('focus', () => {
     verifyAndReconnectSocket();
 });
 
-// Network online event (e.g. Wi-Fi <-> Cellular handoff)
+// Network online event (e.g., Wi-Fi <-> Mobile Data handoff)
 window.addEventListener('online', () => {
     verifyAndReconnectSocket();
 });
