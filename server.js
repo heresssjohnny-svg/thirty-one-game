@@ -86,6 +86,19 @@ function broadcastLobbyList() {
     });
 }
 
+// Helper: Bots only become ready when all seated humans are ready
+function syncBotReadiness(lobby) {
+    if (!lobby || lobby.gameState !== 'lobby') return;
+    const seatedHumans = lobby.players.filter(p => !p.isBot);
+    const allHumansReady = seatedHumans.length > 0 && seatedHumans.every(p => p.ready);
+
+    lobby.players.forEach(p => {
+        if (p.isBot) {
+            p.ready = allHumansReady;
+        }
+    });
+}
+
 wss.on('connection', (ws) => {
     let currentLobbyCode = null;
 
@@ -97,7 +110,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Support both GET_LOBBIES and REFRESH_LOBBIES
         if (data.type === 'GET_LOBBIES' || data.type === 'REFRESH_LOBBIES') {
             ws.send(JSON.stringify({ type: 'LOBBY_LIST', lobbies: getPublicLobbiesList() }));
             return;
@@ -208,6 +220,7 @@ wss.on('connection', (ws) => {
                         inVC: false,
                         isMuted: true
                     });
+                    syncBotReadiness(lobby);
                 } else {
                     lobby.spectators.push({
                         idSocket: ws,
@@ -235,7 +248,6 @@ wss.on('connection', (ws) => {
         if (!lobby) return;
         touchLobbyActivity(lobby, broadcastLobbyList);
 
-        // Allow clients to request a refreshed LiveKit token for reconnects
         if (data.type === 'REQUEST_LIVEKIT_TOKEN') {
             const player = lobby.players.find(p => p.id === ws);
             const spec = lobby.spectators.find(s => s.idSocket === ws);
@@ -271,6 +283,7 @@ wss.on('connection', (ws) => {
                     inVC: spec.inVC,
                     isMuted: spec.isMuted
                 });
+                syncBotReadiness(lobby);
                 broadcastLobbyUpdate(lobby.code);
                 broadcastLobbyList();
             }
@@ -289,6 +302,7 @@ wss.on('connection', (ws) => {
                     isMuted: p.isMuted
                 });
                 lobby.players.forEach((pl, idx) => { pl.seat = idx; });
+                syncBotReadiness(lobby);
                 broadcastLobbyUpdate(lobby.code);
                 broadcastLobbyList();
             }
@@ -299,6 +313,7 @@ wss.on('connection', (ws) => {
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
                 player.ready = !!data.ready;
+                syncBotReadiness(lobby);
                 broadcastLobbyUpdate(lobby.code);
 
                 const seatedHumans = lobby.players.filter(p => !p.isBot);
@@ -311,11 +326,20 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Support both NEXT_HAND and NEXT_HAND_READY
         if (data.type === 'NEXT_HAND' || data.type === 'NEXT_HAND_READY') {
             const player = lobby.players.find(p => p.id === ws);
             if (player && !player.eliminated) {
                 player.nextHandReady = true;
+
+                // Sync bots for the next hand only when all active humans are ready
+                const activeHumans = lobby.players.filter(p => !p.isBot && !p.eliminated);
+                const allActiveHumansNextReady = activeHumans.length > 0 && activeHumans.every(p => p.nextHandReady);
+                if (allActiveHumansNextReady) {
+                    lobby.players.forEach(p => {
+                        if (p.isBot) p.nextHandReady = true;
+                    });
+                }
+
                 broadcastLobbyUpdate(lobby.code);
                 checkNextHandReady(lobby);
             }
@@ -351,7 +375,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Side bets
         if (data.type === 'PROPOSE_ELIMINATION_BET') {
             const proposer = lobby.players.find(p => p.id === ws);
             if (proposer) {
@@ -444,13 +467,12 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Ledger settlement
         if (data.type === 'CLEAR_DEBT') {
             const player = lobby.players.find(p => p.id === ws);
             if (player && data.targetUser) {
                 const myName = player.username;
                 const target = data.targetUser;
-                const cat = data.category; // 'side', 'main', or 'bot'
+                const cat = data.category;
 
                 const clearInLedger = (ledgerObj) => {
                     if (!ledgerObj) return;
@@ -472,7 +494,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Peeking hand
         if (data.type === 'REQUEST_PEEK') {
             const spec = lobby.spectators.find(s => s.idSocket === ws);
             const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.targetUsername || '').toLowerCase());
@@ -517,7 +538,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // End Game / Lives votes
         if (data.type === 'END_GAME_PROPOSAL') {
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
@@ -557,7 +577,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Support both VC_STATUS_UPDATE and UPDATE_VC_STATUS
         if (data.type === 'VC_STATUS_UPDATE' || data.type === 'UPDATE_VC_STATUS') {
             const player = lobby.players.find(p => p.id === ws);
             const spec = lobby.spectators.find(s => s.idSocket === ws);
@@ -632,16 +651,17 @@ wss.on('connection', (ws) => {
                     username: name,
                     lives: lobby.defaultLives || 2,
                     wager: 5,
-                    ready: true,
+                    ready: false, // Initialized false: waits for all seated humans to ready up
                     seat: seatNum,
                     cards: [],
                     eliminated: false,
-                    nextHandReady: true,
+                    nextHandReady: false,
                     isBot: true,
                     isNewArrival: false,
                     inVC: false,
                     isMuted: true
                 });
+                syncBotReadiness(lobby);
                 broadcastLobbyUpdate(lobby.code);
                 broadcastLobbyList();
             }
@@ -654,6 +674,7 @@ wss.on('connection', (ws) => {
                 if (bIdx !== -1) {
                     lobby.players.splice(bIdx, 1);
                     lobby.players.forEach((p, idx) => { p.seat = idx; });
+                    syncBotReadiness(lobby);
                     broadcastLobbyUpdate(lobby.code);
                     broadcastLobbyList();
                 }
@@ -670,8 +691,19 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        if (currentLobbyCode) {
-            leaveLobby(ws, currentLobbyCode, broadcastLobbyList);
+        // Retain seated players on temporary background sleep; only unbind the socket reference
+        if (currentLobbyCode && lobbies[currentLobbyCode]) {
+            const lobby = lobbies[currentLobbyCode];
+            const player = lobby.players.find(p => p.id === ws);
+            if (player) {
+                player.id = null;
+            }
+            const specIdx = lobby.spectators.findIndex(s => s.idSocket === ws);
+            if (specIdx !== -1) {
+                lobby.spectators.splice(specIdx, 1);
+                broadcastLobbyUpdate(lobby.code);
+                broadcastLobbyList();
+            }
         }
     });
 });
