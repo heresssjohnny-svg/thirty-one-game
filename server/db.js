@@ -51,6 +51,12 @@ module.exports = {
     return db.prepare('SELECT id, provider, username, created_at FROM users WHERE id = ?').get(id);
   },
 
+  // Lookup by username (case-insensitive) to bridge session ledger usernames to SQLite IDs
+  findUserByUsername: (username) => {
+    if (!username) return null;
+    return db.prepare('SELECT id, provider, username, created_at FROM users WHERE LOWER(username) = LOWER(?)').get(username.trim());
+  },
+
   createUser: (id, provider, providerId, username, passwordHash = null) => {
     db.prepare(`
       INSERT INTO users (id, provider, provider_id, username, password_hash)
