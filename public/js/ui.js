@@ -1,5 +1,19 @@
 // public/js/ui.js
 
+// Safe message dispatcher ensuring compatibility with all network wrappers
+function safeSend(msgObj) {
+    if (typeof window.sendSocketMessage === 'function') {
+        window.sendSocketMessage(msgObj);
+    } else if (typeof window.initSocketAndSend === 'function' && window.initSocketAndSend !== safeSend) {
+        window.initSocketAndSend(msgObj);
+    } else if (window.appGlobals?.ws && window.appGlobals.ws.readyState === WebSocket.OPEN) {
+        window.appGlobals.ws.send(JSON.stringify(msgObj));
+    } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+        window.ws.send(JSON.stringify(msgObj));
+    }
+}
+window.initSocketAndSend = safeSend;
+
 /**
  * Normalizes card data (object or shorthand string) and produces authentic playing card markup
  * @param {string|object} card - e.g. "10H", { val: "A", suit: "♠" }
@@ -56,15 +70,14 @@ function formatCardHtml(card, isMini = false, extraClass = '') {
     `;
 }
 
-// Card HTML helper
 function createCardHTML(card, extraClass = '') {
     return formatCardHtml(card, false, extraClass);
 }
 
 function calculateLocalScore(cards) {
-    let scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
-    if (!scoringCards || scoringCards.length === 0) return 0;
-    let sums = {};
+    if (!cards || cards.length === 0) return 0;
+    const scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
+    const sums = {};
     scoringCards.forEach(c => { sums[c.suit] = (sums[c.suit] || 0) + (c.points || 0); });
     if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) {
         return 30.5;
@@ -99,7 +112,7 @@ function renderLobbyList(lobbies) {
     }
     container.innerHTML = lobbies.map(l => `
         <div class="lobby-item" onclick="joinLobbyCode('${l.code}')">
-            <span>${l.name} (${l.count}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span>
+            <span>${l.name} (${l.count || l.playerCount || 1}/6) - ${l.state === 'lobby' ? 'Open' : 'In-Progress'}</span>
             <span style="color:#38bdf8;">Join</span>
         </div>
     `).join('');
@@ -149,6 +162,26 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
     }
 }
 
+// Player Action Handlers
+function drawCard(source) {
+    const type = source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD';
+    safeSend({ type: type, source: source });
+    safeSend({ type: 'DRAW_CARD', source: source });
+}
+function drawFromDeck() { drawCard('deck'); }
+function drawFromDiscard() { drawCard('discard'); }
+
+function discardCard(index) {
+    safeSend({ type: 'DISCARD_CARD', index: index, cardIndex: index });
+}
+
+function choosePoolCard(index) {
+    if (window.appGlobals?.hasChosenPoolCard) return;
+    if (!window.appGlobals) window.appGlobals = {};
+    window.appGlobals.hasChosenPoolCard = true;
+    safeSend({ type: 'CHOOSE_POOL_CARD', index: index });
+}
+
 function knockRound() {
     const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState?.username;
     const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername?.toLowerCase());
@@ -172,9 +205,78 @@ function knockRound() {
         if (!confirmKnock) return;
     }
 
-    initSocketAndSend({ type: 'KNOCK' });
+    safeSend({ type: 'KNOCK' });
 }
 
+function toggleReady() {
+    const activeUsername = document.getElementById('username-input')?.value.trim() || window.clientState?.username;
+    const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername?.toLowerCase());
+    const ready = !me?.ready;
+    safeSend({ type: 'SET_READY', ready: ready });
+    safeSend({ type: 'TOGGLE_READY' });
+}
+
+function sitDown() { safeSend({ type: 'SIT_DOWN' }); }
+function standUp() { safeSend({ type: 'STAND_UP' }); }
+
+function clickNextHand() {
+    safeSend({ type: 'NEXT_HAND_READY' });
+    safeSend({ type: 'NEXT_HAND' });
+}
+
+function leaveLobby() {
+    safeSend({ type: 'LEAVE_LOBBY' });
+    resetToMainMenu();
+}
+
+function proposeEndGame() {
+    if (confirm("Are you sure you want to propose ending the game?")) {
+        safeSend({ type: 'END_GAME_PROPOSAL' });
+    }
+}
+
+function joinLobbyCode(code) {
+    const username = document.getElementById('username-input')?.value.trim() || window.clientState?.username || 'Player1';
+    safeSend({ type: 'JOIN_LOBBY', code: code, username: username });
+}
+
+function addBot() { safeSend({ type: 'ADD_BOT' }); }
+function removeBot() { safeSend({ type: 'REMOVE_BOT' }); }
+
+function submitEliminationProposal(targetUsername, amount) {
+    safeSend({ type: 'PROPOSE_SIDE_BET', target: targetUsername, amount: Number(amount) });
+    toggleModal('bet-modal');
+}
+
+function kickPeekerAction(spectatorUsername) {
+    safeSend({ type: 'KICK_PEEKER', spectatorUsername: spectatorUsername });
+}
+
+function stopPeekingAction() {
+    safeSend({ type: 'STOP_PEEK' });
+    const banner = document.getElementById('active-peeking-banner');
+    if (banner) banner.style.display = 'none';
+}
+
+function openSettingsModal() { toggleModal('settings-modal'); }
+function openActiveBetsModal() { toggleModal('active-bets-modal'); }
+function openVcParticipantsModal() { toggleModal('vc-participants-modal'); }
+
+function openLedgerModal() {
+    if (typeof window.renderLedgerData === 'function') window.renderLedgerData();
+    toggleModal('ledger-modal');
+}
+
+function openSpectatorListModal() {
+    const content = document.getElementById('spectators-list-content');
+    const specs = window.clientState?.spectatorsList || [];
+    if (content) {
+        content.innerHTML = specs.length === 0 ? 'No spectators.' : '<ul>' + specs.map(s => `<li><b>${s.username || s}</b></li>`).join('') + '</ul>';
+    }
+    toggleModal('spectators-modal');
+}
+
+// Master UI Synchronization
 function updateUIFromLobby(lobby) {
     if (!window.appGlobals) window.appGlobals = {};
     if (!window.clientState) window.clientState = {};
@@ -200,14 +302,16 @@ function updateUIFromLobby(lobby) {
         window.appGlobals.hasChosenPoolCard = false;
         window.appGlobals.lastGameState = lobby.gameState;
         if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
-            document.getElementById('discard-pickup-topleft-modal').style.display = 'none';
-            document.getElementById('fed-card-topright-modal').style.display = 'none';
+            const topleft = document.getElementById('discard-pickup-topleft-modal');
+            const topright = document.getElementById('fed-card-topright-modal');
+            if (topleft) topleft.style.display = 'none';
+            if (topright) topright.style.display = 'none';
         }
     }
 
     updateKnockAlertAndAudio(lobby);
 
-    // Initial discard pickup modal
+    // Initial Discard Pickup Notification Modal
     const topleftModal = document.getElementById('discard-pickup-topleft-modal');
     if (topleftModal) {
         if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
@@ -223,7 +327,7 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Fed card reminder modal
+    // Fed Card Reminder Modal
     const fedModal = document.getElementById('fed-card-topright-modal');
     if (fedModal) {
         if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'lobby') {
@@ -256,12 +360,12 @@ function updateUIFromLobby(lobby) {
     if (specCountEl) specCountEl.innerText = window.clientState.spectatorsList.length;
 
     const me = lobby.players.find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
-    const isSpecUser = (lobby.spectators || []).some(s => s.username.trim().toLowerCase() === activeUsername.toLowerCase());
+    const isSpecUser = (lobby.spectators || []).some(s => (s.username || s).trim().toLowerCase() === activeUsername.toLowerCase());
     const isEliminated = me && me.eliminated;
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
     window.clientState.isSpectator = isSpectatorOnly;
 
-    // Action button state
+    // Action Button States
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
     const readyBtn = document.getElementById('ready-btn');
@@ -281,7 +385,7 @@ function updateUIFromLobby(lobby) {
             if (readyBtn) readyBtn.style.display = 'none';
             if (knockBtn) knockBtn.style.display = 'none';
             if (sitBtn) {
-                sitBtn.style.display = isSpecUser ? 'inline-block' : 'none';
+                sitBtn.style.display = isSpecUser || !me ? 'inline-block' : 'none';
                 sitBtn.disabled = lobby.players.length >= 6;
             }
         }
@@ -292,9 +396,7 @@ function updateUIFromLobby(lobby) {
         if (knockBtn) knockBtn.style.display = isSpectatorOnly ? 'none' : 'inline-block';
     }
 
-    // =========================================================================
-    // Device Turn Cue Detection (Plays yourturn.mp3 directly via audio.js)
-    // =========================================================================
+    // Turn Audio Cue
     const isMyTurn = !!(
         activeUsername &&
         lobby.currentTurnUser &&
@@ -357,76 +459,117 @@ function updateUIFromLobby(lobby) {
         }
     }
 
-    // Tie Breaker Modal
-    const tiebreakerModal = document.getElementById('tiebreaker-modal');
-    const tiebreakerPool = document.getElementById('tiebreaker-pool');
-    if (tiebreakerModal && tiebreakerPool) {
-        if (lobby.gameState === 'tieBreaker' && lobby.tieBreakerPool && lobby.tieBreakerPool.length > 0) {
-            tiebreakerPool.innerHTML = lobby.tieBreakerPool.map(item => `
-                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-                    <span style="font-size:0.75rem; color:#facc15; font-weight:bold;">${item.username}</span>
-                    ${formatCardHtml(item.card, false)}
-                </div>
-            `).join('');
+    // Dealer Draw Phase Screen / Pool Modal
+    const poolModal = document.getElementById('pool-draw-modal') || document.getElementById('dealer-draw-modal');
+    if (poolModal) {
+        if (lobby.gameState === 'dealerDraw') {
+            const poolGrid = document.getElementById('pool-cards-grid') || poolModal.querySelector('.pool-grid');
+            const poolCards = lobby.dealerDrawPool || lobby.poolCards || new Array(10).fill(null);
+            if (poolGrid) {
+                poolGrid.innerHTML = poolCards.map((c, idx) => {
+                    if (c && c.card) {
+                        return `
+                            <div class="draw-modal-card-item">
+                                <span class="draw-modal-user-tag">${c.username}</span>
+                                ${formatCardHtml(c.card, false)}
+                            </div>
+                        `;
+                    }
+                    return `
+                        <div class="draw-modal-card-item" onclick="choosePoolCard(${idx})">
+                            <div class="card-slot back"><div class="card-back-inner"></div></div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            poolModal.style.display = 'flex';
+        } else {
+            poolModal.style.display = 'none';
+        }
+    }
+
+    // Tie-Breaker Draw Screen / Modal
+    const tiebreakerModal = document.getElementById('tie-breaker-reveal-modal') || document.getElementById('tiebreaker-modal');
+    if (tiebreakerModal) {
+        const tiebreakerPool = document.getElementById('tie-breaker-pool') || document.getElementById('tiebreaker-pool');
+        if (lobby.gameState === 'tieBreaker' && (lobby.tieBreakerPool || lobby.tieBreakerResults)) {
+            const poolList = lobby.tieBreakerPool || lobby.tieBreakerResults || [];
+            if (tiebreakerPool) {
+                tiebreakerPool.innerHTML = poolList.map(item => `
+                    <div class="draw-modal-card-item">
+                        <span class="draw-modal-user-tag">${item.username}</span>
+                        ${formatCardHtml(item.card, false)}
+                    </div>
+                `).join('');
+            }
             tiebreakerModal.style.display = 'flex';
         } else {
             tiebreakerModal.style.display = 'none';
         }
     }
 
-    // =========================================================================
-    // Center Table & Draw Screen Cards
-    // =========================================================================
-    const tableContainer = document.getElementById('table-oval-container');
+    // Center Felt Deck & Discard Elements
     const deckCount = (lobby.deck && lobby.deck.length !== undefined) ? lobby.deck.length : (lobby.deckCount || 0);
-    const topDiscard = (lobby.discardPile && lobby.discardPile.length > 0) 
-        ? lobby.discardPile[lobby.discardPile.length - 1] 
+    const topDiscard = (lobby.discardPile && lobby.discardPile.length > 0)
+        ? lobby.discardPile[lobby.discardPile.length - 1]
         : lobby.discardTop;
 
-    const discardCardHtml = topDiscard 
-        ? formatCardHtml(topDiscard, false) 
-        : '<div class="card-slot empty-slot"><span>Empty</span></div>';
-
-    let html = `
-        <div class="pots-container">
-            <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
-            <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
-        </div>
-        <div class="deck-center">
-            <div class="card-slot back" id="deck-pile" onclick="drawCard('deck')">
-                <div class="card-back-inner"></div>
-                <div class="deck-counter-badge" id="deck-count-display">${deckCount} left</div>
-            </div>
-            <div id="discard-pile" onclick="drawCard('discard')">
-                ${discardCardHtml}
-            </div>
-        </div>
-    `;
-
-    // Render 6 Seats
-    lobby.players.forEach((p) => {
-        const revealedCards = p.cards && p.cards.length > 0 
-            ? `<div class="seat-cards">${p.cards.map(c => formatCardHtml(c, true)).join('')}</div>` 
-            : '';
-        const isCurrent = (p.username.toLowerCase() === lobby.currentTurnUser?.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-        html += `
-            <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}">
-                <div class="seat-name-area" onclick="tapSeat('${p.username}')">
-                    <span>${p.ready ? '✅' : '❌'}</span> <b>${p.username}${p.eliminated ? ' [OUT]' : ''}</b><br>Lives: ${p.lives} | Wager: $${p.wager || 5}
-                </div>
-                ${revealedCards}
-            </div>
+    const deckPile = document.getElementById('deck-pile');
+    if (deckPile) {
+        deckPile.className = 'card-slot back';
+        deckPile.onclick = () => drawCard('deck');
+        deckPile.innerHTML = `
+            <div class="card-back-inner"></div>
+            <div class="deck-counter-badge" id="deck-count-display">${deckCount} left</div>
         `;
-    });
-
-    if (tableContainer) {
-        tableContainer.innerHTML = html;
-        if (nextHandOverlay) tableContainer.appendChild(nextHandOverlay);
     }
 
-    // =========================================================================
+    const discardPile = document.getElementById('discard-pile');
+    if (discardPile) {
+        discardPile.onclick = () => drawCard('discard');
+        if (!topDiscard) {
+            discardPile.className = 'card-slot empty-slot';
+            discardPile.innerHTML = '<span>Empty</span>';
+        } else {
+            discardPile.className = 'card-slot';
+            discardPile.innerHTML = formatCardHtml(topDiscard, false, 'discard-card-inner');
+        }
+    }
+
+    // Render 6 Seats with Badges (Dealer [D], VC status, and Bot states)
+    for (let s = 0; s < 6; s++) {
+        const seatNode = document.getElementById(`seat-${s}`);
+        const p = lobby.players.find(player => player.seat === s);
+
+        if (!seatNode) continue;
+
+        if (!p) {
+            seatNode.innerHTML = '';
+            seatNode.className = `seat seat-${s}`;
+            continue;
+        }
+
+        const isCurrent = (p.username.toLowerCase() === lobby.currentTurnUser?.toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+        const isDealer = (lobby.dealerIndex !== undefined && lobby.players[lobby.dealerIndex]?.username === p.username) || p.isDealer;
+        const dealerBadge = isDealer ? `<span class="dealer-badge">D</span>` : '';
+        const vcBadge = p.inVC ? (p.isMuted ? '<span class="vc-badge">🔇</span>' : '<span class="vc-badge active">🎙️</span>') : '';
+        const botBadge = p.isBot ? '🤖 ' : '';
+        const readyIcon = p.isBot && !p.ready ? '⏳' : (p.ready ? '✅' : '❌');
+
+        const revealedCards = p.cards && p.cards.length > 0
+            ? `<div class="seat-cards">${p.cards.map(c => formatCardHtml(c, true)).join('')}</div>`
+            : '';
+
+        seatNode.className = `seat seat-${s}${isCurrent ? ' current-turn-seat' : ''}`;
+        seatNode.innerHTML = `
+            <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                <span>${readyIcon}</span> <b>${botBadge}${p.username}${p.eliminated ? ' [OUT]' : ''}</b> ${dealerBadge} ${vcBadge}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+            </div>
+            ${revealedCards}
+        `;
+    }
+
     // Local Hand Area (Bottom Controls)
-    // =========================================================================
     const myCardsContainer = document.getElementById('my-cards-container');
     const myScoreDisplay = document.getElementById('my-score-display');
     if (me && me.cards && myCardsContainer) {
@@ -484,7 +627,7 @@ function sendChatMessage() {
     if (!input) return;
     const text = input.value.trim();
     if (text) {
-        initSocketAndSend({ type: 'CHAT_MESSAGE', message: text });
+        safeSend({ type: 'CHAT_MESSAGE', message: text });
         input.value = '';
     }
 }
@@ -494,12 +637,6 @@ function appendChatMessage(user, msg) {
     if (!box) return;
     box.innerHTML += `<div><b>${user}:</b> ${msg}</div>`;
     box.scrollTop = box.scrollHeight;
-}
-
-function stopPeekingAction() {
-    initSocketAndSend({ type: 'STOP_PEEK' });
-    const banner = document.getElementById('active-peeking-banner');
-    if (banner) banner.style.display = 'none';
 }
 
 function tapSeat(targetUsername) {
