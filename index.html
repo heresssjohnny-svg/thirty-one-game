@@ -368,12 +368,12 @@
         </div>
     </div>
 
-    <!-- Script Modules -->
+    <!-- Script Modules: Load network.js first so window functions and WebSocket handlers bind immediately -->
+    <script src="js/network.js"></script>
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/celebration.js"></script>
     <script src="js/ledger.js"></script>
-    <script src="js/network.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/voice.js"></script>
     <script src="js/app.js"></script>
