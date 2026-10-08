@@ -321,14 +321,16 @@
         </div>
     </div>
 
-    <!-- 2. Lifetime Ledger Modal -->
-    <div id="lifetime-ledger-modal" class="modal">
+        <!-- 2. Lifetime Ledger Modal (High Stacking Priority) -->
+    <div id="lifetime-ledger-modal" class="modal" style="z-index: 9999;">
         <div class="modal-content" style="max-width:360px;">
             <h3 style="color:var(--accent-gold);">📜 All-Time Lifetime Ledger</h3>
             <p style="font-size:0.75rem; color:var(--text-muted);">Pairwise ledger balances tied permanently to your profile.</p>
-            <div id="lifetime-ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:240px; overflow-y:auto; padding:4px;">No lifetime records found.</div>
-            <button class="secondary" onclick="toggleModal('lifetime-ledger-modal')">Close</button>
+            <div id="lifetime-ledger-content" style="font-size:0.8rem; color:var(--text-muted); text-align:left; max-height:240px; overflow-y:auto; padding:4px;">Loading lifetime records...</div>
+            <button class="secondary" type="button" onclick="document.getElementById('lifetime-ledger-modal').style.display='none';">Close</button>
         </div>
+    </div>
+
     </div>
 
     <!-- 3. Lobby Session Ledger Modal -->
@@ -491,5 +493,89 @@
     <script src="js/network.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/app.js"></script>
+
+    <!-- Inline Lifetime Ledger Fail-Safe Controller -->
+    <script>
+        window.openLifetimeLedgerModal = function() {
+            var modal = document.getElementById('lifetime-ledger-modal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+
+            var content = document.getElementById('lifetime-ledger-content');
+            if (content) {
+                content.innerHTML = '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.75rem;">Loading lifetime records...</div>';
+            }
+
+            var activeUsername = (
+                (window.userSession && window.userSession.username) ||
+                (document.getElementById('auth-display-user') && document.getElementById('auth-display-user').innerText) ||
+                (document.getElementById('username-input') && document.getElementById('username-input').value) ||
+                (window.clientState && window.clientState.username) ||
+                'Player1'
+            ).trim();
+
+            var token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || null;
+            var userId = (window.userSession && window.userSession.userId) || null;
+            var isGuest = !!((window.userSession && window.userSession.isGuest) || (!token && !userId));
+
+            var payload = {
+                type: 'GET_LIFETIME_LEDGER',
+                token: token,
+                userId: userId,
+                username: activeUsername,
+                isGuest: isGuest
+            };
+
+            if (typeof window.sendSocketMessage === 'function') {
+                window.sendSocketMessage(payload);
+            } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                window.ws.send(JSON.stringify(payload));
+            }
+        };
+
+        window.renderLifetimeLedgerData = function(balances, isGuest) {
+            var container = document.getElementById('lifetime-ledger-content');
+            if (!container) return;
+
+            if (isGuest) {
+                container.innerHTML = '<div style="background:rgba(239, 68, 68, 0.15); border:1px solid #ef4444; border-radius:8px; padding:10px; color:#fca5a5; font-size:0.75rem; line-height:1.4;">' +
+                    '⚠️ <b>Playing as Guest:</b><br>' +
+                    'Match history and tournament debts are only tracked permanently for registered accounts. Log in from the main menu to retain your lifetime ledger.' +
+                    '</div>';
+                return;
+            }
+
+            if (!balances || !Array.isArray(balances) || balances.length === 0) {
+                container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:16px 8px; font-size:0.78rem;">' +
+                    'No lifetime balance records or debts found for this profile.' +
+                    '</div>';
+                return;
+            }
+
+            var html = '<div style="display:flex; flex-direction:column; gap:6px;">';
+            balances.forEach(function(b) {
+                var opponent = b.opponent || b.username || b.otherUser || 'Opponent';
+                var net = Number(b.net !== undefined ? b.net : (b.balance || 0));
+                var isPositive = net > 0;
+                var isEven = net === 0;
+
+                var color = isEven ? '#94a3b8' : (isPositive ? '#34d399' : '#f87171');
+                var statusText = isEven ? 'Even ($0)' : (isPositive ? '+ $' + net + ' (Owes you)' : '- $' + Math.abs(net) + ' (You owe)');
+
+                html += '<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15, 23, 42, 0.75); border:1px solid rgba(250, 204, 21, 0.25); padding:8px 10px; border-radius:6px;">' +
+                    '<span style="font-weight:bold; color:var(--text-main); font-size:0.82rem;">' + opponent + '</span>' +
+                    '<span style="font-weight:900; color:' + color + '; font-size:0.85rem;">' + statusText + '</span>' +
+                    '</div>';
+            });
+            html += '</div>';
+
+            container.innerHTML = html;
+        };
+
+        window.renderLifetimeLedger = window.renderLifetimeLedgerData;
+        window.renderLifetimeBalances = window.renderLifetimeLedgerData;
+    </script>
 </body>
 </html>
+
