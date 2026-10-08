@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    <!-- Google Identity Services SDK (Retained for Native One-Tap / Social Prompt) -->
+    <!-- Google Identity Services SDK -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <!-- Stylesheets -->
@@ -20,13 +20,13 @@
     <!-- LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
-<body class="casino-theme">
+<body>
     <div id="app">
-        <!-- AUTH OVERLAY SCREEN (Restored Classic Styling) -->
-        <div id="auth-screen" class="auth-overlay">
-            <div class="auth-card casino-panel">
+        <!-- AUTH OVERLAY SCREEN (Restored Original Modal Backdrop & Classes) -->
+        <div id="auth-overlay" class="modal-backdrop" style="display: flex;">
+            <div class="modal-box auth-modal">
                 <div class="auth-header">
-                    <h2 class="gold-text">Blitz 31</h2>
+                    <h2>Blitz 31</h2>
                     <p class="subtitle">Authentic Casino Table Game</p>
                 </div>
 
@@ -45,7 +45,7 @@
                             <label for="login-password">Password</label>
                             <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
                         </div>
-                        <button class="primary-btn gold-btn full-width" onclick="submitAuthLogin()">Log In</button>
+                        <button class="primary-btn full-width" onclick="submitAuthLogin()">Log In</button>
                     </div>
 
                     <div id="register-fields" style="display: none;">
@@ -57,21 +57,21 @@
                             <label for="reg-password">Password</label>
                             <input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password">
                         </div>
-                        <button class="primary-btn gold-btn full-width" onclick="submitAuthRegister()">Create Account</button>
+                        <button class="primary-btn full-width" onclick="submitAuthRegister()">Create Account</button>
                     </div>
 
                     <div class="auth-divider">
                         <span>OR</span>
                     </div>
 
-                    <div class="social-auth-actions">
-                        <!-- Google Identity Prompt & Button Container -->
-                        <div id="google-signin-btn" class="social-btn-container"></div>
-                        <button class="social-btn guest-btn" onclick="submitAuthGuest()">Play as Guest</button>
+                    <div class="social-auth-actions" style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+                        <!-- Native Google Identity Prompt & Button Container -->
+                        <div id="google-signin-btn" style="display: flex; justify-content: center; width: 100%;"></div>
+                        <button class="secondary-btn full-width" onclick="submitAuthGuest()">Play as Guest</button>
                     </div>
                 </div>
 
-                <div id="auth-error-msg" class="auth-error" style="display: none;"></div>
+                <div id="auth-error-msg" class="auth-error" style="display: none; margin-top: 10px; color: #f87171; text-align: center;"></div>
             </div>
         </div>
 
@@ -79,19 +79,19 @@
         <div id="main-menu" class="main-menu-container" style="display: none;">
             <header class="menu-header">
                 <div class="brand">
-                    <h1 class="gold-text">Blitz 31</h1>
+                    <h1>Blitz 31</h1>
                     <span class="user-badge" id="menu-user-badge">Guest</span>
                 </div>
                 <div class="header-actions">
-                    <button class="icon-btn gold-border" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
+                    <button class="icon-btn" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
                     <button class="icon-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
                     <button class="icon-btn danger" onclick="logoutSession()" title="Log Out">🚪</button>
                 </div>
             </header>
 
             <main class="menu-content">
-                <section class="menu-card casino-panel create-join-card">
-                    <h3 class="gold-text">Table Setup</h3>
+                <section class="menu-card create-join-card">
+                    <h3>Table Setup</h3>
                     <div class="form-group">
                         <label for="username-input">Player Handle</label>
                         <input type="text" id="username-input" placeholder="Display Name">
@@ -107,7 +107,7 @@
                         </label>
                     </div>
                     <div class="button-row">
-                        <button class="primary-btn gold-btn" onclick="createLobby()">Create Table</button>
+                        <button class="primary-btn" onclick="createLobby()">Create Table</button>
                     </div>
 
                     <div class="divider-line"></div>
@@ -118,9 +118,9 @@
                     </div>
                 </section>
 
-                <section class="menu-card casino-panel public-lobbies-card">
+                <section class="menu-card public-lobbies-card">
                     <div class="card-header-flex">
-                        <h3 class="gold-text">Live Tables</h3>
+                        <h3>Live Tables</h3>
                         <button class="refresh-btn" onclick="refreshLobbies()">🔄</button>
                     </div>
                     <div id="lobby-list" class="lobby-list-container">
@@ -130,12 +130,12 @@
             </main>
         </div>
 
-        <!-- IN-GAME TABLE VIEW (Original Felt Table Setup) -->
+        <!-- IN-GAME TABLE VIEW -->
         <div id="game-view" class="game-view-container" style="display: none;">
             <!-- IN-GAME HEADER -->
-            <div class="in-game-header casino-topbar">
+            <div class="in-game-header">
                 <div class="header-left">
-                    <span class="room-title gold-text" id="room-title-display">Table</span>
+                    <span class="room-title" id="room-title-display">Table</span>
                     <span class="spectator-counter" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></span>
                     <div id="active-peeking-banner" class="active-peeking-pill" style="display: none;" onclick="stopPeekingAction()">
                         <span>Peeking</span>
@@ -218,7 +218,7 @@
 
             <!-- NEXT HAND OVERLAY -->
             <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
-                <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
+                <button id="next-hand-btn" class="primary-btn large" onclick="clickNextHand()">Next Hand</button>
             </div>
         </div>
         <!-- SIDEBARS & DRAWERS (Classic Casino Styling) -->
