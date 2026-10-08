@@ -2,7 +2,17 @@
 
 window.livekitRoom = null;
 window.isVoiceConnecting = false;
+window.intentionalVoiceDisconnect = false;
 window.voiceVolume = 1.0;
+
+// Default to muted (false) on initial join; persists user preference
+function getRememberedMicState() {
+    return localStorage.getItem('vc_mic_unmuted') === 'true';
+}
+
+function setRememberedMicState(isUnmuted) {
+    localStorage.setItem('vc_mic_unmuted', isUnmuted ? 'true' : 'false');
+}
 
 // -------------------------------------------------------------
 // 1. UI STATE HELPERS
@@ -88,6 +98,7 @@ window.connectToLiveKitRoom = async function(roomCode, username) {
     }
 
     window.isVoiceConnecting = true;
+    window.intentionalVoiceDisconnect = false;
     setVoiceUIState('connecting');
 
     try {
@@ -111,12 +122,18 @@ window.connectToLiveKitRoom = async function(roomCode, username) {
             }
         });
 
+        // Attach remote incoming audio with background playback support
         room.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === 'audio') {
                 const element = track.attach();
                 element.id = `audio-track-${participant.identity}`;
+                element.setAttribute('playsinline', 'true');
+                element.setAttribute('autoplay', 'true');
                 element.volume = window.voiceVolume !== undefined ? window.voiceVolume : 1.0;
+                
+                // Keep audio element attached directly to body
                 document.body.appendChild(element);
+                element.play().catch(() => {});
                 updateVoiceParticipantsList();
             }
         });
@@ -131,25 +148,47 @@ window.connectToLiveKitRoom = async function(roomCode, username) {
         room.on(LK.RoomEvent.ParticipantConnected, () => updateVoiceParticipantsList());
         room.on(LK.RoomEvent.ParticipantDisconnected, () => updateVoiceParticipantsList());
 
+        // Background auto-reconnection on network drop
         room.on(LK.RoomEvent.Disconnected, () => {
-            setVoiceUIState('off');
+            console.log('[VOICE] Disconnected from room');
             window.livekitRoom = null;
             updateVoiceParticipantsList();
-            if (typeof window.sendSocketMessage === 'function') {
-                window.sendSocketMessage({ type: 'VOICE_STATUS', inVC: false, isMuted: true });
+
+            const currentCode = window.appGlobals?.currentJoinedCode || window.clientState?.code;
+            if (currentCode && !window.intentionalVoiceDisconnect) {
+                setVoiceUIState('connecting');
+                setTimeout(() => {
+                    const activeCode = window.appGlobals?.currentJoinedCode || window.clientState?.code;
+                    if (activeCode === currentCode && !window.intentionalVoiceDisconnect) {
+                        const myUser = (
+                            (window.userSession && window.userSession.username) ||
+                            document.getElementById('auth-display-user')?.innerText ||
+                            document.getElementById('username-input')?.value ||
+                            'Player1'
+                        ).trim();
+                        window.connectToLiveKitRoom(activeCode, myUser);
+                    }
+                }, 2000);
+            } else {
+                setVoiceUIState('off');
+                if (typeof window.sendSocketMessage === 'function') {
+                    window.sendSocketMessage({ type: 'VOICE_STATUS', inVC: false, isMuted: true });
+                }
             }
         });
 
         await room.connect(host, token);
         window.livekitRoom = room;
 
-        // Start with microphone enabled
-        await room.localParticipant.setMicrophoneEnabled(true);
-        setVoiceUIState('live');
+        // Apply remembered mic state (Defaults to false / MUTED on first run)
+        const shouldUnmute = getRememberedMicState();
+        await room.localParticipant.setMicrophoneEnabled(shouldUnmute);
+
+        setVoiceUIState(shouldUnmute ? 'live' : 'muted');
         updateVoiceParticipantsList();
 
         if (typeof window.sendSocketMessage === 'function') {
-            window.sendSocketMessage({ type: 'VOICE_STATUS', inVC: true, isMuted: false });
+            window.sendSocketMessage({ type: 'VOICE_STATUS', inVC: true, isMuted: !shouldUnmute });
         }
     } catch (err) {
         console.error('[VOICE] Connection error:', err);
@@ -163,7 +202,7 @@ window.connectToLiveKitRoom = async function(roomCode, username) {
 };
 
 // -------------------------------------------------------------
-// 3. MAIN BUTTON TOGGLE ACTION
+// 3. MAIN BUTTON TOGGLE ACTION (MUTE / UNMUTE / REMEMBER)
 // -------------------------------------------------------------
 window.toggleVoiceOnOff = async function() {
     const roomCode = window.appGlobals?.currentJoinedCode || window.clientState?.code;
@@ -174,7 +213,7 @@ window.toggleVoiceOnOff = async function() {
         'Player1'
     ).trim();
 
-    // Case A: Not connected to LiveKit -> Connect and unmute
+    // 1. If not connected, connect (starts in remembered state or muted)
     if (!window.livekitRoom || window.livekitRoom.state !== 'connected') {
         if (!roomCode) {
             if (typeof window.showCenterNotification === 'function') {
@@ -186,19 +225,21 @@ window.toggleVoiceOnOff = async function() {
         return;
     }
 
-    // Case B: Connected and Live -> Mute microphone
+    // 2. Toggle Microphone & Save Preference
     const local = window.livekitRoom.localParticipant;
     if (local.isMicrophoneEnabled) {
+        // Mute
         await local.setMicrophoneEnabled(false);
+        setRememberedMicState(false);
         setVoiceUIState('muted');
         updateVoiceParticipantsList();
         if (typeof window.sendSocketMessage === 'function') {
             window.sendSocketMessage({ type: 'VOICE_STATUS', inVC: true, isMuted: true });
         }
-    } 
-    // Case C: Connected and Muted -> Unmute microphone
-    else {
+    } else {
+        // Unmute
         await local.setMicrophoneEnabled(true);
+        setRememberedMicState(true);
         setVoiceUIState('live');
         updateVoiceParticipantsList();
         if (typeof window.sendSocketMessage === 'function') {
@@ -247,4 +288,14 @@ window.triggerVoiceReconnect = async function() {
     if (roomCode) {
         await window.connectToLiveKitRoom(roomCode, myUser);
     }
+};
+
+// Explicit disconnect on leaving table
+window.disconnectVoiceOnExit = function() {
+    window.intentionalVoiceDisconnect = true;
+    if (window.livekitRoom) {
+        try { window.livekitRoom.disconnect(); } catch (e) {}
+        window.livekitRoom = null;
+    }
+    setVoiceUIState('off');
 };
