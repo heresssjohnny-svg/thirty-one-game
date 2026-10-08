@@ -11,7 +11,6 @@ window.clientState = window.clientState || {
     selectedDiscardIndex: null
 };
 
-// Form persistence helper
 window.saveInputs = function() {
     try {
         const u = document.getElementById('username-input');
@@ -123,7 +122,7 @@ function handleServerMessage(data) {
         case 'LOBBY_CREATED':
         case 'LOBBY_JOINED':
             window.clientState.currentLobbyCode = data.code;
-            
+
             // Switch view
             const menu = document.getElementById('main-menu');
             const game = document.getElementById('game-view');
@@ -139,7 +138,6 @@ function handleServerMessage(data) {
             if (leaveBtn) leaveBtn.style.display = 'inline-block';
             if (title) title.innerText = `Table: ${data.code}`;
 
-            // Hide peeking banner on fresh entry
             const peekBanner = document.getElementById('active-peeking-banner');
             if (peekBanner) peekBanner.style.display = 'none';
 
@@ -147,18 +145,24 @@ function handleServerMessage(data) {
             if (data.livekitHost && data.livekitToken && typeof window.connectToVoiceChat === 'function') {
                 window.connectToVoiceChat(data.livekitHost, data.livekitToken);
             }
+
+            // Immediately populate UI if server attached the lobby snapshot
+            if (data.lobby) {
+                window.clientState.currentLobbyData = data.lobby;
+                if (typeof window.renderLobbyState === 'function') {
+                    window.renderLobbyState(data.lobby);
+                } else if (typeof window.updateUI === 'function') {
+                    window.updateUI(data.lobby);
+                }
+            }
             break;
 
         case 'LOBBY_UPDATE':
             window.clientState.currentLobbyData = data.lobby;
-            
-            // Call whichever render function exists in your ui.js or app.js
             if (typeof window.renderLobbyState === 'function') {
                 window.renderLobbyState(data.lobby);
             } else if (typeof window.updateUI === 'function') {
                 window.updateUI(data.lobby);
-            } else if (typeof window.renderLobby === 'function') {
-                window.renderLobby(data.lobby);
             }
             break;
 
@@ -190,7 +194,6 @@ function handleServerMessage(data) {
     }
 }
 
-// Action triggers
 window.createLobby = function() {
     const userIn = document.getElementById('username-input');
     const nameIn = document.getElementById('lobby-name-input');
