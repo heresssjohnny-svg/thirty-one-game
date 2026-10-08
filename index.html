@@ -36,7 +36,6 @@
     </div>
 
     <header>
-        <!-- Primary Row: Title, Rules, Voice & Session Exits -->
         <div class="header-row-primary">
             <div class="logo">31!</div>
             <div class="header-row-actions">
@@ -53,7 +52,6 @@
             </div>
         </div>
 
-        <!-- Secondary Row: Table Tools (Settings, Ledger, Spectators, Chat) -->
         <div class="header-row-secondary" id="in-game-tools-row" style="display:none;">
             <button class="secondary" onclick="openSettingsModal()" style="background:#065f46; border:1px solid var(--accent-gold);">⚙️ Settings</button>
             <button class="secondary" onclick="openLedgerModal()">📊 Ledger</button>
@@ -80,7 +78,7 @@
         <div id="center-notification-banner">NOTIFICATION</div>
         <div id="knock-alert-modal">🔔 KNOCKED!</div>
 
-        <!-- Overlay Modals -->
+        <!-- Overlays -->
         <div id="discard-pickup-topleft-modal" class="discard-pickup-modal-topleft" style="display:none;">
             <span id="discard-pickup-title-text" style="color:var(--accent-gold);">Initial Discard Pickup</span>
             <div id="discard-pickup-card-content" style="display:flex; align-items:center; gap:6px;"></div>
@@ -91,7 +89,7 @@
             <div id="fed-card-content" style="display:flex; align-items:center; gap:6px;"></div>
         </div>
 
-        <!-- Casino Green Felt Main Menu -->
+        <!-- Main Menu -->
         <div id="main-menu" class="casino-main-menu">
             <div class="casino-menu-header">
                 <span class="casino-felt-badge">ROYAL CLUB</span>
@@ -147,7 +145,7 @@
             <div style="display:flex; justify-content:space-between; width:100%; max-width:650px; align-items:center; flex-shrink:0; padding:0 8px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span id="room-title-display" style="font-size:0.8rem; font-weight:bold; color:var(--accent-gold);">Lobby</span>
-                    <div id="active-peeking-banner">
+                    <div id="active-peeking-banner" style="display:none;">
                         <span>👀 Viewing Hand</span>
                         <button onclick="stopPeekingAction()" style="background:#ef4444; border:none; color:#fff; border-radius:3px; padding:2px 6px; font-size:0.6rem; cursor:pointer;">Stop</button>
                     </div>
@@ -166,16 +164,39 @@
                 <button class="secondary" onclick="removeBot()" style="padding:3px 7px; font-size:0.75rem;">- Bot</button>
             </div>
             
+            <!-- Table Oval with Seats & Center Area -->
             <div class="table-oval" id="table-oval-container">
                 <div class="pots-container">
                     <div class="pot-total-display" id="pot-total-banner">Pot: $0</div>
                     <div class="side-pot-total-display" id="side-pot-total-banner" style="display:none;">Side Pots: $0</div>
                 </div>
+
+                <!-- Center Deck & Discard Elements -->
+                <div class="deck-center" id="deck-center">
+                    <div id="center-turn-indicator" style="display:none;">YOUR TURN</div>
+                    <div class="card-slot back" id="deck-pile" onclick="drawFromDeck()">
+                        <span>DECK</span>
+                        <span class="deck-counter" id="deck-count-display">0</span>
+                    </div>
+                    <div class="card-slot" id="discard-pile" onclick="drawFromDiscard()">
+                        <span style="font-size:0.65rem; color:#94a3b8; font-weight:bold;">DISCARD</span>
+                    </div>
+                </div>
+
+                <!-- Seats 0 through 5 -->
+                <div class="seat seat-0" id="seat-0"></div>
+                <div class="seat seat-1" id="seat-1"></div>
+                <div class="seat seat-2" id="seat-2"></div>
+                <div class="seat seat-3" id="seat-3"></div>
+                <div class="seat seat-4" id="seat-4"></div>
+                <div class="seat seat-5" id="seat-5"></div>
+
                 <div id="next-hand-overlay">
                     <button id="next-hand-btn" onclick="clickNextHand()">Next Hand</button>
                 </div>
             </div>
 
+            <!-- Bottom Hand Dock -->
             <div class="my-hand-area" id="my-hand-control-area">
                 <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; color: var(--text-muted);">
                     <span id="my-hand-title">My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">0</strong>) - Tap card to discard</span>
@@ -202,9 +223,7 @@
         <div id="lives-vote-modal" class="modal">
             <div class="modal-content" style="max-width:330px;">
                 <h3 style="color:var(--accent-gold);">🗳️ Vote on Starting Lives</h3>
-                <p id="lives-vote-prompt" style="font-size:0.85rem; color:var(--text-muted); margin: 6px 0 12px 0;">
-                    Player wants to set starting lives.
-                </p>
+                <p id="lives-vote-prompt" style="font-size:0.85rem; color:var(--text-muted); margin: 6px 0 12px 0;">Player wants to set starting lives.</p>
                 <div style="display:flex; gap:10px; justify-content:center;">
                     <button onclick="submitLivesVote(true)" style="background:#10b981; flex:1;">Accept</button>
                     <button class="danger" onclick="submitLivesVote(false)" style="flex:1;">Decline</button>
@@ -368,7 +387,7 @@
         </div>
     </div>
 
-    <!-- Script Modules: Load network.js first so window functions and WebSocket handlers bind immediately -->
+    <!-- Script Modules -->
     <script src="js/network.js"></script>
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
