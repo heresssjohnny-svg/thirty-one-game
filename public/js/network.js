@@ -8,7 +8,10 @@ window.appGlobals = window.appGlobals || {
     isConnected: false,
     pendingQueue: [],
     currentJoinedCode: null,
-    latestLobbySnapshot: null
+    latestLobbySnapshot: null,
+    lastKnownKnockedBy: null,
+    lastPhaseMessage: '',
+    lastGameState: ''
 };
 
 window.clientState = window.clientState || {
@@ -17,21 +20,31 @@ window.clientState = window.clientState || {
     playersList: [],
     spectatorsList: [],
     discardTop: null,
+    sideBetLedger: {},
+    mainGameLedger: {},
+    botBetLedger: {},
+    lastDiscardPickup: null,
     gameState: 'lobby',
-    isSpectator: false
+    activeParticipantsCount: 3,
+    isSpectator: false,
+    tiedParticipantsList: [],
+    activeBetsList: [],
+    pendingBetsList: []
 };
 
-// Input persistence fallback so form inputs never throw ReferenceError
+// Input persistence fallback so inputs never throw ReferenceError
 window.saveInputs = window.saveInputs || function() {
     try {
         const u = document.getElementById('username-input');
         const l = document.getElementById('lobby-name-input');
         if (u) {
-            localStorage.setItem('blitz31_username', u.value.trim());
-            window.clientState.username = u.value.trim() || 'Player1';
+            localStorage.setItem('saved_username', u.value);
+            localStorage.setItem('blitz31_username', u.value);
+            if (window.clientState) window.clientState.username = u.value.trim() || 'Player1';
         }
         if (l) {
-            localStorage.setItem('blitz31_lobby_name', l.value.trim());
+            localStorage.setItem('saved_lobby_name', l.value);
+            localStorage.setItem('blitz31_lobby_name', l.value);
         }
     } catch (e) {}
 };
@@ -40,12 +53,12 @@ window.restoreSavedInputs = window.restoreSavedInputs || function() {
     try {
         const u = document.getElementById('username-input');
         const l = document.getElementById('lobby-name-input');
-        const savedU = localStorage.getItem('blitz31_username');
-        const savedL = localStorage.getItem('blitz31_lobby_name');
+        const savedU = localStorage.getItem('saved_username') || localStorage.getItem('blitz31_username');
+        const savedL = localStorage.getItem('saved_lobby_name') || localStorage.getItem('blitz31_lobby_name');
         if (u && savedU) u.value = savedU;
         if (l && savedL) l.value = savedL;
-        if (window.clientState && u && savedU) {
-            window.clientState.username = savedU.trim();
+        if (window.clientState && u) {
+            window.clientState.username = u.value.trim() || 'Player1';
         }
     } catch (e) {}
 };
@@ -60,12 +73,9 @@ function getWebSocketUrl() {
     return `${protocol}//${window.location.host}`;
 }
 
-window.initSocket = function(onOpenCallback) {
+window.connectSocket = function() {
     let ws = window.appGlobals.ws;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        if (ws.readyState === WebSocket.OPEN && typeof onOpenCallback === 'function') {
-            onOpenCallback();
-        }
         return;
     }
 
@@ -87,8 +97,8 @@ window.initSocket = function(onOpenCallback) {
             reconnectTimer = null;
         }
 
-        // 1. Authenticate socket session if token exists
-        const jwtToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || localStorage.getItem('31_jwt');
+        // 1. Authenticate socket session if JWT token exists
+        const jwtToken = localStorage.getItem('31_jwt');
         if (jwtToken) {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
@@ -113,10 +123,6 @@ window.initSocket = function(onOpenCallback) {
                 username: activeUsername
             });
         }
-
-        if (typeof onOpenCallback === 'function') {
-            onOpenCallback();
-        }
     };
 
     ws.onmessage = (event) => {
@@ -135,16 +141,19 @@ window.initSocket = function(onOpenCallback) {
         window.ws = null;
         window.appGlobals.ws = null;
 
+        // Auto-reconnect if authenticated or inside an active room
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
-                window.initSocket();
+                if (window.userSession || window.appGlobals.currentJoinedCode) {
+                    window.connectSocket();
+                }
             }, 2000);
         }
     };
 
     ws.onerror = (err) => {
-        console.warn('[WS] Socket error encountered:', err);
+        console.warn('[WS] Socket encounter:', err);
     };
 };
 
@@ -156,6 +165,8 @@ function handleIncomingServerMessage(data) {
         case 'LOBBY_LIST':
             if (typeof window.renderLobbyList === 'function') {
                 window.renderLobbyList(data.lobbies || []);
+            } else if (typeof window.renderPublicLobbies === 'function') {
+                window.renderPublicLobbies(data.lobbies || []);
             }
             break;
 
@@ -164,36 +175,22 @@ function handleIncomingServerMessage(data) {
             if (data.code) window.appGlobals.currentJoinedCode = data.code;
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
-            // Switch view to game screen
-            if (typeof window.showGameScreen === 'function') {
-                window.showGameScreen(data.code);
-            } else {
-                const menu = document.getElementById('main-menu');
-                const game = document.getElementById('game-view');
-                if (menu) menu.style.display = 'none';
-                if (game) game.style.display = 'flex';
-            }
-
             // Connect LiveKit Voice Room (Muted state)
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
-                if (typeof window.connectToVoiceChat === 'function') {
-                    window.connectToVoiceChat(livekitHost, livekitToken);
-                } else if (typeof window.connectLiveKit === 'function') {
+                if (typeof window.connectLiveKit === 'function') {
                     window.connectLiveKit(livekitToken, livekitHost, data.code);
+                } else if (typeof window.connectToVoiceChat === 'function') {
+                    window.connectToVoiceChat(livekitHost, livekitToken);
                 }
             }
 
             // Render table view
-            if (data.lobby) {
-                if (typeof window.renderLobbyState === 'function') {
-                    window.renderLobbyState(data.lobby);
-                } else if (typeof window.updateUIFromLobby === 'function') {
-                    window.updateUIFromLobby(data.lobby);
-                } else if (typeof window.renderGame === 'function') {
-                    window.renderGame(data.lobby);
-                }
+            if (data.lobby && typeof window.updateUIFromLobby === 'function') {
+                window.updateUIFromLobby(data.lobby);
+            } else if (data.lobby && typeof window.renderLobbyState === 'function') {
+                window.renderLobbyState(data.lobby);
             }
             break;
 
@@ -203,12 +200,19 @@ function handleIncomingServerMessage(data) {
                 if (data.lobby.code) window.appGlobals.currentJoinedCode = data.lobby.code;
                 window.appGlobals.latestLobbySnapshot = data.lobby;
 
-                if (typeof window.renderLobbyState === 'function') {
-                    window.renderLobbyState(data.lobby);
-                } else if (typeof window.updateUIFromLobby === 'function') {
+                // Sync LiveKit credentials if included in update
+                if (data.livekitHost && data.livekitToken) {
+                    if (typeof window.connectLiveKit === 'function') {
+                        window.connectLiveKit(data.livekitToken, data.livekitHost, data.lobby.code);
+                    } else if (typeof window.connectToVoiceChat === 'function') {
+                        window.connectToVoiceChat(data.livekitHost, data.livekitToken);
+                    }
+                }
+
+                if (typeof window.updateUIFromLobby === 'function') {
                     window.updateUIFromLobby(data.lobby);
-                } else if (typeof window.renderGame === 'function') {
-                    window.renderGame(data.lobby);
+                } else if (typeof window.renderLobbyState === 'function') {
+                    window.renderLobbyState(data.lobby);
                 }
             }
             break;
@@ -228,16 +232,22 @@ function handleIncomingServerMessage(data) {
             }
             if (typeof window.resetToMainMenu === 'function') {
                 window.resetToMainMenu();
-            } else {
-                window.location.reload();
             }
             break;
 
         case 'LIFETIME_LEDGER_DATA':
             if (typeof window.renderLifetimeLedger === 'function') {
-                window.renderLifetimeLedger(data.balances || [], data.isGuest);
-            } else if (typeof window.renderLifetimeLedgerData === 'function') {
-                window.renderLifetimeLedgerData(data.balances || [], data.isGuest);
+                window.renderLifetimeLedger(data.balances || []);
+            }
+            break;
+
+        case 'LIVEKIT_TOKEN':
+            if (data.host && data.token) {
+                if (typeof window.connectLiveKit === 'function') {
+                    window.connectLiveKit(data.token, data.host, window.appGlobals.currentJoinedCode);
+                } else if (typeof window.connectToVoiceChat === 'function') {
+                    window.connectToVoiceChat(data.host, data.token);
+                }
             }
             break;
 
@@ -260,6 +270,7 @@ function handleIncomingServerMessage(data) {
 window.initSocketAndSend = function(payload) {
     if (!payload || typeof payload !== 'object') return;
 
+    // Attach active persistent profile identity to all payloads
     if (window.userSession) {
         payload.userId = window.userSession.id;
         payload.isGuest = !!window.userSession.isGuest;
@@ -270,7 +281,7 @@ window.initSocketAndSend = function(payload) {
         ws.send(JSON.stringify(payload));
     } else {
         window.appGlobals.pendingQueue.push(payload);
-        window.initSocket();
+        window.connectSocket();
     }
 };
 
@@ -285,7 +296,7 @@ window.createLobby = function() {
     const nameIn = document.getElementById('lobby-name-input');
     const privIn = document.getElementById('private-lobby-checkbox');
 
-    const username = (userIn && userIn.value ? userIn.value : '').trim() || 'Player1';
+    const username = (userIn && userIn.value ? userIn.value : '').trim() || (window.userSession?.username || 'Player1');
     const lobbyName = (nameIn && nameIn.value ? nameIn.value : '').trim() || `${username}'s Table`;
     const isPrivate = privIn ? privIn.checked : false;
 
@@ -304,12 +315,11 @@ window.joinLobby = function() {
     const userIn = document.getElementById('username-input');
     const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
 
-    const username = (userIn && userIn.value ? userIn.value : '').trim() || 'Player';
+    const username = (userIn && userIn.value ? userIn.value : '').trim() || (window.userSession?.username || 'Player1');
     const code = (codeIn && codeIn.value ? codeIn.value : '').trim().toUpperCase();
 
     if (!code) {
-        alert('Please enter a table code.');
-        return;
+        return alert('Please enter a table code.');
     }
 
     window.clientState.username = username;
@@ -322,11 +332,11 @@ window.joinLobby = function() {
     });
 };
 
-window.joinLobbyDirect = function(code) {
+window.joinLobbyCode = function(code) {
     if (!code) return;
     window.saveInputs();
     const userIn = document.getElementById('username-input');
-    const username = (userIn && userIn.value ? userIn.value : '').trim() || 'Player';
+    const username = (userIn && userIn.value ? userIn.value : '').trim() || (window.userSession?.username || 'Player1');
 
     window.clientState.username = username;
     window.appGlobals.currentJoinedCode = code.toUpperCase();
@@ -337,6 +347,8 @@ window.joinLobbyDirect = function(code) {
         username
     });
 };
+
+window.joinLobbyDirect = window.joinLobbyCode;
 
 window.refreshLobbies = function() {
     window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
@@ -388,6 +400,7 @@ window.drawCard = function(source) {
 window.drawFromDeck = function() { window.drawCard('deck'); };
 window.drawFromDiscard = function() { window.drawCard('discard'); };
 
+// Symmetrical index dispatching so discard actions never freeze
 window.discardCard = function(cardIndex) {
     window.initSocketAndSend({
         type: 'DISCARD_CARD',
@@ -458,6 +471,26 @@ window.sendChatMessage = function() {
     }
 };
 
+window.submitEliminationProposal = function(target, wagerAmt) {
+    window.initSocketAndSend({
+        type: 'PROPOSE_ELIMINATION_BET',
+        target: target,
+        wagerAmt: wagerAmt
+    });
+    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal');
+    if (typeof window.showCenterNotification === 'function') {
+        window.showCenterNotification(`Side bet proposed to ${target}!`);
+    }
+};
+
+window.clearDebtCategory = function(targetUser, category) {
+    window.initSocketAndSend({
+        type: 'CLEAR_DEBT',
+        targetUser: targetUser,
+        category: category
+    });
+};
+
 window.requestPeekAction = function(targetUsername) {
     window.initSocketAndSend({
         type: 'REQUEST_PEEK',
@@ -486,40 +519,5 @@ window.kickPeekerAction = function(spectatorUsername) {
     });
 };
 
-// -------------------------------------------------------------
-// 5. MOBILE LIFECYCLE RECOVERY & INITIALIZATION
-// -------------------------------------------------------------
-function verifyAndReconnectSocket() {
-    const ws = window.appGlobals.ws;
-    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-        window.initSocket();
-    } else if (ws.readyState === WebSocket.OPEN && window.appGlobals.currentJoinedCode) {
-        const usernameInput = document.getElementById('username-input');
-        const activeUsername = usernameInput ? usernameInput.value.trim() : (window.clientState.username || 'Player1');
-        window.initSocketAndSend({
-            type: 'JOIN_LOBBY',
-            code: window.appGlobals.currentJoinedCode,
-            username: activeUsername
-        });
-    }
-}
-
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        verifyAndReconnectSocket();
-    }
-});
-
-window.addEventListener('focus', () => {
-    verifyAndReconnectSocket();
-});
-
-window.addEventListener('online', () => {
-    verifyAndReconnectSocket();
-});
-
-// Auto-run input restoration and start socket connection on load
-document.addEventListener('DOMContentLoaded', () => {
-    window.restoreSavedInputs();
-    window.initSocket();
-});
+// Auto-run input restoration on script load
+window.restoreSavedInputs();
