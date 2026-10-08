@@ -494,18 +494,23 @@
     <script src="js/ui.js"></script>
     <script src="js/app.js"></script>
 
-    <!-- Inline Lifetime Ledger Fail-Safe Controller -->
+        <!-- Inline Lifetime Ledger Fail-Safe Controller -->
     <script>
         window.openLifetimeLedgerModal = function() {
             var modal = document.getElementById('lifetime-ledger-modal');
-            if (modal) {
-                modal.style.display = 'flex';
-            }
+            if (modal) modal.style.display = 'flex';
 
             var content = document.getElementById('lifetime-ledger-content');
             if (content) {
                 content.innerHTML = '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.75rem;">Loading lifetime records...</div>';
             }
+
+            // Check all potential token storage keys
+            var token = localStorage.getItem('auth_token') || 
+                        localStorage.getItem('token') || 
+                        localStorage.getItem('jwt') || 
+                        sessionStorage.getItem('auth_token') || 
+                        sessionStorage.getItem('token') || null;
 
             var activeUsername = (
                 (window.userSession && window.userSession.username) ||
@@ -515,9 +520,20 @@
                 'Player1'
             ).trim();
 
-            var token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || null;
-            var userId = (window.userSession && window.userSession.userId) || null;
-            var isGuest = !!((window.userSession && window.userSession.isGuest) || (!token && !userId));
+            var userId = (window.userSession && (window.userSession.userId || window.userSession.id)) || null;
+
+            // Check if the UI is displaying the guest badge
+            var guestBadge = document.getElementById('auth-guest-badge');
+            var isGuestBadgeVisible = guestBadge && guestBadge.style.display !== 'none';
+
+            var isGuest = false;
+            if (window.userSession && typeof window.userSession.isGuest === 'boolean') {
+                isGuest = window.userSession.isGuest;
+            } else if (isGuestBadgeVisible) {
+                isGuest = true;
+            } else if (!token && activeUsername.toLowerCase().startsWith('guest')) {
+                isGuest = true;
+            }
 
             var payload = {
                 type: 'GET_LIFETIME_LEDGER',
@@ -576,6 +592,7 @@
         window.renderLifetimeLedger = window.renderLifetimeLedgerData;
         window.renderLifetimeBalances = window.renderLifetimeLedgerData;
     </script>
+
 </body>
 </html>
 
