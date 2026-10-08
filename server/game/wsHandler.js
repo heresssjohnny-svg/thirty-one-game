@@ -36,14 +36,25 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
-                if (data.type === 'GET_LIFETIME_LEDGER') {
-                    let userId = (ws.user && ws.user.userId) || data.userId;
-                    const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
-                    const username = data.username || (ws.user && ws.user.username);
+                                if (data.type === 'GET_LIFETIME_LEDGER') {
+                    const username = (data.username || (ws.user && ws.user.username) || '').trim();
+                    let userId = (ws.user && (ws.user.userId || ws.user.id)) || data.userId || null;
+                    let isGuest = data.isGuest;
 
-                    if (!userId && username && db && typeof db.getUserByUsername === 'function') {
-                        const userRow = db.getUserByUsername(username);
-                        if (userRow) userId = userRow.id || userRow.userId;
+                    // Cross-check SQLite: if the user exists in the database, they are NOT a guest
+                    if (db) {
+                        let userRow = null;
+                        if (userId && typeof db.getUserById === 'function') {
+                            userRow = db.getUserById(userId);
+                        }
+                        if (!userRow && username && typeof db.getUserByUsername === 'function') {
+                            userRow = db.getUserByUsername(username);
+                        }
+
+                        if (userRow) {
+                            userId = userRow.id || userRow.userId;
+                            isGuest = false; // Verified registered account in database
+                        }
                     }
 
                     if (!isGuest && userId && db && typeof db.getLifetimeBalances === 'function') {
@@ -67,29 +78,6 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
-                if (data.type === 'APPLY_CREDIT' && db && typeof db.applyCredit === 'function') {
-                    let creditorId = (ws.user && ws.user.userId) || data.userId;
-                    const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
-                    const creditorUsername = data.username || (ws.user && ws.user.username);
-
-                    if (!creditorId && creditorUsername && typeof db.getUserByUsername === 'function') {
-                        const userRow = db.getUserByUsername(creditorUsername);
-                        if (userRow) creditorId = userRow.id || userRow.userId;
-                    }
-
-                    if (!isGuest && creditorId && data.debtorId && data.amount) {
-                        const result = db.applyCredit(creditorId, data.debtorId, Number(data.amount));
-                        const balances = db.getLifetimeBalances(creditorId);
-                        if (ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'LIFETIME_LEDGER_DATA',
-                                balances: balances || [],
-                                creditResult: result
-                            }));
-                        }
-                    }
-                    return;
-                }
 
                 // -------------------------------------------------------------
                 // 2. LOBBY BROWSING & TABLE CREATION
