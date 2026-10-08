@@ -11,6 +11,11 @@ function getLobbies() {
     return lobbies;
 }
 
+function isLobbyNameTaken(name) {
+    const cleanName = (name || '').trim().toLowerCase();
+    return Object.values(lobbies).some(l => l.name && l.name.trim().toLowerCase() === cleanName);
+}
+
 function getActiveParticipants(lobby) {
     return lobby.players.filter(p => !p.eliminated);
 }
@@ -217,6 +222,7 @@ function getSanitizedLobby(lobby, wsId) {
                 nextHandReady: p.nextHandReady,
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
+                disconnected: !!p.disconnected,
                 inVC: !!p.inVC,
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
                 peekIncoming: wsId === p.id ? (p.peekRequests || {}) : {},
@@ -792,6 +798,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         p.ready = false;
         p.seat = idx;
         p.nextHandReady = false;
+        p.disconnected = false;
         p.peekRequests = {};
         p.peekAllowed = {};
     });
@@ -858,6 +865,26 @@ function scheduleBotActions(lobby) {
     }
 }
 
+// Handles socket drops (app backgrounding, network transition, screen sleep)
+function handleDisconnect(ws, code, broadcastLobbyList) {
+    if (!lobbies[code]) return;
+    const lobby = lobbies[code];
+
+    const player = lobby.players.find(p => p.id === ws);
+    if (player) {
+        // Keep player seated, retain cards and lives; detach socket handle only
+        player.id = null;
+        player.disconnected = true;
+        touchLobbyActivity(lobby, broadcastLobbyList);
+        broadcastLobbyUpdate(code);
+        return;
+    }
+
+    lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
+    if (broadcastLobbyList) broadcastLobbyList();
+}
+
+// Handles intentional player departure (clicking Leave Lobby button)
 function leaveLobby(ws, code, broadcastLobbyList) {
     if (!lobbies[code]) return;
     const lobby = lobbies[code];
@@ -888,7 +915,7 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     }
 
     const activeParts = getActiveParticipants(lobby);
-    if (activeParts.length <= 1 && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn' || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker')) {
+    if (activeParts.length <= 1 && ['playing', 'finalTurn', 'dealerDraw', 'tieBreaker'].includes(lobby.gameState)) {
         awardTournamentWinner(lobby, activeParts[0]);
     } else {
         if (lobby.turnIndex >= lobby.players.length) {
@@ -905,6 +932,7 @@ function leaveLobby(ws, code, broadcastLobbyList) {
 module.exports = {
     lobbies,
     getLobbies,
+    isLobbyNameTaken,
     getActiveParticipants,
     findOpenSeat,
     touchLobbyActivity,
@@ -922,5 +950,6 @@ module.exports = {
     checkNextHandReady,
     resetLobbyToReadyRoom,
     scheduleBotActions,
+    handleDisconnect,
     leaveLobby
 };
