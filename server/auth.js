@@ -7,8 +7,8 @@ const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const config = require('./config');
 
-// Initialize Google OAuth2 verification client
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+// Initialize Google OAuth2 verification client with your active Client ID
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // -------------------------------------------------------------
