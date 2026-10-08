@@ -18,8 +18,8 @@ db.pragma('journal_mode = WAL');
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,          -- '31', 'google', 'facebook', 'instagram'
-    provider_id TEXT UNIQUE,        -- Provider UID or lowercase email
+    provider TEXT NOT NULL,          -- 'local', 'google', 'facebook', 'instagram'
+    provider_id TEXT UNIQUE,        -- Provider UID, sub, or lowercase email
     username TEXT NOT NULL,
     password_hash TEXT,             -- NULL for OAuth social logins
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
