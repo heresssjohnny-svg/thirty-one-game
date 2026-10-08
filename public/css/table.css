@@ -12,7 +12,7 @@
     border: 8px solid #5c3a21;
     border-radius: 180px;
     position: relative;
-    margin: 26px auto 6px auto;
+    margin: 28px auto 6px auto;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
 }
@@ -62,16 +62,50 @@
     white-space: nowrap;
 }
 
-/* Center Deck & Discard Center */
+/* ==========================================================================
+   Center Deck & Discard Center
+   ========================================================================== */
 .deck-center {
     position: absolute;
-    top: 54%;
+    top: 55%;
     left: 50%;
     transform: translate(-50%, -50%);
     display: flex;
     gap: 12px;
     align-items: center;
+    justify-content: center;
     z-index: 20;
+}
+
+#discard-pile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+#center-turn-indicator {
+    position: absolute;
+    top: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent-gold);
+    color: #0f172a;
+    font-weight: 900;
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 8px;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+    animation: bounceTurn 1s infinite alternate;
+    pointer-events: none;
+    z-index: 25;
+}
+
+@keyframes bounceTurn {
+    from { transform: translateX(-50%) translateY(0); }
+    to { transform: translateX(-50%) translateY(-3px); }
 }
 
 /* ==========================================================================
@@ -80,7 +114,7 @@
 .red-suit { color: #e11d48 !important; }
 .black-suit { color: #0f172a !important; }
 
-/* Base Playing Card (Hands, Center Slots & Modals) */
+/* Base Playing Card (Hands, Discard, Modals) */
 .playing-card,
 .card-slot,
 .my-card {
@@ -88,7 +122,7 @@
     height: 90px;
     background: #ffffff;
     border-radius: 7px;
-    border: 1px solid #d1d5db;
+    border: 1px solid #cbd5e1;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45), inset 0 0 1px rgba(0, 0, 0, 0.15);
     position: relative;
     display: flex;
@@ -109,7 +143,7 @@
     transform: translateY(-5px) scale(1.02);
 }
 
-/* Corner Index (Top-Left & Rotated Bottom-Right) */
+/* Corner Index (Top-Left and Rotated Bottom-Right) */
 .card-corner {
     display: flex;
     flex-direction: column;
@@ -136,7 +170,7 @@
     transform: rotate(180deg);
 }
 
-/* Center Suit Pip */
+/* Center Large Pip */
 .card-center-pip {
     position: absolute;
     top: 50%;
@@ -194,7 +228,7 @@
     pointer-events: none;
 }
 
-/* Empty Discard Outline */
+/* Empty Discard Slot */
 .card-slot.empty-slot {
     background: rgba(2, 44, 30, 0.4);
     border: 2px dashed rgba(250, 204, 21, 0.4);
@@ -221,6 +255,7 @@
     padding: 2px 3px;
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
     flex-shrink: 0;
+    box-sizing: border-box;
 }
 
 .mini-card .mini-val {
@@ -236,33 +271,30 @@
     margin-top: -2px;
 }
 
-/* ==========================================================================
-   Draw Modals & Tie-Breaker Cards Grid
-   ========================================================================== */
-.pool-grid,
-#tie-breaker-pool,
-#pool-cards-grid {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    margin: 12px 0;
-    max-width: 90vw;
+/* Notification & Pickup Modal Cards */
+.top-left-notify .playing-card,
+.top-right-notify .playing-card,
+#discard-pickup-topleft-modal .playing-card,
+#fed-card-topright-modal .playing-card {
+    width: 48px;
+    height: 68px;
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 6px;
 }
 
-.draw-modal-card-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+.top-left-notify .playing-card .card-center-pip,
+.top-right-notify .playing-card .card-center-pip,
+#discard-pickup-topleft-modal .playing-card .card-center-pip,
+#fed-card-topright-modal .playing-card .card-center-pip {
+    font-size: 1.3rem;
 }
 
-.draw-modal-user-tag {
-    font-size: 0.75rem;
-    color: var(--accent-gold);
-    font-weight: 800;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+.top-left-notify .playing-card .corner-val,
+.top-right-notify .playing-card .corner-val,
+#discard-pickup-topleft-modal .playing-card .corner-val,
+#fed-card-topright-modal .playing-card .corner-val {
+    font-size: 0.7rem;
 }
 
 /* ==========================================================================
@@ -331,6 +363,36 @@
 .seat-5 { bottom: 18%; right: 3%; }
 
 /* ==========================================================================
+   Draw Modals, Dealer Draw, and Tie-Breaker Cards Grid
+   ========================================================================== */
+.pool-grid,
+#tie-breaker-pool,
+#pool-cards-grid,
+.draw-modal-card-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0;
+    max-width: 90vw;
+}
+
+.draw-modal-card-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.draw-modal-user-tag {
+    font-size: 0.75rem;
+    color: var(--accent-gold);
+    font-weight: 800;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* ==========================================================================
    Next Hand Overlay Button
    ========================================================================== */
 #next-hand-overlay {
@@ -355,7 +417,7 @@
     cursor: pointer;
     white-space: nowrap;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    transition: transform 0.15s ease;
+    transition: transform 0.15s ease, filter 0.15s ease;
 }
 
 #next-hand-btn:disabled {
@@ -366,8 +428,12 @@
     box-shadow: none;
 }
 
+#next-hand-btn:not(:disabled):active {
+    transform: scale(0.96);
+}
+
 /* ==========================================================================
-   My Hand Control Dock
+   My Hand Control Dock (Bottom of Screen)
    ========================================================================== */
 .my-hand-area {
     width: 100%;
