@@ -1,146 +1,139 @@
 // public/js/audio.js
+
 let audioCtx = null;
-let masterGainNode = null;
-let knockAudioBuffer = null;
-let yourTurnAudioBuffer = null;
-
-// Default SFX volume level (1.0 = 100%)
 let gameSfxVolume = 1.0;
-
-// Audio asset paths
-const KNOCK_AUDIO_PATH = '/mp3s/knock.mp3';
-const YOUR_TURN_AUDIO_PATH = '/mp3s/yourturn.mp3';
-const YOUR_TURN_FALLBACK_PATH = '/mp3/yourturn.mp3';
 
 function getAudioContext() {
     if (!audioCtx) {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (AudioContextClass) {
-            audioCtx = new AudioContextClass();
-            masterGainNode = audioCtx.createGain();
-            masterGainNode.gain.setValueAtTime(gameSfxVolume, audioCtx.currentTime);
-            masterGainNode.connect(audioCtx.destination);
-        }
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     }
-    if (audioCtx && audioCtx.state === 'suspended') {
+    if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
     return audioCtx;
 }
 
-// Volume slider handler for game MP3s and sound effects
 function setGameSfxVolume(val) {
     gameSfxVolume = Math.max(0, Math.min(1, parseFloat(val)));
-    const ctx = getAudioContext();
-    if (ctx && masterGainNode) {
-        masterGainNode.gain.setValueAtTime(gameSfxVolume, ctx.currentTime);
+    const disp = document.getElementById('sfx-vol-display');
+    if (disp) {
+        disp.innerText = `${Math.round(gameSfxVolume * 100)}%`;
     }
-    const display = document.getElementById('sfx-vol-display');
-    if (display) {
-        display.innerText = `${Math.round(gameSfxVolume * 100)}%`;
-    }
-}
-
-async function loadAudioBuffer(url) {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const ctx = getAudioContext();
-        if (!ctx) return null;
-        return await ctx.decodeAudioData(arrayBuffer);
-    } catch (err) {
-        return null;
-    }
-}
-
-async function preloadAudioFiles() {
-    if (!knockAudioBuffer) {
-        knockAudioBuffer = await loadAudioBuffer(KNOCK_AUDIO_PATH);
-    }
-    if (!yourTurnAudioBuffer) {
-        yourTurnAudioBuffer = await loadAudioBuffer(YOUR_TURN_AUDIO_PATH);
-        if (!yourTurnAudioBuffer) {
-            yourTurnAudioBuffer = await loadAudioBuffer(YOUR_TURN_FALLBACK_PATH);
-        }
-    }
-}
-
-function unlockAudioEngine() {
-    const ctx = getAudioContext();
-    if (ctx && ctx.state === 'suspended') {
-        ctx.resume();
-    }
-    if (!knockAudioBuffer || !yourTurnAudioBuffer) {
-        preloadAudioFiles();
-    }
-}
-
-document.addEventListener('pointerdown', unlockAudioEngine, { once: false, passive: true });
-document.addEventListener('touchstart', unlockAudioEngine, { once: false, passive: true });
-preloadAudioFiles();
-
-function playBufferOrAudio(buffer, fallbackUrl) {
-    const ctx = getAudioContext();
-    if (ctx && buffer && masterGainNode) {
-        try {
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(masterGainNode);
-            source.start(0);
-            return;
-        } catch (e) {
-            console.warn("Buffer playback error, falling back to Audio element:", e);
-        }
-    }
-
-    try {
-        const audio = new Audio(fallbackUrl);
-        audio.volume = gameSfxVolume;
-        audio.play().catch(() => {});
-    } catch (e) {}
-}
-
-function speakKnockedCue() {
-    playBufferOrAudio(knockAudioBuffer, KNOCK_AUDIO_PATH);
-}
-
-function playYourTurnCue() {
-    playBufferOrAudio(yourTurnAudioBuffer, YOUR_TURN_AUDIO_PATH);
 }
 
 function playSound(type) {
-    const ctx = getAudioContext();
-    if (!ctx || !masterGainNode) return;
+    if (gameSfxVolume <= 0) return;
 
     try {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(masterGainNode);
-
+        const ctx = getAudioContext();
         const now = ctx.currentTime;
 
-        if (type === 'card') {
+        if (type === 'ding') {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.setValueAtTime(587.33, now);
+            gain.gain.setValueAtTime(0.7 * gameSfxVolume, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            osc.start(now);
+            osc.stop(now + 0.35);
+        } else if (type === 'knock') {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(320, now);
-            osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
-            gain.gain.setValueAtTime(0.2, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
+            gain.gain.setValueAtTime(0.85 * gameSfxVolume, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+            osc.start(now);
+            osc.stop(now + 0.12);
+
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.type = 'triangle';
+            osc2.frequency.setValueAtTime(140, now + 0.14);
+            osc2.frequency.exponentialRampToValueAtTime(65, now + 0.28);
+            gain2.gain.setValueAtTime(0.8 * gameSfxVolume, now + 0.14);
+            gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+            osc2.start(now + 0.14);
+            osc2.stop(now + 0.28);
+        } else if (type === 'card') {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(210, now + 0.08);
+            gain.gain.setValueAtTime(0.6 * gameSfxVolume, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
             osc.start(now);
             osc.stop(now + 0.08);
-        } else if (type === 'knock') {
-            speakKnockedCue();
         }
     } catch (e) {
-        console.warn("Sound play error:", e);
+        console.warn("Audio playback error:", e);
+    }
+}
+
+function playCelebrationFanfare() {
+    if (gameSfxVolume <= 0) return;
+
+    try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.setValueAtTime(freq, now + idx * 0.16);
+            gain.gain.setValueAtTime(0.4 * gameSfxVolume, now + idx * 0.16);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.16 + 0.9);
+            osc.start(now + idx * 0.16);
+            osc.stop(now + idx * 0.16 + 0.9);
+        });
+    } catch (e) {
+        console.warn("Celebration fanfare error:", e);
+    }
+}
+
+function speakKnockedCue() {
+    if ('speechSynthesis' in window && gameSfxVolume > 0) {
+        try {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance("Knocked");
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = gameSfxVolume;
+            window.speechSynthesis.speak(utterance);
+        } catch (e) {
+            console.warn("Speech synthesis unavailable:", e);
+        }
     }
 }
 
 function triggerVibration(pattern) {
     if ('vibrate' in navigator) {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
+    const iosTrigger = document.getElementById('ios-haptic-trigger');
+    if (iosTrigger) {
         try {
-            navigator.vibrate(pattern);
+            iosTrigger.checked = !iosTrigger.checked;
+            iosTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         } catch (e) {}
     }
+}
+
+function enableBackgroundAudioKeepAlive() {
+    try {
+        const ctx = getAudioContext();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+    } catch (e) {}
 }
