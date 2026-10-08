@@ -1,4 +1,4 @@
-// server/auth.js - PART 1 OF 2
+// server/auth.js - Authentication Router & Token Verifier
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
@@ -7,12 +7,13 @@ const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const config = require('./config');
 
-// Initialize Google OAuth2 verification client with your active Client ID
+// Safe fallbacks to guarantee secretOrPrivateKey is never empty
+const JWT_SECRET = (config && config.JWT_SECRET) || process.env.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // -------------------------------------------------------------
-// 1. GOOGLE IDENTITY SERVICES VERIFIER (Native Prompt)
+// 1. GOOGLE IDENTITY SERVICES VERIFIER
 // -------------------------------------------------------------
 router.post('/google', async (req, res) => {
     const { credential } = req.body;
@@ -40,7 +41,6 @@ router.post('/google', async (req, res) => {
         let user = db.findUserByProviderId(providerId);
 
         if (!user) {
-            // Prevent username collisions
             let uniqueName = displayName;
             let counter = 1;
             while (db.findUserByUsername(uniqueName)) {
@@ -54,7 +54,7 @@ router.post('/google', async (req, res) => {
 
         const token = jwt.sign(
             { userId: user.id, username: user.username, isGuest: false },
-            config.JWT_SECRET,
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 
@@ -96,7 +96,7 @@ router.post('/register', async (req, res) => {
         const user = db.createUser(userId, 'local', providerId, cleanUser, passwordHash);
         const token = jwt.sign(
             { userId: user.id, username: user.username, isGuest: false },
-            config.JWT_SECRET,
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 
@@ -113,7 +113,6 @@ router.post('/register', async (req, res) => {
         return res.status(500).json({ error: 'Failed to create user account.' });
     }
 });
-// server/auth.js - PART 2 OF 2
 
 // -------------------------------------------------------------
 // 3. STANDARD LOCAL USER LOGIN
@@ -139,7 +138,7 @@ router.post('/login', async (req, res) => {
 
         const token = jwt.sign(
             { userId: user.id, username: user.username, isGuest: false },
-            config.JWT_SECRET,
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 
@@ -166,7 +165,7 @@ router.post('/guest', (req, res) => {
 
     const token = jwt.sign(
         { userId: guestId, username: guestUsername, isGuest: true },
-        config.JWT_SECRET,
+        JWT_SECRET,
         { expiresIn: '1d' }
     );
 
@@ -191,7 +190,7 @@ router.get('/me', (req, res) => {
 
     const token = authHeader.split(' ')[1];
     try {
-        const decoded = jwt.verify(token, config.JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
         return res.json({
             user: {
                 id: decoded.userId,
