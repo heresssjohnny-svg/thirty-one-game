@@ -138,47 +138,74 @@ function getFeeder21OutOf31(lobby, winnerPlayer, winningSuit) {
     return null;
 }
 
-// Real-Time Lifetime Ledger Sync Helper
+// Real-Time Lifetime Ledger Sync Helper (Delta-tracked & Username-resilient)
 function syncLifetimeLedgerBalances(lobby) {
     if (!db || typeof db.recordLifetimeDebt !== 'function') return;
 
+    if (!lobby.persistedLifetimeLedger) {
+        lobby.persistedLifetimeLedger = { main: {}, side: {} };
+    }
+
     const findUserId = (username) => {
+        // 1. Check connected socket with user auth
         const pl = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
         if (pl && pl.id && pl.id.user && !pl.id.user.isGuest) return pl.id.user.userId;
+
         const sp = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
         if (sp && sp.idSocket && sp.idSocket.user && !sp.idSocket.user.isGuest) return sp.idSocket.user.userId;
+
+        // 2. Direct database lookup fallback by username
+        if (typeof db.findUserByUsername === 'function') {
+            const userRow = db.findUserByUsername(username);
+            if (userRow && userRow.id && !userRow.id.startsWith('gst_')) {
+                return userRow.id;
+            }
+        }
         return null;
     };
 
-    const processLedgerCategory = (ledger) => {
-        if (!ledger) return;
-        for (const debtorName in ledger) {
-            for (const creditorName in ledger[debtorName]) {
-                const amount = ledger[debtorName][creditorName];
-                if (amount > 0) {
+    const processCategory = (currentLedger, categoryKey) => {
+        if (!currentLedger) return;
+        const persisted = lobby.persistedLifetimeLedger[categoryKey];
+
+        for (const debtorName in currentLedger) {
+            for (const creditorName in currentLedger[debtorName]) {
+                const totalDebt = Number(currentLedger[debtorName][creditorName]) || 0;
+                if (!persisted[debtorName]) persisted[debtorName] = {};
+                const alreadyPersisted = Number(persisted[debtorName][creditorName]) || 0;
+
+                const delta = totalDebt - alreadyPersisted;
+                if (delta > 0) {
                     const debtorId = findUserId(debtorName);
                     const creditorId = findUserId(creditorName);
+
                     if (debtorId && creditorId && debtorId !== creditorId) {
-                        db.recordLifetimeDebt(debtorId, creditorId, amount);
+                        db.recordLifetimeDebt(debtorId, creditorId, delta);
+                        persisted[debtorName][creditorName] = totalDebt;
                     }
                 }
             }
         }
     };
 
-    processLedgerCategory(lobby.mainGameLedger);
-    processLedgerCategory(lobby.sideBetLedger);
+    processCategory(lobby.mainGameLedger, 'main');
+    processCategory(lobby.sideBetLedger, 'side');
 
-    // Broadcast updated lifetime balances to all connected authenticated clients
+    // Broadcast updated lifetime balances to all active authenticated sockets in the room
     const allSockets = [
         ...lobby.players.map(p => p.id),
         ...lobby.spectators.map(s => s.idSocket)
-    ].filter(ws => ws && ws.readyState === WebSocket.OPEN && ws.user && !ws.user.isGuest);
+    ].filter(ws => ws && ws.readyState === WebSocket.OPEN);
 
     allSockets.forEach(ws => {
         try {
-            const balances = db.getLifetimeBalances(ws.user.userId);
-            ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+            const uid = (ws.user && !ws.user.isGuest && ws.user.userId) 
+                || (typeof db.findUserByUsername === 'function' && ws.currentUsername && db.findUserByUsername(ws.currentUsername)?.id);
+
+            if (uid && !uid.startsWith('gst_')) {
+                const balances = db.getLifetimeBalances(uid);
+                ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+            }
         } catch (e) {}
     });
 }
@@ -849,7 +876,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.pendingBotDraw = {};
     lobby.livesVote = null;
 
-    // Regrant eliminated players back to seated players if they are still connected
+    // Regrant eliminated spectators back into open seats
     const spectatorsToReclaim = [...lobby.spectators];
     spectatorsToReclaim.forEach(spec => {
         if (lobby.players.length < 6) {
@@ -868,9 +895,9 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
                 isMuted: spec.isMuted,
                 nextHandReady: false,
                 peekRequests: {},
-                peekAllowed: {}
+                peekAllowed: {},
+                disconnectedAt: null
             });
-            // Remove from spectator array
             lobby.spectators = lobby.spectators.filter(s => s !== spec);
         }
     });
