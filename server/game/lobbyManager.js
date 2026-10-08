@@ -12,7 +12,7 @@ function getLobbies() {
 }
 
 function getActiveParticipants(lobby) {
-    return lobby.players.filter(p => !p.eliminated && p.lives > 0);
+    return lobby.players.filter(p => !p.eliminated);
 }
 
 function findOpenSeat(lobby) {
@@ -72,19 +72,6 @@ function clearRoundOverTimer(lobby) {
     }
 }
 
-function establishDealer(lobby) {
-    if (lobby.lastGameWinner) {
-        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
-        if (winIdx !== -1) {
-            lobby.dealerIndex = winIdx;
-            return;
-        }
-    }
-    if (lobby.dealerIndex >= lobby.players.length || lobby.dealerIndex < 0) {
-        lobby.dealerIndex = 0;
-    }
-}
-
 function getWinningSuitFor31(cards) {
     const suits = ['♠', '♥', '♦', '♣'];
     for (const s of suits) {
@@ -129,8 +116,6 @@ function getSanitizedLobby(lobby, wsId) {
     const allParticipants = [...lobby.players];
     const requestingPlayer = lobby.players.find(p => p.id === wsId);
     const requestingSpectator = lobby.spectators.find(s => s.idSocket === wsId);
-    const isEliminatedPlayer = requestingPlayer && requestingPlayer.eliminated;
-    const effectiveSpectator = requestingSpectator || (isEliminatedPlayer ? requestingPlayer : null);
     const myUsername = requestingPlayer ? requestingPlayer.username : (requestingSpectator?.username || null);
 
     let sortedParticipants = [...allParticipants];
@@ -205,8 +190,8 @@ function getSanitizedLobby(lobby, wsId) {
         livesVote: lobby.livesVote || null,
         players: lobby.players.map(p => {
             const canSee = lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd' || p.username === myUsername;
-            const specAllowed = effectiveSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
-                k => k.toLowerCase() === effectiveSpectator.username.toLowerCase()
+            const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
+                k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
             );
             const sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
@@ -217,7 +202,7 @@ function getSanitizedLobby(lobby, wsId) {
                 ready: p.ready,
                 seat: sortedRef ? sortedRef.seat : p.seat,
                 nextHandReady: p.nextHandReady,
-                eliminated: p.eliminated || p.lives <= 0,
+                eliminated: p.eliminated,
                 isBot: !!p.isBot,
                 inVC: !!p.inVC,
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
@@ -270,7 +255,6 @@ function startDealerDrawPhase(lobby) {
     lobby.turnsTakenThisRound = 0;
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
-    lobby.fedCardsHistory = {};
     lobby.players.forEach(p => {
         p.peekAllowed = {};
         p.peekRequests = {};
@@ -291,7 +275,6 @@ function startRound(lobby) {
     lobby.pendingBotDraw = {};
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
-    lobby.fedCardsHistory = {};
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
     lobby.hit31Player = null;
@@ -310,23 +293,9 @@ function startRound(lobby) {
         p.peekRequests = {};
     });
 
-    establishDealer(lobby);
-
-    const totalPlayers = lobby.players.length;
-    const dealOrder = [];
-    for (let i = 1; i <= totalPlayers; i++) {
-        const idx = (lobby.dealerIndex + i) % totalPlayers;
-        dealOrder.push(lobby.players[idx]);
-    }
-
-    const regularParticipants = dealOrder.filter(p => !p.eliminated && !p.isNewArrival);
-    const newArrivals = dealOrder.filter(p => !p.eliminated && p.isNewArrival);
-    const finalDealOrder = [...regularParticipants, ...newArrivals];
-
-    finalDealOrder.forEach(p => {
+    activeParts.forEach(p => {
         p.cards = [lobby.deck.pop(), lobby.deck.pop(), lobby.deck.pop()];
         p.nextHandReady = p.isBot;
-        p.isNewArrival = false;
     });
 
     const firstDiscard = lobby.deck.pop();
@@ -389,8 +358,8 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                 setTimeout(() => {
                     if (!lobbies[lobby.code] || lobbies[lobby.code].gameState !== 'tieBreaker') return;
                     const cur = lobbies[lobby.code];
-                    const tieDeck = (cur.deck && cur.deck.length >= cur.tiedParticipantsList.length) ? cur.deck : createDeck();
-                    cur.drawPool = tieDeck.map(c => ({ card: c, chosenBy: null }));
+                    const freshDeck = createDeck();
+                    cur.drawPool = freshDeck.map(c => ({ card: c, chosenBy: null }));
                     cur.drawResults = {};
                     cur.drawOrderSequence = [];
                     cur.pendingBotDraw = {};
@@ -406,7 +375,6 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                 loser.lives = Math.max(0, loser.lives - 1);
                 if (loser.lives <= 0 && !loser.eliminated) {
                     loser.eliminated = true;
-                    loser.cards = [];
                     resolveFirstToLoseBets(lobby, loser.username);
                     if (loser.id && typeof loser.id === 'object') {
                         lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
@@ -453,16 +421,6 @@ function handleTurnAction(lobby, wsId, actionType) {
         }
 
         if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
-            if (!lobby.fedCardsHistory) lobby.fedCardsHistory = {};
-            if (!lobby.fedCardsHistory[currentPlayer.username]) lobby.fedCardsHistory[currentPlayer.username] = {};
-            if (!lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor]) {
-                lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor] = [];
-            }
-            lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor].push({
-                val: card.val,
-                suit: card.suit
-            });
-
             if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
             lobby.fedCardReminders[lobby.lastDiscardDonor] = {
                 target: currentPlayer.username,
@@ -658,8 +616,8 @@ function resolveRoundEnd(lobby) {
             triggerRoundOver(lobby, `Round tied at ${lowest} pts. No one loses a life!`);
         } else {
             lobby.tiedParticipantsList = tied.map(t => t.p.username);
-            const tieDeck = (lobby.deck && lobby.deck.length >= tied.length) ? lobby.deck : createDeck();
-            lobby.drawPool = tieDeck.map(c => ({ card: c, chosenBy: null }));
+            const deck = createDeck();
+            lobby.drawPool = deck.map(c => ({ card: c, chosenBy: null }));
             lobby.drawResults = {};
             lobby.drawOrderSequence = [];
             lobby.pendingBotDraw = {};
@@ -778,11 +736,9 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.globalProposals = [];
     lobby.knockedBy = null;
     lobby.tournamentWinner = null;
-    lobby.hit31Player = null;
     lobby.lastDiscardPickup = null;
     lobby.lastDiscardDonor = null;
     lobby.fedCardReminders = {};
-    lobby.fedCardsHistory = {};
     lobby.initialDealCard = null;
     lobby.drawPool = [];
     lobby.drawResults = {};
@@ -791,7 +747,10 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.pendingBotDraw = {};
     lobby.livesVote = null;
 
-    establishDealer(lobby);
+    if (lobby.lastGameWinner) {
+        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
+        if (winIdx !== -1) lobby.dealerIndex = winIdx;
+    }
 
     lobby.players.forEach((p, idx) => {
         p.lives = lobby.defaultLives || 2;
@@ -902,7 +861,9 @@ function leaveLobby(ws, code, broadcastLobbyList) {
         if (lobby.turnIndex >= lobby.players.length) {
             lobby.turnIndex = 0;
         }
-        establishDealer(lobby);
+        if (lobby.dealerIndex >= lobby.players.length) {
+            lobby.dealerIndex = 0;
+        }
         syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
     }
