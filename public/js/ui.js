@@ -1284,3 +1284,39 @@ window.openConfirmModal = openConfirmModal;
 window.respondToBet = respondToBet;
 window.stopPeekingAction = stopPeekingAction;
 window.kickPeekerAction = kickPeekerAction;
+
+// Lifetime Ledger Global Fallback
+window.openLifetimeLedgerModal = window.openLifetimeLedgerModal || function() {
+    const modal = document.getElementById('lifetime-ledger-modal');
+    if (modal) modal.style.display = 'flex';
+
+    const content = document.getElementById('lifetime-ledger-content');
+    if (content) content.innerHTML = '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.75rem;">Loading lifetime records...</div>';
+
+    const activeUsername = (
+        (window.userSession && window.userSession.username) ||
+        document.getElementById('auth-display-user')?.innerText ||
+        document.getElementById('username-input')?.value ||
+        (window.clientState && window.clientState.username) ||
+        'Player1'
+    ).trim();
+
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || null;
+    const userId = (window.userSession && window.userSession.userId) || null;
+    const isGuest = !!((window.userSession && window.userSession.isGuest) || (!token && !userId));
+
+    const payload = {
+        type: 'GET_LIFETIME_LEDGER',
+        token,
+        userId,
+        username: activeUsername,
+        isGuest
+    };
+
+    if (typeof window.sendSocketMessage === 'function') {
+        window.sendSocketMessage(payload);
+    } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+        window.ws.send(JSON.stringify(payload));
+    }
+};
+
