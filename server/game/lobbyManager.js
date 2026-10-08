@@ -38,7 +38,6 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     const lobby = lobbies[code];
     if (!lobby) return;
 
-    // Grace allowance: don't close if any human was connected within the last 90 seconds
     const now = Date.now();
     const hasActiveHuman = lobby.players.some(p => {
         if (p.isBot) return false;
@@ -147,14 +146,12 @@ function syncLifetimeLedgerBalances(lobby) {
     }
 
     const findUserId = (username) => {
-        // 1. Check connected socket with user auth
         const pl = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
         if (pl && pl.id && pl.id.user && !pl.id.user.isGuest) return pl.id.user.userId;
 
         const sp = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
         if (sp && sp.idSocket && sp.idSocket.user && !sp.idSocket.user.isGuest) return sp.idSocket.user.userId;
 
-        // 2. Direct database lookup fallback by username
         if (typeof db.findUserByUsername === 'function') {
             const userRow = db.findUserByUsername(username);
             if (userRow && userRow.id && !userRow.id.startsWith('gst_')) {
@@ -191,7 +188,6 @@ function syncLifetimeLedgerBalances(lobby) {
     processCategory(lobby.mainGameLedger, 'main');
     processCategory(lobby.sideBetLedger, 'side');
 
-    // Broadcast updated lifetime balances to all active authenticated sockets in the room
     const allSockets = [
         ...lobby.players.map(p => p.id),
         ...lobby.spectators.map(s => s.idSocket)
@@ -521,6 +517,11 @@ function handleTurnAction(lobby, wsId, actionType) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== wsId || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
 
+    // Safety guard: The knocker does NOT get another turn to draw in the final turn phase
+    if (lobby.gameState === 'finalTurn' && lobby.knockedBy === currentPlayer.username) {
+        return;
+    }
+
     if (actionType === 'DRAW_DECK') {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
         currentPlayer.cards.push(lobby.deck.pop());
@@ -703,11 +704,20 @@ function handleKnock(lobby, wsId) {
 
     lobby.gameState = 'finalTurn';
     lobby.knockedBy = p.username;
+    // Exactly active.length - 1 opponents each get 1 final turn
     lobby.finalTurnsRemaining = active.length - 1;
     lobby.phaseMessage = `🔔 KNOCK! ${p.username} knocked! 1 final turn each.`;
 
+    if (lobby.finalTurnsRemaining <= 0) {
+        resolveRoundEnd(lobby);
+        return;
+    }
+
+    // Advance to the next active opponent, skipping eliminated players and knocker
     let next = (lobby.turnIndex + 1) % lobby.players.length;
-    while (lobby.players[next].eliminated) next = (next + 1) % lobby.players.length;
+    while (lobby.players[next].eliminated || lobby.players[next].username === lobby.knockedBy) {
+        next = (next + 1) % lobby.players.length;
+    }
     lobby.turnIndex = next;
 
     broadcastLobbyUpdate(lobby.code);
@@ -722,8 +732,17 @@ function advanceTurnOrResolve(lobby) {
             return;
         }
     }
+
     let next = (lobby.turnIndex + 1) % lobby.players.length;
-    while (lobby.players[next].eliminated) next = (next + 1) % lobby.players.length;
+    let safety = 0;
+    while (
+        (lobby.players[next].eliminated || (lobby.gameState === 'finalTurn' && lobby.players[next].username === lobby.knockedBy)) &&
+        safety < lobby.players.length * 2
+    ) {
+        next = (next + 1) % lobby.players.length;
+        safety++;
+    }
+
     lobby.turnIndex = next;
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
@@ -876,7 +895,6 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.pendingBotDraw = {};
     lobby.livesVote = null;
 
-    // Regrant eliminated spectators back into open seats
     const spectatorsToReclaim = [...lobby.spectators];
     spectatorsToReclaim.forEach(spec => {
         if (lobby.players.length < 6) {
