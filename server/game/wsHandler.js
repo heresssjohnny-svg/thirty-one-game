@@ -1,6 +1,18 @@
-// server/game/wsHandler.js - Master WebSocket Router & Action Dispatcher
+// server/game/wsHandler.js - Master WebSocket Router & Lifetime Ledger Bridge
 const WebSocket = require('ws');
+const path = require('path');
 const lobbyManager = require('./lobbyManager');
+
+// Resilient SQLite Database & Auth Resolvers
+let db = null;
+for (const p of ['../db', '../../db', '../services/db', '../../server/db']) {
+    try { db = require(p); break; } catch (e) {}
+}
+
+let auth = null;
+for (const p of ['../auth', '../../auth', '../services/auth', '../../server/auth']) {
+    try { auth = require(p); break; } catch (e) {}
+}
 
 function generateLobbyCode() {
     return Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -15,7 +27,73 @@ function setupWebSocket(wss, broadcastLobbyList) {
                 const data = JSON.parse(message);
                 if (!data || typeof data !== 'object') return;
 
-                // 1. Query Public Lobbies
+                // -------------------------------------------------------------
+                // 1. AUTHENTICATION & LIFETIME LEDGER (SQLITE)
+                // -------------------------------------------------------------
+                if (data.type === 'AUTH_TOKEN' && auth && typeof auth.verifyToken === 'function') {
+                    const decoded = auth.verifyToken(data.token);
+                    if (decoded) ws.user = decoded;
+                    return;
+                }
+
+                if (data.type === 'GET_LIFETIME_LEDGER') {
+                    let userId = (ws.user && ws.user.userId) || data.userId;
+                    const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
+                    const username = data.username || (ws.user && ws.user.username);
+
+                    if (!userId && username && db && typeof db.getUserByUsername === 'function') {
+                        const userRow = db.getUserByUsername(username);
+                        if (userRow) userId = userRow.id || userRow.userId;
+                    }
+
+                    if (!isGuest && userId && db && typeof db.getLifetimeBalances === 'function') {
+                        const balances = db.getLifetimeBalances(userId);
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'LIFETIME_LEDGER_DATA',
+                                balances: balances || [],
+                                isGuest: false
+                            }));
+                        }
+                    } else {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'LIFETIME_LEDGER_DATA',
+                                balances: [],
+                                isGuest: isGuest || !userId
+                            }));
+                        }
+                    }
+                    return;
+                }
+
+                if (data.type === 'APPLY_CREDIT' && db && typeof db.applyCredit === 'function') {
+                    let creditorId = (ws.user && ws.user.userId) || data.userId;
+                    const isGuest = ws.user ? !!ws.user.isGuest : !!data.isGuest;
+                    const creditorUsername = data.username || (ws.user && ws.user.username);
+
+                    if (!creditorId && creditorUsername && typeof db.getUserByUsername === 'function') {
+                        const userRow = db.getUserByUsername(creditorUsername);
+                        if (userRow) creditorId = userRow.id || userRow.userId;
+                    }
+
+                    if (!isGuest && creditorId && data.debtorId && data.amount) {
+                        const result = db.applyCredit(creditorId, data.debtorId, Number(data.amount));
+                        const balances = db.getLifetimeBalances(creditorId);
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'LIFETIME_LEDGER_DATA',
+                                balances: balances || [],
+                                creditResult: result
+                            }));
+                        }
+                    }
+                    return;
+                }
+
+                // -------------------------------------------------------------
+                // 2. LOBBY BROWSING & TABLE CREATION
+                // -------------------------------------------------------------
                 if (data.type === 'REFRESH_LOBBIES' || data.type === 'GET_LOBBIES') {
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
@@ -26,9 +104,8 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
-                // 2. Create Lobby (Duplicate Name Guard)
                 if (data.type === 'CREATE_LOBBY') {
-                    const username = (data.username || 'Player1').trim();
+                    const username = (data.username || (ws.user && ws.user.username) || 'Player1').trim();
                     const lobbyName = (data.lobbyName || `${username}'s Table`).trim();
 
                     if (typeof lobbyManager.isLobbyNameTaken === 'function' && lobbyManager.isLobbyNameTaken(lobbyName)) {
@@ -109,7 +186,9 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
-                // 3. Join Lobby (with Reconnection Re-attach)
+                // -------------------------------------------------------------
+                // 3. TABLE JOIN & RECONNECT HANDSHAKE
+                // -------------------------------------------------------------
                 if (data.type === 'JOIN_LOBBY') {
                     const code = (data.code || '').trim().toUpperCase();
                     const lobbies = lobbyManager.getLobbies();
@@ -122,7 +201,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
                         return;
                     }
 
-                    const username = (data.username || 'Player').trim();
+                    const username = (data.username || (ws.user && ws.user.username) || 'Player').trim();
 
                     // Check if player is already seated (reconnecting from background/sleep)
                     const existingPlayer = lobby.players.find(
@@ -132,7 +211,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     if (existingPlayer) {
                         existingPlayer.id = ws;
                         existingPlayer.disconnected = false;
-                        // Avoid duplicates in spectators list
+                        // Avoid duplicate presence in spectators list
                         lobby.spectators = lobby.spectators.filter(
                             s => s.username.toLowerCase() !== username.toLowerCase()
                         );
@@ -174,7 +253,9 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     return;
                 }
 
-                // 4. In-Game & Table Directives
+                // -------------------------------------------------------------
+                // 4. IN-GAME ACTION ROUTING
+                // -------------------------------------------------------------
                 if (currentLobbyCode) {
                     const lobbies = lobbyManager.getLobbies();
                     const lobby = lobbies[currentLobbyCode];
