@@ -276,7 +276,7 @@
     </main>
 
     <!-- Modals -->
-    <!-- 1. Restored Settings Modal (LiveKit Volume, Game SFX Volume, Audio Output, Participants) -->
+    <!-- 1. Settings Modal (LiveKit Volume, Game SFX Volume, Audio Output, Participants) -->
     <div id="settings-modal" class="modal">
         <div class="modal-content" style="max-width:340px; text-align:left;">
             <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:8px;">⚙️ Audio & Game Settings</h3>
@@ -396,7 +396,6 @@
         </div>
     </div>
 
-    <!-- 7. Split Dealer Draw Modal -->
     <div id="pool-draw-modal" class="modal">
         <div class="modal-content">
             <h3 id="pool-modal-title" style="font-size: 1.25rem;">Picking for Dealer</h3>
@@ -405,7 +404,6 @@
         </div>
     </div>
 
-    <!-- 8. Split Tie Breaker Modal -->
     <div id="tie-breaker-reveal-modal" class="modal">
         <div class="modal-content">
             <h3 style="color: var(--accent-gold); font-size: 1.25rem;">Tie-Breaker Draw Live Stream</h3>
@@ -414,29 +412,66 @@
         </div>
     </div>
 
+    <div id="lives-vote-modal" class="modal">
+        <div class="modal-content" style="max-width:320px;">
+            <h3 style="color:var(--accent-gold);">Lives Setting Vote</h3>
+            <p id="lives-vote-prompt" style="font-size:0.85rem; color:var(--text-muted); margin:8px 0;">A player proposed changing starting lives.</p>
+            <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
+                <button onclick="submitLivesVote(true)" style="background:#10b981;">Agree</button>
+                <button class="danger" onclick="submitLivesVote(false)">Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="seat-action-modal" class="modal">
+        <div class="modal-content" style="max-width:300px;">
+            <h3 id="seat-action-title" style="color:var(--accent-gold);">Seat Actions</h3>
+            <div id="seat-action-body" class="button-group" style="margin-top:8px;"></div>
+        </div>
+    </div>
+
+    <!-- 7. Comprehensive Rules Tutorial Modal with "21 out of 31" Rule -->
     <div id="rules-modal" class="modal">
-        <div class="modal-content" style="max-width:380px; text-align:left;">
+        <div class="modal-content" style="max-width:400px; text-align:left;">
             <h3 style="text-align:center; color:var(--accent-gold); margin-bottom:4px;">How to Play 31!</h3>
             <div class="rules-scrollable-body">
                 <div class="rule-block">
                     <h4>🎯 Objective</h4>
-                    <p>Collect 31 points in a single suit, or have the highest hand score before someone knocks.</p>
+                    <p>Collect 31 points in a single suit, or hold the highest hand score before an opponent knocks[span_3](start_span)[span_3](end_span). The lowest score when a round ends loses a life[span_4](start_span)[span_4](end_span).</p>
                 </div>
                 <div class="rule-block">
                     <h4>🃏 Card Scoring</h4>
                     <ul>
-                        <li><b>Aces:</b> 11 points</li>
-                        <li><b>Face Cards (K, Q, J):</b> 10 points</li>
-                        <li><b>Number Cards:</b> Face value (2-10)</li>
-                        <li><b>Triplets (Three of a Kind):</b> 30.5 points</li>
+                        <li><b>Aces:</b> 11 points[span_5](start_span)[span_5](end_span)</li>
+                        <li><b>Face Cards (K, Q, J) & 10s:</b> 10 points[span_6](start_span)[span_6](end_span)</li>
+                        <li><b>Numbered Cards (2–9):</b> Face value[span_7](start_span)[span_7](end_span)</li>
+                        <li><b>Three of a Kind (Triplets):</b> 30.5 points (any suit)[span_8](start_span)[span_8](end_span)</li>
                     </ul>
                 </div>
                 <div class="rule-block">
+                    <h4>🔄 Turn Sequence</h4>
+                    <p>On your turn, draw 1 card from the face-down <b>Deck</b> or the face-up <b>Discard pile</b>, then discard 1 card from your 4 cards back to the felt.</p>
+                </div>
+                <div class="rule-block">
                     <h4>🔔 Knocking Rule</h4>
-                    <p>You can only knock on your turn <b>before drawing</b>, while holding exactly 3 cards. Requires 21+ points (25+ heads-up).</p>
+                    <p>You may only knock on your turn <b>before drawing a card</b> while holding exactly 3 cards[span_9](start_span)[span_9](end_span)[span_10](start_span)[span_10](end_span). Requires <b>21+ points</b> (or <b>25+ points</b> in heads-up play)[span_11](start_span)[span_11](end_span)[span_12](start_span)[span_12](end_span). Every other player gets one final turn.</p>
+                </div>
+                <div class="rule-block">
+                    <h4>⚡ 31 Blitz</h4>
+                    <p>Reaching 31 points (Ace + two 10-value cards in the same suit) ends the round immediately[span_13](start_span)[span_13](end_span)[span_14](start_span)[span_14](end_span). Under standard play, all active opponents lose 1 life[span_15](start_span)[span_15](end_span)[span_16](start_span)[span_16](end_span).</p>
+                </div>
+                <div class="rule-block" style="border:1.5px solid var(--accent-gold); background:rgba(6,95,70,0.45);">
+                    <h4 style="color:#fde047;">💥 The "21 out of 31" Rule</h4>
+                    <p>If Player A feeds Player B both an <b>Ace (11)</b> and a <b>10-value/Face card (10)</b> of the same suit through discards, and Player B hits 31 in that suit:</p>
+                    <p style="margin-top:4px; font-weight:bold; color:#ef4444;">• Player A loses ALL of their lives immediately!</p>
+                    <p style="margin-top:2px; font-weight:bold; color:#34d399;">• No other player loses a life.</p>
+                </div>
+                <div class="rule-block">
+                    <h4>⚔️ Tie-Breakers</h4>
+                    <p>If two or more players tie for the lowest score, they draw face-down cards from the deck[span_17](start_span)[span_17](end_span). The lowest card drawn loses a life (Aces are high in tie-breakers)[span_18](start_span)[span_18](end_span).</p>
                 </div>
             </div>
-            <button onclick="toggleModal('rules-modal')" style="margin-top:6px;">Close</button>
+            <button onclick="toggleModal('rules-modal')" style="margin-top:6px; width:100%;">Close</button>
         </div>
     </div>
 
