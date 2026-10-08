@@ -9,8 +9,56 @@ let latestLiveKitToken = null;
 let currentVoiceVolume = 1.0;
 let selectedAudioOutputId = 'default';
 
+// Background audio keep-alive node to prevent mobile OS tab suspension
+let keepAliveOscillator = null;
+let keepAliveGainNode = null;
+
 function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
+}
+
+/**
+ * Creates an inaudible background audio loop to keep the audio session
+ * active on mobile browsers when the app or tab is minimized.
+ */
+function startBackgroundKeepAliveOscillator() {
+    try {
+        if (typeof getAudioContext === 'function') {
+            const ctx = getAudioContext();
+            if (!ctx) return;
+            if (ctx.state === 'suspended') ctx.resume();
+
+            if (!keepAliveOscillator) {
+                keepAliveOscillator = ctx.createOscillator();
+                keepAliveGainNode = ctx.createGain();
+
+                // Near-zero volume continuous loop keeps the hardware audio route alive
+                keepAliveGainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
+                keepAliveOscillator.frequency.setValueAtTime(440, ctx.currentTime);
+
+                keepAliveOscillator.connect(keepAliveGainNode);
+                keepAliveGainNode.connect(ctx.destination);
+
+                keepAliveOscillator.start();
+            }
+        }
+    } catch (e) {
+        console.warn("[LiveKit] Could not initialize keep-alive oscillator:", e);
+    }
+}
+
+function stopBackgroundKeepAliveOscillator() {
+    try {
+        if (keepAliveOscillator) {
+            keepAliveOscillator.stop();
+            keepAliveOscillator.disconnect();
+            keepAliveOscillator = null;
+        }
+        if (keepAliveGainNode) {
+            keepAliveGainNode.disconnect();
+            keepAliveGainNode = null;
+        }
+    } catch (e) {}
 }
 
 // Accepts either (token, host) or (host, token) to prevent ordering bugs
@@ -75,8 +123,13 @@ async function connectToLiveKit(host, token, roomCode) {
                 audioElem.setAttribute('webkit-playsinline', '');
                 audioElem.classList.add('lk-remote-audio');
 
+                // Route to currently selected speaker or Bluetooth output
                 if (selectedAudioOutputId && typeof audioElem.setSinkId === 'function') {
-                    audioElem.setSinkId(selectedAudioOutputId).catch(() => {});
+                    audioElem.setSinkId(selectedAudioOutputId).catch(() => {
+                        // Fallback to default phone speaker on failure
+                        selectedAudioOutputId = 'default';
+                        audioElem.setSinkId('default').catch(() => {});
+                    });
                 }
 
                 document.body.appendChild(audioElem);
@@ -100,6 +153,7 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom.on(LK.RoomEvent.Disconnected, () => {
             isLiveKitConnected = false;
             isVoiceChatActive = false;
+            stopBackgroundKeepAliveOscillator();
             updateVoiceUI();
             refreshVoiceParticipantsList();
         });
@@ -115,10 +169,7 @@ async function connectToLiveKit(host, token, roomCode) {
         refreshAudioOutputDevices();
         refreshVoiceParticipantsList();
 
-        if (typeof enableBackgroundAudioKeepAlive === 'function') {
-            enableBackgroundAudioKeepAlive();
-        }
-
+        startBackgroundKeepAliveOscillator();
         console.log("[LiveKit] Successfully connected to room:", cleanHost);
     } catch (error) {
         console.error("[LiveKit] Connection error:", error);
@@ -163,6 +214,7 @@ async function toggleVoiceOnOff() {
             isVoiceChatActive = true;
             updateVoiceUI();
             sendVCStatusInternal(true, false);
+            startBackgroundKeepAliveOscillator();
         }
     } catch (err) {
         console.error("[LiveKit] Mic toggle error:", err);
@@ -187,6 +239,7 @@ function updateVoiceUI() {
 }
 
 async function disconnectLiveKit() {
+    stopBackgroundKeepAliveOscillator();
     if (livekitRoom) {
         try { await livekitRoom.disconnect(); } catch (e) {}
         livekitRoom = null;
@@ -226,20 +279,35 @@ function setVoiceChatVolume(val) {
     });
 }
 
+/**
+ * Changes audio output route to Bluetooth, Headset, or Phone Speaker
+ */
 async function setAudioOutputDevice(deviceId) {
-    selectedAudioOutputId = deviceId;
+    selectedAudioOutputId = deviceId || 'default';
     const remoteAudios = document.querySelectorAll('.lk-remote-audio');
+
     for (const audioEl of remoteAudios) {
         if (typeof audioEl.setSinkId === 'function') {
             try {
-                await audioEl.setSinkId(deviceId);
+                await audioEl.setSinkId(selectedAudioOutputId);
             } catch (err) {
-                console.warn("[LiveKit] Unable to set audio sink:", err);
+                console.warn("[LiveKit] Unable to set audio sink on element:", err);
+                // Graceful fallback to default phone speaker
+                try { await audioEl.setSinkId('default'); } catch (e) {}
             }
         }
     }
+
+    const select = document.getElementById('audio-output-select');
+    if (select && select.value !== selectedAudioOutputId) {
+        select.value = selectedAudioOutputId;
+    }
 }
 
+/**
+ * Enumerates audio devices, identifies Bluetooth accessories,
+ * and handles fallbacks if a Bluetooth device is disconnected.
+ */
 async function refreshAudioOutputDevices() {
     const select = document.getElementById('audio-output-select');
     if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
@@ -248,11 +316,41 @@ async function refreshAudioOutputDevices() {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
 
-        if (audioOutputs.length > 0) {
-            select.innerHTML = audioOutputs.map((d, i) => `
-                <option value="${d.deviceId}">${d.label || `Speaker / Headset ${i + 1}`}</option>
-            `).join('');
-            if (selectedAudioOutputId) select.value = selectedAudioOutputId;
+        let isSelectedDeviceStillConnected = false;
+
+        let optionsHtml = '<option value="default">Phone Speaker / Default</option>';
+        audioOutputs.forEach((d, i) => {
+            if (d.deviceId === 'default') return;
+
+            const isBluetooth = d.label && (
+                d.label.toLowerCase().includes('bluetooth') ||
+                d.label.toLowerCase().includes('airpods') ||
+                d.label.toLowerCase().includes('buds') ||
+                d.label.toLowerCase().includes('headset') ||
+                d.label.toLowerCase().includes('wireless')
+            );
+
+            const prefix = isBluetooth ? '🎧 Bluetooth: ' : '🔊 ';
+            const label = d.label ? `${prefix}${d.label}` : `Speaker / Audio Output ${i + 1}`;
+
+            if (d.deviceId === selectedAudioOutputId) {
+                isSelectedDeviceStillConnected = true;
+            }
+
+            optionsHtml += `<option value="${d.deviceId}">${label}</option>`;
+        });
+
+        select.innerHTML = optionsHtml;
+
+        // If previously selected Bluetooth device was disconnected, seamlessly fallback to phone speaker
+        if (selectedAudioOutputId !== 'default' && !isSelectedDeviceStillConnected) {
+            console.log("[LiveKit] Audio device disconnected. Reverting to Phone Speaker.");
+            await setAudioOutputDevice('default');
+            if (typeof showCenterNotification === 'function') {
+                showCenterNotification("Audio route switched to Phone Speaker");
+            }
+        } else {
+            select.value = selectedAudioOutputId;
         }
     } catch (e) {
         console.warn("[LiveKit] Device enumeration error:", e);
@@ -292,8 +390,22 @@ function refreshVoiceParticipantsList() {
     }
 }
 
+// React instantly when Bluetooth headphones connect or disconnect
 if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
     navigator.mediaDevices.ondevicechange = () => {
         refreshAudioOutputDevices();
     };
 }
+
+// Reactivate audio context and resume stream if browser tab becomes visible again
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && isLiveKitConnected) {
+        if (typeof getAudioContext === 'function') {
+            const ctx = getAudioContext();
+            if (ctx && ctx.state === 'suspended') {
+                ctx.resume();
+            }
+        }
+        startBackgroundKeepAliveOscillator();
+    }
+});
