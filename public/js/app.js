@@ -1,4 +1,5 @@
-// public/js/app.js - Authentication, Client State & Mobile Lifecycle Coordinator (PART 1 OF 2)
+// public/js/app.js - PART 1 OF 2
+// Authentication Coordinator, View Transition & Session Lifecycle
 
 window.userSession = null;
 
@@ -12,7 +13,7 @@ function initializeGoogleIdentity() {
         return;
     }
 
-    const clientId = window.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+    const clientId = window.GOOGLE_CLIENT_ID || '420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com';
 
     try {
         window.google.accounts.id.initialize({
@@ -62,10 +63,14 @@ async function handleGoogleCredentialResponse(response) {
         if (res.ok && data.token) {
             localStorage.setItem('31_jwt', data.token);
             window.userSession = data.user;
-            updateViewForAuth(data.user);
+
+            // 1. Establish the socket transport FIRST so refresh commands have an open link
             if (typeof window.connectSocket === 'function') {
                 window.connectSocket();
             }
+
+            // 2. Safely swap view from auth modal to main menu
+            updateViewForAuth(data.user);
         } else {
             showAuthError(data.error || 'Google login failed.');
         }
@@ -108,30 +113,47 @@ function showAuthError(message) {
 }
 
 function updateViewForAuth(user) {
-    // Targets both id variants to ensure backward and styled compatibility
-    const authOverlay = document.getElementById('auth-overlay') || document.getElementById('auth-screen');
-    const mainMenu = document.getElementById('main-menu');
-    const badge = document.getElementById('menu-user-badge');
-    const usernameInput = document.getElementById('username-input');
+    try {
+        const authOverlay = document.getElementById('auth-overlay') || document.getElementById('auth-screen');
+        const mainMenu = document.getElementById('main-menu');
+        const badge = document.getElementById('menu-user-badge');
+        const usernameInput = document.getElementById('username-input');
 
-    if (authOverlay) authOverlay.style.display = 'none';
-    if (mainMenu) mainMenu.style.display = 'flex';
+        // Hide login modal
+        if (authOverlay) {
+            authOverlay.style.display = 'none';
+        }
 
-    if (user) {
-        if (badge) {
-            badge.innerText = user.isGuest ? `${user.username} (Guest)` : user.username;
+        // Display main menu view
+        if (mainMenu) {
+            mainMenu.style.display = 'flex';
         }
-        if (usernameInput) {
-            usernameInput.value = user.username;
-            if (typeof window.saveInputs === 'function') window.saveInputs();
-        }
-        if (window.clientState) {
-            window.clientState.username = user.username;
-        }
-    }
 
-    if (typeof window.refreshLobbies === 'function') {
-        window.refreshLobbies();
+        if (user) {
+            if (badge) {
+                badge.innerText = user.isGuest ? `${user.username} (Guest)` : user.username;
+            }
+            if (usernameInput) {
+                usernameInput.value = user.username;
+                if (typeof window.saveInputs === 'function') {
+                    window.saveInputs();
+                }
+            }
+            if (window.clientState) {
+                window.clientState.username = user.username;
+            }
+        }
+
+        // Debounced public lobby fetch to allow socket to fully open
+        setTimeout(() => {
+            if (typeof window.refreshLobbies === 'function') {
+                window.refreshLobbies();
+            }
+        }, 150);
+    } catch (err) {
+        console.error('[Auth] Error transitioning from auth to main menu:', err);
+        const menu = document.getElementById('main-menu');
+        if (menu) menu.style.display = 'flex';
     }
 }
 // public/js/app.js - PART 2 OF 2
@@ -159,8 +181,8 @@ async function submitAuthLogin() {
         if (res.ok && data.token) {
             localStorage.setItem('31_jwt', data.token);
             window.userSession = data.user;
-            updateViewForAuth(data.user);
             if (typeof window.connectSocket === 'function') window.connectSocket();
+            updateViewForAuth(data.user);
         } else {
             showAuthError(data.error || 'Invalid credentials.');
         }
@@ -189,8 +211,8 @@ async function submitAuthRegister() {
         if (res.ok && data.token) {
             localStorage.setItem('31_jwt', data.token);
             window.userSession = data.user;
-            updateViewForAuth(data.user);
             if (typeof window.connectSocket === 'function') window.connectSocket();
+            updateViewForAuth(data.user);
         } else {
             showAuthError(data.error || 'Registration failed.');
         }
@@ -209,8 +231,8 @@ async function submitAuthGuest() {
         if (res.ok && data.token) {
             localStorage.setItem('31_jwt', data.token);
             window.userSession = data.user;
-            updateViewForAuth(data.user);
             if (typeof window.connectSocket === 'function') window.connectSocket();
+            updateViewForAuth(data.user);
         } else {
             showAuthError(data.error || 'Could not start guest session.');
         }
@@ -246,10 +268,10 @@ async function checkExistingAuthToken() {
         if (res.ok) {
             const data = await res.json();
             window.userSession = data.user;
-            updateViewForAuth(data.user);
             if (typeof window.connectSocket === 'function') {
                 window.connectSocket();
             }
+            updateViewForAuth(data.user);
         } else {
             localStorage.removeItem('31_jwt');
             initializeGoogleIdentity();
@@ -263,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkExistingAuthToken();
 });
 
-// Expose handlers globally for inline HTML onclick attributes
+// Expose handlers globally for HTML inline events
 window.switchAuthTab = switchAuthTab;
 window.submitAuthLogin = submitAuthLogin;
 window.submitAuthRegister = submitAuthRegister;
