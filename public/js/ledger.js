@@ -4,12 +4,12 @@
 // 1. ALL-TIME LIFETIME LEDGER (SQLITE)
 // -------------------------------------------------------------
 window.openLifetimeLedgerModal = function() {
-    // 1. Open the modal immediately so the player gets instant visual feedback
-    if (typeof window.toggleModal === 'function') {
+    // 1. Force the modal open immediately for instant visual feedback
+    const modal = document.getElementById('lifetime-ledger-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else if (typeof window.toggleModal === 'function') {
         window.toggleModal('lifetime-ledger-modal');
-    } else {
-        const modal = document.getElementById('lifetime-ledger-modal');
-        if (modal) modal.style.display = 'flex';
     }
 
     const content = document.getElementById('lifetime-ledger-content');
@@ -17,7 +17,7 @@ window.openLifetimeLedgerModal = function() {
         content.innerHTML = '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.75rem;">Loading lifetime records...</div>';
     }
 
-    // 2. Identify active session credentials
+    // 2. Identify active user session
     const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || null;
     const activeUsername = (
         (window.userSession && window.userSession.username) ||
@@ -30,7 +30,7 @@ window.openLifetimeLedgerModal = function() {
     const userId = (window.userSession && window.userSession.userId) || null;
     const isGuest = !!((window.userSession && window.userSession.isGuest) || (!token && !userId));
 
-    // 3. Dispatch query to backend WebSocket router
+    // 3. Dispatch payload over WebSocket
     const sendPayload = {
         type: 'GET_LIFETIME_LEDGER',
         token,
@@ -54,7 +54,7 @@ window.renderLifetimeLedgerData = function(balances, isGuest) {
         container.innerHTML = `
             <div style="background:rgba(239, 68, 68, 0.15); border:1px solid #ef4444; border-radius:8px; padding:10px; color:#fca5a5; font-size:0.75rem; line-height:1.4;">
                 ⚠️ <b>Playing as Guest:</b><br>
-                Match history and tournament debts are only permanently tracked for registered accounts. Create an account or log in from the main menu to retain your lifetime ledger.
+                Match debts are only tracked permanently for registered accounts. Log in or create an account from the main menu to retain your lifetime ledger.
             </div>
         `;
         return;
@@ -63,7 +63,7 @@ window.renderLifetimeLedgerData = function(balances, isGuest) {
     if (!balances || !Array.isArray(balances) || balances.length === 0) {
         container.innerHTML = `
             <div style="text-align:center; color:var(--text-muted); padding:16px 8px; font-size:0.78rem;">
-                No lifetime balance records or outstanding debts found for your profile.
+                No lifetime balance records or debts found for this account.
             </div>
         `;
         return;
@@ -77,7 +77,6 @@ window.renderLifetimeLedgerData = function(balances, isGuest) {
         const isEven = net === 0;
 
         const color = isEven ? '#94a3b8' : (isPositive ? '#34d399' : '#f87171');
-        const sign = isPositive ? '+' : '';
         const statusText = isEven ? 'Even ($0)' : (isPositive ? `+ $${net} (Owes you)` : `- $${Math.abs(net)} (You owe)`);
 
         html += `
@@ -129,11 +128,11 @@ window.openLedgerModal = function() {
         if (container) container.innerHTML = html;
     }
 
-    if (typeof window.toggleModal === 'function') {
+    const modal = document.getElementById('ledger-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else if (typeof window.toggleModal === 'function') {
         window.toggleModal('ledger-modal');
-    } else {
-        const modal = document.getElementById('ledger-modal');
-        if (modal) modal.style.display = 'flex';
     }
 };
 
@@ -165,7 +164,6 @@ window.saveLedgerScreenshot = function() {
     canvas.height = 360;
     const ctx = canvas.getContext('2d');
 
-    // Draw casino felt background
     ctx.fillStyle = '#044e36';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -216,16 +214,11 @@ window.saveLedgerScreenshot = function() {
         downloadLink.download = `31_Ledger_${Date.now()}.png`;
     }
 
-    if (typeof window.toggleModal === 'function') {
-        window.toggleModal('screenshot-modal');
-    }
+    const modal = document.getElementById('screenshot-modal');
+    if (modal) modal.style.display = 'flex';
 };
 
 window.closeScreenshotModal = function() {
-    if (typeof window.toggleModal === 'function') {
-        window.toggleModal('screenshot-modal');
-    } else {
-        const modal = document.getElementById('screenshot-modal');
-        if (modal) modal.style.display = 'none';
-    }
+    const modal = document.getElementById('screenshot-modal');
+    if (modal) modal.style.display = 'none';
 };
