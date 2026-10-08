@@ -1,249 +1,204 @@
-// server/auth.js
+// server/auth.js - Authentication Router & Token Verifier
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
-
-// Support both server/auth.js and root directory layouts
-const db = fs.existsSync(path.join(__dirname, 'db.js'))
-    ? require('./db')
-    : (fs.existsSync(path.join(__dirname, 'server', 'db.js')) ? require('./server/db') : require('../db'));
-
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'thirtyone-super-secret-jwt-key-2026';
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { OAuth2Client } = require('google-auth-library');
+const db = require('./db');
+const config = require('./config');
 
-/**
- * Creates a signed JWT session token valid for 30 days
- */
-function createToken(payload) {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
-}
+// Initialize Google OAuth2 verification client
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-/**
- * Helper to decode and verify JWTs on Express routes or WebSocket handshakes
- */
-function verifyToken(token) {
-    if (!token) return null;
-    try {
-        return jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-        return null;
+// -------------------------------------------------------------
+// 1. GOOGLE IDENTITY SERVICES VERIFIER (Native Prompt)
+// -------------------------------------------------------------
+router.post('/google', async (req, res) => {
+    const { credential } = req.body;
+    if (!credential) {
+        return res.status(400).json({ error: 'Missing Google credential token.' });
     }
-}
 
-// -------------------------------------------------------------
-// 1. NATIVE 31 REGISTRATION
-// -------------------------------------------------------------
-router.post('/auth/register', async (req, res) => {
     try {
-        const { username, email, password } = req.body;
-
-        if (!username || !email || !password) {
-            return res.status(400).json({ error: 'Username, email, and password are required.' });
-        }
-
-        const normalizedEmail = email.trim().toLowerCase();
-        const cleanUsername = username.trim();
-
-        if (cleanUsername.length < 2 || cleanUsername.length > 20) {
-            return res.status(400).json({ error: 'Username must be between 2 and 20 characters.' });
-        }
-
-        if (password.length < 6) {
-            return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
-        }
-
-        // Check for existing account with this email
-        const existing = db.findUserByProviderId(normalizedEmail);
-        if (existing) {
-            return res.status(409).json({ error: 'An account with that email already exists.' });
-        }
-
-        const passwordHash = await bcrypt.hash(password, 10);
-        const userId = 'usr_' + crypto.randomBytes(6).toString('hex');
-
-        const newUser = db.createUser(userId, '31', normalizedEmail, cleanUsername, passwordHash);
-        const token = createToken({ userId: newUser.id, username: newUser.username, isGuest: false });
-
-        return res.json({
-            token,
-            user: {
-                id: newUser.id,
-                username: newUser.username,
-                provider: '31',
-                isGuest: false
-            }
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: GOOGLE_CLIENT_ID
         });
-    } catch (err) {
-        console.error('Registration error:', err);
-        return res.status(500).json({ error: 'Server error during registration.' });
-    }
-});
 
-// -------------------------------------------------------------
-// 2. NATIVE 31 LOGIN
-// -------------------------------------------------------------
-router.post('/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required.' });
+        const payload = ticket.getPayload();
+        if (!payload || !payload.sub) {
+            return res.status(401).json({ error: 'Invalid Google token payload.' });
         }
 
-        const normalizedEmail = email.trim().toLowerCase();
-        const user = db.findUserByProviderId(normalizedEmail);
+        const providerId = payload.sub;
+        const email = payload.email || '';
+        let displayName = payload.name || (email ? email.split('@')[0] : 'Player');
+        displayName = displayName.trim().slice(0, 15);
 
-        if (!user || !user.password_hash) {
-            return res.status(401).json({ error: 'Invalid email or password.' });
-        }
-
-        const passwordValid = await bcrypt.compare(password, user.password_hash);
-        if (!passwordValid) {
-            return res.status(401).json({ error: 'Invalid email or password.' });
-        }
-
-        const token = createToken({ userId: user.id, username: user.username, isGuest: false });
-
-        return res.json({
-            token,
-            user: {
-                id: user.id,
-                username: user.username,
-                provider: user.provider,
-                isGuest: false
-            }
-        });
-    } catch (err) {
-        console.error('Login error:', err);
-        return res.status(500).json({ error: 'Server error during login.' });
-    }
-});
-
-// -------------------------------------------------------------
-// 3. GUEST PLAY (No DB record, lifetime ledger ignored)
-// -------------------------------------------------------------
-router.post('/auth/guest', (req, res) => {
-    try {
-        const customName = req.body.username ? req.body.username.trim() : '';
-        const guestName = customName || `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
-        const guestId = 'gst_' + crypto.randomBytes(6).toString('hex');
-
-        const token = createToken({ userId: guestId, username: guestName, isGuest: true });
-
-        return res.json({
-            token,
-            user: {
-                id: guestId,
-                username: guestName,
-                provider: 'guest',
-                isGuest: true
-            }
-        });
-    } catch (err) {
-        console.error('Guest login error:', err);
-        return res.status(500).json({ error: 'Server error during guest creation.' });
-    }
-});
-
-// -------------------------------------------------------------
-// 4. SOCIAL LOGINS (Google, Facebook, Instagram)
-// -------------------------------------------------------------
-router.post('/auth/social', async (req, res) => {
-    try {
-        const { provider, providerId, username, email } = req.body;
-
-        const allowedProviders = ['google', 'facebook', 'instagram'];
-        if (!provider || !allowedProviders.includes(provider.toLowerCase())) {
-            return res.status(400).json({ error: 'Unsupported authentication provider.' });
-        }
-
-        if (!providerId) {
-            return res.status(400).json({ error: 'Missing social profile identifier.' });
-        }
-
-        const normalizedProvider = provider.toLowerCase();
-        // Unique key for the social account row: e.g., "google:104928374928"
-        const uniqueProviderKey = `${normalizedProvider}:${providerId.toString().trim()}`;
-
-        let user = db.findUserByProviderId(uniqueProviderKey);
+        // Check if user already exists
+        let user = db.findUserByProviderId(providerId);
 
         if (!user) {
-            const fallbackName = username ? username.trim() : `${normalizedProvider.toUpperCase()}_User`;
-            const userId = 'usr_' + crypto.randomBytes(6).toString('hex');
+            // Prevent username collisions
+            let uniqueName = displayName;
+            let counter = 1;
+            while (db.findUserByUsername(uniqueName)) {
+                uniqueName = `${displayName}${counter}`;
+                counter++;
+            }
 
-            user = db.createUser(
-                userId,
-                normalizedProvider,
-                uniqueProviderKey,
-                fallbackName,
-                null // Passwords are not stored for OAuth accounts
-            );
+            const newUserId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+            user = db.createUser(newUserId, 'google', providerId, uniqueName, null);
         }
 
-        const token = createToken({ userId: user.id, username: user.username, isGuest: false });
+        const token = jwt.sign(
+            { userId: user.id, username: user.username, isGuest: false },
+            config.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
 
         return res.json({
             token,
             user: {
                 id: user.id,
                 username: user.username,
-                provider: user.provider,
                 isGuest: false
             }
         });
     } catch (err) {
-        console.error('Social login error:', err);
-        return res.status(500).json({ error: 'Server error during social authentication.' });
+        console.error('[Auth] Google Token Verification failed:', err.message);
+        return res.status(401).json({ error: 'Failed to verify Google credential.' });
     }
+});
+
+// -------------------------------------------------------------
+// 2. STANDARD LOCAL USER REGISTRATION
+// -------------------------------------------------------------
+router.post('/register', async (req, res) => {
+    const { username, password } = req.body;
+    const cleanUser = (username || '').trim();
+
+    if (!cleanUser || !password || password.length < 6) {
+        return res.status(400).json({ error: 'Username required, and password must be at least 6 characters.' });
+    }
+
+    const existing = db.findUserByUsername(cleanUser);
+    if (existing) {
+        return res.status(409).json({ error: 'Username is already taken.' });
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const userId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        const providerId = `local_${cleanUser.toLowerCase()}`;
+
+        const user = db.createUser(userId, 'local', providerId, cleanUser, passwordHash);
+        const token = jwt.sign(
+            { userId: user.id, username: user.username, isGuest: false },
+            config.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        return res.json({
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                isGuest: false
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ error: 'Failed to create user account.' });
+    }
+});
+
+// -------------------------------------------------------------
+// 3. STANDARD LOCAL USER LOGIN
+// -------------------------------------------------------------
+router.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+    const cleanUser = (username || '').trim();
+
+    if (!cleanUser || !password) {
+        return res.status(400).json({ error: 'Please enter username and password.' });
+    }
+
+    const user = db.findUserByUsername(cleanUser);
+    if (!user || !user.password_hash) {
+        return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    try {
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) {
+            return res.status(401).json({ error: 'Invalid username or password.' });
+        }
+
+        const token = jwt.sign(
+            { userId: user.id, username: user.username, isGuest: false },
+            config.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        return res.json({
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                isGuest: false
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ error: 'Internal login error.' });
+    }
+});
+
+// -------------------------------------------------------------
+// 4. EPHEMERAL GUEST AUTHENTICATION
+// -------------------------------------------------------------
+router.post('/guest', (req, res) => {
+    const guestId = 'gst_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5);
+    const guestUsername = 'Guest_' + Math.floor(1000 + Math.random() * 9000);
+
+    const token = jwt.sign(
+        { userId: guestId, username: guestUsername, isGuest: true },
+        config.JWT_SECRET,
+        { expiresIn: '1d' }
+    );
+
+    return res.json({
+        token,
+        user: {
+            id: guestId,
+            username: guestUsername,
+            isGuest: true
+        }
+    });
 });
 
 // -------------------------------------------------------------
 // 5. SESSION VERIFICATION (/auth/me)
 // -------------------------------------------------------------
-router.get('/auth/me', (req, res) => {
+router.get('/me', (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Missing authentication token.' });
+        return res.status(401).json({ error: 'Unauthorized.' });
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = verifyToken(token);
-
-    if (!decoded) {
-        return res.status(401).json({ error: 'Invalid or expired session token.' });
-    }
-
-    if (decoded.isGuest) {
+    try {
+        const decoded = jwt.verify(token, config.JWT_SECRET);
         return res.json({
             user: {
                 id: decoded.userId,
                 username: decoded.username,
-                provider: 'guest',
-                isGuest: true
+                isGuest: !!decoded.isGuest
             }
         });
+    } catch (err) {
+        return res.status(401).json({ error: 'Session expired or invalid.' });
     }
-
-    const user = db.findUserById(decoded.userId);
-    if (!user) {
-        return res.status(404).json({ error: 'Account not found.' });
-    }
-
-    return res.json({
-        user: {
-            id: user.id,
-            username: user.username,
-            provider: user.provider,
-            isGuest: false
-        }
-    });
 });
 
-module.exports = {
-    router,
-    verifyToken,
-    JWT_SECRET
-};
+module.exports = router;
