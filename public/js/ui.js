@@ -139,7 +139,7 @@ window.showCenterNotification = function(msg) {
 
 window.openSettingsModal = function() {
     if (typeof refreshAudioOutputDevices === 'function') refreshAudioOutputDevices();
-    if (typeof updateVcParticipantsList === 'function') updateVcParticipantsList();
+    if (typeof refreshVoiceParticipantsList === 'function') refreshVoiceParticipantsList();
     window.toggleModal('settings-modal');
 };
 
@@ -372,6 +372,7 @@ window.resetToMainMenu = function() {
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
 // -------------------------------------------------------------
 window.drawCard = function(source) {
+    if (window.clientState.isSpectator) return;
     if (typeof playSound === 'function') playSound('card');
     if (typeof triggerVibration === 'function') triggerVibration(40);
     sendSocket({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
@@ -381,6 +382,7 @@ window.drawFromDeck = function() { window.drawCard('deck'); };
 window.drawFromDiscard = function() { window.drawCard('discard'); };
 
 window.discardCard = function(cardIndex) {
+    if (window.clientState.isSpectator) return;
     if (typeof playSound === 'function') playSound('card');
     if (typeof triggerVibration === 'function') triggerVibration(30);
     sendSocket({
@@ -660,7 +662,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER & TIE-BREAKER DECK POOL FILTER
+// 8. MASTER TABLE RENDER & SPECTATOR LOGIC
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -786,7 +788,7 @@ window.updateUIFromLobby = function(lobby) {
         fedModal.style.display = 'none';
     }
 
-    // 7. CLIENT CACHES
+    // 7. CLIENT CACHES & SPECTATOR DETERMINATION
     window.clientState.gameState = lobby.gameState;
     window.clientState.playersList = (lobby.players || []).map(p => p.username);
     window.clientState.spectatorsList = lobby.spectators || [];
@@ -856,28 +858,33 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 9. ACTION BAR CONTROLS
+    // 9. DYNAMIC ACTION BAR & "SIT DOWN" IN WAITING ROOM
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
     const readyBtn = document.getElementById('ready-btn');
     const knockBtn = document.getElementById('knock-btn');
+    const playerCount = (lobby.players || []).length;
 
     if (lobby.gameState === 'lobby') {
         if (me) {
+            // Player is seated in the waiting room
             if (standUpBtn) standUpBtn.style.display = 'inline-block';
             if (sitBtn) sitBtn.style.display = 'none';
             if (readyBtn) readyBtn.style.display = 'inline-block';
             if (knockBtn) knockBtn.style.display = 'none';
         } else {
+            // Player is spectating: show Sit button if open spots (< 6) are available
             if (standUpBtn) standUpBtn.style.display = 'none';
             if (readyBtn) readyBtn.style.display = 'none';
             if (knockBtn) knockBtn.style.display = 'none';
             if (sitBtn) {
                 sitBtn.style.display = 'inline-block';
-                sitBtn.disabled = (lobby.players || []).length >= 6;
+                sitBtn.disabled = playerCount >= 6;
+                sitBtn.innerText = playerCount < 6 ? 'Sit Down' : 'Table Full (6/6)';
             }
         }
     } else {
+        // Active Game in Progress
         if (sitBtn) sitBtn.style.display = 'none';
         if (isSpectatorOnly) {
             if (standUpBtn) standUpBtn.style.display = 'none';
@@ -891,7 +898,7 @@ window.updateUIFromLobby = function(lobby) {
     }
 
     // 10. TURN ACTION & AUDIO TRIGGER
-    const isMyTurnPlaying = ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
+    const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
     if (isMyTurnPlaying) {
@@ -1063,7 +1070,7 @@ window.updateUIFromLobby = function(lobby) {
             if (slot.chosenBy) {
                 poolHtml += `<div class="pool-card-item taken" title="Chosen by ${slot.chosenBy}">✓</div>`;
             } else {
-                const clickable = !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
+                const clickable = !isSpectatorOnly && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
                 poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
             }
         });
@@ -1224,7 +1231,14 @@ window.updateUIFromLobby = function(lobby) {
     // 16. LOCAL HAND RENDERING WITH AUTHENTIC PLAYING CARDS
     const handContainer = document.getElementById('my-cards-container');
     const scoreDisplay = document.getElementById('my-score-display');
-    if (me && me.cards && handContainer) {
+    const myHandTitle = document.getElementById('my-hand-title');
+
+    if (isSpectatorOnly) {
+        if (handContainer) handContainer.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:12px;">👀 Spectator Mode</div>';
+        if (scoreDisplay) scoreDisplay.innerText = '-';
+        if (myHandTitle) myHandTitle.innerHTML = 'Spectating Table';
+    } else if (me && me.cards && handContainer) {
+        if (myHandTitle) myHandTitle.innerHTML = 'My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">' + window.calculateLocalScore(me.cards) + '</strong>)';
         handContainer.innerHTML = me.cards.map((c, i) => {
             const val = c.val || '';
             const suit = normalizeSuit(c.suit);
