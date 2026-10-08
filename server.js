@@ -9,8 +9,8 @@ const config = require('./server/config');
 const db = require('./server/db');
 const authRouter = require('./server/auth');
 const { generateLiveKitToken } = require('./server/services/livekit');
-const { handleWsMessage, handleWsClose } = require('./server/game/wsHandler');
-const { getPublicLobbiesList } = require('./server/game/lobbyManager');
+const { handleWebSocketMessage } = require('./server/game/wsHandler');
+const { getPublicLobbiesList, leaveLobby } = require('./server/game/lobbyManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,14 +18,14 @@ const server = http.createServer(app);
 // -------------------------------------------------------------
 // 1. MIDDLEWARE & ROUTING CONFIGURATION
 // -------------------------------------------------------------
-// Essential for parsing JSON bodies from registration/login requests
+// Body parsers for auth actions and API payloads
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Mount Authentication Router (/auth/register, /auth/login, /auth/guest, /auth/google, /auth/me)
 app.use('/auth', authRouter);
 
-// Serve static frontend assets from /public and root directory
+// Serve static frontend assets from /public and project root
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -46,7 +46,6 @@ app.post('/token', async (req, res) => {
 
 // Single Page Application Fallback
 app.get('*', (req, res) => {
-    // If request has not matched any static file or API endpoint, deliver index.html
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 // server.js - PART 2 OF 2
@@ -136,12 +135,14 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // Forward gameplay commands to room and lobby manager
-        handleWsMessage(ws, parsed, broadcastLobbyList);
+        // Forward message to the exported wsHandler function
+        handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
     });
 
     ws.on('close', () => {
-        handleWsClose(ws, broadcastLobbyList);
+        if (ws.currentLobbyCode) {
+            leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
+        }
     });
 });
 
