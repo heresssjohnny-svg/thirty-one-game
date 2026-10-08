@@ -1,224 +1,133 @@
-// public/js/ledger.js - Lifetime SQLite Ledger & In-Game Session Balances
+// server/game/ledger.js - Side Bets & P2P Ledger Settlement
+const path = require('path');
 
-// -------------------------------------------------------------
-// 1. ALL-TIME LIFETIME LEDGER (SQLITE)
-// -------------------------------------------------------------
-window.openLifetimeLedgerModal = function() {
-    // 1. Force the modal open immediately for instant visual feedback
-    const modal = document.getElementById('lifetime-ledger-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-    } else if (typeof window.toggleModal === 'function') {
-        window.toggleModal('lifetime-ledger-modal');
-    }
-
-    const content = document.getElementById('lifetime-ledger-content');
-    if (content) {
-        content.innerHTML = '<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:0.75rem;">Loading lifetime records...</div>';
-    }
-
-    // 2. Identify active user session
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || null;
-    const activeUsername = (
-        (window.userSession && window.userSession.username) ||
-        document.getElementById('auth-display-user')?.innerText ||
-        document.getElementById('username-input')?.value ||
-        (window.clientState && window.clientState.username) ||
-        'Player1'
-    ).trim();
-
-    const userId = (window.userSession && window.userSession.userId) || null;
-    const isGuest = !!((window.userSession && window.userSession.isGuest) || (!token && !userId));
-
-    // 3. Dispatch payload over WebSocket
-    const sendPayload = {
-        type: 'GET_LIFETIME_LEDGER',
-        token,
-        userId,
-        username: activeUsername,
-        isGuest
-    };
-
-    if (typeof window.sendSocketMessage === 'function') {
-        window.sendSocketMessage(sendPayload);
-    } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-        window.ws.send(JSON.stringify(sendPayload));
-    }
-};
-
-window.renderLifetimeLedgerData = function(balances, isGuest) {
-    const container = document.getElementById('lifetime-ledger-content');
-    if (!container) return;
-
-    if (isGuest) {
-        container.innerHTML = `
-            <div style="background:rgba(239, 68, 68, 0.15); border:1px solid #ef4444; border-radius:8px; padding:10px; color:#fca5a5; font-size:0.75rem; line-height:1.4;">
-                ⚠️ <b>Playing as Guest:</b><br>
-                Match debts are only tracked permanently for registered accounts. Log in or create an account from the main menu to retain your lifetime ledger.
-            </div>
-        `;
-        return;
-    }
-
-    if (!balances || !Array.isArray(balances) || balances.length === 0) {
-        container.innerHTML = `
-            <div style="text-align:center; color:var(--text-muted); padding:16px 8px; font-size:0.78rem;">
-                No lifetime balance records or debts found for this account.
-            </div>
-        `;
-        return;
-    }
-
-    let html = '<div style="display:flex; flex-direction:column; gap:6px;">';
-    balances.forEach(b => {
-        const opponent = b.opponent || b.username || b.otherUser || 'Opponent';
-        const net = Number(b.net !== undefined ? b.net : (b.balance || 0));
-        const isPositive = net > 0;
-        const isEven = net === 0;
-
-        const color = isEven ? '#94a3b8' : (isPositive ? '#34d399' : '#f87171');
-        const statusText = isEven ? 'Even ($0)' : (isPositive ? `+ $${net} (Owes you)` : `- $${Math.abs(net)} (You owe)`);
-
-        html += `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15, 23, 42, 0.75); border:1px solid rgba(250, 204, 21, 0.25); padding:8px 10px; border-radius:6px;">
-                <span style="font-weight:bold; color:var(--text-main); font-size:0.82rem;">${opponent}</span>
-                <span style="font-weight:900; color:${color}; font-size:0.85rem;">${statusText}</span>
-            </div>
-        `;
-    });
-    html += '</div>';
-
-    container.innerHTML = html;
-};
-
-// Aliases for compatibility
-window.renderLifetimeLedger = window.renderLifetimeLedgerData;
-window.renderLifetimeBalances = window.renderLifetimeLedgerData;
-
-// -------------------------------------------------------------
-// 2. IN-GAME SESSION LEDGER
-// -------------------------------------------------------------
-window.openLedgerModal = function() {
-    const container = document.getElementById('ledger-content');
-    const state = window.clientState || {};
-    const mainGame = state.mainGameLedger || {};
-    const sideBets = state.sideBetLedger || {};
-    const botBets = state.botBetLedger || {};
-
-    let html = '';
-    const hasMain = Object.keys(mainGame).length > 0;
-    const hasSide = Object.keys(sideBets).length > 0;
-    const hasBot = Object.keys(botBets).length > 0;
-
-    if (!hasMain && !hasSide && !hasBot) {
-        if (container) container.innerHTML = '<div style="color:var(--text-muted); padding:8px; text-align:center;">No wagers recorded for this lobby session yet.</div>';
-    } else {
-        if (hasMain) {
-            html += '<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px; font-size:0.8rem;">Main Match Debts:</div>';
-            html += formatLedgerSection(mainGame);
-        }
-        if (hasSide) {
-            html += '<div style="font-weight:bold; color:var(--accent-cyan); margin-top:8px; margin-bottom:4px; font-size:0.8rem;">Side Bet Debts:</div>';
-            html += formatLedgerSection(sideBets);
-        }
-        if (hasBot) {
-            html += '<div style="font-weight:bold; color:#a78bfa; margin-top:8px; margin-bottom:4px; font-size:0.8rem;">Bot Match Debts:</div>';
-            html += formatLedgerSection(botBets);
-        }
-        if (container) container.innerHTML = html;
-    }
-
-    const modal = document.getElementById('ledger-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-    } else if (typeof window.toggleModal === 'function') {
-        window.toggleModal('ledger-modal');
-    }
-};
-
-function formatLedgerSection(ledgerObj) {
-    let out = '<div style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;">';
-    for (const debtor in ledgerObj) {
-        for (const creditor in ledgerObj[debtor]) {
-            const amt = ledgerObj[debtor][creditor];
-            if (amt > 0) {
-                out += `
-                    <div style="display:flex; justify-content:space-between; background:rgba(15,23,42,0.65); padding:4px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.08); font-size:0.75rem;">
-                        <span><b>${debtor}</b> owes <b>${creditor}</b>:</span>
-                        <span style="color:var(--accent-gold); font-weight:bold;">$${amt}</span>
-                    </div>
-                `;
-            }
-        }
-    }
-    out += '</div>';
-    return out;
+// Resilient SQLite Database Resolver
+let db = null;
+for (const p of ['../db', '../../db', '../services/db', '../../server/db']) {
+    try { db = require(p); break; } catch (e) {}
 }
 
-// -------------------------------------------------------------
-// 3. LEDGER SCREENSHOT CAPTURE
-// -------------------------------------------------------------
-window.saveLedgerScreenshot = function() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 480;
-    canvas.height = 360;
-    const ctx = canvas.getContext('2d');
+/**
+ * Persists human-vs-human debt to the SQLite Lifetime Ledger
+ */
+function persistToLifetimeLedger(debtorUsername, creditorUsername, amount) {
+    if (!db || !debtorUsername || !creditorUsername || !amount) return;
+    try {
+        let debtorId = null;
+        let creditorId = null;
 
-    ctx.fillStyle = '#044e36';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.strokeStyle = '#facc15';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
-
-    ctx.fillStyle = '#facc15';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('31! LOBBY SESSION LEDGER', canvas.width / 2, 40);
-
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = '13px sans-serif';
-    ctx.fillText(`Recorded on ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, canvas.width / 2, 62);
-
-    ctx.textAlign = 'left';
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = '#ffffff';
-
-    const mainGame = (window.clientState && window.clientState.mainGameLedger) || {};
-    let y = 100;
-    let count = 0;
-
-    for (const debtor in mainGame) {
-        for (const creditor in mainGame[debtor]) {
-            const amt = mainGame[debtor][creditor];
-            if (amt > 0 && y < 320) {
-                ctx.fillText(`• ${debtor} owes ${creditor}: $${amt}`, 36, y);
-                y += 24;
-                count++;
-            }
+        if (typeof db.getUserByUsername === 'function') {
+            const debtorUser = db.getUserByUsername(debtorUsername);
+            const creditorUser = db.getUserByUsername(creditorUsername);
+            if (debtorUser) debtorId = debtorUser.id || debtorUser.userId;
+            if (creditorUser) creditorId = creditorUser.id || creditorUser.userId;
         }
+
+        if (debtorId && creditorId && typeof db.recordDebt === 'function') {
+            db.recordDebt(debtorId, creditorId, Number(amount));
+            console.log(`[LIFETIME LEDGER] Persisted P2P bet: ${debtorUsername} owes ${creditorUsername} $${amount}`);
+        }
+    } catch (err) {
+        console.error('[LIFETIME LEDGER] Error persisting side bet to SQLite:', err);
     }
+}
 
-    if (count === 0) {
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText('No outstanding wagers recorded this session.', 36, y);
-    }
+/**
+ * Records a debt into an in-memory session ledger object
+ */
+function recordDebt(ledger, debtor, creditor, amount) {
+    if (!ledger || !debtor || !creditor || !amount) return;
+    if (!ledger[debtor]) ledger[debtor] = {};
+    ledger[debtor][creditor] = (ledger[debtor][creditor] || 0) + Number(amount);
+}
 
-    const dataUrl = canvas.toDataURL('image/png');
-    const previewImg = document.getElementById('screenshot-preview-img');
-    const downloadLink = document.getElementById('screenshot-download-link');
+/**
+ * Resolves "First to Lose / Elimination" side bets when a player drops to 0 lives
+ */
+function resolveFirstToLoseBets(lobby, loserUsername) {
+    if (!lobby || !lobby.activeBets || !Array.isArray(lobby.activeBets)) return;
+    if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
 
-    if (previewImg) previewImg.src = dataUrl;
-    if (downloadLink) {
-        downloadLink.href = dataUrl;
-        downloadLink.download = `31_Ledger_${Date.now()}.png`;
-    }
+    const unresolvedBets = [];
 
-    const modal = document.getElementById('screenshot-modal');
-    if (modal) modal.style.display = 'flex';
-};
+    lobby.activeBets.forEach(bet => {
+        if (bet.type === 'eliminate') {
+            const wager = Number(bet.wagerAmt) || 5;
+            let debtor = null;
+            let creditor = null;
 
-window.closeScreenshotModal = function() {
-    const modal = document.getElementById('screenshot-modal');
-    if (modal) modal.style.display = 'none';
+            // If the bet specifically picked this loser to be eliminated first
+            if (bet.pickUser && bet.pickUser.toLowerCase() === loserUsername.toLowerCase()) {
+                debtor = bet.target;
+                creditor = bet.proposer;
+            } else if (bet.target && bet.target.toLowerCase() === loserUsername.toLowerCase()) {
+                debtor = bet.target;
+                creditor = bet.proposer;
+            } else if (bet.proposer && bet.proposer.toLowerCase() === loserUsername.toLowerCase()) {
+                debtor = bet.proposer;
+                creditor = bet.target;
+            } else {
+                debtor = bet.proposer;
+                creditor = bet.target;
+            }
+
+            if (debtor && creditor && debtor !== creditor) {
+                // 1. Record in session ledger
+                recordDebt(lobby.sideBetLedger, debtor, creditor, wager);
+
+                // 2. Persist to SQLite Lifetime Ledger
+                persistToLifetimeLedger(debtor, creditor, wager);
+            }
+        } else {
+            unresolvedBets.push(bet);
+        }
+    });
+
+    lobby.activeBets = unresolvedBets;
+}
+
+/**
+ * Resolves "Match / Round Win" side bets when a player wins
+ */
+function resolveWinSideBets(lobby, winnerUsername) {
+    if (!lobby || !lobby.activeBets || !Array.isArray(lobby.activeBets)) return;
+    if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
+
+    const unresolvedBets = [];
+
+    lobby.activeBets.forEach(bet => {
+        if (bet.type === 'win') {
+            const wager = Number(bet.wagerAmt) || 5;
+            let debtor = null;
+            let creditor = null;
+
+            // If proposer picked winnerUsername to win
+            if (bet.pickUser && bet.pickUser.toLowerCase() === winnerUsername.toLowerCase()) {
+                debtor = bet.target;
+                creditor = bet.proposer;
+            } else {
+                debtor = bet.proposer;
+                creditor = bet.target;
+            }
+
+            if (debtor && creditor && debtor !== creditor) {
+                // 1. Record in session ledger
+                recordDebt(lobby.sideBetLedger, debtor, creditor, wager);
+
+                // 2. Persist to SQLite Lifetime Ledger
+                persistToLifetimeLedger(debtor, creditor, wager);
+            }
+        } else {
+            unresolvedBets.push(bet);
+        }
+    });
+
+    lobby.activeBets = unresolvedBets;
+}
+
+module.exports = {
+    recordDebt,
+    persistToLifetimeLedger,
+    resolveFirstToLoseBets,
+    resolveWinSideBets
 };
