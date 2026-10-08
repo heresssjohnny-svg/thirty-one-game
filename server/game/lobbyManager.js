@@ -135,14 +135,17 @@ function getFeeder21OutOf31(lobby, winnerPlayer, winningSuit) {
 // -------------------------------------------------------------
 function resolveUserId(lobby, username) {
     if (!username) return null;
+    // 1. Check seated player's websocket auth session
     const p = lobby.players.find(pl => pl.username.toLowerCase() === username.toLowerCase());
     if (p && p.id && p.id.user && !p.id.user.isGuest) {
         return p.id.user.userId;
     }
+    // 2. Check spectator's websocket auth session
     const s = lobby.spectators.find(sp => sp.username.toLowerCase() === username.toLowerCase());
     if (s && s.idSocket && s.idSocket.user && !s.idSocket.user.isGuest) {
         return s.idSocket.user.userId;
     }
+    // 3. Fallback to direct SQLite lookup by username
     if (db && typeof db.findUserByUsername === 'function') {
         const row = db.findUserByUsername(username);
         if (row && row.id && !row.id.startsWith('gst_')) {
@@ -342,8 +345,8 @@ function startRound(lobby) {
     lobby.fedCardReminders = {};
     lobby.fedCardsHistory = {};
     lobby.knockedBy = null;
-    lobby.hit31Player = null;
     lobby.tournamentWinner = null;
+    lobby.hit31Player = null;
     lobby.gameState = 'playing';
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
@@ -479,7 +482,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
         }
     }
 }
-// server/game/lobbyManager.js - PART 2 (Lines 371 - End)
+// server/game/lobbyManager.js - PART 2 OF 2
 
 function handleTurnAction(lobby, wsId, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
@@ -522,6 +525,22 @@ function handleTurnAction(lobby, wsId, actionType) {
 
     if (calculateBestFourCardScore(currentPlayer.cards) === 31 || calculateScore(currentPlayer.cards) === 31) {
         lobby.hit31Player = currentPlayer.username;
+
+        // Auto-trim 4th card to highest scoring 3-card combination to prevent 4-card freeze
+        if (currentPlayer.cards.length === 4) {
+            let bestCards = currentPlayer.cards.slice(0, 3);
+            let maxSc = calculateScore(bestCards);
+            for (let i = 0; i < 4; i++) {
+                const testHand = currentPlayer.cards.filter((_, idx) => idx !== i);
+                const sc = calculateScore(testHand);
+                if (sc >= maxSc) {
+                    maxSc = sc;
+                    bestCards = testHand;
+                }
+            }
+            currentPlayer.cards = bestCards;
+        }
+
         const winningSuit = getWinningSuitFor31(currentPlayer.cards);
         const feeder = getFeeder21OutOf31(lobby, currentPlayer, winningSuit);
 
@@ -535,7 +554,7 @@ function handleTurnAction(lobby, wsId, actionType) {
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
             lobby.players.forEach(p => {
-                if (p !== currentPlayer && !p.eliminated) {
+                if (p.username !== currentPlayer.username && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
@@ -570,6 +589,11 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== wsId || currentPlayer.cards.length !== 4) return;
+
+    // Safety guard on index
+    if (typeof cardIndex !== 'number' || cardIndex < 0 || cardIndex >= currentPlayer.cards.length) {
+        cardIndex = 0;
+    }
 
     const discarded = currentPlayer.cards[cardIndex];
     if (currentPlayer.pickedUpDiscardCard && discarded.val === currentPlayer.pickedUpDiscardCard.val && discarded.suit === currentPlayer.pickedUpDiscardCard.suit) {
@@ -622,7 +646,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
             lobby.players.forEach(p => {
-                if (p !== currentPlayer && !p.eliminated) {
+                if (p.username !== currentPlayer.username && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
@@ -656,7 +680,9 @@ function handleKnock(lobby, wsId) {
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.id !== wsId || lobby.knockedBy) return;
 
-    if (p.cards.length !== 3) return;
+    if (p.cards.length !== 3) {
+        return;
+    }
 
     const active = getActiveParticipants(lobby);
     if (lobby.turnsTakenThisRound < active.length) return;
@@ -691,6 +717,23 @@ function advanceTurnOrResolve(lobby) {
 }
 
 function resolveRoundEnd(lobby) {
+    // Trim any players still holding 4 cards to their best 3
+    lobby.players.forEach(p => {
+        if (p.cards && p.cards.length === 4) {
+            let bestCards = p.cards.slice(0, 3);
+            let maxSc = calculateScore(bestCards);
+            for (let i = 0; i < 4; i++) {
+                const testHand = p.cards.filter((_, idx) => idx !== i);
+                const sc = calculateScore(testHand);
+                if (sc >= maxSc) {
+                    maxSc = sc;
+                    bestCards = testHand;
+                }
+            }
+            p.cards = bestCards;
+        }
+    });
+
     const active = getActiveParticipants(lobby);
     const scores = active.map(p => ({ p, s: calculateScore(p.cards) })).sort((a, b) => a.s - b.s);
     const lowest = scores[0].s;
@@ -740,14 +783,17 @@ function triggerRoundOver(lobby, msg) {
     lobby.fedCardReminders = {};
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
+
+    const active = getActiveParticipants(lobby);
+
     lobby.players.forEach(p => { 
         p.peekAllowed = {};
         p.peekRequests = {};
         p.nextHandReady = p.isBot; 
     });
+
     broadcastLobbyUpdate(lobby.code);
 
-    const active = getActiveParticipants(lobby);
     if (active.length > 1) {
         lobby.roundOverAutoTimer = setTimeout(() => {
             const cur = lobbies[lobby.code];
@@ -755,11 +801,16 @@ function triggerRoundOver(lobby, msg) {
 
             const remainingActive = getActiveParticipants(cur);
             if (remainingActive.length > 1) {
-                remainingActive.forEach(p => { p.nextHandReady = true; });
+                cur.players.forEach(p => { p.nextHandReady = true; });
+                cur.hit31Player = null;
                 broadcastLobbyUpdate(cur.code);
                 startRound(cur);
+            } else if (remainingActive.length === 1) {
+                awardTournamentWinner(cur, remainingActive[0]);
             }
-        }, 8000);
+        }, 6000);
+    } else if (active.length === 1) {
+        awardTournamentWinner(lobby, active[0]);
     }
 }
 
@@ -774,6 +825,7 @@ function awardTournamentWinner(lobby, winner) {
             const amt = p.wager || 5;
             const isBotInvolved = p.isBot || winner.isBot;
             const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
+
             recordSessionAndLifetimeDebt(lobby, targetLedger, p.username, winner.username, amt);
         }
     });
@@ -804,8 +856,10 @@ function checkNextHandReady(lobby) {
         }
         return;
     }
+
     if (active.every(p => p.nextHandReady)) {
         clearRoundOverTimer(lobby);
+        lobby.hit31Player = null;
         startRound(lobby);
     }
 }
@@ -908,7 +962,7 @@ function scheduleBotActions(lobby) {
     }
 }
 
-// Table / Lobby Creation & Player Seating Hooks
+// Table Creation & Player Seating Hooks
 function createLobby(code, name, hostUsername, isPrivate = false, defaultLives = 2) {
     lobbies[code] = {
         code,
