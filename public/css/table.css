@@ -1,8 +1,4 @@
-/* public/css/table.css */
-
-/* ==========================================================================
-   Table Felt & Oval Geometry
-   ========================================================================== */
+/* public/css/table.css - Casino Felt Oval, Realistic Playing Cards & Seats */
 .table-oval {
     width: 95%;
     max-width: 650px;
@@ -15,18 +11,22 @@
     margin: 28px auto 6px auto;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 #game-view {
     padding-top: 4px;
     overflow-y: hidden;
     height: 100%;
+    width: 100%;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    align-items: center;
 }
 
-/* Pots in Center Table */
 .pots-container {
     position: absolute;
     top: 18%;
@@ -62,9 +62,7 @@
     white-space: nowrap;
 }
 
-/* ==========================================================================
-   Center Deck & Discard Center
-   ========================================================================== */
+/* Center Deck & Discard Center */
 .deck-center {
     position: absolute;
     top: 55%;
@@ -77,53 +75,17 @@
     z-index: 20;
 }
 
-#discard-pile {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    user-select: none;
-}
-
-#center-turn-indicator {
-    position: absolute;
-    top: -24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--accent-gold);
-    color: #0f172a;
-    font-weight: 900;
-    font-size: 0.65rem;
-    padding: 2px 8px;
-    border-radius: 8px;
-    white-space: nowrap;
-    letter-spacing: 0.5px;
-    animation: bounceTurn 1s infinite alternate;
-    pointer-events: none;
-    z-index: 25;
-}
-
-@keyframes bounceTurn {
-    from { transform: translateX(-50%) translateY(0); }
-    to { transform: translateX(-50%) translateY(-3px); }
-}
-
-/* ==========================================================================
-   Authentic Playing Card Styles
-   ========================================================================== */
 .red-suit { color: #e11d48 !important; }
 .black-suit { color: #0f172a !important; }
 
-/* Base Playing Card (Hands, Discard, Modals) */
-.playing-card,
-.card-slot,
-.my-card {
-    width: 62px;
-    height: 90px;
+/* Playing Cards */
+.playing-card, .card-slot, .my-card {
+    width: 60px;
+    height: 88px;
     background: #ffffff;
     border-radius: 7px;
     border: 1px solid #cbd5e1;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45), inset 0 0 1px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -131,46 +93,26 @@
     padding: 4px 5px;
     cursor: pointer;
     user-select: none;
-    touch-action: manipulation;
     box-sizing: border-box;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
     flex-shrink: 0;
 }
 
-.playing-card:active,
-.card-slot:active,
-.my-card:active {
+.playing-card:active, .my-card:active {
     transform: translateY(-5px) scale(1.02);
 }
 
-/* Corner Index (Top-Left and Rotated Bottom-Right) */
 .card-corner {
     display: flex;
     flex-direction: column;
     align-items: center;
     line-height: 1;
     font-weight: 900;
-    pointer-events: none;
 }
 
-.card-corner .corner-val {
-    font-size: 0.85rem;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    letter-spacing: -0.5px;
-}
+.card-corner .corner-val { font-size: 0.85rem; }
+.card-corner .corner-suit { font-size: 0.75rem; margin-top: 1px; }
+.card-corner.bottom-right { align-self: flex-end; transform: rotate(180deg); }
 
-.card-corner .corner-suit {
-    font-size: 0.75rem;
-    line-height: 1;
-    margin-top: 1px;
-}
-
-.card-corner.bottom-right {
-    align-self: flex-end;
-    transform: rotate(180deg);
-}
-
-/* Center Large Pip */
 .card-center-pip {
     position: absolute;
     top: 50%;
@@ -179,72 +121,51 @@
     font-size: 1.85rem;
     line-height: 1;
     pointer-events: none;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.15));
 }
 
-/* Patterned Deck Back */
-.card-slot.back,
-.playing-card.back {
+/* Deck Back Pattern */
+.card-slot.back {
     background: #ffffff !important;
     padding: 3px !important;
-    border: 1px solid #cbd5e1;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
 }
 
-.card-slot.back .card-back-inner,
-.playing-card.back .card-back-inner {
+.card-slot.back .card-back-inner {
     width: 100%;
     height: 100%;
     border-radius: 4px;
     border: 1.5px solid #ffffff;
     background-color: #1e3a8a;
-    background-image: 
-        radial-gradient(#3b82f6 15%, transparent 16%),
-        radial-gradient(#3b82f6 15%, transparent 16%);
+    background-image: radial-gradient(#3b82f6 15%, transparent 16%), radial-gradient(#3b82f6 15%, transparent 16%);
     background-size: 8px 8px;
     background-position: 0 0, 4px 4px;
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
 }
 
-.deck-counter-badge,
 .deck-counter {
     position: absolute;
-    bottom: 5px;
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid #93c5fd;
-    color: #bfdbfe;
-    font-size: 0.58rem;
-    font-weight: 800;
-    padding: 1px 6px;
-    border-radius: 10px;
-    letter-spacing: 0.5px;
-    pointer-events: none;
+    bottom: -16px;
+    font-size: 0.65rem;
+    color: #cbd5e1;
+    font-weight: bold;
 }
 
-/* Empty Discard Slot */
 .card-slot.empty-slot {
     background: rgba(2, 44, 30, 0.4);
     border: 2px dashed rgba(250, 204, 21, 0.4);
-    box-shadow: none;
     color: rgba(250, 204, 21, 0.6);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* Compact Seat Cards */
+/* Mini Seat Cards */
 .mini-card {
-    width: 28px;
-    height: 40px;
+    width: 26px;
+    height: 38px;
     background: #ffffff;
     border-radius: 4px;
     border: 1px solid #cbd5e1;
@@ -255,51 +176,12 @@
     padding: 2px 3px;
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
     flex-shrink: 0;
-    box-sizing: border-box;
 }
 
-.mini-card .mini-val {
-    font-size: 0.62rem;
-    font-weight: 900;
-    line-height: 1;
-    align-self: flex-start;
-}
+.mini-card .mini-val { font-size: 0.6rem; font-weight: 900; line-height: 1; align-self: flex-start; }
+.mini-card .mini-suit { font-size: 1rem; line-height: 1; margin-top: -2px; }
 
-.mini-card .mini-suit {
-    font-size: 1.1rem;
-    line-height: 1;
-    margin-top: -2px;
-}
-
-/* Notification & Pickup Modal Cards */
-.top-left-notify .playing-card,
-.top-right-notify .playing-card,
-#discard-pickup-topleft-modal .playing-card,
-#fed-card-topright-modal .playing-card {
-    width: 48px;
-    height: 68px;
-    display: inline-flex;
-    vertical-align: middle;
-    margin-left: 6px;
-}
-
-.top-left-notify .playing-card .card-center-pip,
-.top-right-notify .playing-card .card-center-pip,
-#discard-pickup-topleft-modal .playing-card .card-center-pip,
-#fed-card-topright-modal .playing-card .card-center-pip {
-    font-size: 1.3rem;
-}
-
-.top-left-notify .playing-card .corner-val,
-.top-right-notify .playing-card .corner-val,
-#discard-pickup-topleft-modal .playing-card .corner-val,
-#fed-card-topright-modal .playing-card .corner-val {
-    font-size: 0.7rem;
-}
-
-/* ==========================================================================
-   Seat Geometry (6 Positions around Oval)
-   ========================================================================== */
+/* Seats */
 .seat {
     position: absolute;
     display: flex;
@@ -307,7 +189,6 @@
     align-items: center;
     gap: 2px;
     z-index: 30;
-    user-select: none;
 }
 
 .seat-name-area {
@@ -321,7 +202,6 @@
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
     max-width: 120px;
-    line-height: 1.2;
 }
 
 .current-turn-seat .seat-name-area {
@@ -337,24 +217,9 @@
     padding: 0 4px;
     font-size: 0.6rem;
     margin-left: 2px;
-    display: inline-block;
 }
 
-.vc-badge {
-    font-size: 0.65rem;
-    margin-left: 2px;
-}
-
-.vc-badge.active {
-    color: #34d399;
-}
-
-.seat-cards {
-    display: flex;
-    gap: 3px;
-    margin-top: 2px;
-}
-
+.seat-cards { display: flex; gap: 2px; margin-top: 2px; }
 .seat-0 { bottom: -14px; left: 50%; transform: translateX(-50%); }
 .seat-1 { bottom: 18%; left: 3%; }
 .seat-2 { top: 10%; left: 6%; }
@@ -362,39 +227,6 @@
 .seat-4 { top: 10%; right: 6%; }
 .seat-5 { bottom: 18%; right: 3%; }
 
-/* ==========================================================================
-   Draw Modals, Dealer Draw, and Tie-Breaker Cards Grid
-   ========================================================================== */
-.pool-grid,
-#tie-breaker-pool,
-#pool-cards-grid,
-.draw-modal-card-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    margin: 12px 0;
-    max-width: 90vw;
-}
-
-.draw-modal-card-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-}
-
-.draw-modal-user-tag {
-    font-size: 0.75rem;
-    color: var(--accent-gold);
-    font-weight: 800;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-}
-
-/* ==========================================================================
-   Next Hand Overlay Button
-   ========================================================================== */
 #next-hand-overlay {
     display: none;
     position: absolute;
@@ -402,7 +234,6 @@
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 600;
-    pointer-events: auto;
 }
 
 #next-hand-btn {
@@ -410,31 +241,15 @@
     color: #ffffff;
     font-weight: 800;
     font-size: 0.95rem;
-    padding: 12px 20px;
-    border-radius: 10px;
+    padding: 10px 18px;
+    border-radius: 8px;
     border: 2px solid var(--accent-gold);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
     cursor: pointer;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    transition: transform 0.15s ease, filter 0.15s ease;
 }
 
-#next-hand-btn:disabled {
-    background: #475569;
-    border-color: #64748b;
-    color: #cbd5e1;
-    cursor: not-allowed;
-    box-shadow: none;
-}
+#next-hand-btn:disabled { background: #475569; border-color: #64748b; color: #cbd5e1; cursor: not-allowed; }
 
-#next-hand-btn:not(:disabled):active {
-    transform: scale(0.96);
-}
-
-/* ==========================================================================
-   My Hand Control Dock (Bottom of Screen)
-   ========================================================================== */
+/* My Hand Area */
 .my-hand-area {
     width: 100%;
     max-width: 650px;
@@ -443,7 +258,7 @@
     padding-top: 6px;
     padding-left: 10px;
     padding-right: 10px;
-    padding-bottom: max(24px, calc(12px + env(safe-area-inset-bottom)));
+    padding-bottom: max(20px, calc(10px + env(safe-area-inset-bottom)));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -460,8 +275,6 @@
     align-items: center;
     margin: 3px 0;
     max-width: 100%;
-    overflow-x: auto;
-    padding: 2px 4px;
 }
 
 .bottom-action-bar {
@@ -470,5 +283,4 @@
     width: 100%;
     justify-content: center;
     flex-wrap: wrap;
-    padding-bottom: 2px;
 }
