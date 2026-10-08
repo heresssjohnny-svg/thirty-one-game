@@ -14,7 +14,8 @@ const {
     handleKnock,
     leaveLobby,
     resetLobbyToReadyRoom,
-    checkNextHandReady
+    checkNextHandReady,
+    syncLifetimeLedgerBalances
 } = require('./lobbyManager');
 const { generateLiveKitToken } = require('../services/livekit');
 const { BOT_NAMES, syncBotReadiness } = require('./bot');
@@ -50,7 +51,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 host: username,
                 isPrivate,
                 gameState: 'lobby',
-                defaultLives: 2, // Default strictly 2 lives
+                defaultLives: 2,
                 deck: [],
                 discardPile: [],
                 turnIndex: 0,
@@ -72,7 +73,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     isMuted: true,
                     nextHandReady: false,
                     peekRequests: {},
-                    peekAllowed: {}
+                    peekAllowed: {},
+                    disconnectedAt: null
                 }],
                 spectators: [],
                 activeBets: [],
@@ -99,7 +101,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     type: 'LOBBY_CREATED',
                     code,
                     livekitToken: token,
-                    livekitHost: config.LIVEKIT_HOST
+                    livekitHost: config.LIVEKIT_HOST,
+                    lobby: getSanitizedLobby(newLobby, ws)
                 }));
                 broadcastLobbyUpdate(code);
                 if (broadcastLobbyList) broadcastLobbyList();
@@ -125,9 +128,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
             if (existingPlayer) {
+                // Re-bind reconnecting socket and clear background disconnect state
                 existingPlayer.id = ws;
+                existingPlayer.disconnectedAt = null;
             } else if (existingSpec) {
+                // Re-bind spectator socket
                 existingSpec.idSocket = ws;
+                existingSpec.disconnectedAt = null;
             } else {
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
                     lobby.players.push({
@@ -144,14 +151,16 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         isMuted: true,
                         nextHandReady: false,
                         peekRequests: {},
-                        peekAllowed: {}
+                        peekAllowed: {},
+                        disconnectedAt: null
                     });
                 } else {
                     lobby.spectators.push({
                         idSocket: ws,
                         username,
                         inVC: true,
-                        isMuted: true
+                        isMuted: true,
+                        disconnectedAt: null
                     });
                 }
             }
@@ -162,7 +171,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     type: 'LOBBY_JOINED',
                     code,
                     livekitToken: token,
-                    livekitHost: config.LIVEKIT_HOST
+                    livekitHost: config.LIVEKIT_HOST,
+                    lobby: getSanitizedLobby(lobby, ws)
                 }));
                 broadcastLobbyUpdate(code);
                 if (broadcastLobbyList) broadcastLobbyList();
@@ -210,7 +220,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             idSocket: ws,
                             username: removed.username,
                             inVC: removed.inVC,
-                            isMuted: removed.isMuted
+                            isMuted: removed.isMuted,
+                            disconnectedAt: null
                         });
                         syncBotReadiness(lobby);
                         broadcastLobbyUpdate(currentLobbyCode);
@@ -243,7 +254,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             isMuted: spec.isMuted,
                             nextHandReady: false,
                             peekRequests: {},
-                            peekAllowed: {}
+                            peekAllowed: {},
+                            disconnectedAt: null
                         });
                         syncBotReadiness(lobby);
                         broadcastLobbyUpdate(currentLobbyCode);
@@ -330,7 +342,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        // LIVES VOTING PROTOCOL
         case 'UPDATE_SETTINGS': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
@@ -341,7 +352,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 if (requestedLives === lobby.defaultLives) return;
 
                 const seatedHumans = lobby.players.filter(p => !p.isBot);
-                // If only 1 human is at the table, allow immediate update
                 if (seatedHumans.length <= 1) {
                     lobby.defaultLives = requestedLives;
                     lobby.players.forEach(p => { p.lives = requestedLives; });
@@ -350,11 +360,10 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     return;
                 }
 
-                // Multiple seated humans: Initiate majority vote
                 lobby.livesVote = {
                     proposer: currentUsername,
                     proposedLives: requestedLives,
-                    votes: { [currentUsername]: true }, // Proposer automatically votes Yes
+                    votes: { [currentUsername]: true },
                     totalVoters: seatedHumans.length
                 };
 
@@ -418,7 +427,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         isMuted: true,
                         nextHandReady: true,
                         peekRequests: {},
-                        peekAllowed: {}
+                        peekAllowed: {},
+                        disconnectedAt: null
                     });
 
                     syncBotReadiness(lobby);
@@ -655,6 +665,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const isBot = lobby.players.some(p => (p.username === data.debtor || p.username === data.creditor) && p.isBot);
                 const ledger = isBot ? lobby.botBetLedger : (data.ledgerType === 'side' ? lobby.sideBetLedger : lobby.mainGameLedger);
                 clearDebts(ledger, data.debtor, data.creditor);
+                syncLifetimeLedgerBalances(lobby);
                 broadcastLobbyUpdate(currentLobbyCode);
             }
             break;
@@ -769,9 +780,15 @@ function setupWebSocket(wss, broadcastLobbyList) {
             if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
                 const lobby = lobbies[ws.currentLobbyCode];
                 const p = lobby.players.find(pl => pl.id === ws);
-                if (p) p.id = null;
+                if (p) {
+                    p.id = null;
+                    p.disconnectedAt = Date.now();
+                }
                 const s = lobby.spectators.find(spec => spec.idSocket === ws);
-                if (s) s.idSocket = null;
+                if (s) {
+                    s.idSocket = null;
+                    s.disconnectedAt = Date.now();
+                }
             }
         });
     });
