@@ -11,6 +11,7 @@ window.clientState = window.clientState || {
     selectedDiscardIndex: null
 };
 
+// Form persistence helper
 window.saveInputs = function() {
     try {
         const u = document.getElementById('username-input');
@@ -54,11 +55,9 @@ function initWebSocket(onOpenCallback) {
     }
 
     const wsUrl = getWebSocketUrl();
-    console.log('[WS] Connecting to:', wsUrl);
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-        console.log('[WS] Connected successfully');
         if (reconnectTimer) {
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
@@ -80,14 +79,12 @@ function initWebSocket(onOpenCallback) {
         try {
             data = JSON.parse(event.data);
         } catch (err) {
-            console.error('[WS] Parse error:', err);
             return;
         }
         handleServerMessage(data);
     };
 
     ws.onclose = () => {
-        console.warn('[WS] Closed. Retrying in 2s...');
         ws = null;
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
@@ -96,9 +93,7 @@ function initWebSocket(onOpenCallback) {
         }
     };
 
-    ws.onerror = (err) => {
-        console.error('[WS] Error:', err);
-    };
+    ws.onerror = () => {};
 }
 
 function sendSocketMessage(msgObj) {
@@ -117,23 +112,7 @@ window.initSocketAndSend = function(msgObj) {
     sendSocketMessage(msgObj);
 };
 
-// Fallback screen transition if ui.js has not loaded or has errors
-function fallbackShowGameScreen(code) {
-    const menu = document.getElementById('main-menu');
-    const game = document.getElementById('game-view');
-    const inGameBtns = document.getElementById('in-game-top-row-btns');
-    const toolsRow = document.getElementById('in-game-tools-row');
-    const title = document.getElementById('room-title-display');
-
-    if (menu) menu.style.display = 'none';
-    if (game) game.style.display = 'flex';
-    if (inGameBtns) inGameBtns.style.display = 'flex';
-    if (toolsRow) toolsRow.style.display = 'flex';
-    if (title) title.innerText = `Table: ${code}`;
-}
-
 function handleServerMessage(data) {
-    console.log('[WS] Received:', data.type);
     switch (data.type) {
         case 'LOBBY_LIST':
             if (typeof window.renderPublicLobbies === 'function') {
@@ -145,13 +124,26 @@ function handleServerMessage(data) {
         case 'LOBBY_JOINED':
             window.clientState.currentLobbyCode = data.code;
             
-            if (typeof window.showGameScreen === 'function') {
-                window.showGameScreen(data.code);
-            } else {
-                fallbackShowGameScreen(data.code);
-            }
+            // Switch view
+            const menu = document.getElementById('main-menu');
+            const game = document.getElementById('game-view');
+            const inGameBtns = document.getElementById('in-game-top-row-btns');
+            const toolsRow = document.getElementById('in-game-tools-row');
+            const title = document.getElementById('room-title-display');
+            const leaveBtn = document.getElementById('leave-lobby-btn');
 
-            // Auto-connect voice chat activated & muted
+            if (menu) menu.style.display = 'none';
+            if (game) game.style.display = 'flex';
+            if (inGameBtns) inGameBtns.style.display = 'flex';
+            if (toolsRow) toolsRow.style.display = 'flex';
+            if (leaveBtn) leaveBtn.style.display = 'inline-block';
+            if (title) title.innerText = `Table: ${data.code}`;
+
+            // Hide peeking banner on fresh entry
+            const peekBanner = document.getElementById('active-peeking-banner');
+            if (peekBanner) peekBanner.style.display = 'none';
+
+            // Connect LiveKit voice chat (starts muted)
             if (data.livekitHost && data.livekitToken && typeof window.connectToVoiceChat === 'function') {
                 window.connectToVoiceChat(data.livekitHost, data.livekitToken);
             }
@@ -159,8 +151,14 @@ function handleServerMessage(data) {
 
         case 'LOBBY_UPDATE':
             window.clientState.currentLobbyData = data.lobby;
+            
+            // Call whichever render function exists in your ui.js or app.js
             if (typeof window.renderLobbyState === 'function') {
                 window.renderLobbyState(data.lobby);
+            } else if (typeof window.updateUI === 'function') {
+                window.updateUI(data.lobby);
+            } else if (typeof window.renderLobby === 'function') {
+                window.renderLobby(data.lobby);
             }
             break;
 
@@ -170,11 +168,7 @@ function handleServerMessage(data) {
             if (typeof window.disconnectLiveKit === 'function') {
                 window.disconnectLiveKit();
             }
-            if (typeof window.returnToMainMenu === 'function') {
-                window.returnToMainMenu();
-            } else {
-                window.location.reload();
-            }
+            window.location.reload();
             break;
 
         case 'CHAT_MESSAGE':
@@ -184,7 +178,11 @@ function handleServerMessage(data) {
             break;
 
         case 'ERROR':
-            alert(data.message || 'Error occurred');
+            if (typeof window.showCenterNotification === 'function') {
+                window.showCenterNotification(data.message || 'Error occurred');
+            } else {
+                alert(data.message || 'Error');
+            }
             break;
 
         default:
@@ -192,7 +190,7 @@ function handleServerMessage(data) {
     }
 }
 
-// Window-assigned triggers so inline HTML buttons never fail
+// Action triggers
 window.createLobby = function() {
     const userIn = document.getElementById('username-input');
     const nameIn = document.getElementById('lobby-name-input');
@@ -205,7 +203,6 @@ window.createLobby = function() {
     window.clientState.myUsername = username;
     window.saveInputs();
 
-    console.log('[Action] Creating lobby for', username);
     sendSocketMessage({
         type: 'CREATE_LOBBY',
         username,
@@ -269,8 +266,8 @@ window.standUp = function() {
 window.toggleReady = function() {
     const currentLobby = window.clientState.currentLobbyData;
     if (!currentLobby) return;
-    const me = currentLobby.players.find(
-        p => p.username.toLowerCase() === window.clientState.myUsername.toLowerCase()
+    const me = (currentLobby.players || []).find(
+        p => p.username.toLowerCase() === (window.clientState.myUsername || '').toLowerCase()
     );
     const nextReadyState = me ? !me.ready : true;
     sendSocketMessage({ type: 'SET_READY', ready: nextReadyState });
@@ -362,6 +359,5 @@ window.kickPeekerAction = function(spectatorUsername) {
     sendSocketMessage({ type: 'KICK_PEEKER', spectatorUsername });
 };
 
-// Immediate start
 restoreSavedInputs();
 initWebSocket();
