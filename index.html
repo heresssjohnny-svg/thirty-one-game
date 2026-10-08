@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Blitz 31 - Authentic Casino Card Game</title>
+    <title>Blitz 31</title>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0a3d24">
+    <meta name="theme-color" content="#064e3b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    <!-- Google Identity Services SDK for Native Social Login Prompt -->
+    <!-- Google Identity Services SDK (Retained for Native One-Tap / Social Prompt) -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <!-- Style sheets -->
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="/css/main.css">
     <link rel="stylesheet" href="/css/table.css">
     <link rel="stylesheet" href="/css/modals.css">
@@ -20,14 +20,14 @@
     <!-- LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
-<body>
+<body class="casino-theme">
     <div id="app">
-        <!-- AUTH OVERLAY SCREEN -->
+        <!-- AUTH OVERLAY SCREEN (Restored Classic Styling) -->
         <div id="auth-screen" class="auth-overlay">
-            <div class="auth-card">
+            <div class="auth-card casino-panel">
                 <div class="auth-header">
-                    <h2>Blitz 31</h2>
-                    <p class="subtitle">Authentic Casino Knock & Blitz</p>
+                    <h2 class="gold-text">Blitz 31</h2>
+                    <p class="subtitle">Authentic Casino Table Game</p>
                 </div>
 
                 <div class="auth-tabs">
@@ -39,25 +39,25 @@
                     <div id="login-fields">
                         <div class="form-group">
                             <label for="login-username">Username</label>
-                            <input type="text" id="login-username" placeholder="Enter username" autocomplete="username">
+                            <input type="text" id="login-username" placeholder="Username" autocomplete="username">
                         </div>
                         <div class="form-group">
                             <label for="login-password">Password</label>
-                            <input type="password" id="login-password" placeholder="Enter password" autocomplete="current-password">
+                            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
                         </div>
-                        <button class="primary-btn full-width" onclick="submitAuthLogin()">Log In</button>
+                        <button class="primary-btn gold-btn full-width" onclick="submitAuthLogin()">Log In</button>
                     </div>
 
                     <div id="register-fields" style="display: none;">
                         <div class="form-group">
-                            <label for="reg-username">Choose Username</label>
-                            <input type="text" id="reg-username" placeholder="Choose a display name" autocomplete="username">
+                            <label for="reg-username">Username</label>
+                            <input type="text" id="reg-username" placeholder="Choose username" autocomplete="username">
                         </div>
                         <div class="form-group">
-                            <label for="reg-password">Create Password</label>
-                            <input type="password" id="reg-password" placeholder="At least 6 characters" autocomplete="new-password">
+                            <label for="reg-password">Password</label>
+                            <input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password">
                         </div>
-                        <button class="primary-btn full-width" onclick="submitAuthRegister()">Create Account</button>
+                        <button class="primary-btn gold-btn full-width" onclick="submitAuthRegister()">Create Account</button>
                     </div>
 
                     <div class="auth-divider">
@@ -65,7 +65,7 @@
                     </div>
 
                     <div class="social-auth-actions">
-                        <!-- Official Google Identity Button & One-Tap Anchor -->
+                        <!-- Google Identity Prompt & Button Container -->
                         <div id="google-signin-btn" class="social-btn-container"></div>
                         <button class="social-btn guest-btn" onclick="submitAuthGuest()">Play as Guest</button>
                     </div>
@@ -79,21 +79,21 @@
         <div id="main-menu" class="main-menu-container" style="display: none;">
             <header class="menu-header">
                 <div class="brand">
-                    <h1>Blitz 31</h1>
-                    <span class="user-badge" id="menu-user-badge">Playing as Guest</span>
+                    <h1 class="gold-text">Blitz 31</h1>
+                    <span class="user-badge" id="menu-user-badge">Guest</span>
                 </div>
                 <div class="header-actions">
-                    <button class="icon-btn" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
+                    <button class="icon-btn gold-border" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
                     <button class="icon-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
                     <button class="icon-btn danger" onclick="logoutSession()" title="Log Out">🚪</button>
                 </div>
             </header>
 
             <main class="menu-content">
-                <section class="menu-card create-join-card">
-                    <h3>Table Action</h3>
+                <section class="menu-card casino-panel create-join-card">
+                    <h3 class="gold-text">Table Setup</h3>
                     <div class="form-group">
-                        <label for="username-input">Player Display Name</label>
+                        <label for="username-input">Player Handle</label>
                         <input type="text" id="username-input" placeholder="Display Name">
                     </div>
                     <div class="form-group">
@@ -103,39 +103,39 @@
                     <div class="checkbox-group">
                         <label>
                             <input type="checkbox" id="private-lobby-checkbox">
-                            Private Table (Invite code required)
+                            Private Table
                         </label>
                     </div>
                     <div class="button-row">
-                        <button class="primary-btn" onclick="createLobby()">Create Table</button>
+                        <button class="primary-btn gold-btn" onclick="createLobby()">Create Table</button>
                     </div>
 
                     <div class="divider-line"></div>
 
                     <div class="form-inline">
-                        <input type="text" id="lobby-code-input" placeholder="Enter 5-Letter Code" maxlength="5">
+                        <input type="text" id="lobby-code-input" placeholder="Table Code" maxlength="5">
                         <button class="secondary-btn" onclick="joinLobby()">Join</button>
                     </div>
                 </section>
 
-                <section class="menu-card public-lobbies-card">
+                <section class="menu-card casino-panel public-lobbies-card">
                     <div class="card-header-flex">
-                        <h3>Open Tables</h3>
+                        <h3 class="gold-text">Live Tables</h3>
                         <button class="refresh-btn" onclick="refreshLobbies()">🔄</button>
                     </div>
                     <div id="lobby-list" class="lobby-list-container">
-                        <div class="empty-list-notice">Loading available tables...</div>
+                        <div class="empty-list-notice">Searching for tables...</div>
                     </div>
                 </section>
             </main>
         </div>
 
-        <!-- IN-GAME TABLE VIEW -->
+        <!-- IN-GAME TABLE VIEW (Original Felt Table Setup) -->
         <div id="game-view" class="game-view-container" style="display: none;">
             <!-- IN-GAME HEADER -->
-            <div class="in-game-header">
+            <div class="in-game-header casino-topbar">
                 <div class="header-left">
-                    <span class="room-title" id="room-title-display">Table</span>
+                    <span class="room-title gold-text" id="room-title-display">Table</span>
                     <span class="spectator-counter" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></span>
                     <div id="active-peeking-banner" class="active-peeking-pill" style="display: none;" onclick="stopPeekingAction()">
                         <span>Peeking</span>
@@ -178,7 +178,7 @@
                 <div id="fed-card-content"></div>
             </div>
 
-            <!-- WAITING ROOM HOST SETTINGS BAR -->
+            <!-- WAITING ROOM HOST CONTROLS -->
             <div id="lobby-config-bar" class="lobby-controls" style="display: none;">
                 <div class="config-item">
                     <label>Starting Lives:</label>
@@ -202,7 +202,7 @@
                 </div>
             </div>
 
-            <!-- CASINO OVAL TABLE -->
+            <!-- CASINO FELT OVAL TABLE -->
             <div class="table-outer-wrapper">
                 <div id="table-oval-container" class="casino-felt-table"></div>
             </div>
@@ -218,78 +218,77 @@
 
             <!-- NEXT HAND OVERLAY -->
             <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
-                <button id="next-hand-btn" class="primary-btn large" onclick="clickNextHand()">Next Hand</button>
+                <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
             </div>
         </div>
-
-        <!-- SIDEBARS & FLOATING WINDOWS -->
-        <div id="chat-window" class="chat-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h4>Table Chat</h4>
+        <!-- SIDEBARS & DRAWERS (Classic Casino Styling) -->
+        <div id="chat-window" class="chat-drawer casino-panel" style="display: none;">
+            <div class="drawer-header casino-drawer-header">
+                <h4 class="gold-text">Table Chat</h4>
                 <button class="close-btn" onclick="toggleChatWindow()">✕</button>
             </div>
             <div id="chat-messages" class="drawer-body"></div>
             <div class="drawer-footer">
                 <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                <button onclick="sendChatMessage()">Send</button>
+                <button class="gold-btn" onclick="sendChatMessage()">Send</button>
             </div>
         </div>
 
-        <div id="global-side-bets-sidebar" class="global-bets-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h4>Global Side Bets</h4>
+        <div id="global-side-bets-sidebar" class="global-bets-drawer casino-panel" style="display: none;">
+            <div class="drawer-header casino-drawer-header">
+                <h4 class="gold-text">Side Bets Board</h4>
                 <button class="close-btn" onclick="toggleGlobalSidebar()">✕</button>
             </div>
             <div id="global-side-bets-list" class="drawer-body"></div>
         </div>
 
-        <!-- MODALS -->
+        <!-- DIALOGS & OVERLAYS -->
         <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
 
         <div id="lives-vote-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Lives Change Proposed</h3>
+            <div class="modal-box casino-panel">
+                <h3 class="gold-text">Lives Change Proposed</h3>
                 <p id="lives-vote-prompt">A player proposed changing starting lives.</p>
                 <div class="modal-actions">
-                    <button class="primary-btn" onclick="submitLivesVote(true)">Agree</button>
+                    <button class="primary-btn gold-btn" onclick="submitLivesVote(true)">Agree</button>
                     <button class="secondary-btn danger" onclick="submitLivesVote(false)">Disagree</button>
                 </div>
             </div>
         </div>
 
         <div id="bet-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3 id="bet-modal-title">Side Bet Proposal</h3>
+            <div class="modal-box casino-panel">
+                <h3 id="bet-modal-title" class="gold-text">Side Bet Proposal</h3>
                 <div id="bet-modal-body"></div>
             </div>
         </div>
 
         <div id="seat-action-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3 id="seat-action-title">Seat Action</h3>
+            <div class="modal-box casino-panel">
+                <h3 id="seat-action-title" class="gold-text">Seat Action</h3>
                 <div id="seat-action-body"></div>
             </div>
         </div>
 
         <div id="pool-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide">
-                <h3 id="pool-modal-title">Draw Phase</h3>
+            <div class="modal-box wide casino-panel">
+                <h3 id="pool-modal-title" class="gold-text">Draw Phase</h3>
                 <p id="pool-modal-instruction" class="subtitle">Lowest card deals (Ace highest).</p>
                 <div id="pool-cards-container" class="draw-modal-split-layout"></div>
             </div>
         </div>
 
         <div id="tie-breaker-reveal-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide">
-                <h3>Tie Breaker Resolution</h3>
+            <div class="modal-box wide casino-panel">
+                <h3 class="gold-text">Tie Breaker Resolution</h3>
                 <p id="tie-breaker-stream-msg" class="subtitle">Drawing to resolve lowest score...</p>
                 <div id="tie-breaker-stream-grid" class="draw-modal-split-layout"></div>
             </div>
         </div>
 
         <div id="spectators-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Active Spectators</h3>
+            <div class="modal-box casino-panel">
+                <h3 class="gold-text">Spectators</h3>
                 <div id="spectators-list-content"></div>
                 <div class="modal-actions">
                     <button class="secondary-btn" onclick="toggleModal('spectators-modal')">Close</button>
@@ -298,8 +297,8 @@
         </div>
 
         <div id="active-bets-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Current Bets</h3>
+            <div class="modal-box casino-panel">
+                <h3 class="gold-text">Current Bets</h3>
                 <div id="active-bets-content"></div>
                 <div class="modal-actions">
                     <button class="secondary-btn" onclick="toggleModal('active-bets-modal')">Close</button>
@@ -308,19 +307,19 @@
         </div>
 
         <div id="peek-request-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Spectator Peek Request</h3>
+            <div class="modal-box casino-panel">
+                <h3 class="gold-text">Spectator Peek Request</h3>
                 <p id="peek-modal-msg">A spectator requested to see your cards.</p>
                 <div class="modal-actions">
-                    <button id="peek-allow-btn" class="primary-btn">Allow</button>
+                    <button id="peek-allow-btn" class="primary-btn gold-btn">Allow</button>
                     <button id="peek-deny-btn" class="secondary-btn danger">Deny</button>
                 </div>
             </div>
         </div>
 
         <div id="settings-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Audio & Settings</h3>
+            <div class="modal-box casino-panel">
+                <h3 class="gold-text">Audio & Settings</h3>
                 <div class="settings-group">
                     <label>Audio Output Device:</label>
                     <select id="audio-output-select" onchange="setAudioOutputDevice(this.value)">
@@ -343,8 +342,8 @@
         </div>
 
         <div id="lifetime-ledger-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box wide">
-                <h3>Lifetime Ledger Balances</h3>
+            <div class="modal-box wide casino-panel">
+                <h3 class="gold-text">Lifetime Ledger Balances</h3>
                 <div id="lifetime-ledger-table-container">
                     <div class="empty-list-notice">No balance entries found.</div>
                 </div>
