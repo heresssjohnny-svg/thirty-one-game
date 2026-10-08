@@ -1,4 +1,12 @@
-/* public/css/table.css - Casino Felt Oval, Realistic Playing Cards & Seats */
+/* public/css/table.css - Casino Felt Oval, Authentic Playing Cards & Face-Down Lattice Deck */
+
+/* High-Contrast Suit Colors */
+.red-suit { color: #e11d48 !important; }  /* Vivid Crimson Red */
+.black-suit { color: #0f172a !important; } /* Deep Slate Jet Black */
+
+/* ==========================================================================
+   Table Oval
+   ========================================================================== */
 .table-oval {
     width: 95%;
     max-width: 650px;
@@ -8,7 +16,7 @@
     border: 8px solid #5c3a21;
     border-radius: 180px;
     position: relative;
-    margin: 28px auto 6px auto;
+    margin: 26px auto 6px auto;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
     flex-shrink: 0;
     display: flex;
@@ -62,30 +70,29 @@
     white-space: nowrap;
 }
 
-/* Center Deck & Discard Center */
+/* ==========================================================================
+   Center Table Deck & Discard Center
+   ========================================================================== */
 .deck-center {
     position: absolute;
     top: 55%;
     left: 50%;
     transform: translate(-50%, -50%);
     display: flex;
-    gap: 12px;
+    gap: 14px;
     align-items: center;
     justify-content: center;
     z-index: 20;
 }
 
-.red-suit { color: #e11d48 !important; }
-.black-suit { color: #0f172a !important; }
-
-/* Playing Cards */
+/* Base Authentic Playing Card */
 .playing-card, .card-slot, .my-card {
-    width: 60px;
-    height: 88px;
+    width: 64px;
+    height: 92px;
     background: #ffffff;
     border-radius: 7px;
     border: 1px solid #cbd5e1;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45), inset 0 0 1px rgba(0, 0, 0, 0.15);
     position: relative;
     display: flex;
     flex-direction: column;
@@ -93,43 +100,61 @@
     padding: 4px 5px;
     cursor: pointer;
     user-select: none;
+    touch-action: manipulation;
     box-sizing: border-box;
     flex-shrink: 0;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .playing-card:active, .my-card:active {
-    transform: translateY(-5px) scale(1.02);
+    transform: translateY(-8px) scale(1.04);
 }
 
+/* Dual Corner Indices */
 .card-corner {
     display: flex;
     flex-direction: column;
     align-items: center;
     line-height: 1;
     font-weight: 900;
+    pointer-events: none;
 }
 
-.card-corner .corner-val { font-size: 0.85rem; }
-.card-corner .corner-suit { font-size: 0.75rem; margin-top: 1px; }
-.card-corner.bottom-right { align-self: flex-end; transform: rotate(180deg); }
+.card-corner .corner-val {
+    font-size: 0.88rem;
+    letter-spacing: -0.5px;
+}
 
+.card-corner .corner-suit {
+    font-size: 0.78rem;
+    margin-top: 1px;
+}
+
+.card-corner.bottom-right {
+    align-self: flex-end;
+    transform: rotate(180deg);
+}
+
+/* Large Center Suit Pip */
 .card-center-pip {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 1.85rem;
+    font-size: 2.1rem;
     line-height: 1;
     pointer-events: none;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
 }
 
-/* Deck Back Pattern */
+/* Casino Diamond Lattice Card Back */
 .card-slot.back {
     background: #ffffff !important;
     padding: 3px !important;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-direction: column;
 }
 
 .card-slot.back .card-back-inner {
@@ -138,17 +163,31 @@
     border-radius: 4px;
     border: 1.5px solid #ffffff;
     background-color: #1e3a8a;
-    background-image: radial-gradient(#3b82f6 15%, transparent 16%), radial-gradient(#3b82f6 15%, transparent 16%);
+    background-image: 
+        radial-gradient(#3b82f6 15%, transparent 16%), 
+        radial-gradient(#3b82f6 15%, transparent 16%);
     background-size: 8px 8px;
     background-position: 0 0, 4px 4px;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
-.deck-counter {
+.deck-counter-badge {
     position: absolute;
     bottom: -16px;
-    font-size: 0.65rem;
-    color: #cbd5e1;
-    font-weight: bold;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #93c5fd;
+    color: #bfdbfe;
+    font-size: 0.58rem;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 .card-slot.empty-slot {
@@ -162,13 +201,15 @@
     justify-content: center;
 }
 
-/* Mini Seat Cards */
+/* ==========================================================================
+   Mini Seat Cards
+   ========================================================================== */
 .mini-card {
-    width: 26px;
-    height: 38px;
+    width: 28px;
+    height: 40px;
     background: #ffffff;
     border-radius: 4px;
-    border: 1px solid #cbd5e1;
+    border: 1.5px solid rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -178,10 +219,22 @@
     flex-shrink: 0;
 }
 
-.mini-card .mini-val { font-size: 0.6rem; font-weight: 900; line-height: 1; align-self: flex-start; }
-.mini-card .mini-suit { font-size: 1rem; line-height: 1; margin-top: -2px; }
+.mini-card .mini-val {
+    font-size: 0.62rem;
+    font-weight: 900;
+    line-height: 1;
+    align-self: flex-start;
+}
 
-/* Seats */
+.mini-card .mini-suit {
+    font-size: 1.1rem;
+    line-height: 1;
+    margin-top: -2px;
+}
+
+/* ==========================================================================
+   Seat Geometry
+   ========================================================================== */
 .seat {
     position: absolute;
     display: flex;
@@ -189,6 +242,7 @@
     align-items: center;
     gap: 2px;
     z-index: 30;
+    user-select: none;
 }
 
 .seat-name-area {
@@ -202,6 +256,7 @@
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
     max-width: 120px;
+    line-height: 1.2;
 }
 
 .current-turn-seat .seat-name-area {
@@ -217,9 +272,15 @@
     padding: 0 4px;
     font-size: 0.6rem;
     margin-left: 2px;
+    display: inline-block;
 }
 
-.seat-cards { display: flex; gap: 2px; margin-top: 2px; }
+.seat-cards {
+    display: flex;
+    gap: 3px;
+    margin-top: 2px;
+}
+
 .seat-0 { bottom: -14px; left: 50%; transform: translateX(-50%); }
 .seat-1 { bottom: 18%; left: 3%; }
 .seat-2 { top: 10%; left: 6%; }
@@ -227,6 +288,7 @@
 .seat-4 { top: 10%; right: 6%; }
 .seat-5 { bottom: 18%; right: 3%; }
 
+/* Next Hand Button */
 #next-hand-overlay {
     display: none;
     position: absolute;
@@ -234,6 +296,7 @@
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 600;
+    pointer-events: auto;
 }
 
 #next-hand-btn {
@@ -241,15 +304,21 @@
     color: #ffffff;
     font-weight: 800;
     font-size: 0.95rem;
-    padding: 10px 18px;
-    border-radius: 8px;
+    padding: 12px 20px;
+    border-radius: 10px;
     border: 2px solid var(--accent-gold);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
     cursor: pointer;
 }
 
-#next-hand-btn:disabled { background: #475569; border-color: #64748b; color: #cbd5e1; cursor: not-allowed; }
+#next-hand-btn:disabled {
+    background: #475569;
+    border-color: #64748b;
+    color: #cbd5e1;
+    cursor: not-allowed;
+}
 
-/* My Hand Area */
+/* My Hand Area Dock */
 .my-hand-area {
     width: 100%;
     max-width: 650px;
@@ -258,7 +327,7 @@
     padding-top: 6px;
     padding-left: 10px;
     padding-right: 10px;
-    padding-bottom: max(20px, calc(10px + env(safe-area-inset-bottom)));
+    padding-bottom: max(22px, calc(10px + env(safe-area-inset-bottom)));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -270,7 +339,7 @@
 
 .cards-flex {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     justify-content: center;
     align-items: center;
     margin: 3px 0;
