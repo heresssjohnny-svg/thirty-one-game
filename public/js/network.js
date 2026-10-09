@@ -1,4 +1,4 @@
-// public/js/network.js - WebSocket Engine, Reconnection & Background Keep-Alive Relay
+// public/js/network.js - WebSocket Engine, Event Relay & Menu Dispatcher
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT INITIALIZATION
@@ -32,7 +32,6 @@ window.clientState = window.clientState || {
     pendingBetsList: []
 };
 
-// Input persistence helper
 window.saveInputs = window.saveInputs || function() {
     try {
         const u = document.getElementById('username-input');
@@ -66,7 +65,7 @@ window.restoreSavedInputs = window.restoreSavedInputs || function() {
 };
 
 // -------------------------------------------------------------
-// 2. WEBSOCKET CONNECTION, KEEP-ALIVE & EVENT ROUTING
+// 2. WEBSOCKET CONNECTION & EVENT ROUTING
 // -------------------------------------------------------------
 let reconnectTimer = null;
 let heartbeatTimer = null;
@@ -86,21 +85,20 @@ window.connectSocket = function() {
     try {
         ws = new WebSocket(wsUrl);
     } catch (e) {
-        console.error('[WS] Connection error:', e);
+        console.error('[WS] Connection init error:', e);
         return;
     }
 
     window.ws = ws;
     window.appGlobals.ws = ws;
 
-        ws.onopen = () => {
+    ws.onopen = () => {
         window.appGlobals.isConnected = true;
         if (reconnectTimer) {
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
         }
 
-        // Start 20s heartbeat
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         heartbeatTimer = setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -108,7 +106,7 @@ window.connectSocket = function() {
             }
         }, 20000);
 
-        // 1. Authenticate with all possible token keys
+        // 1. Authenticate with stored token
         const jwtToken = localStorage.getItem('auth_token') || 
                          localStorage.getItem('token') || 
                          localStorage.getItem('jwt') || 
@@ -117,7 +115,7 @@ window.connectSocket = function() {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Only auto-reclaim table if authenticated and NOT on the auth screen
+        // 2. Auto-reclaim seat only if not on auth screen
         const authScreen = document.getElementById('auth-screen');
         const isAuthScreenVisible = authScreen && authScreen.style.display !== 'none';
         const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
@@ -145,7 +143,6 @@ window.connectSocket = function() {
         window.initSocketAndSend({ type: 'GET_LOBBIES' });
     };
 
-
     ws.onmessage = (event) => {
         let data;
         try {
@@ -166,7 +163,6 @@ window.connectSocket = function() {
             heartbeatTimer = null;
         }
 
-        // Do NOT reset the UI here; allow auto-reconnect backoff to reclaim the seat
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
@@ -183,9 +179,6 @@ window.connectSocket = function() {
     };
 };
 
-/**
- * Routes server state to UI, Audio, and Voice modules
- */
 function handleIncomingServerMessage(data) {
     switch (data.type) {
         case 'AUTH_SUCCESS':
@@ -199,6 +192,7 @@ function handleIncomingServerMessage(data) {
             if (typeof window.updateViewForAuth === 'function') {
                 window.updateViewForAuth(data.user);
             }
+            window.initSocketAndSend({ type: 'GET_LOBBIES' });
             break;
 
         case 'AUTH_ERROR':
@@ -209,7 +203,6 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'PONG':
-            // Heartbeat reply; no action required
             break;
 
         case 'LOBBY_LIST':
@@ -228,7 +221,6 @@ function handleIncomingServerMessage(data) {
             }
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
-            // Connect LiveKit Voice Room
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
@@ -239,7 +231,6 @@ function handleIncomingServerMessage(data) {
                 }
             }
 
-            // Render table view
             if (data.lobby && typeof window.updateUIFromLobby === 'function') {
                 window.updateUIFromLobby(data.lobby);
             } else if (data.lobby && typeof window.renderLobbyState === 'function') {
@@ -311,6 +302,13 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'ERROR':
+            if (data.message && data.message.includes('Table does not exist')) {
+                window.appGlobals.currentJoinedCode = null;
+                localStorage.removeItem('blitz31_active_room');
+                if (typeof window.resetToMainMenu === 'function') {
+                    window.resetToMainMenu();
+                }
+            }
             if (typeof window.showCenterNotification === 'function') {
                 window.showCenterNotification(data.message || 'Error occurred');
             }
@@ -344,7 +342,7 @@ window.initSocketAndSend = function(payload) {
 window.sendSocketMessage = window.initSocketAndSend;
 
 // -------------------------------------------------------------
-// 4. GLOBAL GAME & LOBBY ACTIONS
+// 4. GLOBAL GAME & MENU ACTIONS
 // -------------------------------------------------------------
 window.createLobby = function() {
     window.saveInputs();
@@ -644,7 +642,7 @@ window.kickPeekerAction = function(spectatorUsername) {
 function resyncActiveSession() {
     const authScreen = document.getElementById('auth-screen');
     if (authScreen && authScreen.style.display !== 'none') {
-        return; // Do not auto-join or hijack socket while user is logging in
+        return;
     }
 
     const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
@@ -675,4 +673,6 @@ window.addEventListener('pageshow', () => {
     resyncActiveSession();
 });
 
-// Remove generic window 'focus' listener to avoid firing when tapping input fields
+// Restore persisted inputs and connect socket on startup
+window.restoreSavedInputs();
+window.connectSocket();
