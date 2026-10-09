@@ -47,20 +47,36 @@ function sendSocket(payload) {
     }
 }
 
-// Safe audio trigger wrapper
+// Resilient audio dispatcher
 function safePlaySound(soundName) {
-    const fn = window.playSound || (typeof playSound === 'function' ? playSound : null);
-    if (fn) {
-        try { fn(soundName); } catch (e) {}
+    if (typeof window.playSound === 'function') {
+        try { window.playSound(soundName); } catch (e) {}
+    } else if (typeof playSound === 'function') {
+        try { playSound(soundName); } catch (e) {}
     }
 }
 
-// Safe haptic vibration wrapper (prevents recursive self-calling)
+// Haptic trigger (guarded against recursive self-calls and unsupported environments)
 function safeVibrate(pattern) {
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try { navigator.vibrate(pattern); } catch (e) {}
     }
 }
+
+// User-gesture unlock listener for mobile AudioContext (iOS Safari & Android Chrome)
+function unlockMobileAudioOnInteraction() {
+    if (window.audioCtx && window.audioCtx.state === 'suspended') {
+        window.audioCtx.resume();
+    }
+    if (typeof getAudioContext === 'function') {
+        const ctx = getAudioContext();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+    document.removeEventListener('touchstart', unlockMobileAudioOnInteraction);
+    document.removeEventListener('click', unlockMobileAudioOnInteraction);
+}
+document.addEventListener('touchstart', unlockMobileAudioOnInteraction, { passive: true });
+document.addEventListener('click', unlockMobileAudioOnInteraction);
 
 // -------------------------------------------------------------
 // 2. CASINO PLAYING CARD RENDERER & HAND SCORING
@@ -526,6 +542,7 @@ window.choosePoolCard = function(cardIndex) {
     safePlaySound('card');
     safeVibrate(25);
 
+    // Send index, cardIndex, and slotIndex to cover all server schema variants
     sendSocket({
         type: 'CHOOSE_POOL_CARD',
         cardIndex: resolvedIndex,
@@ -533,7 +550,7 @@ window.choosePoolCard = function(cardIndex) {
         slotIndex: resolvedIndex
     });
 
-    // Safeguard timeout: unlatch lock after 1.2s if server packet dropped or delayed
+    // Safeguard: auto-unlatch if server response is delayed
     setTimeout(() => {
         const snap = window.appGlobals?.latestLobbySnapshot;
         const myName = (document.getElementById('username-input')?.value || window.clientState.username || localStorage.getItem('saved_username') || 'Player1').trim();
