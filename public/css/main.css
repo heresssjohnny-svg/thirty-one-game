@@ -1,5 +1,5 @@
 /* =============================================================
-   BLITZ 31 - MAIN CASINO STYLESHEET & SAFE AREA CORRECTIONS
+   BLITZ 31 - CASINO MASTER STYLESHEET
    ============================================================= */
 
 :root {
@@ -7,8 +7,11 @@
     --felt-green: #0e3d26;
     --accent-gold: #d4af37;
     --accent-gold-bright: #f6e05e;
+    --accent-emerald: #10b981;
+    --accent-red: #ef4444;
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
+    --gold-glow: 0 0 12px rgba(212, 175, 55, 0.45);
 }
 
 * {
@@ -30,7 +33,7 @@ html, body {
 }
 
 /* =============================================================
-   1. AUTHENTICATION & LOGIN SCREEN
+   1. AUTH OVERLAY
    ============================================================= */
 .auth-overlay {
     position: fixed;
@@ -51,7 +54,7 @@ html, body {
     background: rgba(10, 35, 25, 0.92);
     border: 2px solid var(--accent-gold);
     border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), var(--gold-glow);
     padding: 24px 20px;
     backdrop-filter: blur(8px);
 }
@@ -196,6 +199,12 @@ html, body {
     font-weight: 900;
 }
 
+.user-badge {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--accent-gold-bright);
+}
+
 .menu-content {
     width: 100%;
     max-width: 440px;
@@ -249,9 +258,10 @@ html, body {
 }
 
 /* =============================================================
-   3. IN-GAME VIEW & MOBILE SAFE AREA SHIELDS
+   3. IN-GAME TABLE VIEW & SAFE AREA BOUNDARIES
    ============================================================= */
-#game-view {
+#game-view,
+.game-view-container {
     position: relative;
     width: 100vw;
     height: 100vh;
@@ -263,25 +273,27 @@ html, body {
     overflow: hidden;
     box-sizing: border-box;
 
-    /* Safe Area insets keep UI clear of the camera notch and system navigation bar */
-    padding-top: max(34px, env(safe-area-inset-top, 34px));
-    padding-bottom: max(26px, env(safe-area-inset-bottom, 26px));
-    padding-left: max(8px, env(safe-area-inset-left, 8px));
-    padding-right: max(8px, env(safe-area-inset-right, 8px));
+    /* High padding ensures mobile status bar & Android nav bar do not cover table UI */
+    padding-top: max(46px, env(safe-area-inset-top, 46px)) !important;
+    padding-bottom: max(32px, env(safe-area-inset-bottom, 32px)) !important;
+    padding-left: max(8px, env(safe-area-inset-left, 8px)) !important;
+    padding-right: max(8px, env(safe-area-inset-right, 8px)) !important;
 }
 
-#in-game-header {
-    width: 100%;
+#in-game-header,
+.in-game-header {
+    position: relative !important;
+    width: 100% !important;
     max-width: 600px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    z-index: 100;
+    z-index: 300 !important; /* Above all banners and overlays */
 }
 
-.room-title-bar {
+.room-title-bar, .header-left {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -301,25 +313,28 @@ html, body {
     cursor: pointer;
 }
 
-.turn-banner {
+.turn-banner, #turn-banner {
     font-size: 0.85rem;
     font-weight: 800;
     color: #f8fafc;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
-/* Action & Tool Buttons Rows */
+/* Header Buttons Rows */
 #in-game-top-row-btns,
 #in-game-tools-row {
+    position: relative !important;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     gap: 4px;
     width: 100%;
+    z-index: 301 !important;
 }
 
-#in-game-top-row-btns button {
+#in-game-top-row-btns button,
+.action-btn {
     background: linear-gradient(180deg, #164e32 0%, #0a291a 100%);
     border: 1px solid rgba(212, 175, 55, 0.5);
     color: #f8fafc;
@@ -328,6 +343,7 @@ html, body {
     font-size: 0.78rem;
     font-weight: 800;
     cursor: pointer;
+    pointer-events: auto !important;
 }
 
 #ready-btn.ready-active {
@@ -341,7 +357,7 @@ html, body {
     color: #fca5a5 !important;
 }
 
-.feature-btn {
+.feature-btn, .tool-btn {
     background: rgba(14, 46, 29, 0.75);
     border: 1px solid rgba(212, 175, 55, 0.35);
     color: var(--accent-gold);
@@ -350,16 +366,19 @@ html, body {
     font-size: 0.75rem;
     font-weight: 700;
     cursor: pointer;
+    pointer-events: auto !important;
 }
 
 /* Host Configuration Controls */
-#lobby-config-bar {
+#lobby-config-bar, .lobby-controls {
+    position: relative !important;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     gap: 8px;
     margin-top: 2px;
+    z-index: 301 !important;
 }
 
 .config-item {
@@ -377,9 +396,10 @@ html, body {
     padding: 3px 6px;
     font-size: 0.74rem;
     font-weight: 700;
+    pointer-events: auto !important;
 }
 
-.bot-controls button {
+.bot-controls button, .bot-actions button {
     background: rgba(15, 35, 24, 0.9);
     border: 1px solid rgba(212, 175, 55, 0.4);
     color: #cbd5e1;
@@ -387,19 +407,80 @@ html, body {
     padding: 3px 6px;
     border-radius: 4px;
     cursor: pointer;
+    pointer-events: auto !important;
 }
 
-/* PLAYER BOTTOM HUD */
-#my-hand-area {
+/* =============================================================
+   4. NOTIFICATION PILLS (Relocated Below Buttons & Non-Blocking)
+   ============================================================= */
+#center-notification-banner,
+.notification-pill,
+.center-banner {
+    position: absolute !important;
+    top: calc(max(46px, env(safe-area-inset-top, 46px)) + 98px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 150 !important; /* Stays beneath the buttons */
+    pointer-events: none !important; /* Taps pass through directly to felt or buttons */
+    max-width: 86vw !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.75) !important;
+    border: 1.5px solid var(--accent-gold) !important;
+    background: rgba(4, 28, 16, 0.94) !important;
+    border-radius: 8px !important;
+    padding: 6px 14px !important;
+    font-size: 0.8rem !important;
+    font-weight: 800 !important;
+    color: #f8fafc !important;
+    text-align: center !important;
+}
+
+#discard-pickup-topleft-modal,
+.corner-modal.top-left-corner {
+    position: absolute !important;
+    top: calc(max(46px, env(safe-area-inset-top, 46px)) + 98px) !important;
+    left: 8px !important;
+    z-index: 150 !important;
+    pointer-events: none !important;
+    background: rgba(4, 20, 13, 0.94) !important;
+    border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
+    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
+}
+
+#fed-card-topright-modal,
+.corner-modal.top-right-corner {
+    position: absolute !important;
+    top: calc(max(46px, env(safe-area-inset-top, 46px)) + 98px) !important;
+    right: 8px !important;
+    left: auto !important;
+    z-index: 150 !important;
+    pointer-events: none !important;
+    background: rgba(4, 20, 13, 0.94) !important;
+    border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
+    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* =============================================================
+   5. PLAYER BOTTOM HUD
+   ============================================================= */
+#my-hand-area,
+.player-hand-container {
     width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    z-index: 90;
+    z-index: 180;
 }
 
-.my-hand-header-bar {
+.my-hand-header-bar, .hand-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -420,188 +501,14 @@ html, body {
     font-weight: 900;
     border: 1px solid #fca5a5;
     border-radius: 6px;
-    padding: 4px 12px;
+    padding: 5px 14px;
     font-size: 0.8rem;
     cursor: pointer;
 }
 
-#my-cards-container {
+#my-cards-container, .cards-flex-row {
     display: flex;
     justify-content: center;
     gap: 8px;
     width: 100%;
-}
-
-/* =============================================================
-   4. DEALER DRAW & MODALS STYLING
-   ============================================================= */
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    padding: 14px;
-    backdrop-filter: blur(4px);
-}
-
-.modal-box {
-    background: rgba(6, 28, 17, 0.96);
-    border: 2px solid var(--accent-gold);
-    border-radius: 10px;
-    padding: 16px;
-    width: 100%;
-    max-width: 380px;
-    color: #f8fafc;
-}
-
-.modal-box.wide { max-width: 580px; }
-
-/* 52-Card Pool Modal Layout */
-.draw-modal-split-layout {
-    display: flex;
-    gap: 10px;
-    width: 100%;
-    max-height: 65vh;
-    overflow: hidden;
-    margin-top: 10px;
-}
-
-.draw-showcase-sidebar {
-    width: 95px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow-y: auto;
-    border-right: 1px solid rgba(212, 175, 55, 0.3);
-    padding-right: 6px;
-}
-
-.draw-showcase-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-
-.draw-picker-badge {
-    font-size: 0.62rem;
-    font-weight: 700;
-    color: #cbd5e1;
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    padding: 1px 4px;
-    border-radius: 4px;
-}
-
-.draw-card-waiting {
-    width: 38px;
-    height: 54px;
-    border: 1.5px dashed #475569;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.5rem;
-    color: #94a3b8;
-}
-
-.draw-pool-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-}
-
-.pool-52-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
-    gap: 4px;
-    padding: 4px;
-    max-height: 55vh;
-    overflow-y: auto;
-}
-
-.pool-card-item {
-    width: 32px;
-    height: 46px;
-    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
-    border: 1.5px solid #60a5fa;
-    color: #ffffff;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    font-size: 0.78rem;
-    cursor: pointer;
-}
-
-.pool-card-item.taken {
-    background: #0f172a;
-    border-color: #334155;
-    color: #10b981;
-    cursor: default;
-}
-
-/* Chat & Bets Drawers */
-.chat-drawer, .global-bets-drawer {
-    position: fixed;
-    bottom: 0;
-    right: 0;
-    width: 100%;
-    max-width: 340px;
-    height: 240px;
-    background: rgba(4, 20, 13, 0.96);
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    border-top-left-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    z-index: 500;
-}
-
-.drawer-header {
-    background: rgba(14, 46, 29, 0.95);
-    padding: 6px 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(212, 175, 55, 0.3);
-}
-
-.drawer-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px 10px;
-    font-size: 0.78rem;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.drawer-footer {
-    display: flex;
-    padding: 6px;
-    gap: 6px;
-    border-top: 1px solid rgba(212, 175, 55, 0.2);
-}
-
-.drawer-footer input {
-    flex: 1;
-    background: #020a06;
-    border: 1px solid rgba(212, 175, 55, 0.3);
-    color: #fff;
-    padding: 4px 8px;
-    font-size: 0.78rem;
-    border-radius: 4px;
-}
-
-.drawer-footer button {
-    background: var(--accent-gold);
-    color: #04190e;
-    font-weight: 800;
-    border: none;
-    border-radius: 4px;
-    padding: 0 10px;
 }
