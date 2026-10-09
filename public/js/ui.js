@@ -1,4 +1,4 @@
-// public/js/ui.js - HUD Notifications, Audio Cues & Dealer Draw Renderers (PART 1 OF 2)
+// public/js/ui.js - HUD Notifications, Audio Cues, Seats 0-5 & Felt Engine
 
 // -------------------------------------------------------------
 // 1. NOTIFICATION BANNERS & IN-GAME ALERTS
@@ -31,7 +31,6 @@ window.showKnockAlert = function(knockerName) {
             knockAlert.style.display = 'none';
         }, 4500);
     }
-    // Audio trigger for knock
     window.triggerAudioCue('knock');
 };
 
@@ -56,10 +55,6 @@ window.triggerAudioCue = function(cueType) {
                 knockAudio.play().catch(() => {});
             }
             if (navigator.vibrate) navigator.vibrate([150, 100, 200]);
-        } else if (cueType === 'card') {
-            if (typeof window.playCardSound === 'function') {
-                window.playCardSound();
-            }
         }
     } catch (e) {
         console.warn('[Audio] Trigger exception:', e);
@@ -67,13 +62,13 @@ window.triggerAudioCue = function(cueType) {
 };
 
 // -------------------------------------------------------------
-// 3. CARD HTML GENERATOR (AUTHENTIC DUAL-CORNER CASINO CARDS)
+// 3. CARD HTML GENERATOR
 // -------------------------------------------------------------
 window.renderCardHTML = function(card, customClasses = '') {
     if (!card || card.val === '?' || card.suit === '?') {
         return `
-            <div class="playing-card card-back ${customClasses}">
-                <div class="card-inner-pattern"></div>
+            <div class="card playing-card card-back ${customClasses}">
+                <div class="card-back-pattern">🂠</div>
             </div>
         `;
     }
@@ -82,7 +77,7 @@ window.renderCardHTML = function(card, customClasses = '') {
     const suitClass = isRed ? 'red-suit' : 'black-suit';
 
     return `
-        <div class="playing-card ${suitClass} ${customClasses}" data-val="${card.val}" data-suit="${card.suit}">
+        <div class="card playing-card ${suitClass} ${customClasses}" data-val="${card.val}" data-suit="${card.suit}">
             <div class="card-corner top-left">
                 <span class="corner-val">${card.val}</span>
                 <span class="corner-suit">${card.suit}</span>
@@ -97,20 +92,7 @@ window.renderCardHTML = function(card, customClasses = '') {
 };
 
 // -------------------------------------------------------------
-// 4. MODAL DIALOG TOGGLE CONTROLLER
-// -------------------------------------------------------------
-window.toggleModal = function(modalId, forceState) {
-    const modal = document.getElementById(modalId);
-    if (!modal) return;
-
-    const isOpen = modal.style.display === 'flex' || modal.style.display === 'block';
-    const nextState = typeof forceState === 'boolean' ? forceState : !isOpen;
-
-    modal.style.display = nextState ? 'flex' : 'none';
-};
-
-// -------------------------------------------------------------
-// 5. DEALER DRAW & TIE-BREAKER MODAL RENDERER
+// 4. DEALER DRAW & TIE-BREAKER MODAL RENDERER
 // -------------------------------------------------------------
 window.renderDealerDrawPhase = function(lobby) {
     const modal = document.getElementById('dealer-draw-modal');
@@ -124,13 +106,11 @@ window.renderDealerDrawPhase = function(lobby) {
 
     modal.style.display = 'flex';
 
-    // 1. Title Header
     const titleEl = document.getElementById('dealer-draw-title');
     if (titleEl) {
         titleEl.innerText = lobby.gameState === 'tieBreaker' ? '⚔️ Tie-Breaker Draw' : '👑 Draw for Dealer';
     }
 
-    // 2. Status & Subtitle Instructions
     const statusEl = document.getElementById('dealer-draw-status');
     if (statusEl) {
         statusEl.innerText = lobby.phaseMessage || 
@@ -139,7 +119,6 @@ window.renderDealerDrawPhase = function(lobby) {
                 : 'Everyone pick a card! Lowest card deals first (Ace is highest).');
     }
 
-    // 3. Draw Order & Chosen Showcase Sequence
     const sequenceEl = document.getElementById('draw-order-sequence');
     if (sequenceEl) {
         const orderList = lobby.drawResults || {};
@@ -161,7 +140,6 @@ window.renderDealerDrawPhase = function(lobby) {
         sequenceEl.innerHTML = orderHtml;
     }
 
-    // 4. 52-Card Pool Grid
     const poolGrid = document.getElementById('draw-pool-grid');
     if (poolGrid && Array.isArray(lobby.drawPool)) {
         const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
@@ -186,118 +164,139 @@ window.renderDealerDrawPhase = function(lobby) {
 };
 
 // -------------------------------------------------------------
-// 6. TOP HUD FEEDS: DISCARD PICKUP & FED CARDS
+// 5. TABLE SEATS RENDERER (DIRECT TARGETING FOR SEATS 0 - 5)
 // -------------------------------------------------------------
-window.updateTopCornerFeeds = function(lobby) {
-    // 1. Top-Left Discard Pickup Feed
-    const discardFeed = document.getElementById('discard-pickup-topleft-modal') || 
-                        document.getElementById('discard-pickup-modal');
-    const discardCardBox = document.getElementById('discard-pickup-card-content');
-
-    if (discardFeed && discardCardBox) {
-        if (lobby.lastDiscardPickup && lobby.lastDiscardPickup.card) {
-            discardCardBox.innerHTML = `
-                <span>${lobby.lastDiscardPickup.username} drew:</span>
-                <span class="mini-card ${lobby.lastDiscardPickup.card.suit === '♥' || lobby.lastDiscardPickup.card.suit === '♦' ? 'red-suit' : 'black-suit'}">
-                    ${lobby.lastDiscardPickup.card.val}${lobby.lastDiscardPickup.card.suit}
-                </span>
-            `;
-            discardFeed.style.display = 'flex';
-        } else {
-            discardFeed.style.display = 'none';
-        }
-    }
-
-    // 2. Top-Right Fed Card Reminder Feed
-    const fedFeed = document.getElementById('fed-card-topright-modal') || 
-                    document.getElementById('fed-card-modal');
-    const fedLabel = document.getElementById('fed-card-label');
-
-    if (fedFeed) {
-        if (lobby.myFedCardReminder && lobby.myFedCardReminder.card) {
-            if (fedLabel) {
-                fedLabel.innerText = `Fed to ${lobby.myFedCardReminder.target}: ${lobby.myFedCardReminder.card.val}${lobby.myFedCardReminder.card.suit}`;
-            }
-            fedFeed.style.display = 'flex';
-        } else {
-            fedFeed.style.display = 'none';
-        }
-    }
-};
-// public/js/ui.js - Master Table Renderer, Seats 0-5, My Hand & Action Controls (PART 2 OF 2)
-
-// -------------------------------------------------------------
-// 7. IN-GAME ACTION CONTROLS & TURN STATE ENGINE
-// -------------------------------------------------------------
-let previousTurnUser = null;
-let previousKnockedBy = null;
-
-window.updateActionButtons = function(lobby) {
+window.renderSeats = function(lobby) {
     const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
-    const me = lobby.players?.find(p => p.username?.toLowerCase() === myName);
-    const isMyTurn = lobby.currentTurnUser?.toLowerCase() === myName;
-    const isPlaying = lobby.gameState === 'playing' || lobby.gameState === 'finalTurn';
+    const isMeSeated = lobby.players?.some(p => p.isMe || p.username?.toLowerCase() === myName);
 
-    const drawDeckBtn = document.getElementById('draw-deck-btn');
-    const drawDiscardBtn = document.getElementById('draw-discard-btn');
-    const knockBtn = document.getElementById('knock-btn');
-    const readyBtn = document.getElementById('ready-btn');
-    const nextHandBtn = document.getElementById('next-hand-btn');
+    for (let seatIndex = 0; seatIndex < 6; seatIndex++) {
+        const seatEl = document.getElementById(`seat-${seatIndex}`) ||
+                       document.getElementById(`seat${seatIndex}`) ||
+                       document.getElementById(`player-seat-${seatIndex}`) ||
+                       document.querySelector(`[data-seat="${seatIndex}"]`) ||
+                       document.querySelectorAll('.seat, .table-seat')[seatIndex];
 
-    // 1. Ready & Next Hand Buttons
-    if (readyBtn) {
-        if (lobby.gameState === 'lobby') {
-            readyBtn.style.display = 'inline-flex';
-            readyBtn.innerText = me?.ready ? 'Unready' : 'Ready Up';
-            readyBtn.disabled = false;
-        } else {
-            readyBtn.style.display = 'none';
+        if (!seatEl) continue;
+
+        const player = lobby.players?.find(p => p.seat === seatIndex);
+
+        if (!player) {
+            // Empty Seat State
+            seatEl.classList.remove('active-turn', 'dealer-seat', 'ready-seat', 'eliminated');
+            seatEl.classList.add('empty-seat');
+
+            const nameEl = seatEl.querySelector('.seat-name, .player-name, .name');
+            const statusEl = seatEl.querySelector('.seat-status, .player-status, .status');
+            const avatarEl = seatEl.querySelector('.seat-avatar, .avatar, .seat-icon');
+            const livesEl = seatEl.querySelector('.seat-lives, .player-lives, .lives');
+            const cardsEl = seatEl.querySelector('.seat-cards, .player-cards, .cards');
+
+            const canSit = lobby.gameState === 'lobby' && !isMeSeated;
+
+            if (nameEl) nameEl.innerText = 'Empty';
+            if (statusEl) {
+                statusEl.innerHTML = canSit ? `<button class="sit-btn" onclick="window.sitDown()" style="padding:2px 8px; font-size:0.75rem;">Sit</button>` : 'Open';
+                statusEl.style.color = '';
+            }
+            if (avatarEl) avatarEl.innerHTML = '👤';
+            if (livesEl) livesEl.innerHTML = '';
+            if (cardsEl) cardsEl.innerHTML = '';
+
+            if (!nameEl && !statusEl) {
+                seatEl.innerHTML = `
+                    <div class="seat-avatar">👤</div>
+                    <div class="seat-name">Empty</div>
+                    <div class="seat-status">${canSit ? `<button class="sit-btn" onclick="window.sitDown()" style="padding:2px 8px; font-size:0.75rem;">Sit</button>` : 'Open'}</div>
+                `;
+            }
+            continue;
         }
-    }
 
-    if (nextHandBtn) {
-        if (lobby.gameState === 'roundOver') {
-            nextHandBtn.style.display = 'inline-flex';
-            nextHandBtn.disabled = Boolean(me?.nextHandReady);
-            nextHandBtn.innerText = me?.nextHandReady ? 'Waiting...' : 'Next Hand';
+        // Occupied Seat State
+        const isDealer = lobby.dealerIndex === lobby.players?.indexOf(player);
+        const isTurn = lobby.currentTurnUser?.toLowerCase() === player.username?.toLowerCase();
+        const isEliminated = Boolean(player.eliminated);
+
+        seatEl.classList.remove('empty-seat');
+        seatEl.classList.toggle('active-turn', isTurn);
+        seatEl.classList.toggle('dealer-seat', isDealer);
+        seatEl.classList.toggle('ready-seat', Boolean(player.ready));
+        seatEl.classList.toggle('eliminated', isEliminated);
+
+        const nameEl = seatEl.querySelector('.seat-name, .player-name, .name');
+        const statusEl = seatEl.querySelector('.seat-status, .player-status, .status');
+        const avatarEl = seatEl.querySelector('.seat-avatar, .avatar, .seat-icon');
+        const livesEl = seatEl.querySelector('.seat-lives, .player-lives, .lives');
+        const cardsEl = seatEl.querySelector('.seat-cards, .player-cards, .cards');
+
+        let statusText = '';
+        let statusColor = '';
+        if (isEliminated) {
+            statusText = 'Eliminated';
+            statusColor = '#ef4444';
+        } else if (lobby.gameState === 'lobby') {
+            statusText = player.ready ? 'Ready' : 'Waiting...';
+            statusColor = player.ready ? '#22c55e' : '#94a3b8';
         } else {
-            nextHandBtn.style.display = 'none';
+            statusText = isTurn ? 'Turn' : '';
+            statusColor = isTurn ? '#f59e0b' : '';
         }
-    }
 
-    // 2. Play Actions (Draw & Knock)
-    const cardCount = me?.cards?.length || 0;
-    const canDraw = isPlaying && isMyTurn && cardCount === 3;
-    const canKnock = isPlaying && isMyTurn && cardCount === 3 && lobby.canKnock && !lobby.knockedBy;
+        const avatarIcon = isDealer ? '👑' : (player.isBot ? '🤖' : '👤');
 
-    if (drawDeckBtn) {
-        drawDeckBtn.disabled = !canDraw;
-    }
-    if (drawDiscardBtn) {
-        drawDiscardBtn.disabled = !canDraw || !lobby.discardTop;
-    }
-    if (knockBtn) {
-        knockBtn.disabled = !canKnock;
-        knockBtn.style.display = lobby.gameState === 'finalTurn' ? 'none' : 'inline-flex';
+        let livesPips = '';
+        const maxLives = lobby.defaultLives || 2;
+        for (let l = 0; l < maxLives; l++) {
+            const hasLife = l < (player.lives || 0);
+            livesPips += `<span class="life-pip ${hasLife ? 'active' : 'lost'}" style="color:${hasLife ? '#ef4444' : 'rgba(255,255,255,0.2)'}; font-size:0.85rem; margin:0 1px;">♥</span>`;
+        }
+
+        let miniCardsHtml = '';
+        if (Array.isArray(player.cards) && player.cards.length > 0 && lobby.gameState !== 'lobby') {
+            player.cards.forEach(c => {
+                miniCardsHtml += window.renderCardHTML(c, 'table-mini-card');
+            });
+        }
+
+        if (nameEl) nameEl.innerText = player.username;
+        if (statusEl) {
+            statusEl.innerText = statusText;
+            if (statusColor) statusEl.style.color = statusColor;
+        }
+        if (avatarEl) avatarEl.innerHTML = avatarIcon;
+        if (livesEl) livesEl.innerHTML = livesPips;
+        if (cardsEl) cardsEl.innerHTML = miniCardsHtml;
+
+        if (!nameEl && !statusEl) {
+            seatEl.innerHTML = `
+                <div class="seat-avatar">${avatarIcon}</div>
+                <div class="seat-name" style="font-weight:700;">${player.username}</div>
+                <div class="seat-lives">${livesPips}</div>
+                <div class="seat-status" style="font-size:0.75rem; color:${statusColor};">${statusText}</div>
+                <div class="seat-cards">${miniCardsHtml}</div>
+            `;
+        }
     }
 };
 
 // -------------------------------------------------------------
-// 8. MY HAND SECTION (HORIZONTAL & ENLARGED)
+// 6. MY HAND (HORIZONTAL DISPLAY & CARD ACTIONS)
 // -------------------------------------------------------------
 window.renderMyHand = function(lobby) {
     const container = document.getElementById('my-cards-container');
     if (!container) return;
 
     const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
-    const me = lobby.players?.find(p => p.username?.toLowerCase() === myName);
+    const me = lobby.players?.find(p => p.isMe) || 
+              lobby.players?.find(p => p.username?.toLowerCase() === myName);
 
-    if (!me || me.eliminated || !Array.isArray(me.cards) || me.cards.length === 0) {
-        container.innerHTML = `<div style="color:var(--text-muted); font-size:0.8rem; padding:12px;">No active cards</div>`;
+    if (!me || me.eliminated || !Array.isArray(me.cards) || me.cards.length === 0 || lobby.gameState === 'lobby') {
+        container.innerHTML = `<div style="color:var(--text-muted, #94a3b8); font-size:0.8rem; padding:12px;">No active cards</div>`;
         return;
     }
 
-    const isMyTurn = lobby.currentTurnUser?.toLowerCase() === myName;
+    const isMyTurn = lobby.currentTurnUser?.toLowerCase() === me.username?.toLowerCase();
     const mustDiscard = (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') && isMyTurn && me.cards.length === 4;
 
     let handHtml = '';
@@ -305,7 +304,7 @@ window.renderMyHand = function(lobby) {
         const discardAttr = mustDiscard ? `onclick="window.discardCard(${index})"` : '';
         const customClasses = `my-card ${mustDiscard ? 'selectable-discard' : ''}`;
         handHtml += `
-            <div style="display:inline-block;" ${discardAttr}>
+            <div class="hand-card-wrapper" style="display:inline-block; cursor:${mustDiscard ? 'pointer' : 'default'}; margin:0 4px;" ${discardAttr}>
                 ${window.renderCardHTML(card, customClasses)}
             </div>
         `;
@@ -315,162 +314,100 @@ window.renderMyHand = function(lobby) {
 };
 
 // -------------------------------------------------------------
-// 9. TABLE SEATS (SEATS 0 - 5) & FELT CENTER
+// 7. FELT CENTER (DECK & DISCARD SLOTS)
 // -------------------------------------------------------------
-window.renderSeats = function(lobby) {
-    const seatsContainer = document.getElementById('table-seats-container') || 
-                           document.getElementById('felt-seats-layer');
-    if (!seatsContainer) return;
+window.renderFeltCenter = function(lobby) {
+    const discardSlot = document.getElementById('discard-card-slot') || 
+                        document.getElementById('discard-pile-top') || 
+                        document.getElementById('discard-slot') || 
+                        document.getElementById('discard-pile');
 
-    const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
-    let seatsHtml = '';
-
-    // Render 6 configured seat positions
-    for (let seatIndex = 0; seatIndex < 6; seatIndex++) {
-        const player = lobby.players?.find(p => p.seat === seatIndex);
-        const seatId = `seat-${seatIndex}`;
-
-        if (!player) {
-            // Empty Seat
-            const canSit = lobby.gameState === 'lobby' && !lobby.players?.some(p => p.username?.toLowerCase() === myName);
-            seatsHtml += `
-                <div class="table-seat empty-seat" id="${seatId}">
-                    ${canSit ? `<button class="sit-btn secondary" onclick="window.sitDown()">Sit</button>` : `<div class="empty-seat-slot">Empty</div>`}
-                </div>
-            `;
-            continue;
+    if (discardSlot) {
+        if (lobby.discardTop && lobby.gameState !== 'lobby') {
+            discardSlot.innerHTML = window.renderCardHTML(lobby.discardTop, 'discard-card');
+            discardSlot.onclick = () => window.drawFromDiscard();
+            discardSlot.style.cursor = 'pointer';
+        } else {
+            discardSlot.innerHTML = `<div class="card-slot-placeholder" style="text-align:center; font-size:0.75rem; color:#94a3b8;">Empty<br>DISCARD</div>`;
+            discardSlot.onclick = null;
+            discardSlot.style.cursor = 'default';
         }
-
-        const isTurn = lobby.currentTurnUser?.toLowerCase() === player.username?.toLowerCase();
-        const isDealer = lobby.dealerIndex === lobby.players?.indexOf(player);
-        const isEliminated = Boolean(player.eliminated);
-
-        let livesPips = '';
-        for (let l = 0; l < (lobby.defaultLives || 3); l++) {
-            livesPips += `<span class="life-pip ${l < player.lives ? 'active' : 'lost'}">♥</span>`;
-        }
-
-        let miniCardsHtml = '';
-        if (Array.isArray(player.cards)) {
-            player.cards.forEach(c => {
-                miniCardsHtml += window.renderCardHTML(c, 'table-mini-card');
-            });
-        }
-
-        seatsHtml += `
-            <div class="table-seat ${isTurn ? 'active-turn' : ''} ${isEliminated ? 'eliminated' : ''}" id="${seatId}">
-                <div class="seat-badge ${isDealer ? 'dealer-badge' : ''}">
-                    ${isDealer ? '👑 ' : ''}${player.username} ${player.isBot ? '🤖' : ''}
-                </div>
-                <div class="seat-lives">${livesPips}</div>
-                <div class="seat-cards">${miniCardsHtml}</div>
-            </div>
-        `;
     }
 
-    seatsContainer.innerHTML = seatsHtml;
-};
+    const deckSlot = document.getElementById('deck-card-slot') || 
+                     document.getElementById('deck-slot') || 
+                     document.getElementById('deck-pile');
 
-window.renderFeltCenter = function(lobby) {
-    // 1. Pot Total
+    if (deckSlot) {
+        deckSlot.onclick = () => window.drawFromDeck();
+        deckSlot.style.cursor = 'pointer';
+    }
+
+    const deckCountEl = document.getElementById('deck-count') || 
+                        document.getElementById('deck-remaining-count');
+    if (deckCountEl) {
+        deckCountEl.innerText = lobby.deckCount || 0;
+    }
+
     const potEl = document.getElementById('pot-display') || document.getElementById('pot-total');
     if (potEl) {
         potEl.innerText = `$${lobby.potTotal || 0}`;
     }
 
-    // 2. Deck Stack Count
-    const deckCountEl = document.getElementById('deck-count') || document.getElementById('deck-remaining-count');
-    if (deckCountEl) {
-        deckCountEl.innerText = lobby.deckCount || 0;
-    }
-
-    // 3. Discard Pile Top Card
-    const discardSlot = document.getElementById('discard-card-slot') || document.getElementById('discard-pile-top');
-    if (discardSlot) {
-        if (lobby.discardTop) {
-            discardSlot.innerHTML = window.renderCardHTML(lobby.discardTop, 'discard-card');
-        } else {
-            discardSlot.innerHTML = `<div class="card-slot-placeholder">Empty</div>`;
-        }
-    }
-
-    // 4. Status and Phase Message
     const phaseEl = document.getElementById('table-status-message') || 
                     document.getElementById('phase-message') || 
                     document.getElementById('game-status-banner');
     if (phaseEl && lobby.phaseMessage) {
         phaseEl.innerText = lobby.phaseMessage;
     }
-
-    // 5. Room Title Header
-    const titleEl = document.getElementById('room-title-display');
-    if (titleEl && lobby.name) {
-        titleEl.innerText = `${lobby.name} (${lobby.code})`;
-    }
 };
 
 // -------------------------------------------------------------
-// 10. CHAT DRAWER & SIDE BETS FEED
+// 8. ACTION BUTTONS & TURN ENGINE
 // -------------------------------------------------------------
-window.appendChatMessage = function(username, message) {
-    const chatContainer = document.getElementById('chat-messages');
-    if (!chatContainer) return;
+let previousTurnUser = null;
+let previousKnockedBy = null;
 
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'chat-entry';
-    msgDiv.innerHTML = `<strong style="color:var(--accent-gold);">${username}:</strong> <span>${message}</span>`;
-    chatContainer.appendChild(msgDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-
-    const chatWindow = document.getElementById('chat-window');
-    const toggleBtn = document.getElementById('chat-toggle-btn');
-    if (toggleBtn && (!chatWindow || chatWindow.style.display === 'none')) {
-        toggleBtn.classList.add('unread');
-    }
-};
-
-window.toggleChatWindow = function() {
-    const chatWindow = document.getElementById('chat-window');
-    const toggleBtn = document.getElementById('chat-toggle-btn');
-    if (!chatWindow) return;
-
-    const isVisible = chatWindow.style.display === 'flex';
-    chatWindow.style.display = isVisible ? 'none' : 'flex';
-
-    if (toggleBtn && !isVisible) {
-        toggleBtn.classList.remove('unread');
-    }
-};
-
-window.renderGlobalProposals = function(lobby) {
-    const container = document.getElementById('global-proposals-container') || 
-                      document.getElementById('pending-bets-banner');
-    if (!container) return;
-
-    const proposals = lobby.globalProposals || [];
+window.updateActionButtons = function(lobby) {
     const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
+    const me = lobby.players?.find(p => p.isMe) || 
+              lobby.players?.find(p => p.username?.toLowerCase() === myName);
+    const isMyTurn = lobby.currentTurnUser?.toLowerCase() === me?.username?.toLowerCase();
+    const isPlaying = lobby.gameState === 'playing' || lobby.gameState === 'finalTurn';
 
-    let html = '';
-    proposals.forEach(prop => {
-        const isMine = prop.proposer?.toLowerCase() === myName;
-        html += `
-            <div class="global-bet-toast">
-                <span><strong>${prop.proposer}</strong> bets $${prop.wagerAmt} on <em>${prop.pickUser}</em></span>
-                ${!isMine ? `<button style="padding:2px 8px; font-size:0.75rem;" onclick="window.acceptGlobalProposal('${prop.id}')">Accept</button>` : '<span style="color:var(--text-muted); font-size:0.7rem;">(Your Bet)</span>'}
-            </div>
-        `;
-    });
+    const readyBtn = document.getElementById('ready-btn');
+    if (readyBtn) {
+        if (lobby.gameState === 'lobby') {
+            readyBtn.style.display = 'inline-flex';
+            readyBtn.innerText = me?.ready ? 'Unready' : 'Ready Up';
+            readyBtn.style.background = me?.ready ? '#eab308' : '';
+        } else {
+            readyBtn.style.display = 'none';
+        }
+    }
 
-    container.innerHTML = html;
+    const drawDeckBtn = document.getElementById('draw-deck-btn');
+    const drawDiscardBtn = document.getElementById('draw-discard-btn');
+    const knockBtn = document.getElementById('knock-btn');
+
+    const cardCount = me?.cards?.length || 0;
+    const canDraw = isPlaying && isMyTurn && cardCount === 3;
+    const canKnock = isPlaying && isMyTurn && cardCount === 3 && lobby.canKnock && !lobby.knockedBy;
+
+    if (drawDeckBtn) drawDeckBtn.disabled = !canDraw;
+    if (drawDiscardBtn) drawDiscardBtn.disabled = !canDraw || !lobby.discardTop;
+    if (knockBtn) {
+        knockBtn.disabled = !canKnock;
+        knockBtn.style.display = lobby.gameState === 'finalTurn' ? 'none' : 'inline-flex';
+    }
 };
 
 // -------------------------------------------------------------
-// 11. MASTER TABLE RENDER LOOP
+// 9. MASTER TABLE RENDER LOOP
 // -------------------------------------------------------------
 window.updateUIFromLobby = window.renderLobbyState = function(lobby) {
     if (!lobby) return;
 
-    // 1. Audio and Haptic Triggers
     const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
     if (lobby.currentTurnUser && lobby.currentTurnUser.toLowerCase() === myName && previousTurnUser !== myName) {
         window.triggerAudioCue('yourturn');
@@ -482,16 +419,12 @@ window.updateUIFromLobby = window.renderLobbyState = function(lobby) {
     }
     previousKnockedBy = lobby.knockedBy || null;
 
-    // 2. Sub-layer renderers
     window.renderDealerDrawPhase(lobby);
-    window.updateTopCornerFeeds(lobby);
-    window.renderFeltCenter(lobby);
     window.renderSeats(lobby);
+    window.renderFeltCenter(lobby);
     window.renderMyHand(lobby);
     window.updateActionButtons(lobby);
-    window.renderGlobalProposals(lobby);
 
-    // 3. Update active spectator count
     const specCount = document.getElementById('spectator-count-badge');
     if (specCount && lobby.spectators) {
         specCount.innerText = `${lobby.spectators.length} Spectating`;
