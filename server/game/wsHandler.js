@@ -1,4 +1,4 @@
-// server/game/wsHandler.js - Resilient Background Reconnection & Anti-Kick Grace Period
+// server/game/wsHandler.js - WebSocket Event Dispatcher & Anti-Kick Grace Period
 const WebSocket = require('ws');
 const {
     lobbies,
@@ -45,6 +45,13 @@ function initWebSocketHandler(wss) {
             }
 
             switch (data.type) {
+                case 'PING': {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'PONG' }));
+                    }
+                    break;
+                }
+
                 case 'GET_LOBBIES':
                 case 'REFRESH_LOBBIES': {
                     ws.send(JSON.stringify({
@@ -90,7 +97,6 @@ function initWebSocketHandler(wss) {
                     currentLobbyCode = code;
                     currentUsername = username;
 
-                    // Re-associate existing player if returning from background/reconnecting
                     const existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
                     if (existingPlayer) {
                         existingPlayer.id = ws;
@@ -269,7 +275,6 @@ function initWebSocketHandler(wss) {
             if (!currentLobbyCode || !lobbies[currentLobbyCode]) return;
             const lobby = lobbies[currentLobbyCode];
 
-            // Mark player disconnected rather than kicking them
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
                 player.id = null;
@@ -285,4 +290,5 @@ function initWebSocketHandler(wss) {
     });
 }
 
-module.exports = { initWebSocketHandler };
+module.exports = initWebSocketHandler;
+module.exports.initWebSocketHandler = initWebSocketHandler;
