@@ -93,14 +93,14 @@ window.connectSocket = function() {
     window.ws = ws;
     window.appGlobals.ws = ws;
 
-    ws.onopen = () => {
+        ws.onopen = () => {
         window.appGlobals.isConnected = true;
         if (reconnectTimer) {
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
         }
 
-        // Start 20s heartbeat to keep mobile NAT sessions open
+        // Start 20s heartbeat
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         heartbeatTimer = setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -108,17 +108,26 @@ window.connectSocket = function() {
             }
         }, 20000);
 
-        // 1. Authenticate if JWT token exists
-        const jwtToken = localStorage.getItem('31_jwt');
+        // 1. Authenticate with all possible token keys
+        const jwtToken = localStorage.getItem('auth_token') || 
+                         localStorage.getItem('token') || 
+                         localStorage.getItem('jwt') || 
+                         localStorage.getItem('31_jwt');
         if (jwtToken) {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Auto-reclaim seat if reconnecting to an active table
+        // 2. Only auto-reclaim table if authenticated and NOT on the auth screen
+        const authScreen = document.getElementById('auth-screen');
+        const isAuthScreenVisible = authScreen && authScreen.style.display !== 'none';
         const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-        if (activeRoom) {
+
+        if (activeRoom && !isAuthScreenVisible) {
             window.appGlobals.currentJoinedCode = activeRoom;
-            const myName = (document.getElementById('username-input')?.value || window.clientState.username || localStorage.getItem('saved_username') || 'Player1').trim();
+            const myName = (document.getElementById('username-input')?.value || 
+                            window.clientState.username || 
+                            localStorage.getItem('saved_username') || 
+                            'Player1').trim();
             ws.send(JSON.stringify({
                 type: 'JOIN_LOBBY',
                 code: activeRoom.toUpperCase(),
@@ -135,6 +144,7 @@ window.connectSocket = function() {
         // 4. Query available lobbies
         window.initSocketAndSend({ type: 'GET_LOBBIES' });
     };
+
 
     ws.onmessage = (event) => {
         let data;
@@ -178,6 +188,26 @@ window.connectSocket = function() {
  */
 function handleIncomingServerMessage(data) {
     switch (data.type) {
+        case 'AUTH_SUCCESS':
+            window.userSession = data.user;
+            if (data.user && data.user.username) {
+                window.clientState.username = data.user.username;
+                localStorage.setItem('saved_username', data.user.username);
+                const uIn = document.getElementById('username-input');
+                if (uIn) uIn.value = data.user.username;
+            }
+            if (typeof window.updateViewForAuth === 'function') {
+                window.updateViewForAuth(data.user);
+            }
+            break;
+
+        case 'AUTH_ERROR':
+            window.userSession = null;
+            if (typeof window.updateViewForAuth === 'function') {
+                window.updateViewForAuth(null);
+            }
+            break;
+
         case 'PONG':
             // Heartbeat reply; no action required
             break;
@@ -612,14 +642,21 @@ window.kickPeekerAction = function(spectatorUsername) {
 // 5. MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
 // -------------------------------------------------------------
 function resyncActiveSession() {
+    const authScreen = document.getElementById('auth-screen');
+    if (authScreen && authScreen.style.display !== 'none') {
+        return; // Do not auto-join or hijack socket while user is logging in
+    }
+
     const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    const myName = (document.getElementById('username-input')?.value || window.clientState.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    const myName = (document.getElementById('username-input')?.value || 
+                    window.clientState.username || 
+                    localStorage.getItem('saved_username') || 
+                    'Player1').trim();
     const ws = window.appGlobals.ws;
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         window.connectSocket();
     } else if (activeRoom) {
-        // Re-authenticate socket with the table immediately upon app focus
         ws.send(JSON.stringify({
             type: 'JOIN_LOBBY',
             code: activeRoom.toUpperCase(),
@@ -638,9 +675,4 @@ window.addEventListener('pageshow', () => {
     resyncActiveSession();
 });
 
-window.addEventListener('focus', () => {
-    resyncActiveSession();
-});
-
-// Restore persisted inputs on initial load
-window.restoreSavedInputs();
+// Remove generic window 'focus' listener to avoid firing when tapping input fields
