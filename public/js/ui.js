@@ -245,7 +245,7 @@ window.openActiveBetsModal = function() {
     } else {
         html += '<ul style="margin-left:14px; margin-bottom:8px;">';
         myActive.forEach(b => {
-            const desc = b.type === 'eliminate'
+            const desc = (b.type === 'eliminate' || b.type === 'first_out')
                 ? `Bet with ${(b.proposer || b.bettor) === myName ? b.target : (b.proposer || b.bettor)}: $${b.wagerAmt} on ${b.pickUser} to lose first`
                 : `Global Bet: $${b.wagerAmt} on ${b.pickUser || b.condition}`;
             html += `<li style="margin-bottom:3px;">${desc}</li>`;
@@ -268,7 +268,7 @@ window.openActiveBetsModal = function() {
     window.toggleModal('active-bets-modal');
 };
 
-// --- LOBBY SESSION LEDGER CONTROLS ---
+// --- LOBBY SESSION LEDGER CONTROLS (BILATERAL NETTED ENGINE) ---
 window.toggleSessionLedger = function(show) {
     const modal = document.getElementById('session-ledger-modal');
     if (!modal) return;
@@ -288,13 +288,14 @@ window.renderSessionLedger = function(lobby) {
     const activeBetsEl = document.getElementById('active-session-bets-list');
     const settledLedgerEl = document.getElementById('session-settled-ledger-list') || document.getElementById('session-ledger-display');
 
+    // 1. Render Active Unresolved Bets (Exact 1x wager amount)
     if (activeBetsEl) {
         const activeList = lobby.activeBets || [];
         if (activeList.length === 0) {
             activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
         } else {
             activeBetsEl.innerHTML = activeList.map(b => {
-                const desc = b.type === 'eliminate'
+                const desc = (b.type === 'eliminate' || b.type === 'first_out')
                     ? `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.pickUser} out first)`
                     : `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.condition || 'Win'})`;
                 return `
@@ -307,16 +308,21 @@ window.renderSessionLedger = function(lobby) {
         }
     }
 
+    // 2. Pairwise Netting Across Main Game & Side Bet Ledgers
     if (settledLedgerEl) {
-        const combined = {};
+        const gross = {};
+        const addGross = (debtor, creditor, amt) => {
+            if (!debtor || !creditor || debtor === creditor || amt <= 0) return;
+            if (!gross[debtor]) gross[debtor] = {};
+            gross[debtor][creditor] = (gross[debtor][creditor] || 0) + amt;
+        };
+
         const tally = (ledger) => {
             if (!ledger) return;
             for (const debtor in ledger) {
                 for (const creditor in ledger[debtor]) {
                     const amt = Number(ledger[debtor][creditor]) || 0;
-                    if (amt <= 0) continue;
-                    const key = `${debtor}->${creditor}`;
-                    combined[key] = (combined[key] || 0) + amt;
+                    if (amt > 0) addGross(debtor, creditor, amt);
                 }
             }
         };
@@ -324,19 +330,40 @@ window.renderSessionLedger = function(lobby) {
         tally(lobby.mainGameLedger);
         tally(lobby.sideBetLedger);
 
-        const entries = Object.entries(combined);
-        if (entries.length === 0) {
+        const allUsers = new Set();
+        Object.keys(gross).forEach(u => allUsers.add(u));
+        Object.values(gross).forEach(map => Object.keys(map).forEach(u => allUsers.add(u)));
+
+        const usersArr = Array.from(allUsers);
+        const netList = [];
+
+        // Check each pair once to calculate pure net balance
+        for (let i = 0; i < usersArr.length; i++) {
+            for (let j = i + 1; j < usersArr.length; j++) {
+                const u1 = usersArr[i];
+                const u2 = usersArr[j];
+
+                const u1OwesU2 = (gross[u1] && gross[u1][u2]) || 0;
+                const u2OwesU1 = (gross[u2] && gross[u2][u1]) || 0;
+                const diff = u1OwesU2 - u2OwesU1;
+
+                if (diff > 0) {
+                    netList.push({ debtor: u1, creditor: u2, amount: diff });
+                } else if (diff < 0) {
+                    netList.push({ debtor: u2, creditor: u1, amount: -diff });
+                }
+            }
+        }
+
+        if (netList.length === 0) {
             settledLedgerEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No debts settled this session.</div>';
         } else {
-            settledLedgerEl.innerHTML = entries.map(([key, amt]) => {
-                const [debtor, creditor] = key.split('->');
-                return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:0.8rem;"><span style="color:#f87171; font-weight:bold;">${debtor}</span> owes <span style="color:#4ade80; font-weight:bold;">${creditor}</span></span>
-                        <span style="color:#fde047; font-weight:bold; font-size:0.85rem;">$${amt}</span>
-                    </div>
-                `;
-            }).join('');
+            settledLedgerEl.innerHTML = netList.map(({ debtor, creditor, amount }) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
+                    <span style="font-size:0.8rem;"><span style="color:#f87171; font-weight:bold;">${debtor}</span> owes <span style="color:#4ade80; font-weight:bold;">${creditor}</span></span>
+                    <span style="color:#fde047; font-weight:bold; font-size:0.85rem;">$${amount}</span>
+                </div>
+            `).join('');
         }
     }
 };
@@ -978,7 +1005,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 9. DYNAMIC ACTION BAR & "SIT DOWN" IN WAITING ROOM
+    // 9. DYNAMIC ACTION BAR
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
     const readyBtn = document.getElementById('ready-btn');
@@ -1034,7 +1061,7 @@ window.updateUIFromLobby = function(lobby) {
 
     updateKnockButtonState(lobby, me, isMyTurnPlaying);
 
-    // 11. SIDE BET PROPOSALS (SIDEBAR & TOP NOTIFICATION BANNER)
+    // 11. SIDE BET PROPOSALS (SIDEBAR & TOP DOCKED NOTIFICATIONS)
     const sidebar = document.getElementById('global-side-bets-sidebar');
     const sidebarList = document.getElementById('global-side-bets-list');
     const globalProps = lobby.globalProposals || [];
@@ -1074,7 +1101,7 @@ window.updateUIFromLobby = function(lobby) {
         sidebar.style.display = 'none';
     }
 
-    // Render Docked Global Side Bet Proposals with Working Confirm/Deny Buttons
+    // Top Docked Global Proposals Banner with Confirm / Deny
     const globalProposalsContainer = document.getElementById('global-proposals-container') || document.getElementById('pending-bets-banner');
     if (globalProposalsContainer) {
         const pendingForMe = (lobby.globalProposals || []).filter(p => {
@@ -1417,7 +1444,7 @@ window.updateUIFromLobby = function(lobby) {
         if (scoreDisplay) scoreDisplay.innerText = '0';
     }
 
-    // 17. SESSION LEDGER AUTO-SYNC
+    // 17. SESSION LEDGER AUTO-SYNC (Calls Part 1 renderSessionLedger)
     const sessionLedgerModal = document.getElementById('session-ledger-modal');
     if (sessionLedgerModal && sessionLedgerModal.style.display === 'flex') {
         window.renderSessionLedger(lobby);
