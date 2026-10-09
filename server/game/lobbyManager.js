@@ -5,7 +5,7 @@ const { recordDebt, resolveFirstToLoseBets, resolveWinSideBets } = require('./le
 const { executeBotTurn, syncBotReadiness } = require('./bot');
 const config = require('../config');
 
-// Safe Database loader for Lifetime Ledger sync
+// Resilient Database Loader for Lifetime Ledger Integration
 let db = null;
 for (const p of ['../db', '../../db', './db', './server/db']) {
     try { db = require(p); break; } catch (e) {}
@@ -38,8 +38,15 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     const lobby = lobbies[code];
     if (!lobby) return;
 
-    const hasActiveHumanSocket = lobby.players.some(p => !p.isBot && p.id && p.id.readyState === WebSocket.OPEN);
-    if (hasActiveHumanSocket) return;
+    const now = Date.now();
+    const hasActiveHuman = lobby.players.some(p => {
+        if (p.isBot) return false;
+        if (p.id && p.id.readyState === WebSocket.OPEN) return true;
+        if (p.disconnectedAt && (now - p.disconnectedAt < 90000)) return true;
+        return false;
+    });
+
+    if (hasActiveHuman) return;
 
     const closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to inactivity.' });
     lobby.players.forEach(p => {
@@ -135,17 +142,16 @@ function getFeeder21OutOf31(lobby, winnerPlayer, winningSuit) {
 // -------------------------------------------------------------
 function resolveUserId(lobby, username) {
     if (!username) return null;
-    // 1. Check seated player's websocket auth session
-    const p = lobby.players.find(pl => pl.username.toLowerCase() === username.toLowerCase());
-    if (p && p.id && p.id.user && !p.id.user.isGuest) {
+    const p = lobby.players.find(pl => pl.username && pl.username.toLowerCase() === username.toLowerCase());
+    if (p && p.id && p.id.user && !p.id.user.isGuest && p.id.user.userId) {
         return p.id.user.userId;
     }
-    // 2. Check spectator's websocket auth session
-    const s = lobby.spectators.find(sp => sp.username.toLowerCase() === username.toLowerCase());
-    if (s && s.idSocket && s.idSocket.user && !s.idSocket.user.isGuest) {
+
+    const s = lobby.spectators.find(sp => sp.username && sp.username.toLowerCase() === username.toLowerCase());
+    if (s && s.idSocket && s.idSocket.user && !s.idSocket.user.isGuest && s.idSocket.user.userId) {
         return s.idSocket.user.userId;
     }
-    // 3. Fallback to direct SQLite lookup by username
+
     if (db && typeof db.findUserByUsername === 'function') {
         const row = db.findUserByUsername(username);
         if (row && row.id && !row.id.startsWith('gst_')) {
@@ -153,6 +159,61 @@ function resolveUserId(lobby, username) {
         }
     }
     return null;
+}
+
+function syncLifetimeLedgerBalances(lobby) {
+    if (!db || typeof db.recordLifetimeDebt !== 'function') return;
+
+    if (!lobby.persistedLifetimeLedger) {
+        lobby.persistedLifetimeLedger = { main: {}, side: {} };
+    }
+
+    const processCategory = (currentLedger, categoryKey) => {
+        if (!currentLedger) return;
+        if (!lobby.persistedLifetimeLedger[categoryKey]) {
+            lobby.persistedLifetimeLedger[categoryKey] = {};
+        }
+        const persisted = lobby.persistedLifetimeLedger[categoryKey];
+
+        for (const debtorName in currentLedger) {
+            for (const creditorName in currentLedger[debtorName]) {
+                const totalDebt = Number(currentLedger[debtorName][creditorName]) || 0;
+                if (!persisted[debtorName]) persisted[debtorName] = {};
+                const alreadyPersisted = Number(persisted[debtorName][creditorName]) || 0;
+
+                const delta = totalDebt - alreadyPersisted;
+                if (delta > 0) {
+                    const debtorId = resolveUserId(lobby, debtorName);
+                    const creditorId = resolveUserId(lobby, creditorName);
+
+                    if (debtorId && creditorId && debtorId !== creditorId) {
+                        db.recordLifetimeDebt(debtorId, creditorId, delta);
+                        persisted[debtorName][creditorName] = totalDebt;
+                    }
+                }
+            }
+        }
+    };
+
+    processCategory(lobby.mainGameLedger, 'main');
+    processCategory(lobby.sideBetLedger, 'side');
+
+    const allSockets = [
+        ...lobby.players.map(p => p.id),
+        ...lobby.spectators.map(s => s.idSocket)
+    ].filter(ws => ws && ws.readyState === WebSocket.OPEN);
+
+    allSockets.forEach(ws => {
+        try {
+            const uid = (ws.user && !ws.user.isGuest && ws.user.userId)
+                || (typeof db.findUserByUsername === 'function' && ws.currentUsername && db.findUserByUsername(ws.currentUsername)?.id);
+
+            if (uid && !uid.startsWith('gst_')) {
+                const balances = db.getLifetimeBalances(uid);
+                ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+            }
+        } catch (err) {}
+    });
 }
 
 function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUsername, amount) {
@@ -308,6 +369,7 @@ function broadcastLobbyUpdate(code) {
 
 function startDealerDrawPhase(lobby) {
     clearRoundOverTimer(lobby);
+    // Supplies the complete 52-card deck without truncation
     const deck = createDeck();
     lobby.drawPool = deck.map(c => ({ card: c, chosenBy: null }));
     lobby.drawResults = {};
@@ -459,6 +521,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                 if (loser.lives <= 0 && !loser.eliminated) {
                     loser.eliminated = true;
                     resolveFirstToLoseBets(lobby, loser.username);
+                    syncLifetimeLedgerBalances(lobby);
                     if (loser.id && typeof loser.id === 'object') {
                         lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
                     }
@@ -526,7 +589,7 @@ function handleTurnAction(lobby, wsId, actionType) {
     if (calculateBestFourCardScore(currentPlayer.cards) === 31 || calculateScore(currentPlayer.cards) === 31) {
         lobby.hit31Player = currentPlayer.username;
 
-        // Auto-trim 4th card to highest scoring 3-card combination to prevent 4-card freeze
+        // Auto-trim 4th card to highest scoring 3-card combination to prevent hand-lock
         if (currentPlayer.cards.length === 4) {
             let bestCards = currentPlayer.cards.slice(0, 3);
             let maxSc = calculateScore(bestCards);
@@ -590,7 +653,6 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.id !== wsId || currentPlayer.cards.length !== 4) return;
 
-    // Safety guard on index
     if (typeof cardIndex !== 'number' || cardIndex < 0 || cardIndex >= currentPlayer.cards.length) {
         cardIndex = 0;
     }
@@ -717,7 +779,6 @@ function advanceTurnOrResolve(lobby) {
 }
 
 function resolveRoundEnd(lobby) {
-    // Trim any players still holding 4 cards to their best 3
     lobby.players.forEach(p => {
         if (p.cards && p.cards.length === 4) {
             let bestCards = p.cards.slice(0, 3);
@@ -762,6 +823,7 @@ function resolveRoundEnd(lobby) {
         if (loser.lives <= 0 && !loser.eliminated) {
             loser.eliminated = true;
             resolveFirstToLoseBets(lobby, loser.username);
+            syncLifetimeLedgerBalances(lobby);
             if (loser.id && typeof loser.id === 'object') {
                 lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
             }
