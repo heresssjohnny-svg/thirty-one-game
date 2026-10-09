@@ -1,9 +1,10 @@
-// public/js/ledger.js - Session & Lifetime Ledger Engine (PART 1 OF 2)
+// public/js/ledger.js - PART 1 OF 2
+// Session & Lifetime Ledger Management Engine
 
 /**
- * Calculates bilateral/pairwise net balances from raw transactions.
- * Positive = player is owed money (creditor).
- * Negative = player owes money (debtor).
+ * Calculates pairwise/bilateral net balances from raw ledger debts.
+ * Positive value = player is owed money (creditor).
+ * Negative value = player owes money (debtor).
  */
 function calculatePairwiseNet(ledger) {
     if (!ledger) return {};
@@ -23,32 +24,40 @@ function calculatePairwiseNet(ledger) {
 }
 
 /**
- * Renders the in-game Lobby Session Ledger modal
+ * Opens the in-game Session Ledger modal
  */
 function openSessionLedgerModal() {
-    const modal = document.getElementById('ledger-modal') || document.getElementById('session-ledger-modal');
+    const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
 
     renderSessionLedger();
     modal.style.display = 'flex';
 }
 
+/**
+ * Closes the in-game Session Ledger modal
+ */
 function closeSessionLedgerModal() {
-    const modal = document.getElementById('ledger-modal') || document.getElementById('session-ledger-modal');
+    const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (modal) modal.style.display = 'none';
 }
 
+/**
+ * Renders live in-game session debts (main pot and side bets)
+ */
 function renderSessionLedger() {
-    const container = document.getElementById('session-ledger-content') || document.getElementById('ledger-content');
+    const container = document.getElementById('session-ledger-content') 
+        || document.getElementById('ledger-content')
+        || document.getElementById('session-ledger-list');
     if (!container) return;
 
     const state = window.clientState || {};
     const mainLedger = state.mainGameLedger || {};
     const sideLedger = state.sideBetLedger || {};
 
-    // Combine session debts
+    // Combine all active session transactions
     const combined = {};
-    const mergeIntoCombined = (src) => {
+    const mergeLedger = (src) => {
         for (const debtor in src) {
             if (!combined[debtor]) combined[debtor] = {};
             for (const creditor in src[debtor]) {
@@ -58,8 +67,8 @@ function renderSessionLedger() {
         }
     };
 
-    mergeIntoCombined(mainLedger);
-    mergeIntoCombined(sideLedger);
+    mergeLedger(mainLedger);
+    mergeLedger(sideLedger);
 
     const netMatrix = calculatePairwiseNet(combined);
     const myUsername = (state.username || '').toLowerCase();
@@ -68,9 +77,9 @@ function renderSessionLedger() {
 
     for (const p1 in netMatrix) {
         for (const p2 in netMatrix[p1]) {
-            const key = [p1, p2].sort().join(':::');
-            if (processedPairs.has(key)) continue;
-            processedPairs.add(key);
+            const pairKey = [p1, p2].sort().join(':::');
+            if (processedPairs.has(pairKey)) continue;
+            processedPairs.add(pairKey);
 
             const balance = netMatrix[p1][p2];
             if (balance > 0) {
@@ -97,14 +106,14 @@ function renderSessionLedger() {
         const isMeDebtor = r.debtor.toLowerCase() === myUsername;
         const isMeCreditor = r.creditor.toLowerCase() === myUsername;
 
-        const debtorClass = isMeDebtor ? 'color: #f87171; font-weight: bold;' : 'color: #fca5a5;';
-        const creditorClass = isMeCreditor ? 'color: #34d399; font-weight: bold;' : 'color: #86efac;';
+        const debtorStyle = isMeDebtor ? 'color: #f87171; font-weight: bold;' : 'color: #fca5a5;';
+        const creditorStyle = isMeCreditor ? 'color: #34d399; font-weight: bold;' : 'color: #86efac;';
 
         html += `
             <div class="ledger-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 0.6rem 0.8rem; border-radius: 6px; border-left: 3px solid #10b981;">
                 <div style="font-size: 0.9rem;">
-                    <span style="${debtorClass}">${escapeHtml(r.debtor)}</span> owes 
-                    <span style="${creditorClass}">${escapeHtml(r.creditor)}</span>
+                    <span style="${debtorStyle}">${escapeHtml(r.debtor)}</span> owes 
+                    <span style="${creditorStyle}">${escapeHtml(r.creditor)}</span>
                 </div>
                 <div style="font-weight: bold; color: #fbbf24; font-size: 1rem;">
                     $${r.amount.toFixed(2)}
@@ -118,7 +127,7 @@ function renderSessionLedger() {
 }
 
 /**
- * HTML5 Canvas Exporter for sharing session ledgers
+ * Generates an HTML5 Canvas snapshot of the ledger for download or native mobile sharing
  */
 async function shareLedgerSnapshot() {
     const state = window.clientState || {};
@@ -126,7 +135,7 @@ async function shareLedgerSnapshot() {
     const sideLedger = state.sideBetLedger || {};
 
     const combined = {};
-    const mergeIntoCombined = (src) => {
+    const mergeLedger = (src) => {
         for (const debtor in src) {
             if (!combined[debtor]) combined[debtor] = {};
             for (const creditor in src[debtor]) {
@@ -135,8 +144,8 @@ async function shareLedgerSnapshot() {
             }
         }
     };
-    mergeIntoCombined(mainLedger);
-    mergeIntoCombined(sideLedger);
+    mergeLedger(mainLedger);
+    mergeLedger(sideLedger);
 
     const netMatrix = calculatePairwiseNet(combined);
     const rows = [];
@@ -144,9 +153,9 @@ async function shareLedgerSnapshot() {
 
     for (const p1 in netMatrix) {
         for (const p2 in netMatrix[p1]) {
-            const key = [p1, p2].sort().join(':::');
-            if (processedPairs.has(key)) continue;
-            processedPairs.add(key);
+            const pairKey = [p1, p2].sort().join(':::');
+            if (processedPairs.has(pairKey)) continue;
+            processedPairs.add(pairKey);
 
             const balance = netMatrix[p1][p2];
             if (balance > 0) rows.push({ debtor: p2, creditor: p1, amount: balance });
@@ -159,7 +168,7 @@ async function shareLedgerSnapshot() {
     canvas.height = 300 + (Math.max(rows.length, 1) * 45);
     const ctx = canvas.getContext('2d');
 
-    // Canvas background
+    // Felt background styling
     ctx.fillStyle = '#064e3b';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -167,7 +176,7 @@ async function shareLedgerSnapshot() {
     ctx.lineWidth = 6;
     ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
 
-    // Header
+    // Header title
     ctx.fillStyle = '#fbbf24';
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
@@ -258,7 +267,7 @@ function requestLifetimeLedger() {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(payload);
     } else {
-        // Retry shortly if the socket is still handshaking
+        // Retry briefly if the socket connection is still opening
         setTimeout(() => {
             const retryWs = window.gameSocket || window.ws || window.socket;
             if (retryWs && retryWs.readyState === WebSocket.OPEN) {
@@ -275,10 +284,11 @@ function openLifetimeLedgerModal() {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
 
-    // Show initial loading state if container is present
-    const container = document.getElementById('lifetime-ledger-content') 
+    // Target lifetime-ledger-table-container from index.html
+    const container = document.getElementById('lifetime-ledger-table-container') 
+        || document.getElementById('lifetime-ledger-content') 
         || document.getElementById('lifetime-ledger-list')
-        || modal.querySelector('.ledger-content');
+        || (modal.querySelector ? modal.querySelector('.ledger-content') : null);
 
     if (container) {
         container.innerHTML = `
@@ -306,7 +316,8 @@ function closeLifetimeLedgerModal() {
  */
 function renderLifetimeLedger(balances) {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
-    const container = document.getElementById('lifetime-ledger-content') 
+    const container = document.getElementById('lifetime-ledger-table-container')
+        || document.getElementById('lifetime-ledger-content') 
         || document.getElementById('lifetime-ledger-list')
         || (modal ? modal.querySelector('.ledger-content') : null);
 
