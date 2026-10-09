@@ -47,6 +47,21 @@ function sendSocket(payload) {
     }
 }
 
+// Safe audio trigger wrapper
+function safePlaySound(soundName) {
+    const fn = window.playSound || (typeof playSound === 'function' ? playSound : null);
+    if (fn) {
+        try { fn(soundName); } catch (e) {}
+    }
+}
+
+// Safe haptic vibration wrapper (prevents recursive self-calling)
+function safeVibrate(pattern) {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
+}
+
 // -------------------------------------------------------------
 // 2. CASINO PLAYING CARD RENDERER & HAND SCORING
 // -------------------------------------------------------------
@@ -129,7 +144,9 @@ window.toggleModal = function(id) {
 };
 
 window.showCenterNotification = function(msg) {
-    const banner = document.getElementById('center-notification-banner');
+    const banner = document.getElementById('center-notification-banner') || 
+                   document.getElementById('notification-banner') || 
+                   document.getElementById('center-notification');
     if (!banner) return;
     banner.innerText = msg;
     banner.style.display = 'block';
@@ -481,8 +498,8 @@ window.resetToMainMenu = function() {
 // -------------------------------------------------------------
 window.drawCard = function(source) {
     if (window.clientState.isSpectator) return;
-    if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(40);
+    safePlaySound('card');
+    safeVibrate(40);
     sendSocket({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
 };
 
@@ -491,8 +508,8 @@ window.drawFromDiscard = function() { window.drawCard('discard'); };
 
 window.discardCard = function(cardIndex) {
     if (window.clientState.isSpectator) return;
-    if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(30);
+    safePlaySound('card');
+    safeVibrate(30);
     sendSocket({
         type: 'DISCARD_CARD',
         index: cardIndex,
@@ -506,17 +523,17 @@ window.choosePoolCard = function(cardIndex) {
     if (window.appGlobals.hasChosenPoolCard) return;
 
     window.appGlobals.hasChosenPoolCard = true;
-    if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(25);
+    safePlaySound('card');
+    safeVibrate(25);
 
-    // Send both index and cardIndex so any server handler structure accepts the payload
     sendSocket({
         type: 'CHOOSE_POOL_CARD',
         cardIndex: resolvedIndex,
-        index: resolvedIndex
+        index: resolvedIndex,
+        slotIndex: resolvedIndex
     });
 
-    // Auto-unlatch if server response delays so card picks never remain permanently frozen
+    // Safeguard timeout: unlatch lock after 1.2s if server packet dropped or delayed
     setTimeout(() => {
         const snap = window.appGlobals?.latestLobbySnapshot;
         const myName = (document.getElementById('username-input')?.value || window.clientState.username || localStorage.getItem('saved_username') || 'Player1').trim();
@@ -541,6 +558,7 @@ window.toggleReady = function() {
     const btn = document.getElementById('ready-btn');
     if (btn) btn.innerText = window.clientState.isReady ? 'Unready' : 'Ready Up';
     window.appGlobals.hasChosenPoolCard = false;
+    safePlaySound('card');
     sendSocket({ type: 'SET_READY', ready: window.clientState.isReady });
 };
 
@@ -589,20 +607,24 @@ window.kickPeekerAction = function(spectatorUsername) {
 // -------------------------------------------------------------
 function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
-    if (!knockAlertModal) return;
 
     if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
-        knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
-        knockAlertModal.style.display = 'block';
+        if (knockAlertModal) {
+            knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
+            knockAlertModal.style.display = 'block';
+        }
 
         if (window.appGlobals.lastKnownKnockedBy !== lobby.knockedBy) {
             window.appGlobals.lastKnownKnockedBy = lobby.knockedBy;
-            if (typeof playSound === 'function') playSound('knock');
-            if (typeof speakKnockedCue === 'function') speakKnockedCue();
-            if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
+            safePlaySound('knock');
+            const speakCue = window.speakKnockedCue || (typeof speakKnockedCue === 'function' ? speakKnockedCue : null);
+            if (speakCue) {
+                try { speakCue(); } catch (e) {}
+            }
+            safeVibrate([180, 110, 180, 110, 180]);
         }
     } else {
-        knockAlertModal.style.display = 'none';
+        if (knockAlertModal) knockAlertModal.style.display = 'none';
         window.appGlobals.lastKnownKnockedBy = null;
     }
 }
@@ -653,9 +675,12 @@ window.knockRound = function() {
         if (!confirmKnock) return;
     }
 
-    if (typeof playSound === 'function') playSound('knock');
-    if (typeof speakKnockedCue === 'function') speakKnockedCue();
-    if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
+    safePlaySound('knock');
+    const speakCue = window.speakKnockedCue || (typeof speakKnockedCue === 'function' ? speakKnockedCue : null);
+    if (speakCue) {
+        try { speakCue(); } catch (e) {}
+    }
+    safeVibrate([180, 110, 180, 110, 180]);
     sendSocket({ type: 'KNOCK' });
 };
 
@@ -868,13 +893,16 @@ window.updateUIFromLobby = function(lobby) {
     if (lobby.hit31Player) {
         if (window.appGlobals.lastCelebrated31 !== lobby.hit31Player) {
             window.appGlobals.lastCelebrated31 = lobby.hit31Player;
-            if (typeof trigger31Celebration === 'function') {
-                trigger31Celebration(lobby.hit31Player);
-            } else if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(lobby.hit31Player, "HIT 31!");
+            const trig31 = window.trigger31Celebration || (typeof trigger31Celebration === 'function' ? trigger31Celebration : null);
+            const trigWin = window.triggerWinnerCelebration || (typeof triggerWinnerCelebration === 'function' ? triggerWinnerCelebration : null);
+
+            if (trig31) {
+                try { trig31(lobby.hit31Player); } catch (e) {}
+            } else if (trigWin) {
+                try { trigWin(lobby.hit31Player, "HIT 31!"); } catch (e) {}
             }
-            if (typeof playSound === 'function') playSound('win');
-            if (typeof triggerVibration === 'function') triggerVibration([100, 50, 100, 50, 200]);
+            safePlaySound('win');
+            safeVibrate([100, 50, 100, 50, 200]);
         }
     } else {
         window.appGlobals.lastCelebrated31 = null;
@@ -890,31 +918,32 @@ window.updateUIFromLobby = function(lobby) {
         }
         if (winnerName && window.appGlobals.lastCelebratedWinner !== winnerName) {
             window.appGlobals.lastCelebratedWinner = winnerName;
-            if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(winnerName, "TOURNAMENT CHAMPION!");
+            const trigWin = window.triggerWinnerCelebration || (typeof triggerWinnerCelebration === 'function' ? triggerWinnerCelebration : null);
+            if (trigWin) {
+                try { trigWin(winnerName, "TOURNAMENT CHAMPION!"); } catch (e) {}
             }
-            if (typeof playSound === 'function') playSound('win');
-            if (typeof triggerVibration === 'function') triggerVibration([150, 80, 150, 80, 300]);
+            safePlaySound('win');
+            safeVibrate([150, 80, 150, 80, 300]);
         }
     } else if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
         window.appGlobals.lastCelebratedWinner = null;
     }
 
-    // 3. STATE TRANSITION NOTIFICATIONS & DRAW SELECTION RESET
+    // 3. STATE TRANSITION NOTIFICATIONS & DRAW UNLATCH
     if (lobby.gameState !== window.appGlobals.lastGameState) {
         window.appGlobals.hasChosenPoolCard = false;
         window.appGlobals.lastGameState = lobby.gameState;
-        if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
-            const topleft = document.getElementById('discard-pickup-topleft-modal');
-            const fedModal = document.getElementById('fed-card-topright-modal');
-            if (topleft) topleft.style.display = 'none';
-            if (fedModal) fedModal.style.display = 'none';
-        }
+        window.appGlobals.lastPhaseMessage = '';
     }
 
-    // Unlatch choice lock if still waiting for this player to pick
     if ((lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') && !lobby.drawResults?.[activeUsername]) {
         window.appGlobals.hasChosenPoolCard = false;
+    }
+
+    // Phase message notification trigger
+    if (lobby.phaseMessage && lobby.phaseMessage !== window.appGlobals.lastPhaseMessage) {
+        window.showCenterNotification(lobby.phaseMessage);
+        window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
     }
 
     // 4. LIVES VOTING MODAL
@@ -946,8 +975,8 @@ window.updateUIFromLobby = function(lobby) {
     // 5. KNOCK VISUALS & ALERTS
     updateKnockAlertAndAudio(lobby);
 
-    // 6. TOP IN-GAME FEEDS
-    const topleftModal = document.getElementById('discard-pickup-topleft-modal');
+    // 6. TOP IN-GAME FEEDS (INITIAL PICKUP & FED CARD REMINDERS)
+    const topleftModal = document.getElementById('discard-pickup-topleft-modal') || document.getElementById('discard-pickup-modal');
     const topleftCardContent = document.getElementById('discard-pickup-card-content');
     if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
         if (topleftCardContent) {
@@ -958,12 +987,14 @@ window.updateUIFromLobby = function(lobby) {
         topleftModal.style.display = 'none';
     }
 
-    const fedModal = document.getElementById('fed-card-topright-modal');
+    const fedModal = document.getElementById('fed-card-topright-modal') || document.getElementById('fed-card-modal');
     const fedContent = document.getElementById('fed-card-content');
     const fedLabel = document.getElementById('fed-card-label');
-    if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
-        if (fedLabel) fedLabel.innerText = `${lobby.myFedCardReminder.target} took your:`;
-        if (fedContent) fedContent.innerHTML = window.formatCardHtml(lobby.myFedCardReminder.card, true);
+    const myFedReminder = lobby.myFedCardReminder || (lobby.fedCardReminders && lobby.fedCardReminders[activeUsername]);
+
+    if (myFedReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
+        if (fedLabel) fedLabel.innerText = `${myFedReminder.target} took your:`;
+        if (fedContent) fedContent.innerHTML = window.formatCardHtml(myFedReminder.card, true);
         if (fedModal) fedModal.style.display = 'flex';
     } else if (fedModal) {
         fedModal.style.display = 'none';
@@ -1082,12 +1113,13 @@ window.updateUIFromLobby = function(lobby) {
     if (isMyTurnPlaying) {
         if (!window.appGlobals.wasMyTurn) {
             window.appGlobals.wasMyTurn = true;
-            if (typeof playYourTurnCue === 'function') {
-                playYourTurnCue();
-            } else if (typeof playSound === 'function') {
-                playSound('yourturn');
+            const playTurn = window.playYourTurnCue || (typeof playYourTurnCue === 'function' ? playYourTurnCue : null);
+            if (playTurn) {
+                try { playTurn(); } catch (e) {}
+            } else {
+                safePlaySound('yourturn');
             }
-            if (typeof triggerVibration === 'function') triggerVibration([60, 40, 60]);
+            safeVibrate([60, 40, 60]);
         }
     } else {
         window.appGlobals.wasMyTurn = false;
@@ -1135,7 +1167,6 @@ window.updateUIFromLobby = function(lobby) {
         sidebar.style.display = 'none';
     }
 
-    // Top Docked Global Proposals Banner with Confirm / Deny
     const globalProposalsContainer = document.getElementById('global-proposals-container') || document.getElementById('pending-bets-banner');
     if (globalProposalsContainer) {
         const pendingForMe = (lobby.globalProposals || []).filter(p => {
@@ -1242,15 +1273,10 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. DEALER DRAW & TIE BREAKER MODALS (CROSS-COMPATIBLE DOM IDs)
+    // 14. DEALER DRAW & TIE BREAKER MODALS (CROSS-COMPATIBLE IDs)
     const dealerDrawModal = document.getElementById('dealer-draw-modal') || document.getElementById('pool-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
-
-    if (lobby.phaseMessage && lobby.phaseMessage !== window.appGlobals.lastPhaseMessage) {
-        window.showCenterNotification(lobby.phaseMessage);
-        window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
-    }
 
     // --- A. DEALER DRAW SHOWCASE ---
     if (lobby.gameState === 'dealerDraw') {
@@ -1278,7 +1304,6 @@ window.updateUIFromLobby = function(lobby) {
         });
         showcaseHtml += '</div>';
 
-        // Full 52-card pool mapped with index resolution
         let poolHtml = '';
         (lobby.drawPool || []).forEach((slot, idx) => {
             const slotIndex = (slot && slot.index !== undefined) ? slot.index : idx;
