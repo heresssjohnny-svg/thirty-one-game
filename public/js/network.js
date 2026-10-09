@@ -1,4 +1,4 @@
-// public/js/network.js - WebSocket Engine, Event Relay & Menu Dispatcher
+// public/js/network.js - WebSocket Engine, Event Relay & Menu Dispatcher (PART 1 OF 2)
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT INITIALIZATION
@@ -115,7 +115,7 @@ window.connectSocket = function() {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Auto-reclaim seat only if not currently on the auth screen
+        // 2. Auto-reclaim seat only if not on auth screen
         const authScreen = document.getElementById('auth-screen');
         const isAuthScreenVisible = authScreen && authScreen.style.display !== 'none';
         const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
@@ -203,7 +203,7 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'PONG':
-            // Keep-alive heartbeat acknowledgement
+            // Keep-alive heartbeat response
             break;
 
         case 'LOBBY_LIST':
@@ -222,6 +222,18 @@ function handleIncomingServerMessage(data) {
             }
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
+            // 1. Force screen transition: Hide Main Menu/Auth and Show Game View
+            const mainMenu = document.getElementById('main-menu');
+            const authScreen = document.getElementById('auth-screen');
+            const gameView = document.getElementById('game-view');
+            if (mainMenu) mainMenu.style.display = 'none';
+            if (authScreen) authScreen.style.display = 'none';
+            if (gameView) {
+                gameView.style.display = 'flex';
+                gameView.style.visibility = 'visible';
+            }
+
+            // 2. Connect LiveKit Voice Room
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
@@ -232,6 +244,7 @@ function handleIncomingServerMessage(data) {
                 }
             }
 
+            // 3. Render table view
             if (data.lobby && typeof window.updateUIFromLobby === 'function') {
                 window.updateUIFromLobby(data.lobby);
             } else if (data.lobby && typeof window.renderLobbyState === 'function') {
@@ -247,6 +260,12 @@ function handleIncomingServerMessage(data) {
                     localStorage.setItem('blitz31_active_room', data.lobby.code.toUpperCase());
                 }
                 window.appGlobals.latestLobbySnapshot = data.lobby;
+
+                // Ensure game view is visible if receiving active lobby update
+                const activeMenu = document.getElementById('main-menu');
+                const activeView = document.getElementById('game-view');
+                if (activeMenu && activeMenu.style.display !== 'none') activeMenu.style.display = 'none';
+                if (activeView && activeView.style.display !== 'flex') activeView.style.display = 'flex';
 
                 if (data.livekitHost && data.livekitToken) {
                     if (typeof window.connectLiveKit === 'function') {
@@ -319,6 +338,7 @@ function handleIncomingServerMessage(data) {
             break;
     }
 }
+// public/js/network.js - Outgoing Dispatcher, Menu Actions & DOM Bridging (PART 2 OF 2)
 
 // -------------------------------------------------------------
 // 3. OUTGOING MESSAGE DISPATCHER
@@ -343,9 +363,10 @@ window.initSocketAndSend = function(payload) {
 };
 
 window.sendSocketMessage = window.initSocketAndSend;
+window.sendSocket = window.initSocketAndSend;
 
 // -------------------------------------------------------------
-// 4. GLOBAL GAME & MENU ACTIONS (SAFEGUARDED WRAPPERS)
+// 4. GLOBAL GAME & MENU ACTIONS
 // -------------------------------------------------------------
 window.createLobby = function() {
     try {
@@ -666,7 +687,61 @@ window.kickPeekerAction = function(spectatorUsername) {
 };
 
 // -------------------------------------------------------------
-// 5. MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
+// 5. UNIVERSAL DOM BUTTON ATTACHMENT & LEDGER BRIDGING
+// -------------------------------------------------------------
+function bindAllMenuAndLedgerButtons() {
+    // Create Table buttons
+    const createBtns = [document.getElementById('create-lobby-btn'), document.getElementById('create-table-btn')];
+    createBtns.forEach(btn => {
+        if (btn) btn.onclick = (e) => { e.preventDefault(); window.createLobby(); };
+    });
+
+    // Join Table buttons
+    const joinBtns = [document.getElementById('join-lobby-btn'), document.getElementById('join-table-btn')];
+    joinBtns.forEach(btn => {
+        if (btn) btn.onclick = (e) => { e.preventDefault(); window.joinLobby(); };
+    });
+
+    // Refresh buttons
+    const refreshBtns = [document.getElementById('refresh-lobbies-btn'), document.getElementById('refresh-btn')];
+    refreshBtns.forEach(btn => {
+        if (btn) btn.onclick = (e) => { e.preventDefault(); window.refreshLobbies(); };
+    });
+
+    // Ledger buttons (Main menu and HUD)
+    const ledgerBtns = [
+        document.getElementById('ledger-btn'),
+        document.getElementById('open-ledger-btn'),
+        document.getElementById('session-ledger-btn'),
+        document.getElementById('in-game-ledger-btn')
+    ];
+    ledgerBtns.forEach(btn => {
+        if (btn) btn.onclick = (e) => { e.preventDefault(); window.toggleLedgerModal(); };
+    });
+}
+
+// Universal Ledger Opener Bridge
+window.toggleLedgerModal = window.openLedgerModal = window.toggleSessionLedger = function() {
+    const modal = document.getElementById('session-ledger-modal') || 
+                  document.getElementById('ledger-modal') || 
+                  document.getElementById('lifetime-ledger-modal');
+    if (!modal) {
+        alert("Ledger modal not found in DOM.");
+        return;
+    }
+    const isVisible = modal.style.display === 'flex' || modal.style.display === 'block';
+    modal.style.display = isVisible ? 'none' : 'flex';
+
+    if (!isVisible) {
+        window.initSocketAndSend({ type: 'GET_LIFETIME_LEDGER' });
+        if (typeof window.renderSessionLedger === 'function') {
+            window.renderSessionLedger();
+        }
+    }
+};
+
+// -------------------------------------------------------------
+// 6. MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
 // -------------------------------------------------------------
 function resyncActiveSession() {
     const authScreen = document.getElementById('auth-screen');
@@ -702,6 +777,12 @@ window.addEventListener('pageshow', () => {
     resyncActiveSession();
 });
 
-// Restore saved form values and establish connection on script boot
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindAllMenuAndLedgerButtons);
+} else {
+    bindAllMenuAndLedgerButtons();
+}
+
+// Restore saved form values and establish connection on boot
 window.restoreSavedInputs();
 window.connectSocket();
