@@ -1,21 +1,28 @@
-// public/js/network.js - WebSocket Engine, Dispatcher & Game Event Relay
+// public/js/network.js - WebSocket Engine, Dispatcher & Game Event Relay (PART 1 OF 2)
 
 // -------------------------------------------------------------
-// 1. STATE & ENVIRONMENT INITIALIZATION
+// 1. STATE & PERSISTENT ENVIRONMENT INITIALIZATION
 // -------------------------------------------------------------
-window.appGlobals = window.appGlobals || {
-    ws: null,
-    isConnected: false,
-    pendingQueue: [],
-    currentJoinedCode: null,
-    latestLobbySnapshot: null,
-    lastKnownKnockedBy: null,
-    lastPhaseMessage: '',
-    lastGameState: ''
-};
+window.appGlobals = window.appGlobals || {};
+
+// Rehydrate active room code from localStorage so force-closes do not drop table context
+window.appGlobals.currentJoinedCode = localStorage.getItem('blitz31_active_room') || null;
+window.appGlobals.ws = null;
+window.appGlobals.isConnected = false;
+window.appGlobals.pendingQueue = [];
+window.appGlobals.latestLobbySnapshot = null;
+window.appGlobals.wasMyTurn = false;
+window.appGlobals.lastKnownKnockedBy = null;
+window.appGlobals.hasChosenPoolCard = false;
+window.appGlobals.lastPhaseMessage = '';
+window.appGlobals.lastGameState = '';
+window.appGlobals.lastCelebratedWinner = null;
+window.appGlobals.lastCelebrated31 = null;
+window.appGlobals.lastChatCount = 0;
+window.appGlobals.notificationTimer = null;
 
 window.clientState = window.clientState || {
-    username: 'Player1',
+    username: localStorage.getItem('saved_username') || 'Player1',
     isReady: false,
     playersList: [],
     spectatorsList: [],
@@ -32,7 +39,7 @@ window.clientState = window.clientState || {
     pendingBetsList: []
 };
 
-// Input persistence fallback so inputs never throw ReferenceError
+// Input persistence helpers
 window.saveInputs = window.saveInputs || function() {
     try {
         const u = document.getElementById('username-input');
@@ -97,32 +104,37 @@ window.connectSocket = function() {
             reconnectTimer = null;
         }
 
-        // 1. Authenticate socket session if JWT token exists
+        // 1. Authenticate session if token exists
         const jwtToken = localStorage.getItem('31_jwt');
         if (jwtToken) {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Auto-rejoin active table on mobile reconnect / focus recovery
-        if (window.appGlobals.currentJoinedCode) {
+        // 2. Reclaim seat if returning to an active game from background or restart
+        const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+        if (activeRoom) {
+            window.appGlobals.currentJoinedCode = activeRoom;
             const usernameInput = document.getElementById('username-input');
-            const activeUsername = usernameInput ? usernameInput.value.trim() : (window.clientState.username || 'Player1');
+            const activeUsername = usernameInput?.value.trim() || localStorage.getItem('saved_username') || window.clientState.username || 'Player1';
+
             ws.send(JSON.stringify({
                 type: 'JOIN_LOBBY',
-                code: window.appGlobals.currentJoinedCode,
+                code: activeRoom,
                 username: activeUsername
             }));
         }
 
-        // 3. Flush queued messages
-        while (window.appGlobals.pendingQueue.length > 0) {
+        // 3. Flush any queued actions buffered while offline
+        while (window.appGlobals.pendingQueue && window.appGlobals.pendingQueue.length > 0) {
             const msg = window.appGlobals.pendingQueue.shift();
             ws.send(JSON.stringify(msg));
         }
 
-        // 4. Query public lobbies
-        window.initSocketAndSend({ type: 'GET_LOBBIES' });
-        window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+        // 4. Update lobby browser lists
+        if (typeof window.initSocketAndSend === 'function') {
+            window.initSocketAndSend({ type: 'GET_LOBBIES' });
+            window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+        }
     };
 
     ws.onmessage = (event) => {
@@ -141,24 +153,25 @@ window.connectSocket = function() {
         window.ws = null;
         window.appGlobals.ws = null;
 
-        // Auto-reconnect if authenticated or inside an active room
+        // Auto-reconnect if authenticated or participating in an ongoing table
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
-                if (window.userSession || window.appGlobals.currentJoinedCode) {
+                const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+                if (window.userSession || activeRoom) {
                     window.connectSocket();
                 }
-            }, 1500);
+            }, 1000);
         }
     };
 
     ws.onerror = (err) => {
-        console.warn('[WS] Socket encounter:', err);
+        console.warn('[WS] Socket error event:', err);
     };
 };
 
 /**
- * Message dispatcher: Routes server state to UI, Audio, and LiveKit modules
+ * Routes incoming server payloads directly to client modules
  */
 function handleIncomingServerMessage(data) {
     switch (data.type) {
@@ -172,10 +185,15 @@ function handleIncomingServerMessage(data) {
 
         case 'LOBBY_CREATED':
         case 'LOBBY_JOINED':
-            if (data.code) window.appGlobals.currentJoinedCode = data.code;
-            if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
+            if (data.code) {
+                window.appGlobals.currentJoinedCode = data.code;
+                localStorage.setItem('blitz31_active_room', data.code);
+            }
+            if (data.lobby) {
+                window.appGlobals.latestLobbySnapshot = data.lobby;
+            }
 
-            // Connect LiveKit Voice Room (Muted state)
+            // Sync WebRTC Voice Session
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
@@ -186,7 +204,7 @@ function handleIncomingServerMessage(data) {
                 }
             }
 
-            // Render table view
+            // Transition from Menu to Active Table
             if (data.lobby && typeof window.updateUIFromLobby === 'function') {
                 window.updateUIFromLobby(data.lobby);
             } else if (data.lobby && typeof window.renderLobbyState === 'function') {
@@ -197,10 +215,12 @@ function handleIncomingServerMessage(data) {
         case 'GAME_STATE_UPDATE':
         case 'LOBBY_UPDATE':
             if (data.lobby) {
-                if (data.lobby.code) window.appGlobals.currentJoinedCode = data.lobby.code;
+                if (data.lobby.code) {
+                    window.appGlobals.currentJoinedCode = data.lobby.code;
+                    localStorage.setItem('blitz31_active_room', data.lobby.code);
+                }
                 window.appGlobals.latestLobbySnapshot = data.lobby;
 
-                // Sync LiveKit credentials if included in update
                 if (data.livekitHost && data.livekitToken) {
                     if (typeof window.connectLiveKit === 'function') {
                         window.connectLiveKit(data.livekitToken, data.livekitHost, data.lobby.code);
@@ -226,6 +246,7 @@ function handleIncomingServerMessage(data) {
         case 'LEFT_LOBBY':
             window.appGlobals.currentJoinedCode = null;
             window.appGlobals.latestLobbySnapshot = null;
+            localStorage.removeItem('blitz31_active_room');
 
             if (typeof window.disconnectLiveKit === 'function') {
                 window.disconnectLiveKit();
@@ -266,14 +287,13 @@ function handleIncomingServerMessage(data) {
             break;
     }
 }
-
 // -------------------------------------------------------------
 // 3. OUTGOING MESSAGE DISPATCHER
 // -------------------------------------------------------------
 window.initSocketAndSend = function(payload) {
     if (!payload || typeof payload !== 'object') return;
 
-    // Attach active persistent profile identity to all payloads
+    // Attach user credentials and guest state to outbound requests
     if (window.userSession) {
         payload.userId = window.userSession.id;
         payload.isGuest = !!window.userSession.isGuest;
@@ -327,6 +347,7 @@ window.joinLobby = function() {
 
     window.clientState.username = username;
     window.appGlobals.currentJoinedCode = code;
+    localStorage.setItem('blitz31_active_room', code);
 
     window.initSocketAndSend({
         type: 'JOIN_LOBBY',
@@ -343,6 +364,7 @@ window.joinLobbyCode = function(code) {
 
     window.clientState.username = username;
     window.appGlobals.currentJoinedCode = code.toUpperCase();
+    localStorage.setItem('blitz31_active_room', code.toUpperCase());
 
     window.initSocketAndSend({
         type: 'JOIN_LOBBY',
@@ -358,7 +380,10 @@ window.refreshLobbies = function() {
     window.initSocketAndSend({ type: 'GET_LOBBIES' });
 };
 
+// Intentional exit: clear stored room so the client does not auto-rejoin
 window.leaveLobby = function() {
+    window.appGlobals.currentJoinedCode = null;
+    localStorage.removeItem('blitz31_active_room');
     window.initSocketAndSend({ type: 'LEAVE_LOBBY' });
     if (typeof window.disconnectLiveKit === 'function') window.disconnectLiveKit();
     if (typeof window.resetToMainMenu === 'function') window.resetToMainMenu();
@@ -403,7 +428,6 @@ window.drawCard = function(source) {
 window.drawFromDeck = function() { window.drawCard('deck'); };
 window.drawFromDiscard = function() { window.drawCard('discard'); };
 
-// Symmetrical index dispatching so discard actions never freeze
 window.discardCard = function(cardIndex) {
     window.initSocketAndSend({
         type: 'DISCARD_CARD',
@@ -523,31 +547,34 @@ window.kickPeekerAction = function(spectatorUsername) {
 };
 
 // -------------------------------------------------------------
-// 5. MOBILE VISIBILITY & TAB LIFECYCLE AUTO-SYNC
+// 5. MOBILE VISIBILITY, SLEEP/WAKE & FOCUS RE-ENGAGEMENT
 // -------------------------------------------------------------
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-        const ws = window.appGlobals.ws;
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            window.connectSocket();
-        } else if (window.appGlobals.currentJoinedCode) {
-            const usernameInput = document.getElementById('username-input');
-            const activeUsername = usernameInput ? usernameInput.value.trim() : (window.clientState.username || 'Player1');
-            window.initSocketAndSend({
-                type: 'JOIN_LOBBY',
-                code: window.appGlobals.currentJoinedCode,
-                username: activeUsername
-            });
-        }
-    }
-});
-
-window.addEventListener('pageshow', () => {
+function handleAppReactivation() {
+    const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
     const ws = window.appGlobals.ws;
+
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         window.connectSocket();
+    } else if (activeRoom) {
+        const usernameInput = document.getElementById('username-input');
+        const activeUsername = usernameInput?.value.trim() || localStorage.getItem('saved_username') || window.clientState.username || 'Player1';
+
+        window.initSocketAndSend({
+            type: 'JOIN_LOBBY',
+            code: activeRoom,
+            username: activeUsername
+        });
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        handleAppReactivation();
     }
 });
 
-// Auto-run input restoration on script load
+window.addEventListener('pageshow', handleAppReactivation);
+window.addEventListener('focus', handleAppReactivation);
+
+// Auto-run input restoration on script boot
 window.restoreSavedInputs();
