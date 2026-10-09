@@ -410,64 +410,71 @@ html, body {
     pointer-events: auto !important;
 }
 
-/* =============================================================
-   4. NOTIFICATION PILLS (Relocated Below Buttons & Non-Blocking)
+/*  =============================================================
+   4. NOTIFICATION PILLS (Fitted Below Buttons & Above Top Player)
    ============================================================= */
+#in-game-header {
+    position: relative !important;
+}
+
 #center-notification-banner,
 .notification-pill,
 .center-banner {
     position: absolute !important;
-    top: calc(max(46px, env(safe-area-inset-top, 46px)) + 98px) !important;
+    top: calc(100% + 6px) !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
-    z-index: 150 !important; /* Stays beneath the buttons */
-    pointer-events: none !important; /* Taps pass through directly to felt or buttons */
+    z-index: 250 !important;
+    pointer-events: none !important;
+    width: max-content !important;
     max-width: 86vw !important;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.75) !important;
-    border: 1.5px solid var(--accent-gold) !important;
-    background: rgba(4, 28, 16, 0.94) !important;
+    background: rgba(4, 28, 16, 0.95) !important;
+    border: 1.5px solid var(--accent-gold, #d4af37) !important;
     border-radius: 8px !important;
-    padding: 6px 14px !important;
-    font-size: 0.8rem !important;
+    padding: 5px 14px !important;
+    font-size: 0.76rem !important;
     font-weight: 800 !important;
     color: #f8fafc !important;
     text-align: center !important;
+    line-height: 1.25 !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8) !important;
+    white-space: normal !important;
 }
 
 #discard-pickup-topleft-modal,
 .corner-modal.top-left-corner {
     position: absolute !important;
-    top: calc(max(46px, env(safe-area-inset-top, 46px)) + 98px) !important;
+    top: calc(100% + 6px) !important;
     left: 8px !important;
-    z-index: 150 !important;
+    right: auto !important;
+    z-index: 240 !important;
     pointer-events: none !important;
-    background: rgba(4, 20, 13, 0.94) !important;
+    background: rgba(4, 20, 13, 0.95) !important;
     border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
     border-radius: 8px !important;
     padding: 4px 8px !important;
-    font-size: 0.72rem !important;
+    font-size: 0.7rem !important;
     font-weight: 700 !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75) !important;
 }
 
 #fed-card-topright-modal,
 .corner-modal.top-right-corner {
     position: absolute !important;
-    top: calc(max(46px, env(safe-area-inset-top, 46px)) + 98px) !important;
+    top: calc(100% + 6px) !important;
     right: 8px !important;
     left: auto !important;
-    z-index: 150 !important;
+    z-index: 240 !important;
     pointer-events: none !important;
-    background: rgba(4, 20, 13, 0.94) !important;
+    background: rgba(4, 20, 13, 0.95) !important;
     border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
     border-radius: 8px !important;
     padding: 4px 8px !important;
-    font-size: 0.72rem !important;
+    font-size: 0.7rem !important;
     font-weight: 700 !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75) !important;
 }
-
-/* =============================================================
+ =============================================================
    5. PLAYER BOTTOM HUD
    ============================================================= */
 #my-hand-area,
