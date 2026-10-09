@@ -713,3 +713,94 @@ html, body {
         border-top-right-radius: 12px;
     }
 }
+/* =============================================================
+   IN-GAME HUD & WAITING ROOM VIEWPORT RE-DOCKING
+   ============================================================= */
+
+/* 1. Ensure the overall game view stacks properly */
+#game-view,
+#game-screen {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 2. Dock all controls neatly inside a top bar above the table */
+#in-game-header,
+.in-game-header-container,
+#game-view > header {
+    position: relative;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(4, 20, 13, 0.94);
+    border-bottom: 2px solid rgba(212, 175, 55, 0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    z-index: 100;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+}
+
+/* 3. Style the secondary buttons (Voice, Chat, Bets, Board, Settings) */
+#voice-btn,
+#chat-toggle-btn,
+#bets-btn,
+#board-btn,
+#settings-btn,
+.game-tool-btn,
+.feature-btn {
+    background: rgba(14, 46, 29, 0.85) !important;
+    border: 1px solid rgba(212, 175, 55, 0.4) !important;
+    color: var(--accent-gold) !important;
+    border-radius: 6px !important;
+    padding: 5px 10px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* 4. Host control dropdowns & Bot buttons styling */
+#starting-lives-select,
+#table-wager-select,
+#config-lives,
+#config-wager,
+select {
+    background: #04160e !important;
+    border: 1px solid rgba(212, 175, 55, 0.5) !important;
+    color: #f8fafc !important;
+    border-radius: 6px !important;
+    padding: 4px 8px !important;
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+    outline: none !important;
+}
+
+#add-bot-btn,
+#remove-bot-btn,
+.bot-action-btn {
+    background: rgba(15, 35, 24, 0.9) !important;
+    border: 1px solid rgba(212, 175, 55, 0.4) !important;
+    color: #cbd5e1 !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    padding: 4px 8px !important;
+    border-radius: 5px !important;
+    cursor: pointer;
+}
+
+/* 5. Lift the bottom player HUD above mobile navigation bars */
+.my-player-badge,
+#my-seat-container,
+.player-seat[data-seat="0"],
+.bottom-player-hud {
+    bottom: 24px !important;
+    z-index: 80;
+}
+
