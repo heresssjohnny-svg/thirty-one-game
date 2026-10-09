@@ -1,4 +1,4 @@
-// public/js/network.js - WebSocket Engine, Event Relay & Menu Dispatcher (PART 1 OF 2)
+// public/js/network.js - WebSocket Engine, Event Relay & Menu Dispatcher
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT INITIALIZATION
@@ -203,7 +203,7 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'PONG':
-            // Keep-alive heartbeat response
+            // Keep-alive heartbeat acknowledgement
             break;
 
         case 'LOBBY_LIST':
@@ -222,7 +222,7 @@ function handleIncomingServerMessage(data) {
             }
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
-            // 1. Force screen transition: Hide Main Menu/Auth and Show Game View
+            // 1. Force screen transition: Hide Main Menu/Auth and Show Game Felt
             const mainMenu = document.getElementById('main-menu');
             const authScreen = document.getElementById('auth-screen');
             const gameView = document.getElementById('game-view');
@@ -331,6 +331,8 @@ function handleIncomingServerMessage(data) {
             }
             if (typeof window.showCenterNotification === 'function') {
                 window.showCenterNotification(data.message || 'Error occurred');
+            } else {
+                alert(data.message || 'Error occurred');
             }
             break;
 
@@ -338,7 +340,6 @@ function handleIncomingServerMessage(data) {
             break;
     }
 }
-// public/js/network.js - Outgoing Dispatcher, Menu Actions & DOM Bridging (PART 2 OF 2)
 
 // -------------------------------------------------------------
 // 3. OUTGOING MESSAGE DISPATCHER
@@ -386,16 +387,14 @@ window.createLobby = function() {
         window.clientState.username = username;
         localStorage.setItem('saved_username', username);
 
-        if (typeof window.initSocketAndSend === 'function') {
-            window.initSocketAndSend({
-                type: 'CREATE_LOBBY',
-                username,
-                lobbyName,
-                isPrivate
-            });
-        }
+        window.initSocketAndSend({
+            type: 'CREATE_LOBBY',
+            username,
+            lobbyName,
+            isPrivate
+        });
     } catch (err) {
-        console.error("Create Table Error:", err);
+        alert("Create Table Error: " + err.message);
     }
 };
 
@@ -412,11 +411,7 @@ window.joinLobby = function() {
         const code = (codeIn?.value || '').trim().toUpperCase();
 
         if (!code) {
-            if (typeof window.showCenterNotification === 'function') {
-                window.showCenterNotification('Please enter a table code.');
-            } else {
-                alert('Please enter a table code.');
-            }
+            alert('Please enter a table code.');
             return;
         }
 
@@ -426,15 +421,13 @@ window.joinLobby = function() {
         if (window.appGlobals) window.appGlobals.currentJoinedCode = code;
         localStorage.setItem('blitz31_active_room', code);
 
-        if (typeof window.initSocketAndSend === 'function') {
-            window.initSocketAndSend({
-                type: 'JOIN_LOBBY',
-                code,
-                username
-            });
-        }
+        window.initSocketAndSend({
+            type: 'JOIN_LOBBY',
+            code,
+            username
+        });
     } catch (err) {
-        console.error("Join Table Error:", err);
+        alert("Join Table Error: " + err.message);
     }
 };
 
@@ -464,10 +457,8 @@ window.joinLobbyCode = function(code) {
 window.joinLobbyDirect = window.joinLobbyCode;
 
 window.refreshLobbies = function() {
-    if (typeof window.initSocketAndSend === 'function') {
-        window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
-        window.initSocketAndSend({ type: 'GET_LOBBIES' });
-    }
+    window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+    window.initSocketAndSend({ type: 'GET_LOBBIES' });
 };
 
 window.leaveLobby = function() {
@@ -478,13 +469,8 @@ window.leaveLobby = function() {
     if (typeof window.resetToMainMenu === 'function') window.resetToMainMenu();
 };
 
-window.sitDown = function() {
-    window.initSocketAndSend({ type: 'SIT_DOWN' });
-};
-
-window.standUp = function() {
-    window.initSocketAndSend({ type: 'STAND_UP' });
-};
+window.sitDown = function() { window.initSocketAndSend({ type: 'SIT_DOWN' }); };
+window.standUp = function() { window.initSocketAndSend({ type: 'STAND_UP' }); };
 
 window.toggleReady = function() {
     const nextState = !window.clientState.isReady;
@@ -525,9 +511,7 @@ window.discardCard = function(cardIndex) {
     });
 };
 
-window.knockRound = function() {
-    window.initSocketAndSend({ type: 'KNOCK' });
-};
+window.knockRound = function() { window.initSocketAndSend({ type: 'KNOCK' }); };
 
 window.choosePoolCard = function(cardIndex) {
     const idx = (typeof cardIndex === 'number') ? cardIndex : parseInt(cardIndex, 10);
@@ -690,33 +674,33 @@ window.kickPeekerAction = function(spectatorUsername) {
 // 5. UNIVERSAL DOM BUTTON ATTACHMENT & LEDGER BRIDGING
 // -------------------------------------------------------------
 function bindAllMenuAndLedgerButtons() {
+    // Intercept form submissions from refreshing mobile browsers
+    document.querySelectorAll('form').forEach(f => {
+        f.onsubmit = (e) => { e.preventDefault(); };
+    });
+
     // Create Table buttons
-    const createBtns = [document.getElementById('create-lobby-btn'), document.getElementById('create-table-btn')];
-    createBtns.forEach(btn => {
-        if (btn) btn.onclick = (e) => { e.preventDefault(); window.createLobby(); };
+    ['create-lobby-btn', 'create-table-btn', 'create-btn', 'btn-create-lobby'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = (e) => { e.preventDefault(); window.createLobby(); };
     });
 
     // Join Table buttons
-    const joinBtns = [document.getElementById('join-lobby-btn'), document.getElementById('join-table-btn')];
-    joinBtns.forEach(btn => {
-        if (btn) btn.onclick = (e) => { e.preventDefault(); window.joinLobby(); };
+    ['join-lobby-btn', 'join-table-btn', 'join-btn', 'btn-join-lobby'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = (e) => { e.preventDefault(); window.joinLobby(); };
     });
 
-    // Refresh buttons
-    const refreshBtns = [document.getElementById('refresh-lobbies-btn'), document.getElementById('refresh-btn')];
-    refreshBtns.forEach(btn => {
-        if (btn) btn.onclick = (e) => { e.preventDefault(); window.refreshLobbies(); };
+    // Refresh Lobby buttons
+    ['refresh-lobbies-btn', 'refresh-btn', 'btn-refresh-lobbies'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = (e) => { e.preventDefault(); window.refreshLobbies(); };
     });
 
-    // Ledger buttons (Main menu and HUD)
-    const ledgerBtns = [
-        document.getElementById('ledger-btn'),
-        document.getElementById('open-ledger-btn'),
-        document.getElementById('session-ledger-btn'),
-        document.getElementById('in-game-ledger-btn')
-    ];
-    ledgerBtns.forEach(btn => {
-        if (btn) btn.onclick = (e) => { e.preventDefault(); window.toggleLedgerModal(); };
+    // Ledger buttons (Main Menu, Top Bar, HUD)
+    ['ledger-btn', 'open-ledger-btn', 'session-ledger-btn', 'in-game-ledger-btn', 'menu-ledger-btn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = (e) => { e.preventDefault(); window.toggleLedgerModal(); };
     });
 }
 
@@ -768,9 +752,7 @@ function resyncActiveSession() {
 }
 
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-        resyncActiveSession();
-    }
+    if (!document.hidden) resyncActiveSession();
 });
 
 window.addEventListener('pageshow', () => {
