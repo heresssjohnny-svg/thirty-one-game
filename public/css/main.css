@@ -1,21 +1,19 @@
-/* public/css/main.css - Global Casino Felt Theme, Navigation & HUD */
+/* public/css/main.css - Restored Dark Slate/Gold Theme & Viewport Modal Layering */
 
 :root {
-  --bg-dark: #07130e;
-  --bg-surface: #0b1e16;
-  --bg-panel: rgba(11, 30, 22, 0.92);
-  --felt-green: #0a4d2e;
-  --felt-border: #145a32;
-  --accent-gold: #f59e0b;
-  --accent-gold-hover: #d97706;
+  --bg-dark: #070b12;
+  --bg-surface: #0f172a;
+  --bg-panel: rgba(15, 23, 42, 0.94);
+  --accent-gold: #d4af37;
+  --accent-gold-light: #f59e0b;
   --accent-cyan: #38bdf8;
   --accent-green: #10b981;
   --danger-red: #ef4444;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-gold: rgba(245, 158, 11, 0.4);
-  --shadow-hud: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-gold: rgba(212, 175, 55, 0.45);
+  --shadow-hud: 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
 * {
@@ -37,146 +35,111 @@ html, body {
 }
 
 /* -------------------------------------------------------------
-   1. GLOBAL BUTTONS & FORM CONTROLS
+   1. MODAL OVERLAYS (ENSURES ALL MODALS RENDER FRONT & CENTER)
    ------------------------------------------------------------- */
-button {
-  background: var(--felt-green);
-  color: var(--text-main);
-  border: 1px solid var(--border-gold);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease-in-out;
-  display: inline-flex;
+.modal-overlay,
+#dealer-draw-modal,
+#pool-draw-modal,
+#tie-breaker-reveal-modal,
+#settings-modal,
+#spectators-modal,
+#active-bets-modal,
+#seat-action-modal,
+#bet-modal,
+#lives-vote-modal,
+#peek-request-modal,
+#session-ledger-modal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.78) !important;
+  z-index: 10000 !important;
+  display: none;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-button:hover:not(:disabled) {
-  background: #0f683e;
-  border-color: var(--accent-gold);
-  filter: brightness(1.1);
-}
-
-button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  filter: grayscale(0.5);
-}
-
-button.secondary {
-  background: rgba(30, 41, 59, 0.7);
-  border-color: var(--border-subtle);
-  color: var(--text-muted);
-}
-
-button.secondary:hover:not(:disabled) {
-  background: rgba(51, 65, 85, 0.85);
-  color: var(--text-main);
-}
-
-button.danger {
-  background: #991b1b;
-  border-color: #ef4444;
-  color: #fff;
-}
-
-button.danger:hover:not(:disabled) {
-  background: #b91c1c;
-}
-
-input[type="text"],
-input[type="password"],
-select {
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  color: var(--text-main);
-  padding: 6px 10px;
-  font-size: 0.85rem;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-input[type="text"]:focus,
-input[type="password"]:focus,
-select:focus {
-  border-color: var(--accent-gold);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 /* -------------------------------------------------------------
-   2. AUTH & MAIN MENU SCREENS
+   2. NOTIFICATION BANNER & TOP IN-GAME FEED MODALS
    ------------------------------------------------------------- */
-#auth-screen,
-#main-menu {
-  position: fixed;
-  inset: 0;
-  z-index: 8000;
-  background: radial-gradient(circle at center, #0e2e1e 0%, #05140d 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.menu-card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-gold);
-  border-radius: 12px;
-  padding: 20px;
-  width: 100%;
-  max-width: 380px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.menu-card h2 {
-  font-size: 1.3rem;
-  color: var(--accent-gold);
-  text-align: center;
-  letter-spacing: 0.5px;
-}
-
-#lobby-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid var(--border-subtle);
+#center-notification-banner,
+#notification-banner,
+#center-notification {
+  position: fixed !important;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999 !important;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1.5px solid var(--accent-gold);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85);
+  color: var(--text-main);
+  padding: 7px 18px;
   border-radius: 8px;
-  padding: 6px;
-  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+  display: none;
 }
 
-.lobby-item {
+/* Discard Pickup Top-Left Feed */
+#discard-pickup-topleft-modal,
+#discard-pickup-modal {
+  position: fixed !important;
+  top: 68px;
+  left: 10px;
+  z-index: 9995 !important;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--border-gold);
+  border-radius: 8px;
+  padding: 4px 8px;
+  box-shadow: var(--shadow-hud);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+#discard-pickup-card-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease;
+  gap: 4px;
+  font-size: 0.75rem;
 }
 
-.lobby-item:hover {
-  background: rgba(245, 158, 11, 0.15);
+/* Fed Card Reminder Top-Right Feed */
+#fed-card-topright-modal,
+#fed-card-modal {
+  position: fixed !important;
+  top: 68px;
+  right: 10px;
+  z-index: 9995 !important;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  border-radius: 8px;
+  padding: 4px 8px;
+  box-shadow: var(--shadow-hud);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+#fed-card-label {
+  font-size: 0.7rem;
+  color: #f87171;
+  font-weight: 600;
 }
 
 /* -------------------------------------------------------------
-   3. IN-GAME HUD & DOUBLE-ROW HEADER
+   3. IN-GAME HEADER & HUD ROW
    ------------------------------------------------------------- */
 #game-view {
   width: 100vw;
@@ -193,7 +156,7 @@ select:focus {
   flex-direction: column;
   gap: 4px;
   padding: 6px 10px;
-  background: rgba(5, 18, 12, 0.94);
+  background: rgba(11, 15, 25, 0.95);
   border-bottom: 1px solid var(--border-subtle);
   z-index: 500;
   box-shadow: var(--shadow-hud);
@@ -215,21 +178,6 @@ select:focus {
   letter-spacing: 0.5px;
 }
 
-.hud-actions-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#lobby-config-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-/* Spectator Peeking Banner */
 #active-peeking-banner {
   display: none;
   align-items: center;
@@ -243,87 +191,12 @@ select:focus {
 }
 
 /* -------------------------------------------------------------
-   4. NOTIFICATION BANNER & TOP-CORNER FEEDS (Z-INDEX SAFEGUARDS)
-   ------------------------------------------------------------- */
-/* Fixed at high z-index to stay above the canvas, felt, and headers */
-#center-notification-banner,
-#notification-banner,
-#center-notification {
-  position: fixed !important;
-  top: 72px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999 !important;
-  background: rgba(4, 20, 13, 0.96);
-  border: 1.5px solid var(--accent-gold);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
-  color: var(--text-main);
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-align: center;
-  pointer-events: none;
-  display: none;
-  animation: fadeInDown 0.2s ease-out;
-}
-
-/* Top-Left Feed: Last Discard Pickup */
-#discard-pickup-topleft-modal,
-#discard-pickup-modal {
-  position: fixed !important;
-  top: 72px;
-  left: 10px;
-  z-index: 9998 !important;
-  background: rgba(8, 24, 16, 0.92);
-  border: 1px solid var(--border-gold);
-  border-radius: 8px;
-  padding: 4px 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  display: none;
-  align-items: center;
-  gap: 6px;
-  pointer-events: none;
-}
-
-#discard-pickup-card-content {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.75rem;
-}
-
-/* Top-Right Feed: Fed Card Reminder */
-#fed-card-topright-modal,
-#fed-card-modal {
-  position: fixed !important;
-  top: 72px;
-  right: 10px;
-  z-index: 9998 !important;
-  background: rgba(8, 24, 16, 0.92);
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  border-radius: 8px;
-  padding: 4px 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  display: none;
-  align-items: center;
-  gap: 6px;
-  pointer-events: none;
-}
-
-#fed-card-label {
-  font-size: 0.7rem;
-  color: #f87171;
-  font-weight: 600;
-}
-
-/* -------------------------------------------------------------
-   5. GLOBAL SIDE BETS DOCKED TOASTS & SIDEBAR
+   4. DOCKED GLOBAL PROPOSALS & SIDEBAR
    ------------------------------------------------------------- */
 #global-proposals-container,
 #pending-bets-banner {
   position: fixed;
-  top: 110px;
+  top: 108px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9990;
@@ -335,7 +208,7 @@ select:focus {
 }
 
 .global-bet-toast {
-  background: rgba(4, 20, 13, 0.96);
+  background: rgba(15, 23, 42, 0.96);
   border: 1px solid var(--accent-gold);
   border-radius: 6px;
   padding: 5px 10px;
@@ -343,7 +216,7 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
 #global-side-bets-sidebar {
@@ -353,7 +226,7 @@ select:focus {
   z-index: 5000;
   width: 220px;
   max-height: 45vh;
-  background: rgba(6, 20, 14, 0.94);
+  background: rgba(15, 23, 42, 0.95);
   border: 1px solid var(--border-gold);
   border-radius: 8px;
   padding: 8px;
@@ -381,7 +254,7 @@ select:focus {
 }
 
 /* -------------------------------------------------------------
-   6. IN-GAME CHAT DRAWER
+   5. CHAT DRAWER
    ------------------------------------------------------------- */
 #chat-window {
   position: fixed;
@@ -389,13 +262,13 @@ select:focus {
   right: 12px;
   width: 280px;
   height: 250px;
-  background: rgba(5, 18, 12, 0.96);
+  background: rgba(11, 15, 25, 0.96);
   border: 1px solid var(--border-gold);
   border-radius: 10px;
   z-index: 6000;
   display: none;
   flex-direction: column;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
   overflow: hidden;
 }
 
@@ -418,7 +291,7 @@ select:focus {
   display: flex;
   padding: 6px;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.35);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -429,35 +302,8 @@ select:focus {
 #chat-toggle-btn.unread {
   background: #d97706 !important;
   border-color: #fbbf24 !important;
-  animation: pulseGold 1.2s infinite;
 }
 
-/* -------------------------------------------------------------
-   7. ANIMATIONS
-   ------------------------------------------------------------- */
-@keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -8px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-}
-
-@keyframes pulseGold {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
-  }
-}
-
-/* -------------------------------------------------------------
-   8. MOBILE RESPONSIVE TWEAKS
-   ------------------------------------------------------------- */
 @media (max-width: 600px) {
   #chat-window {
     width: 90vw;
