@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Cache-busted stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=45">
-    <link rel="stylesheet" href="/css/table.css?v=45">
-    <link rel="stylesheet" href="/css/modals.css?v=45">
+    <link rel="stylesheet" href="/css/main.css?v=50">
+    <link rel="stylesheet" href="/css/table.css?v=50">
+    <link rel="stylesheet" href="/css/modals.css?v=50">
 
     <!-- LiveKit SDK & Google Auth -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -154,6 +154,7 @@
                     <button id="voice-btn" class="feature-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
                     <button id="chat-toggle-btn" class="feature-btn" onclick="toggleChatWindow()">💬 Chat</button>
                     <button id="bets-btn" class="feature-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
+                    <button id="ledger-btn" class="feature-btn" onclick="if(typeof openSessionLedgerModal==='function'){openSessionLedgerModal();}else if(typeof toggleSessionLedger==='function'){toggleSessionLedger(true);}else{toggleModal('session-ledger-modal');}">📊 Ledger</button>
                     <button id="board-btn" class="feature-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
                     <button id="settings-btn" class="feature-btn" onclick="openSettingsModal()">⚙️</button>
                 </div>
@@ -183,7 +184,9 @@
                     </div>
                 </div>
 
-                <!-- DOCKED NOTIFICATIONS (Placed strictly between bot buttons & table felt) -->
+                <!-- DOCKED NOTIFICATIONS & PROPOSALS BANNER -->
+                <div id="pending-bets-banner" style="display: none;"></div>
+                <div id="global-proposals-container" style="display: none;"></div>
                 <div id="center-notification-banner" class="center-banner" style="display: none;"></div>
                 <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
                     <div id="discard-pickup-card-content"></div>
@@ -211,16 +214,26 @@
                 <div id="my-cards-container"></div>
             </footer>
         </div>
+
         <!-- 4. MODALS, POPUPS & DRAWERS -->
         <canvas id="celebration-canvas"></canvas>
         <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
 
         <!-- DEALER CUT / DRAW PHASE MODAL (Zero-scroll grid layout) -->
+        <div id="dealer-draw-modal" class="modal-overlay fullscreen-modal" style="display: none;">
+            <div class="modal-card full-pool-card">
+                <h2 id="dealer-draw-title">Pick a Card for Dealer</h2>
+                <p id="dealer-draw-desc">Lowest card deals. Ace is high.</p>
+                <div id="draw-results-stream" class="results-stream"></div>
+                <div id="draw-pool-grid" class="card-pool-grid pool-52-grid"></div>
+            </div>
+        </div>
+
         <div id="pool-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
             <div class="modal-box wide">
                 <h3 id="pool-modal-title">Picking for Dealer</h3>
                 <p id="pool-modal-instruction" class="subtitle">Lowest card deals (Ace highest). Tap any card!</p>
-                <div id="pool-cards-container" class="draw-modal-split-layout"></div>
+                <div id="pool-cards-container" class="draw-modal-split-layout pool-52-grid"></div>
             </div>
         </div>
 
@@ -294,6 +307,28 @@
             </div>
         </div>
 
+        <!-- LOBBY SESSION LEDGER MODAL -->
+        <div id="session-ledger-modal" class="modal-backdrop" style="display: none;">
+            <div class="modal-box wide">
+                <h3 class="gold-text">📊 Lobby Session Ledger</h3>
+                <div id="ledger-tables-wrapper">
+                    <h4 style="margin: 12px 0 6px 0; color: #86efac; font-size: 0.95rem;">Active Side Bets in Play</h4>
+                    <div id="active-session-bets-list" class="ledger-section" style="max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; font-size: 0.85rem;">
+                        <div class="empty-list-notice">No active side bets.</div>
+                    </div>
+
+                    <h4 style="margin: 14px 0 6px 0; color: #fde047; font-size: 0.95rem;">Session Net Balances (Main Pot & Side Bets)</h4>
+                    <div id="session-settled-ledger-list" class="ledger-section" style="max-height: 160px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; font-size: 0.85rem;">
+                        <div id="session-ledger-display" class="empty-list-notice">No debts settled this session.</div>
+                    </div>
+                </div>
+                <div class="modal-actions" style="margin-top: 15px; display: flex; justify-content: space-between; gap: 10px;">
+                    <button type="button" class="feature-btn" onclick="if(typeof exportLedgerImage==='function') exportLedgerImage();">📸 Share Ledger</button>
+                    <button type="button" class="secondary-btn" onclick="toggleModal('session-ledger-modal')">Close</button>
+                </div>
+            </div>
+        </div>
+
         <!-- SETTINGS MODAL -->
         <div id="settings-modal" class="modal-backdrop" style="display: none;">
             <div class="modal-box">
@@ -327,7 +362,7 @@
             </div>
         </div>
 
-        <!-- CHAT DRAWER (Uses explicit div container to prevent page reload redirects) -->
+        <!-- CHAT DRAWER -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
             <div class="drawer-header">
                 <h4>Table Chat</h4>
