@@ -1,8 +1,8 @@
-// public/js/voice.js
+// public/js/voice.js - Persistent LiveKit Voice Engine, Bluetooth Routing & Seat Status
 
 let livekitRoom = null;
 let isLiveKitConnected = false;
-let isVoiceChatActive = false;
+let isMicActive = false; // Controls local microphone transmission state
 let isConnectingVoice = false;
 let latestLiveKitHost = null;
 let latestLiveKitToken = null;
@@ -12,35 +12,41 @@ let selectedAudioOutputId = 'default';
 // Background audio keep-alive node to prevent mobile OS tab suspension
 let keepAliveOscillator = null;
 let keepAliveGainNode = null;
+let keepAliveAudioContext = null;
 
 function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
 }
 
 /**
- * Creates an inaudible background audio loop to keep the audio session
- * active on mobile browsers when the app or tab is minimized.
+ * Creates an inaudible background audio loop to keep the mobile audio session
+ * active even when the browser or app window is sent to the background.
  */
 function startBackgroundKeepAliveOscillator() {
     try {
-        if (typeof getAudioContext === 'function') {
-            const ctx = getAudioContext();
-            if (!ctx) return;
-            if (ctx.state === 'suspended') ctx.resume();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
 
-            if (!keepAliveOscillator) {
-                keepAliveOscillator = ctx.createOscillator();
-                keepAliveGainNode = ctx.createGain();
+        if (!keepAliveAudioContext) {
+            keepAliveAudioContext = new AudioCtx();
+        }
 
-                // Near-zero volume continuous loop keeps the hardware audio route alive
-                keepAliveGainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
-                keepAliveOscillator.frequency.setValueAtTime(440, ctx.currentTime);
+        if (keepAliveAudioContext.state === 'suspended') {
+            keepAliveAudioContext.resume();
+        }
 
-                keepAliveOscillator.connect(keepAliveGainNode);
-                keepAliveGainNode.connect(ctx.destination);
+        if (!keepAliveOscillator) {
+            keepAliveOscillator = keepAliveAudioContext.createOscillator();
+            keepAliveGainNode = keepAliveAudioContext.createGain();
 
-                keepAliveOscillator.start();
-            }
+            // Near-zero gain maintains the OS hardware audio route alive without audible noise
+            keepAliveGainNode.gain.setValueAtTime(0.00001, keepAliveAudioContext.currentTime);
+            keepAliveOscillator.frequency.setValueAtTime(440, keepAliveAudioContext.currentTime);
+
+            keepAliveOscillator.connect(keepAliveGainNode);
+            keepAliveGainNode.connect(keepAliveAudioContext.destination);
+
+            keepAliveOscillator.start();
         }
     } catch (e) {
         console.warn("[LiveKit] Could not initialize keep-alive oscillator:", e);
@@ -61,7 +67,10 @@ function stopBackgroundKeepAliveOscillator() {
     } catch (e) {}
 }
 
-// Accepts either (token, host) or (host, token) to prevent ordering bugs
+/**
+ * Universal token fetcher and connector.
+ * Accepts either (token, host, roomCode) or (host, token, roomCode).
+ */
 async function connectLiveKit(arg1, arg2, roomCode) {
     let host = arg1;
     let token = arg2;
@@ -74,15 +83,33 @@ async function connectLiveKit(arg1, arg2, roomCode) {
     return connectToLiveKit(host, token, roomCode);
 }
 
+/**
+ * Connects to the LiveKit voice room and stays connected at all times.
+ * Disconnects any prior room to guarantee strict lobby isolation.
+ */
 async function connectToLiveKit(host, token, roomCode) {
+    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || 'lobby';
+
     if (!host || !token) {
-        console.warn("[LiveKit] Host or Token is missing. Waiting for token grant...");
+        await requestVoiceToken(targetRoom);
         return;
     }
 
     let cleanHost = host.trim();
     if (!cleanHost.startsWith('ws://') && !cleanHost.startsWith('wss://') && !cleanHost.startsWith('http://') && !cleanHost.startsWith('https://')) {
         cleanHost = 'wss://' + cleanHost;
+    }
+
+    // If already connected to this exact lobby room, do not reconnect
+    if (livekitRoom && isLiveKitConnected) {
+        if (livekitRoom.name === targetRoom && latestLiveKitToken === token) {
+            return;
+        }
+        // If switching from a previous lobby room, cleanly disconnect first
+        console.log(`[LiveKit] Switching from room ${livekitRoom.name} to ${targetRoom}...`);
+        try { await livekitRoom.disconnect(); } catch (e) {}
+        livekitRoom = null;
+        isLiveKitConnected = false;
     }
 
     latestLiveKitHost = cleanHost;
@@ -98,11 +125,6 @@ async function connectToLiveKit(host, token, roomCode) {
     isConnectingVoice = true;
 
     try {
-        if (livekitRoom) {
-            try { await livekitRoom.disconnect(); } catch (e) {}
-            livekitRoom = null;
-        }
-
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
@@ -113,6 +135,7 @@ async function connectToLiveKit(host, token, roomCode) {
             }
         });
 
+        // Remote participant audio playback
         livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === LK.Track.Kind.Audio || track.kind === 'audio') {
                 const audioElem = track.attach();
@@ -123,10 +146,9 @@ async function connectToLiveKit(host, token, roomCode) {
                 audioElem.setAttribute('webkit-playsinline', '');
                 audioElem.classList.add('lk-remote-audio');
 
-                // Route to currently selected speaker or Bluetooth output
+                // Route audio through selected output (Bluetooth speaker / phone speaker)
                 if (selectedAudioOutputId && typeof audioElem.setSinkId === 'function') {
                     audioElem.setSinkId(selectedAudioOutputId).catch(() => {
-                        // Fallback to default phone speaker on failure
                         selectedAudioOutputId = 'default';
                         audioElem.setSinkId('default').catch(() => {});
                     });
@@ -152,45 +174,55 @@ async function connectToLiveKit(host, token, roomCode) {
 
         livekitRoom.on(LK.RoomEvent.Disconnected, () => {
             isLiveKitConnected = false;
-            isVoiceChatActive = false;
+            isMicActive = false;
             stopBackgroundKeepAliveOscillator();
             updateVoiceUI();
+            sendVCStatusInternal(false, true);
             refreshVoiceParticipantsList();
+
+            // Auto-reconnect if dropped unexpectedly during an active match
+            if (window.clientState && window.clientState.gameState !== 'mainMenu') {
+                setTimeout(triggerVoiceReconnect, 2000);
+            }
         });
 
         await livekitRoom.connect(cleanHost, token);
         isLiveKitConnected = true;
 
-        // Enter lobby muted by default
+        // Enter room connected in muted listen mode by default
         await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-        isVoiceChatActive = false;
+        isMicActive = false;
+
+        startBackgroundKeepAliveOscillator();
         updateVoiceUI();
         sendVCStatusInternal(true, true);
         refreshAudioOutputDevices();
         refreshVoiceParticipantsList();
 
-        startBackgroundKeepAliveOscillator();
-        console.log("[LiveKit] Successfully connected to room:", cleanHost);
+        console.log(`[LiveKit] Connected to isolated lobby room: ${targetRoom}`);
     } catch (error) {
-        console.error("[LiveKit] Connection error:", error);
+        console.error("[LiveKit] Connection failed:", error);
         isLiveKitConnected = false;
-        isVoiceChatActive = false;
+        isMicActive = false;
         updateVoiceUI();
     } finally {
         isConnectingVoice = false;
     }
 }
 
+/**
+ * Toggles local microphone state only. The room connection remains active at all times.
+ */
 async function toggleVoiceOnOff() {
+    startBackgroundKeepAliveOscillator();
+
+    // If room is not yet connected, establish persistent connection first
     if (!livekitRoom || !isLiveKitConnected) {
+        updateVoiceButtonState('Connecting...');
         if (latestLiveKitHost && latestLiveKitToken) {
-            const btn = document.getElementById('vc-main-btn');
-            if (btn) btn.innerText = 'Connecting...';
             await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
         } else {
-            if (typeof initSocketAndSend === 'function') {
-                initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
-            }
+            await requestVoiceToken();
             return;
         }
     }
@@ -198,75 +230,169 @@ async function toggleVoiceOnOff() {
     if (!livekitRoom || !isLiveKitConnected) return;
 
     try {
-        if (typeof getAudioContext === 'function') {
-            const ctx = getAudioContext();
-            if (ctx && ctx.state === 'suspended') ctx.resume();
+        if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
+            await keepAliveAudioContext.resume();
         }
 
-        if (isVoiceChatActive) {
+        if (isMicActive) {
+            // Mute Microphone
             await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-            isVoiceChatActive = false;
+            isMicActive = false;
             updateVoiceUI();
             sendVCStatusInternal(true, true);
         } else {
-            if (livekitRoom.startAudio) await livekitRoom.startAudio();
+            // Unmute Microphone
+            if (livekitRoom.startAudio) {
+                await livekitRoom.startAudio();
+            }
             await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-            isVoiceChatActive = true;
+            isMicActive = true;
             updateVoiceUI();
             sendVCStatusInternal(true, false);
-            startBackgroundKeepAliveOscillator();
         }
     } catch (err) {
         console.error("[LiveKit] Mic toggle error:", err);
-        isVoiceChatActive = false;
+        isMicActive = false;
         updateVoiceUI();
-        alert("Microphone permission denied or device not found.");
+        sendVCStatusInternal(isLiveKitConnected, true);
+        alert("Microphone permission denied or audio input device unavailable.");
     }
 }
 
 const toggleLiveKitVoice = toggleVoiceOnOff;
 
+/**
+ * Updates Voice Button and LED Indicators
+ */
 function updateVoiceUI() {
-    const btn = document.getElementById('vc-main-btn');
+    const btnMain = document.getElementById('vc-main-btn');
+    const btnHud = document.getElementById('voice-btn') || document.getElementById('voice-toggle-btn');
     const led = document.getElementById('vc-led');
-    if (btn) {
-        btn.innerText = isVoiceChatActive ? '🎙️ Voice: On' : '🎙️ Voice: Off';
+
+    const label = isMicActive ? '🎙️ Mic: On' : '🔇 Mic: Off';
+
+    if (btnMain) {
+        btnMain.innerText = label;
+        btnMain.classList.toggle('active', isMicActive);
+    }
+    if (btnHud) {
+        btnHud.innerText = label;
+        btnHud.classList.toggle('active', isMicActive);
+        btnHud.classList.toggle('ready-active', isMicActive);
     }
     if (led) {
-        if (isVoiceChatActive) led.classList.add('active');
-        else led.classList.remove('active');
+        led.classList.toggle('active', isMicActive);
     }
 }
 
-async function disconnectLiveKit() {
-    stopBackgroundKeepAliveOscillator();
-    if (livekitRoom) {
-        try { await livekitRoom.disconnect(); } catch (e) {}
-        livekitRoom = null;
-    }
-    isLiveKitConnected = false;
-    isVoiceChatActive = false;
-    updateVoiceUI();
-    refreshVoiceParticipantsList();
+function updateVoiceButtonState(text) {
+    const btnMain = document.getElementById('vc-main-btn');
+    const btnHud = document.getElementById('voice-btn') || document.getElementById('voice-toggle-btn');
+    if (btnMain) btnMain.innerText = text;
+    if (btnHud) btnHud.innerText = text;
 }
 
+/**
+ * Broadcasts mic state to the server and optimistically updates seat visuals.
+ */
 function sendVCStatusInternal(inVC, isMuted) {
-    if (typeof initSocketAndSend === 'function') {
-        initSocketAndSend({ type: 'UPDATE_VC_STATUS', inVC, isMuted });
+    const payload = { 
+        type: 'UPDATE_VC_STATUS', 
+        inVC: Boolean(inVC), 
+        isMuted: Boolean(isMuted) 
+    };
+
+    // 1. Dispatch over socket via available handlers
+    if (typeof sendSocket === 'function') {
+        sendSocket(payload);
+    } else if (typeof window.sendSocket === 'function') {
+        window.sendSocket(payload);
+    } else if (typeof initSocketAndSend === 'function') {
+        initSocketAndSend(payload);
+    } else if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend(payload);
+    } else if (window.appGlobals && window.appGlobals.ws && window.appGlobals.ws.readyState === 1) {
+        window.appGlobals.ws.send(JSON.stringify(payload));
+    }
+
+    // 2. Optimistically update local client state
+    if (window.clientState) {
+        window.clientState.inVC = Boolean(inVC);
+        window.clientState.isMuted = Boolean(isMuted);
+    }
+
+    // 3. Immediately re-render seat podiums so local microphone changes reflect instantaneously
+    if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
+        const snap = window.appGlobals.latestLobbySnapshot;
+        const myName = (window.clientState && window.clientState.username) || '';
+        const myPlayer = (snap.players || []).find(p => p.username.toLowerCase() === myName.toLowerCase());
+        if (myPlayer) {
+            myPlayer.inVC = Boolean(inVC);
+            myPlayer.isMuted = Boolean(isMuted);
+            if (typeof window.updateUIFromLobby === 'function') {
+                window.updateUIFromLobby(snap);
+            }
+        }
+    }
+}
+
+/**
+ * Requests a token from backend HTTP route or WebSocket fallback
+ */
+async function requestVoiceToken(roomCode) {
+    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || 'lobby';
+    const myUsername = (window.clientState && window.clientState.username) || 'Player';
+
+    try {
+        const res = await fetch('/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomName: targetRoom, participantName: myUsername })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.token) {
+                await connectToLiveKit(data.host, data.token, targetRoom);
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn("[LiveKit] HTTP token fetch failed, attempting WebSocket fallback:", e.message);
+    }
+
+    // WebSocket fallback
+    const wsPayload = { type: 'REQUEST_LIVEKIT_TOKEN', room: targetRoom };
+    if (typeof sendSocket === 'function') {
+        sendSocket(wsPayload);
+    } else if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend(wsPayload);
     }
 }
 
 function triggerVoiceReconnect() {
     if (latestLiveKitHost && latestLiveKitToken) {
         connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
-        if (typeof showCenterNotification === 'function') {
-            showCenterNotification("Reconnecting voice chat...");
-        }
     } else {
-        if (typeof initSocketAndSend === 'function') {
-            initSocketAndSend({ type: 'REQUEST_LIVEKIT_TOKEN' });
-        }
+        requestVoiceToken();
     }
+}
+
+/**
+ * Exits voice chat only when explicitly leaving the table/lobby.
+ */
+async function disconnectLiveKit() {
+    stopBackgroundKeepAliveOscillator();
+    if (livekitRoom) {
+        try { await livekitRoom.disconnect(); } catch (e) {}
+        livekitRoom = null;
+    }
+    latestLiveKitHost = null;
+    latestLiveKitToken = null;
+    isLiveKitConnected = false;
+    isMicActive = false;
+    updateVoiceUI();
+    sendVCStatusInternal(false, true);
+    refreshVoiceParticipantsList();
 }
 
 function setVoiceChatVolume(val) {
@@ -280,7 +406,7 @@ function setVoiceChatVolume(val) {
 }
 
 /**
- * Changes audio output route to Bluetooth, Headset, or Phone Speaker
+ * Bluetooth & Speaker Route Switching
  */
 async function setAudioOutputDevice(deviceId) {
     selectedAudioOutputId = deviceId || 'default';
@@ -291,14 +417,13 @@ async function setAudioOutputDevice(deviceId) {
             try {
                 await audioEl.setSinkId(selectedAudioOutputId);
             } catch (err) {
-                console.warn("[LiveKit] Unable to set audio sink on element:", err);
-                // Graceful fallback to default phone speaker
+                console.warn("[LiveKit] Failed to set sink ID:", err);
                 try { await audioEl.setSinkId('default'); } catch (e) {}
             }
         }
     }
 
-    const select = document.getElementById('audio-output-select');
+    const select = document.getElementById('audio-output-select') || document.getElementById('setting-audio-output');
     if (select && select.value !== selectedAudioOutputId) {
         select.value = selectedAudioOutputId;
     }
@@ -306,10 +431,10 @@ async function setAudioOutputDevice(deviceId) {
 
 /**
  * Enumerates audio devices, identifies Bluetooth accessories,
- * and handles fallbacks if a Bluetooth device is disconnected.
+ * and automatically falls back to phone speaker if Bluetooth disconnects.
  */
 async function refreshAudioOutputDevices() {
-    const select = document.getElementById('audio-output-select');
+    const select = document.getElementById('audio-output-select') || document.getElementById('setting-audio-output');
     if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
 
     try {
@@ -317,8 +442,8 @@ async function refreshAudioOutputDevices() {
         const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
 
         let isSelectedDeviceStillConnected = false;
-
         let optionsHtml = '<option value="default">Phone Speaker / Default</option>';
+
         audioOutputs.forEach((d, i) => {
             if (d.deviceId === 'default') return;
 
@@ -331,7 +456,7 @@ async function refreshAudioOutputDevices() {
             );
 
             const prefix = isBluetooth ? '🎧 Bluetooth: ' : '🔊 ';
-            const label = d.label ? `${prefix}${d.label}` : `Speaker / Audio Output ${i + 1}`;
+            const label = d.label ? `${prefix}${d.label}` : `Audio Output ${i + 1}`;
 
             if (d.deviceId === selectedAudioOutputId) {
                 isSelectedDeviceStillConnected = true;
@@ -342,9 +467,9 @@ async function refreshAudioOutputDevices() {
 
         select.innerHTML = optionsHtml;
 
-        // If previously selected Bluetooth device was disconnected, seamlessly fallback to phone speaker
+        // Automatically fallback to phone speaker if active Bluetooth device drops
         if (selectedAudioOutputId !== 'default' && !isSelectedDeviceStillConnected) {
-            console.log("[LiveKit] Audio device disconnected. Reverting to Phone Speaker.");
+            console.log("[LiveKit] Bluetooth audio disconnected. Reverting to Phone Speaker.");
             await setAudioOutputDevice('default');
             if (typeof showCenterNotification === 'function') {
                 showCenterNotification("Audio route switched to Phone Speaker");
@@ -362,50 +487,61 @@ function refreshVoiceParticipantsList() {
     if (!listDiv) return;
 
     if (!livekitRoom || !isLiveKitConnected) {
-        listDiv.innerHTML = 'Not connected to voice chat.';
+        listDiv.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">Connecting to voice chat...</span>';
         return;
     }
 
     const participants = [];
     if (livekitRoom.localParticipant) {
         const localName = livekitRoom.localParticipant.identity || livekitRoom.localParticipant.name || 'You';
-        participants.push({ name: `${localName} (You)`, isMuted: !isVoiceChatActive });
+        participants.push({ name: `${localName} (You)`, isMuted: !isMicActive });
     }
 
     if (livekitRoom.remoteParticipants) {
         livekitRoom.remoteParticipants.forEach(rp => {
-            const isSpeaking = rp.isSpeaking;
             const hasAudio = rp.audioTrackPublications && rp.audioTrackPublications.size > 0;
-            const rName = rp.identity || rp.name || 'Remote User';
-            participants.push({ name: rName, isMuted: !hasAudio || !isSpeaking });
+            const rName = rp.identity || rp.name || 'Player';
+            participants.push({ name: rName, isMuted: !hasAudio || !rp.isSpeaking });
         });
     }
 
-    if (participants.length === 0) {
-        listDiv.innerHTML = 'No one currently in voice chat.';
-    } else {
-        listDiv.innerHTML = '<ul style="padding-left:14px; margin:0;">' + participants.map(u => `
-            <li style="margin-bottom:3px;"><b>${u.name}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>
-        `).join('') + '</ul>';
-    }
+    listDiv.innerHTML = '<ul style="padding-left:14px; margin:0; font-size:0.8rem;">' + participants.map(u => `
+        <li style="margin-bottom:3px;"><b>${u.name}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>
+    `).join('') + '</ul>';
 }
 
-// React instantly when Bluetooth headphones connect or disconnect
+// Hardware device listener for instant Bluetooth connect/disconnect detection
 if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
     navigator.mediaDevices.ondevicechange = () => {
         refreshAudioOutputDevices();
     };
 }
 
-// Reactivate audio context and resume stream if browser tab becomes visible again
+// Background resilience: keep audio awake and recover if the OS pauses Web Audio
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden && isLiveKitConnected) {
-        if (typeof getAudioContext === 'function') {
-            const ctx = getAudioContext();
-            if (ctx && ctx.state === 'suspended') {
-                ctx.resume();
-            }
+        if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
+            keepAliveAudioContext.resume();
         }
         startBackgroundKeepAliveOscillator();
     }
 });
+
+// Auto-activate audio context on first screen tap anywhere
+window.addEventListener('click', () => {
+    if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
+        keepAliveAudioContext.resume();
+    }
+}, { once: true });
+
+// Export global handlers
+window.connectLiveKit = connectLiveKit;
+window.connectToLiveKit = connectToLiveKit;
+window.toggleVoiceOnOff = toggleVoiceOnOff;
+window.toggleLiveKitVoice = toggleVoiceOnOff;
+window.disconnectLiveKit = disconnectLiveKit;
+window.setAudioOutputDevice = setAudioOutputDevice;
+window.refreshAudioOutputDevices = refreshAudioOutputDevices;
+window.setVoiceChatVolume = setVoiceChatVolume;
+window.triggerVoiceReconnect = triggerVoiceReconnect;
+window.sendVCStatusInternal = sendVCStatusInternal;
