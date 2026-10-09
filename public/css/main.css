@@ -523,3 +523,204 @@ html, body {
         border-top-right-radius: 12px;
     }
 }
+/* =============================================================
+   IN-GAME TABLE HEADER & LOBBY CONTROLS THEME
+   ============================================================= */
+
+/* Main Header Container */
+.game-header, #table-header, .table-controls-container {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: rgba(4, 20, 13, 0.85);
+    border-bottom: 2px solid rgba(212, 175, 55, 0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+}
+
+/* Room Title & Status */
+.room-title-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #d4af37;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.5px;
+}
+
+#phase-indicator, .phase-status-text {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #cbd5e1;
+    text-align: center;
+}
+
+/* Control Button Rows */
+.btn-row, .hud-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+/* Primary Action Buttons (Ready, Stand Up, End Match, Leave) */
+.hud-action-row button,
+#ready-btn,
+#stand-up-btn,
+#end-match-btn,
+#leave-lobby-btn,
+.hud-btn {
+    background: linear-gradient(180deg, #164e32 0%, #0a291a 100%);
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    color: #f8fafc;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    transition: all 0.15s ease;
+    text-transform: capitalize;
+}
+
+.hud-action-row button:active,
+#ready-btn:active,
+#stand-up-btn:active {
+    transform: translateY(1px);
+    background: #0a291a;
+}
+
+/* Ready Active Highlight */
+#ready-btn.ready-active {
+    background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%);
+    color: #04190e;
+    border-color: #fef08a;
+    font-weight: 800;
+}
+
+/* Secondary Feature Buttons (Voice, Chat, Bets, Board, Settings) */
+.feature-btn,
+#voice-btn,
+#chat-toggle-btn,
+#bets-btn,
+#board-btn,
+#settings-btn {
+    background: rgba(14, 46, 29, 0.7);
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    color: #d4af37;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.feature-btn:hover,
+#chat-toggle-btn:hover {
+    background: rgba(20, 60, 38, 0.9);
+    border-color: #f6e05e;
+}
+
+/* Host Wager, Lives & Bot Controls Row */
+.host-controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+.host-control-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Themed Select Dropdowns */
+.host-control-item select,
+#starting-lives-select,
+#table-wager-select {
+    background: #04160e;
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: #f8fafc;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    outline: none;
+    cursor: pointer;
+}
+
+.host-control-item select:focus {
+    border-color: #f6e05e;
+}
+
+/* Bot Control Buttons */
+.bot-btn-group {
+    display: flex;
+    gap: 4px;
+}
+
+#add-bot-btn,
+#remove-bot-btn {
+    background: rgba(15, 35, 24, 0.9);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#add-bot-btn:hover {
+    border-color: #10b981;
+    color: #10b981;
+}
+
+#remove-bot-btn:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+/* Pot & Hand Score Badges */
+.score-pot-hud {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+#pot-indicator, .pot-badge {
+    background: rgba(4, 20, 13, 0.85);
+    border: 1.5px solid #d4af37;
+    color: #f6e05e;
+    padding: 3px 14px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.9rem;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.25);
+}
