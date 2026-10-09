@@ -15,6 +15,8 @@
     background: radial-gradient(circle at center, #0a1f16 0%, #030a07 100%);
     overflow: hidden;
     position: relative;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* --- 2. TOP HUD BAR & BUTTON ACTIONS --- */
@@ -24,7 +26,8 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    z-index: 100;
+    position: relative;
+    z-index: 500;
 }
 
 .table-info-row {
@@ -75,6 +78,12 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.action-btn:active {
+    transform: scale(0.96);
 }
 
 .action-btn.ready-btn {
@@ -85,6 +94,23 @@
 .action-btn.knock-btn {
     background: #b91c1c;
     border-color: #ef4444;
+}
+
+.action-btn.secondary-btn {
+    background: rgba(30, 41, 59, 0.75);
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+.action-btn.danger-btn {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
+
+#add-bot-btn,
+#remove-bot-btn {
+    background: rgba(14, 116, 144, 0.85);
+    border-color: #38bdf8;
 }
 
 /* Top Corner HUD Badges */
@@ -157,6 +183,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
 }
 
 .card-slot-placeholder {
@@ -213,14 +240,7 @@
     display: none !important;
 }
 
-/* Exact Oval Coordinates matching Blitz 31 original arrangement:
-   - Seat 0: Bottom Center (in front of player hand)
-   - Seat 1: Bottom Left
-   - Seat 2: Top Left
-   - Seat 3: Top Center
-   - Seat 4: Top Right
-   - Seat 5: Bottom Right
-*/
+/* Oval coordinates: Seat 0 in front of player hand, 1-5 positioned clockwise */
 #seat-0, [data-seat="0"] { bottom: 4%; left: 50%; transform: translateX(-50%); }
 #seat-1, [data-seat="1"] { bottom: 22%; left: 4%; }
 #seat-2, [data-seat="2"] { top: 22%; left: 4%; }
@@ -455,6 +475,10 @@
 }
 
 /* --- 8. 52-CARD POOL GRID MODAL --- */
+#dealer-draw-modal {
+    z-index: 9500;
+}
+
 .draw-modal {
     max-width: 420px;
 }
