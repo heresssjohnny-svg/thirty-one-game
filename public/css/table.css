@@ -1,9 +1,8 @@
 /* ==========================================================================
-   BLITZ 31 - FELT TABLE, CASINO CARDS & RESPONSIVE SEAT ENGINE
+   BLITZ 31 - FELT POKER TABLE, AUTHENTIC CARDS & SEAT ARRANGEMENTS
    ========================================================================== */
 
-/* --- 1. TABLE VIEWPORT CONTAINER --- */
-#game-view,
+/* --- 1. FULL VIEWPORT FELT CONTAINER --- */
 .game-viewport {
     display: none;
     flex-direction: column;
@@ -13,17 +12,13 @@
     height: 100vh;
     height: 100dvh;
     padding: 8px 10px 14px 10px;
-    box-sizing: border-box;
-    background: radial-gradient(circle at center, #0a1f16 0%, #040d09 100%);
+    background: radial-gradient(circle at center, #0a1f16 0%, #030a07 100%);
     overflow: hidden;
     position: relative;
-    user-select: none;
-    -webkit-user-select: none;
 }
 
-/* --- 2. TOP HUD, STATUS & CONTROL BUTTON BAR --- */
-.table-header,
-.top-hud-bar {
+/* --- 2. TOP HUD BAR & BUTTON ACTIONS --- */
+.table-header {
     width: 100%;
     max-width: 500px;
     display: flex;
@@ -36,28 +31,31 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 700;
     color: #e2e8f0;
     padding: 0 4px;
 }
 
-#room-title-display,
 .room-title {
-    color: #f59e0b;
+    color: var(--accent-gold);
     font-weight: 800;
     font-size: 0.95rem;
 }
 
-#table-status-message,
-.phase-subtitle {
-    font-size: 0.8rem;
-    color: #94a3b8;
-    min-height: 1.1rem;
+.badge {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
 }
 
-.table-controls,
-.action-bar-row {
+.status-msg {
+    color: #94a3b8;
+}
+
+.table-controls {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
@@ -65,48 +63,52 @@
     align-items: center;
 }
 
-.table-controls button,
-.action-bar-row button {
-    background: rgba(16, 55, 34, 0.85);
+.action-btn {
+    background: rgba(16, 55, 34, 0.9);
     color: #f8fafc;
     border: 1px solid rgba(74, 222, 128, 0.35);
     border-radius: 6px;
     padding: 5px 9px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    min-height: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 30px;
 }
 
-.table-controls button:active,
-.action-bar-row button:active {
-    transform: scale(0.96);
-    background: rgba(22, 101, 52, 0.9);
-}
-
-.table-controls button.secondary {
-    background: rgba(30, 41, 59, 0.75);
-    border-color: rgba(148, 163, 184, 0.3);
-}
-
-#ready-btn {
+.action-btn.ready-btn {
     background: #15803d;
     border-color: #22c55e;
 }
 
-#add-bot-btn,
-#remove-bot-btn {
-    background: rgba(14, 116, 144, 0.8);
-    border-color: #38bdf8;
+.action-btn.knock-btn {
+    background: #b91c1c;
+    border-color: #ef4444;
 }
 
-/* --- 3. OVAL FELT POKER TABLE --- */
-.table-wrapper,
-.felt-area-container {
+/* Top Corner HUD Badges */
+.hud-bubble {
+    position: absolute;
+    top: 8px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    z-index: 150;
+    display: none;
+    align-items: center;
+    gap: 6px;
+}
+
+.left-bubble { left: 8px; }
+.right-bubble { right: 8px; }
+
+/* --- 3. OVAL CASINO TABLE FELT --- */
+.table-wrapper {
     flex: 1;
     width: 100%;
     max-width: 440px;
@@ -117,19 +119,18 @@
     margin: 4px 0;
 }
 
-.poker-table,
-.table-felt {
-    width: 94%;
+.poker-table {
+    width: 95%;
     height: 96%;
     max-height: 480px;
     border-radius: 50% / 38%;
     background: radial-gradient(ellipse at center, #15623b 0%, #0f492b 65%, #092e1a 100%);
-    border: 3px solid #d4af37;
+    border: 3px solid var(--felt-border);
     box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.75), 0 0 20px rgba(212, 175, 55, 0.25);
     position: relative;
 }
 
-/* --- 4. CENTER FELT (DECK & DISCARD) --- */
+/* --- 4. CENTER FELT (DECK, DISCARD & POT) --- */
 .felt-center {
     position: absolute;
     top: 50%;
@@ -139,22 +140,28 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     z-index: 10;
 }
 
-#deck-card-slot,
-#discard-card-slot {
-    width: 54px;
-    height: 76px;
+.felt-cards-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.deck-slot,
+.discard-slot {
+    width: 52px;
+    height: 74px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .card-slot-placeholder {
-    width: 52px;
-    height: 74px;
+    width: 50px;
+    height: 72px;
     border: 2px dashed rgba(255, 255, 255, 0.25);
     border-radius: 6px;
     display: flex;
@@ -162,11 +169,33 @@
     align-items: center;
     justify-content: center;
     color: #94a3b8;
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 700;
 }
 
-/* --- 5. SEATS 0-5 POSITIONING ENGINE --- */
+.card-slot-placeholder .sub {
+    font-size: 0.58rem;
+    opacity: 0.6;
+}
+
+.pot-container {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    font-weight: 800;
+}
+
+.pot-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.pot-value {
+    font-size: 0.95rem;
+    color: var(--accent-gold);
+}
+
+/* --- 5. SEATS ARRANGEMENT (ORIGINAL POSITIONS: SEAT 0 IS BOTTOM CENTER) --- */
 .table-seat {
     position: absolute;
     display: flex;
@@ -179,31 +208,38 @@
     transition: all 0.2s ease;
 }
 
-/* Target empty seats to keep felt uncluttered */
+/* Empty seats are completely hidden */
 .table-seat.empty-seat {
     display: none !important;
 }
 
-/* Coordinate positioning around the oval felt */
-#seat-0, [data-seat="0"] { top: 4%; left: 50%; transform: translateX(-50%); }
-#seat-1, [data-seat="1"] { top: 22%; right: 4%; }
-#seat-2, [data-seat="2"] { bottom: 22%; right: 4%; }
-#seat-3, [data-seat="3"] { bottom: 3%; left: 50%; transform: translateX(-50%); }
-#seat-4, [data-seat="4"] { bottom: 22%; left: 4%; }
-#seat-5, [data-seat="5"] { top: 22%; left: 4%; }
+/* Exact Oval Coordinates matching Blitz 31 original arrangement:
+   - Seat 0: Bottom Center (in front of player hand)
+   - Seat 1: Bottom Left
+   - Seat 2: Top Left
+   - Seat 3: Top Center
+   - Seat 4: Top Right
+   - Seat 5: Bottom Right
+*/
+#seat-0, [data-seat="0"] { bottom: 4%; left: 50%; transform: translateX(-50%); }
+#seat-1, [data-seat="1"] { bottom: 22%; left: 4%; }
+#seat-2, [data-seat="2"] { top: 22%; left: 4%; }
+#seat-3, [data-seat="3"] { top: 4%; left: 50%; transform: translateX(-50%); }
+#seat-4, [data-seat="4"] { top: 22%; right: 4%; }
+#seat-5, [data-seat="5"] { bottom: 22%; right: 4%; }
 
 .seat-avatar {
-    font-size: 1.3rem;
+    font-size: 1.25rem;
     line-height: 1;
     margin-bottom: 2px;
 }
 
 .seat-name {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 800;
     color: #ffffff;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-    max-width: 85px;
+    max-width: 80px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -211,7 +247,7 @@
 
 .seat-lives {
     display: flex;
-    gap: 2px;
+    gap: 1px;
     margin-top: 1px;
 }
 
@@ -233,10 +269,9 @@
     font-size: 0.7rem;
     font-weight: 700;
     color: #94a3b8;
-    margin-top: 1px;
 }
 
-/* Active turn indicator pulse */
+/* Active turn indicator */
 .table-seat.active-turn .seat-name {
     color: #fde047;
 }
@@ -248,12 +283,15 @@
 
 @keyframes turnPulse {
     from { transform: scale(1); }
-    to { transform: scale(1.18); }
+    to { transform: scale(1.15); }
 }
 
-/* --- 6. CASINO PLAYING CARDS ENGINE --- */
-.card,
-.playing-card {
+/* --- 6. CASINO PLAYING CARDS (STRICTLY SCOPED) --- */
+.playing-card,
+.hand-card-wrapper .card,
+#deck-card-slot .card,
+#discard-card-slot .card,
+.seat-cards .card {
     background: #ffffff;
     border-radius: 6px;
     position: relative;
@@ -271,13 +309,12 @@
     color: #0f172a;
 }
 
-/* Dual-corner suit & value pips */
 .card-corner {
     position: absolute;
     display: flex;
     flex-direction: column;
     align-items: center;
-    line-height: 0.9;
+    line-height: 0.88;
     font-weight: 800;
 }
 
@@ -297,11 +334,11 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 1.4rem;
+    font-size: 1.35rem;
     line-height: 1;
 }
 
-/* Casino Card Back Design (DECK slot) */
+/* Authentic Deck Card Back Graphic */
 .card-back {
     background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%) !important;
     border: 2px solid #cbd5e1 !important;
@@ -311,30 +348,34 @@
     width: 100%;
     height: 100%;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     color: #e2e8f0;
+    font-size: 1.1rem;
 }
 
-.deck-card {
-    width: 52px;
-    height: 74px;
+.card-deck-label {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin-top: 1px;
 }
 
+.deck-card,
 .discard-card {
-    width: 52px;
-    height: 74px;
-    font-size: 0.65rem;
+    width: 50px;
+    height: 72px;
 }
 
 .discard-card .card-center-pip {
-    font-size: 1.2rem;
+    font-size: 1.15rem;
 }
 
-/* Opponent mini cards shown inside seat rows */
+/* Opponent mini card backs in seat area */
 .table-mini-card {
-    width: 20px;
-    height: 28px;
+    width: 18px;
+    height: 26px;
     display: inline-block;
     margin: 1px;
     border-radius: 3px;
@@ -345,9 +386,8 @@
     display: none;
 }
 
-/* --- 7. MY HAND (HORIZONTAL ENLARGED DISPLAY) --- */
-.hand-section,
-.my-hand-container {
+/* --- 7. MY HAND (HORIZONTAL ENLARGED LAYOUT) --- */
+.hand-section {
     width: 100%;
     max-width: 500px;
     display: flex;
@@ -363,22 +403,31 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 8px;
-    box-sizing: border-box;
 }
 
-.hand-title-bar span {
+.my-hand-title {
     font-size: 0.85rem;
     font-weight: 800;
     color: #e2e8f0;
 }
 
-#my-cards-container {
+.turn-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.cards-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 98px;
+    min-height: 96px;
     gap: 8px;
     width: 100%;
+}
+
+.no-cards-msg {
+    color: var(--text-muted);
+    font-size: 0.8rem;
 }
 
 .my-card {
@@ -386,18 +435,17 @@
     height: 94px;
     font-size: 0.8rem;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
-    cursor: default;
 }
 
 .my-card .corner-val { font-size: 0.85rem; }
 .my-card .corner-suit { font-size: 0.75rem; }
 .my-card .card-center-pip { font-size: 1.6rem; }
 
-/* Turn discard prompt animation */
+/* Discard animation when 4th card is drawn */
 .my-card.selectable-discard {
     cursor: pointer;
-    box-shadow: 0 0 10px #f59e0b;
-    border: 2px solid #f59e0b;
+    box-shadow: 0 0 10px var(--accent-gold);
+    border: 2px solid var(--accent-gold);
     animation: liftPulse 1s infinite alternate;
 }
 
@@ -406,74 +454,12 @@
     to { transform: translateY(-6px); }
 }
 
-/* --- 8. ACTION BUTTONS & KNOCK --- */
-#knock-btn {
-    background: #b91c1c;
-    border-color: #ef4444;
-    color: #ffffff;
-    font-weight: 800;
-    padding: 3px 12px;
-    border-radius: 6px;
-    font-size: 0.75rem;
-}
-
-#knock-btn:disabled,
-.table-controls button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    filter: grayscale(1);
-}
-
-/* --- 9. TOP HUD OVERLAYS (DISCARD FEED & FED CARDS) --- */
-#discard-pickup-topleft-modal,
-#fed-card-topright-modal {
-    position: absolute;
-    top: 8px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #e2e8f0;
-    font-size: 0.7rem;
-    font-weight: 700;
-    z-index: 150;
-    display: none;
-    align-items: center;
-    gap: 6px;
-}
-
-#discard-pickup-topleft-modal { left: 8px; }
-#fed-card-topright-modal { right: 8px; }
-
-/* --- 10. DEALER DRAW & TIE-BREAKER 52-CARD GRID MODAL --- */
-#dealer-draw-modal {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(3, 7, 18, 0.88);
-    backdrop-filter: blur(4px);
-    z-index: 1000;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    box-sizing: border-box;
-}
-
-.draw-modal-content {
-    background: #0f172a;
-    border: 2px solid #d4af37;
-    border-radius: 12px;
-    padding: 14px;
-    width: 100%;
+/* --- 8. 52-CARD POOL GRID MODAL --- */
+.draw-modal {
     max-width: 420px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
 }
 
-#draw-pool-grid {
+.deck-52-grid {
     display: grid;
     grid-template-columns: repeat(13, 1fr);
     gap: 4px;
