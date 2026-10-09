@@ -2,186 +2,120 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Blitz 31</title>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#064e3b">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#071e13">
+    <link rel="icon" type="image/png" href="/icon-192.png">
 
-    <!-- Google Identity Services SDK -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-    <!-- Stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=3">
-    <link rel="stylesheet" href="/css/table.css">
-    <link rel="stylesheet" href="/css/modals.css">
+    <!-- Stylesheets with version query strings to bust mobile caches -->
+    <link rel="stylesheet" href="/css/main.css?v=6">
+    <link rel="stylesheet" href="/css/table.css?v=6">
+    <link rel="stylesheet" href="/css/modals.css?v=6">
 
     <!-- LiveKit Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
-    <div id="app">
-        <!-- AUTH OVERLAY SCREEN (Restored Original Modal Backdrop & Classes) -->
-        <div id="auth-overlay" class="modal-backdrop" style="display: flex;">
-            <div class="modal-box auth-modal">
-                <div class="auth-header">
-                    <h2>Blitz 31</h2>
-                    <p class="subtitle">Authentic Casino Table Game</p>
+    <!-- Full-screen Canvas Confetti Layer -->
+    <canvas id="celebration-canvas"></canvas>
+
+    <!-- Center Screen Alerts & Notifications -->
+    <div id="center-notification-banner" class="center-banner" style="display:none;"></div>
+    <div id="knock-alert-modal" class="knock-banner" style="display:none;"></div>
+
+    <!-- 1. AUTHENTICATION & LOGIN/REGISTER SCREEN -->
+    <div id="auth-screen" style="display:none;">
+        <div class="auth-card">
+            <h2>Blitz 31</h2>
+            <div id="auth-error-msg" class="auth-error" style="display:none;"></div>
+
+            <div class="auth-tabs">
+                <button id="tab-login-btn" class="active" onclick="switchAuthTab('login')">Log In</button>
+                <button id="tab-register-btn" onclick="switchAuthTab('register')">Register</button>
+            </div>
+
+            <form id="auth-form" onsubmit="handleAuthSubmit(event)">
+                <div class="input-group">
+                    <label for="auth-username">Username</label>
+                    <input type="text" id="auth-username" required autocomplete="username" autocapitalize="none">
                 </div>
-
-                <div class="auth-tabs">
-                    <button id="tab-login" class="tab-btn active" onclick="switchAuthTab('login')">Log In</button>
-                    <button id="tab-register" class="tab-btn" onclick="switchAuthTab('register')">Register</button>
+                <div class="input-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" required autocomplete="current-password">
                 </div>
+                <button type="submit" id="auth-submit-btn" class="gold-btn">Log In</button>
+            </form>
 
-                <div id="auth-form-container">
-                    <div id="login-fields">
-                        <div class="form-group">
-                            <label for="login-username">Username</label>
-                            <input type="text" id="login-username" placeholder="Username" autocomplete="username">
-                        </div>
-                        <div class="form-group">
-                            <label for="login-password">Password</label>
-                            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-                        </div>
-                        <button class="primary-btn full-width" onclick="submitAuthLogin()">Log In</button>
-                    </div>
+            <div class="auth-divider"><span>OR</span></div>
+            <button class="guest-btn" onclick="continueAsGuest()">Play as Guest</button>
+        </div>
+    </div>
 
-                    <div id="register-fields" style="display: none;">
-                        <div class="form-group">
-                            <label for="reg-username">Username</label>
-                            <input type="text" id="reg-username" placeholder="Choose username" autocomplete="username">
-                        </div>
-                        <div class="form-group">
-                            <label for="reg-password">Password</label>
-                            <input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password">
-                        </div>
-                        <button class="primary-btn full-width" onclick="submitAuthRegister()">Create Account</button>
-                    </div>
+    <!-- 2. MAIN MENU SCREEN -->
+    <div id="main-menu" style="display:flex;">
+        <h1>Blitz 31</h1>
+        <div class="user-bar">
+            <span id="menu-user-badge">Player</span>
+            <button id="logout-btn" class="icon-btn" title="Log Out">🚪</button>
+        </div>
 
-                    <div class="auth-divider">
-                        <span>OR</span>
-                    </div>
+        <div class="menu-card">
+            <h2>Create Table</h2>
+            <div class="setup-group">
+                <label>Table Name</label>
+                <input type="text" id="lobby-name-input" placeholder="Table Name">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="private-lobby-checkbox">
+                <label for="private-lobby-checkbox">Private Table</label>
+            </div>
+            <button id="create-table-btn" class="gold-btn" onclick="createLobby()">Create Table</button>
 
-                    <div class="social-auth-actions" style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
-                        <!-- Native Google Identity Prompt & Button Container -->
-                        <div id="google-signin-btn" style="display: flex; justify-content: center; width: 100%;"></div>
-                        <button class="secondary-btn full-width" onclick="submitAuthGuest()">Play as Guest</button>
-                    </div>
-                </div>
-
-                <div id="auth-error-msg" class="auth-error" style="display: none; margin-top: 10px; color: #f87171; text-align: center;"></div>
+            <div class="join-direct-row">
+                <input type="text" id="lobby-code-input" placeholder="Code (e.g. ABCD)" maxlength="6">
+                <button class="join-btn-direct" onclick="joinLobby()">Join</button>
             </div>
         </div>
 
-        <!-- MAIN MENU SCREEN -->
-        <div id="main-menu" class="main-menu-container" style="display: none;">
-            <header class="menu-header">
-                <div class="brand">
-                    <h1>Blitz 31</h1>
-                    <span class="user-badge" id="menu-user-badge">Guest</span>
-                </div>
-                <div class="header-actions">
-                    <button class="icon-btn" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
-                    <button class="icon-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
-                    <button class="icon-btn danger" onclick="logoutSession()" title="Log Out">🚪</button>
-                </div>
-            </header>
-
-            <main class="menu-content">
-                <section class="menu-card create-join-card">
-                    <h3>Table Setup</h3>
-                    <div class="form-group">
-                        <label for="username-input">Player Handle</label>
-                        <input type="text" id="username-input" placeholder="Display Name">
-                    </div>
-                    <div class="form-group">
-                        <label for="lobby-name-input">Table Name</label>
-                        <input type="text" id="lobby-name-input" placeholder="Table Name (optional)">
-                    </div>
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" id="private-lobby-checkbox">
-                            Private Table
-                        </label>
-                    </div>
-                    <div class="button-row">
-                        <button class="primary-btn" onclick="createLobby()">Create Table</button>
-                    </div>
-
-                    <div class="divider-line"></div>
-
-                    <div class="form-inline">
-                        <input type="text" id="lobby-code-input" placeholder="Table Code" maxlength="5">
-                        <button class="secondary-btn" onclick="joinLobby()">Join</button>
-                    </div>
-                </section>
-
-                <section class="menu-card public-lobbies-card">
-                    <div class="card-header-flex">
-                        <h3>Live Tables</h3>
-                        <button class="refresh-btn" onclick="refreshLobbies()">🔄</button>
-                    </div>
-                    <div id="lobby-list" class="lobby-list-container">
-                        <div class="empty-list-notice">Searching for tables...</div>
-                    </div>
-                </section>
-            </main>
+        <div class="live-tables-section">
+            <div class="live-tables-header">
+                <h3>Live Tables</h3>
+                <button class="icon-btn" onclick="refreshLobbies()">🔄</button>
+            </div>
+            <div id="lobby-list"></div>
         </div>
+    </div>
 
-        <!-- IN-GAME TABLE VIEW -->
-        <div id="game-view" class="game-view-container" style="display: none;">
-            <!-- IN-GAME HEADER -->
-            <div class="in-game-header">
-                <div class="header-left">
-                    <span class="room-title" id="room-title-display">Table</span>
-                    <span class="spectator-counter" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></span>
-                    <div id="active-peeking-banner" class="active-peeking-pill" style="display: none;" onclick="stopPeekingAction()">
-                        <span>Peeking</span>
-                        <button class="pill-close-btn">✕</button>
-                    </div>
-                </div>
+    <!-- 3. IN-GAME VIEW & TABLE ARENA -->
+    <div id="game-view" style="display:none;">
+        <header id="in-game-header">
+            <div id="room-title-display">Table [----]</div>
+            <div id="turn-banner">Waiting for players...</div>
 
-                <div class="header-center">
-                    <span id="turn-banner" class="turn-status-banner">Waiting...</span>
-                </div>
-
-                <div class="header-right">
-                    <div id="in-game-top-row-btns" class="button-strip">
-                        <button id="ready-btn" class="action-btn ready-btn" onclick="toggleReady()">Ready Up</button>
-                        <button id="sit-btn" class="action-btn sit-btn" style="display:none;" onclick="sitDown()">Sit Down</button>
-                        <button id="stand-up-btn" class="action-btn stand-btn" onclick="standUp()">Stand Up</button>
-                        <button id="end-game-btn" class="action-btn end-btn" onclick="proposeEndGame()">End Match</button>
-                        <button id="leave-lobby-btn" class="action-btn leave-btn" onclick="leaveLobby()">Leave</button>
-                    </div>
-                </div>
+            <!-- Top Row: Ready, Stand Up, Sit Down, End Match, Leave -->
+            <div id="in-game-top-row-btns">
+                <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
+                <button id="stand-up-btn" onclick="standUp()">Stand Up</button>
+                <button id="sit-btn" style="display:none;" onclick="sitDown()">Sit Down</button>
+                <button id="knock-btn" style="display:none;" onclick="knockRound()">Knock</button>
+                <button id="end-game-btn" onclick="proposeEndGame()">End Match</button>
+                <button id="leave-lobby-btn" onclick="leaveLobby()">Leave</button>
             </div>
 
-            <!-- IN-GAME TOOLS ROW -->
-            <div id="in-game-tools-row" class="tools-bar">
-                <button id="vc-main-btn" class="tool-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
-                <button id="chat-toggle-btn" class="tool-btn" onclick="toggleChatWindow()">💬 Chat</button>
-                <button class="tool-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
-                <button class="tool-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
-                <button class="tool-btn" onclick="openSettingsModal()">⚙️</button>
+            <!-- Second Row: Voice, Chat, Bets, Board, Settings -->
+            <div id="in-game-tools-row">
+                <button id="voice-btn" class="feature-btn">🎙️ Voice: Off</button>
+                <button id="chat-toggle-btn" class="feature-btn" onclick="toggleChatWindow()">💬 Chat</button>
+                <button id="bets-btn" class="feature-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
+                <button id="board-btn" class="feature-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
+                <button id="settings-btn" class="feature-btn" onclick="openSettingsModal()">⚙️</button>
             </div>
 
-            <!-- PEEK NOTIFICATIONS & REMINDERS -->
-            <div id="center-notification-banner" class="notification-pill" style="display: none;"></div>
-            <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
-                <span class="modal-label">Picked Discard:</span>
-                <div id="discard-pickup-card-content"></div>
-            </div>
-            <div id="fed-card-topright-modal" class="corner-modal top-right-corner" style="display: none;">
-                <span id="fed-card-label" class="modal-label">Fed Card:</span>
-                <div id="fed-card-content"></div>
-            </div>
-
-            <!-- WAITING ROOM HOST CONTROLS -->
-            <div id="lobby-config-bar" class="lobby-controls" style="display: none;">
+            <!-- Third Row: Lives, Wager & Bot Controls -->
+            <div id="lobby-config-bar">
                 <div class="config-item">
-                    <label>Starting Lives:</label>
+                    <span>Starting Lives:</span>
                     <select id="config-lives" onchange="updateSettings()">
                         <option value="1">1 Life</option>
                         <option value="2" selected>2 Lives</option>
@@ -189,178 +123,136 @@
                     </select>
                 </div>
                 <div class="config-item">
-                    <label>Table Wager:</label>
+                    <span>Table Wager:</span>
                     <select id="config-wager" onchange="updateWager()">
+                        <option value="1">$1</option>
                         <option value="5" selected>$5</option>
                         <option value="10">$10</option>
                         <option value="20">$20</option>
                     </select>
                 </div>
-                <div class="config-item bot-actions">
-                    <button class="btn-sm" onclick="addBot()">+ Add Bot</button>
-                    <button class="btn-sm danger" onclick="removeBot()">- Remove Bot</button>
+                <div class="bot-controls">
+                    <button id="add-bot-btn" onclick="addBot()">+ Add Bot</button>
+                    <button id="remove-bot-btn" onclick="removeBot()">- Remove Bot</button>
                 </div>
             </div>
+        </header>
 
-            <!-- CASINO FELT OVAL TABLE -->
-            <div class="table-outer-wrapper">
-                <div id="table-oval-container" class="casino-felt-table"></div>
+        <!-- Dynamic Felt Oval Container rendered by table.css & ui.js -->
+        <main id="table-container">
+            <div id="table-oval-container"></div>
+        </main>
+
+        <!-- Player Bottom HUD -->
+        <footer id="my-hand-area" class="bottom-player-hud">
+            <div id="my-hand-title">My Hand (Score: <strong id="my-score-display">0</strong>)</div>
+            <div id="my-cards-container"></div>
+        </footer>
+    </div>
+    <!-- 4. MODALS & OVERLAYS -->
+
+    <!-- Dealer / Tie-Breaker Card Selection Pool Grid -->
+    <div id="dealer-draw-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card full-pool-card">
+            <h2 id="dealer-draw-title">Pick a Card for Dealer</h2>
+            <p id="dealer-draw-desc">Lowest card deals. Ace is high.</p>
+            <div id="draw-pool-grid" class="card-pool-grid"></div>
+            <div id="draw-results-stream" class="results-stream"></div>
+        </div>
+    </div>
+
+    <!-- Active Bets & Side Bets Modal -->
+    <div id="active-bets-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Table Bets</h3>
+                <button class="close-x-btn" onclick="closeActiveBetsModal()">✕</button>
             </div>
-
-            <!-- PLAYER HAND & TURN CONTROLS -->
-            <div class="player-hand-container">
-                <div class="hand-header">
-                    <span id="my-hand-title">My Hand</span>
-                    <button id="knock-btn" class="knock-action-btn" style="display: none;" onclick="knockRound()" disabled>Knock!</button>
+            <div class="bets-content">
+                <div class="bets-section">
+                    <h4>Active Bets</h4>
+                    <div id="active-bets-list"></div>
                 </div>
-                <div id="my-cards-container" class="cards-flex-row"></div>
-            </div>
-
-            <!-- NEXT HAND OVERLAY -->
-            <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
-                <button id="next-hand-btn" class="primary-btn large" onclick="clickNextHand()">Next Hand</button>
-            </div>
-        </div>
-        <!-- SIDEBARS & DRAWERS (Classic Casino Styling) -->
-        <div id="chat-window" class="chat-drawer casino-panel" style="display: none;">
-            <div class="drawer-header casino-drawer-header">
-                <h4 class="gold-text">Table Chat</h4>
-                <button class="close-btn" onclick="toggleChatWindow()">✕</button>
-            </div>
-            <div id="chat-messages" class="drawer-body"></div>
-            <div class="drawer-footer">
-                <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                <button class="gold-btn" onclick="sendChatMessage()">Send</button>
-            </div>
-        </div>
-
-        <div id="global-side-bets-sidebar" class="global-bets-drawer casino-panel" style="display: none;">
-            <div class="drawer-header casino-drawer-header">
-                <h4 class="gold-text">Side Bets Board</h4>
-                <button class="close-btn" onclick="toggleGlobalSidebar()">✕</button>
-            </div>
-            <div id="global-side-bets-list" class="drawer-body"></div>
-        </div>
-
-        <!-- DIALOGS & OVERLAYS -->
-        <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
-
-        <div id="lives-vote-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 class="gold-text">Lives Change Proposed</h3>
-                <p id="lives-vote-prompt">A player proposed changing starting lives.</p>
-                <div class="modal-actions">
-                    <button class="primary-btn gold-btn" onclick="submitLivesVote(true)">Agree</button>
-                    <button class="secondary-btn danger" onclick="submitLivesVote(false)">Disagree</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="bet-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 id="bet-modal-title" class="gold-text">Side Bet Proposal</h3>
-                <div id="bet-modal-body"></div>
-            </div>
-        </div>
-
-        <div id="seat-action-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 id="seat-action-title" class="gold-text">Seat Action</h3>
-                <div id="seat-action-body"></div>
-            </div>
-        </div>
-
-        <div id="pool-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide casino-panel">
-                <h3 id="pool-modal-title" class="gold-text">Draw Phase</h3>
-                <p id="pool-modal-instruction" class="subtitle">Lowest card deals (Ace highest).</p>
-                <div id="pool-cards-container" class="draw-modal-split-layout"></div>
-            </div>
-        </div>
-
-        <div id="tie-breaker-reveal-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide casino-panel">
-                <h3 class="gold-text">Tie Breaker Resolution</h3>
-                <p id="tie-breaker-stream-msg" class="subtitle">Drawing to resolve lowest score...</p>
-                <div id="tie-breaker-stream-grid" class="draw-modal-split-layout"></div>
-            </div>
-        </div>
-
-        <div id="spectators-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 class="gold-text">Spectators</h3>
-                <div id="spectators-list-content"></div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('spectators-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="active-bets-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 class="gold-text">Current Bets</h3>
-                <div id="active-bets-content"></div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('active-bets-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="peek-request-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 class="gold-text">Spectator Peek Request</h3>
-                <p id="peek-modal-msg">A spectator requested to see your cards.</p>
-                <div class="modal-actions">
-                    <button id="peek-allow-btn" class="primary-btn gold-btn">Allow</button>
-                    <button id="peek-deny-btn" class="secondary-btn danger">Deny</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="settings-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box casino-panel">
-                <h3 class="gold-text">Audio & Settings</h3>
-                <div class="settings-group">
-                    <label>Audio Output Device:</label>
-                    <select id="audio-output-select" onchange="setAudioOutputDevice(this.value)">
-                        <option value="default">Phone Speaker / Default</option>
-                    </select>
-                </div>
-                <div class="settings-group">
-                    <label>Voice Chat Volume:</label>
-                    <input type="range" id="voice-volume-slider" min="0" max="1" step="0.05" value="1" oninput="setVoiceChatVolume(this.value)">
-                    <span id="lk-vol-display">100%</span>
-                </div>
-                <div class="settings-group">
-                    <label>Active Speakers in Room:</label>
-                    <div id="vc-participants-list" class="speaker-list">Not connected.</div>
-                </div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('settings-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="lifetime-ledger-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box wide casino-panel">
-                <h3 class="gold-text">Lifetime Ledger Balances</h3>
-                <div id="lifetime-ledger-table-container">
-                    <div class="empty-list-notice">No balance entries found.</div>
-                </div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('lifetime-ledger-modal')">Close</button>
+                <div class="bets-section">
+                    <h4>Propose a Side Bet</h4>
+                    <div class="bet-input-row">
+                        <select id="bet-target-player"></select>
+                        <select id="bet-wager-amount">
+                            <option value="1">$1</option>
+                            <option value="5" selected>$5</option>
+                            <option value="10">$10</option>
+                            <option value="20">$20</option>
+                        </select>
+                        <button class="gold-btn btn-sm" onclick="proposeEliminationBet()">Bet</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Application Script Pipeline -->
+    <!-- Global / Match Lifetime Ledger Modal -->
+    <div id="ledger-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card ledger-modal-card">
+            <div class="modal-header">
+                <h3>Match Ledger</h3>
+                <button class="close-x-btn" onclick="toggleGlobalSidebar()">✕</button>
+            </div>
+            <div id="ledger-tables-wrapper">
+                <h4>Session Net Debts</h4>
+                <div id="session-ledger-display"></div>
+                <h4 style="margin-top:14px;">Lifetime Balances</h4>
+                <div id="lifetime-ledger-display"></div>
+            </div>
+            <div class="ledger-actions-row">
+                <button class="feature-btn" onclick="exportLedgerImage()">📸 Share Ledger</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table & Audio Settings Modal -->
+    <div id="settings-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button class="close-x-btn" onclick="closeSettingsModal()">✕</button>
+            </div>
+            <div class="settings-content">
+                <div class="setting-item">
+                    <label>Audio Output (Device / Bluetooth)</label>
+                    <select id="audio-output-select" onchange="changeAudioOutputDevice()"></select>
+                </div>
+                <div class="setting-item">
+                    <label>Music Volume</label>
+                    <input type="range" id="music-vol-slider" min="0" max="1" step="0.05" value="0.5" oninput="setMusicVolume(this.value)">
+                </div>
+                <div class="setting-item">
+                    <label>Sound Effects</label>
+                    <input type="checkbox" id="sfx-toggle" checked onchange="toggleSFX(this.checked)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. SLIDE-OUT CHAT DRAWER -->
+    <div id="chat-drawer">
+        <div class="chat-header">
+            <h4>Table Chat</h4>
+            <button class="close-x-btn" onclick="toggleChatWindow()">✕</button>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <form class="chat-input-bar" onsubmit="sendChatMessage(event)">
+            <input type="text" id="chat-text-input" placeholder="Type message..." maxlength="140" autocomplete="off">
+            <button type="submit">Send</button>
+        </form>
+    </div>
+
+    <!-- 6. CLIENT JAVASCRIPT ENGINE LOADERS -->
     <script src="/js/config.js"></script>
     <script src="/js/audio.js"></script>
     <script src="/js/celebration.js"></script>
+    <script src="/js/music.js"></script>
     <script src="/js/voice.js"></script>
     <script src="/js/ledger.js"></script>
-    <script src="/js/music.js"></script>
     <script src="/js/network.js"></script>
     <script src="/js/ui.js"></script>
     <script src="/js/app.js"></script>
