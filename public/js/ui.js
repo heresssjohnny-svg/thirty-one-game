@@ -1209,7 +1209,7 @@ window.updateUIFromLobby = function(lobby) {
     }
 
     // 14. DEALER DRAW & TIE BREAKER MODALS
-    const poolModal = document.getElementById('pool-draw-modal');
+    const poolModal = document.getElementById('dealer-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
 
