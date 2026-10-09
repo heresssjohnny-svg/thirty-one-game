@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Blitz 31</title>
-    <!-- Stylesheets in strict cascade order: Base/Modals first, Felt/Table second -->
     <link rel="stylesheet" href="/css/main.css">
     <link rel="stylesheet" href="/css/table.css">
 </head>
@@ -26,7 +25,6 @@
                 </div>
 
                 <div class="menu-action-tabs">
-                    <!-- Host Table Section -->
                     <div class="menu-sub-card">
                         <h3>Host Table</h3>
                         <div class="form-group">
@@ -36,33 +34,30 @@
                             <input type="checkbox" id="private-lobby-checkbox">
                             <label for="private-lobby-checkbox">Private Table</label>
                         </div>
-                        <button id="create-lobby-btn" class="primary-btn">Create Table</button>
+                        <button id="create-lobby-btn" class="primary-btn" onclick="window.createLobby()">Create Table</button>
                     </div>
 
-                    <!-- Join Table Section -->
                     <div class="menu-sub-card">
                         <h3>Join Code</h3>
                         <div class="form-row">
                             <input type="text" id="lobby-code-input" placeholder="CODE" maxlength="4" style="text-transform: uppercase;">
-                            <button id="join-lobby-btn" class="primary-btn">Join</button>
+                            <button id="join-lobby-btn" class="primary-btn" onclick="window.joinLobby()">Join</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Public Lobbies Section -->
                 <div class="public-lobbies-section">
                     <div class="section-title-bar">
                         <span>Available Tables</span>
-                        <button id="refresh-lobbies-btn" class="icon-btn" title="Refresh">↻</button>
+                        <button id="refresh-lobbies-btn" class="icon-btn" onclick="window.refreshLobbies()" title="Refresh">↻</button>
                     </div>
                     <div id="lobby-list" class="lobby-table-list">
                         <div class="empty-list-placeholder">Searching for tables...</div>
                     </div>
                 </div>
 
-                <!-- Footer Menu Actions -->
                 <div class="menu-footer-actions">
-                    <button id="ledger-btn" class="secondary-btn">📊 Lifetime Ledger</button>
+                    <button id="ledger-btn" class="secondary-btn" onclick="window.toggleLedgerModal()">📊 Lifetime Ledger</button>
                     <button id="logout-btn" class="danger-btn">Log Out</button>
                 </div>
             </div>
@@ -73,15 +68,15 @@
     <!-- 2. IN-GAME VIEWPORT & FELT POKER TABLE                           -->
     <!-- ================================================================= -->
     <div id="game-view" class="game-viewport">
-        <!-- Top HUD Feeds (21-out-of-31 & Discard Reminders) -->
-        <div id="discard-pickup-topleft-modal" class="hud-bubble left-bubble">
+        <!-- Top HUD Feeds -->
+        <div id="discard-pickup-topleft-modal" class="hud-bubble left-bubble" style="display: none;">
             <div id="discard-pickup-card-content"></div>
         </div>
-        <div id="fed-card-topright-modal" class="hud-bubble right-bubble">
+        <div id="fed-card-topright-modal" class="hud-bubble right-bubble" style="display: none;">
             <span id="fed-card-label"></span>
         </div>
 
-        <!-- Top Header & Navigation Bar -->
+        <!-- Table Header & Controls Bar -->
         <header class="table-header">
             <div class="table-info-row">
                 <div class="left-info">
@@ -95,10 +90,10 @@
 
             <!-- In-Game Action Bar -->
             <nav class="table-controls">
-                <button id="ready-btn" class="action-btn ready-btn">Ready Up</button>
-                <button id="next-hand-btn" class="action-btn next-hand-btn" style="display:none;">Next Hand</button>
-                <button id="add-bot-btn" class="action-btn secondary-btn" style="display:none;">+ Bot</button>
-                <button id="remove-bot-btn" class="action-btn secondary-btn" style="display:none;">- Bot</button>
+                <button id="ready-btn" class="action-btn ready-btn" onclick="window.toggleReady()">Ready Up</button>
+                <button id="next-hand-btn" class="action-btn next-hand-btn" style="display:none;" onclick="window.clickNextHand()">Next Hand</button>
+                <button id="add-bot-btn" class="action-btn secondary-btn" style="display:none;" onclick="window.addBot()">+ Bot</button>
+                <button id="remove-bot-btn" class="action-btn secondary-btn" style="display:none;" onclick="window.removeBot()">- Bot</button>
                 <button id="stand-up-btn" class="action-btn secondary-btn" onclick="window.standUp()">Stand Up</button>
                 <button id="end-match-btn" class="action-btn secondary-btn" onclick="window.proposeEndGame()">End Match</button>
                 <button id="leave-btn" class="action-btn danger-btn" onclick="window.leaveLobby()">Leave</button>
@@ -111,7 +106,7 @@
         <!-- Poker Felt Area -->
         <main class="table-wrapper">
             <div class="poker-table">
-                <!-- Seating Arrangement: 6 Positions (Seat 0 is Bottom Center) -->
+                <!-- Seating Arrangement: Seat 0 is Bottom Center -->
                 <div id="seat-0" class="table-seat" data-seat="0">
                     <div class="seat-avatar">👤</div>
                     <div class="seat-name">Empty</div>
@@ -155,11 +150,10 @@
                     <div class="seat-cards"></div>
                 </div>
 
-                <!-- Felt Center (Deck, Discard & Pot) -->
+                <!-- Center Felt -->
                 <div class="felt-center">
                     <div class="felt-cards-row">
-                        <!-- Face-down Deck -->
-                        <div id="deck-card-slot" class="deck-slot" title="Draw from Deck">
+                        <div id="deck-card-slot" class="deck-slot" title="Draw from Deck" onclick="window.drawFromDeck()">
                             <div class="playing-card card-back deck-card">
                                 <div class="card-back-pattern">
                                     <span>🂠</span>
@@ -167,8 +161,7 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- Discard Slot -->
-                        <div id="discard-card-slot" class="discard-slot" title="Draw from Discard">
+                        <div id="discard-card-slot" class="discard-slot" title="Draw from Discard" onclick="window.drawFromDiscard()">
                             <div class="card-slot-placeholder">
                                 <span>DISCARD</span>
                                 <span class="sub">Empty</span>
@@ -183,7 +176,7 @@
             </div>
         </main>
 
-        <!-- Player's Active Hand & Turn Actions -->
+        <!-- Player Active Hand -->
         <footer class="hand-section">
             <div class="hand-title-bar">
                 <span class="my-hand-title">My Hand</span>
@@ -202,9 +195,7 @@
     <!-- ================================================================= -->
     <!-- 3. DIALOG MODALS                                                  -->
     <!-- ================================================================= -->
-
-    <!-- Dealer Draw & Tie-Breaker 52-Card Modal -->
-    <div id="dealer-draw-modal" class="modal-overlay">
+    <div id="dealer-draw-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card draw-modal">
             <h2 id="dealer-draw-title">👑 Draw for Dealer</h2>
             <p id="dealer-draw-status">Lowest card deals first (Ace is highest).</p>
@@ -213,15 +204,13 @@
         </div>
     </div>
 
-    <!-- Pairwise Netting Ledger Modal -->
-    <div id="session-ledger-modal" class="modal-overlay">
+    <div id="session-ledger-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card ledger-modal">
             <div id="ledger-modal-body"></div>
         </div>
     </div>
 
-    <!-- Side Bets Modal -->
-    <div id="bet-modal" class="modal-overlay">
+    <div id="bet-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card bet-modal-card">
             <div class="modal-header">
                 <h3>Side Wagers</h3>
@@ -239,8 +228,7 @@
         </div>
     </div>
 
-    <!-- Chat Drawer -->
-    <div id="chat-window" class="chat-drawer">
+    <div id="chat-window" class="chat-drawer" style="display: none;">
         <div class="chat-header">
             <span>Table Chat</span>
             <button class="close-btn" onclick="window.toggleChatWindow()">✕</button>
@@ -252,11 +240,9 @@
         </form>
     </div>
 
-    <!-- In-Game Alerts -->
-    <div id="center-notification-banner" class="center-banner"></div>
-    <div id="knock-alert-modal" class="knock-banner"></div>
+    <div id="center-notification-banner" class="center-banner" style="display: none;"></div>
+    <div id="knock-alert-modal" class="knock-banner" style="display: none;"></div>
 
-    <!-- Scripts in proper dependency order -->
     <script src="/js/network.js"></script>
     <script src="/js/ledger.js"></script>
     <script src="/js/ui.js"></script>
