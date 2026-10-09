@@ -404,14 +404,20 @@ window.discardCard = function(cardIndex) {
 };
 
 window.choosePoolCard = function(cardIndex) {
-    if (window.appGlobals.hasChosenPoolCard) return;
-    const resolvedIndex = typeof cardIndex === 'number' ? cardIndex : parseInt(cardIndex, 10);
+    const resolvedIndex = (typeof cardIndex === 'number') ? cardIndex : parseInt(cardIndex, 10);
     if (isNaN(resolvedIndex)) return;
+    if (window.appGlobals.hasChosenPoolCard) return;
 
     window.appGlobals.hasChosenPoolCard = true;
     if (typeof playSound === 'function') playSound('card');
     triggerVibration(25);
-    sendSocket({ type: 'CHOOSE_POOL_CARD', cardIndex: resolvedIndex });
+
+    // Send both keys (index and cardIndex) for compatibility with wsHandler
+    sendSocket({
+        type: 'CHOOSE_POOL_CARD',
+        index: resolvedIndex,
+        cardIndex: resolvedIndex
+    });
 };
 
 window.clickNextHand = function() {
@@ -679,7 +685,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER, AUDIO CUES & CELEBRATIONS
+// 8. MASTER TABLE RENDER, AUDIO CUES & NOTIFICATIONS
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -747,7 +753,7 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.lastCelebratedWinner = null;
     }
 
-    // 3. STATE TRANSITION NOTIFICATIONS
+    // 3. STATE TRANSITION NOTIFICATIONS & SELECTION RESET
     if (lobby.gameState !== window.appGlobals.lastGameState) {
         window.appGlobals.hasChosenPoolCard = false;
         window.appGlobals.lastGameState = lobby.gameState;
@@ -757,6 +763,11 @@ window.updateUIFromLobby = function(lobby) {
             if (topleft) topleft.style.display = 'none';
             if (fedModal) fedModal.style.display = 'none';
         }
+    }
+
+    // Allow re-picking if a previous click attempt did not register on the server
+    if ((lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') && !lobby.drawResults?.[activeUsername]) {
+        window.appGlobals.hasChosenPoolCard = false;
     }
 
     // 4. LIVES VOTING MODAL
@@ -1034,10 +1045,10 @@ window.updateUIFromLobby = function(lobby) {
             if (nextHandOverlay) nextHandOverlay.style.display = 'block';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
-                    nextBtn.innerText = 'Waiting for players (Auto in 6s)...';
+                    nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
                     nextBtn.disabled = true;
                 } else {
-                    nextBtn.innerText = 'Next Hand (Auto in 6s)';
+                    nextBtn.innerText = 'Next Hand (Auto in 8s)';
                     nextBtn.disabled = false;
                 }
             }
@@ -1048,7 +1059,7 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. DEALER DRAW & TIE BREAKER MODALS (CORRECTED IDs & INDEX RESOLUTION)
+    // 14. DEALER DRAW & TIE BREAKER MODALS (DOM IDs & CARD INDEX HANDLING)
     const dealerDrawModal = document.getElementById('dealer-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
@@ -1084,7 +1095,7 @@ window.updateUIFromLobby = function(lobby) {
         });
         showcaseHtml += '</div>';
 
-        // Full 52-card pool mapped to draw-pool-grid with safe index fallback
+        // Full 52-card pool mapped with fallback index to prevent undefined payload
         let poolHtml = '';
         (lobby.drawPool || []).forEach((slot, idx) => {
             const slotIndex = (slot && slot.index !== undefined) ? slot.index : idx;
