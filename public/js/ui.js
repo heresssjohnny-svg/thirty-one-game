@@ -1,4 +1,4 @@
-// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals
+// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals (Part 1 of 2)
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT SAFEGUARDS
@@ -377,9 +377,10 @@ window.resetToMainMenu = function() {
     if (readyBtn) readyBtn.innerText = 'Ready Up';
     window.refreshLobbies();
 };
+// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals (Part 2 of 2)
 
 // -------------------------------------------------------------
-// 5. IN-GAME ACTIONS & CARD INTERACTIONS
+// 5. IN-GAME ACTIONS, AUDIO & CARD INTERACTIONS
 // -------------------------------------------------------------
 window.drawCard = function(source) {
     if (window.clientState.isSpectator) return;
@@ -404,10 +405,13 @@ window.discardCard = function(cardIndex) {
 
 window.choosePoolCard = function(cardIndex) {
     if (window.appGlobals.hasChosenPoolCard) return;
+    const resolvedIndex = typeof cardIndex === 'number' ? cardIndex : parseInt(cardIndex, 10);
+    if (isNaN(resolvedIndex)) return;
+
     window.appGlobals.hasChosenPoolCard = true;
     if (typeof playSound === 'function') playSound('card');
     triggerVibration(25);
-    sendSocket({ type: 'CHOOSE_POOL_CARD', cardIndex });
+    sendSocket({ type: 'CHOOSE_POOL_CARD', cardIndex: resolvedIndex });
 };
 
 window.clickNextHand = function() {
@@ -470,7 +474,7 @@ window.kickPeekerAction = function(spectatorUsername) {
 };
 
 // -------------------------------------------------------------
-// 6. KNOCK VALIDATION & EXECUTION
+// 6. KNOCK VALIDATION, AUDIO & VIBRATION
 // -------------------------------------------------------------
 function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
@@ -675,7 +679,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER & SPECTATOR LOGIC
+// 8. MASTER TABLE RENDER, AUDIO CUES & CELEBRATIONS
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -913,7 +917,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 10. TURN ACTION & AUDIO TRIGGER
+    // 10. TURN ACTION & AUDIO CUE TRIGGER
     const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
@@ -1030,10 +1034,10 @@ window.updateUIFromLobby = function(lobby) {
             if (nextHandOverlay) nextHandOverlay.style.display = 'block';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
-                    nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
+                    nextBtn.innerText = 'Waiting for players (Auto in 6s)...';
                     nextBtn.disabled = true;
                 } else {
-                    nextBtn.innerText = 'Next Hand (Auto in 8s)';
+                    nextBtn.innerText = 'Next Hand (Auto in 6s)';
                     nextBtn.disabled = false;
                 }
             }
@@ -1044,8 +1048,8 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. DEALER DRAW & TIE BREAKER MODALS (CORRECTED DOM IDs)
-    const dealerDrawModal = document.getElementById('dealer-draw-modal') || document.getElementById('pool-draw-modal');
+    // 14. DEALER DRAW & TIE BREAKER MODALS (CORRECTED IDs & INDEX RESOLUTION)
+    const dealerDrawModal = document.getElementById('dealer-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
 
@@ -1054,13 +1058,13 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
     }
 
-    // --- A. DEALER DRAW SHOWCASE ---
+    // --- A. DEALER DRAW MODAL ---
     if (lobby.gameState === 'dealerDraw') {
         if (dealerDrawModal) dealerDrawModal.style.display = 'flex';
         if (revealModal) revealModal.style.display = 'none';
 
-        const pTitle = document.getElementById('dealer-draw-title') || document.getElementById('pool-modal-title');
-        const pInstr = document.getElementById('dealer-draw-status') || document.getElementById('pool-modal-instruction');
+        const pTitle = document.getElementById('dealer-draw-title');
+        const pInstr = document.getElementById('dealer-draw-status');
         if (pTitle) pTitle.innerText = 'Picking for Dealer';
         if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
 
@@ -1080,41 +1084,25 @@ window.updateUIFromLobby = function(lobby) {
         });
         showcaseHtml += '</div>';
 
-        // Full 52-card pool
+        // Full 52-card pool mapped to draw-pool-grid with safe index fallback
         let poolHtml = '';
-        (lobby.drawPool || []).forEach((slot) => {
-            if (slot.chosenBy) {
+        (lobby.drawPool || []).forEach((slot, idx) => {
+            const slotIndex = (slot && slot.index !== undefined) ? slot.index : idx;
+            if (slot && slot.chosenBy) {
                 poolHtml += `<div class="pool-card-item taken" title="Chosen by ${slot.chosenBy}">✓</div>`;
             } else {
                 const clickable = !isSpectatorOnly && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-                poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
+                poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slotIndex})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
             }
         });
 
         const poolGrid = document.getElementById('draw-pool-grid');
         const orderStrip = document.getElementById('draw-order-sequence');
-        const poolContainer = document.getElementById('pool-cards-container');
-
         if (poolGrid) poolGrid.innerHTML = poolHtml;
         if (orderStrip) orderStrip.innerHTML = showcaseHtml;
-
-        if (poolContainer) {
-            poolContainer.className = 'draw-modal-split-layout';
-            poolContainer.innerHTML = `
-                ${showcaseHtml}
-                <div class="draw-pool-panel">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
-                        <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">Available Deck Pool</span>
-                        <span style="font-size:0.65rem; color:var(--accent-cyan);">Tap a card</span>
-                    </div>
-                    <div class="pool-52-grid">${poolHtml}</div>
-                </div>
-            `;
-        }
-
         if (turnBanner) turnBanner.innerText = 'Dealer Draw Phase';
     } 
-    // --- B. TIE BREAKER SHOWCASE (CARDS LEFT IN DECK) ---
+    // --- B. TIE BREAKER MODAL ---
     else if (lobby.gameState === 'tieBreaker') {
         if (dealerDrawModal) dealerDrawModal.style.display = 'none';
         if (revealModal) revealModal.style.display = 'flex';
@@ -1144,9 +1132,10 @@ window.updateUIFromLobby = function(lobby) {
         }
 
         let poolHtml = '';
-        tieDeckPool.forEach((slot) => {
+        tieDeckPool.forEach((slot, idx) => {
+            const slotIndex = (slot && slot.index !== undefined) ? slot.index : idx;
             const clickable = isTied && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-            poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
+            poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slotIndex})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
         });
 
         const tGrid = document.getElementById('tie-breaker-stream-grid');
