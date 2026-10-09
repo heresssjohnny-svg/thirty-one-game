@@ -387,7 +387,8 @@ function startDealerDrawPhase(lobby) {
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
 }
-// server/game/lobbyManager.js - PART 2 OF 2
+
+// server/game/lobbyManager.js - PART 2
 function handleTurnAction(lobby, wsId, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     const currentPlayer = lobby.players[lobby.turnIndex];
@@ -471,7 +472,6 @@ function handleTurnAction(lobby, wsId, actionType) {
         }
 
         resolveWinSideBets(lobby, currentPlayer.username);
-        syncLifetimeLedgerBalances(lobby);
 
         const remaining = getActiveParticipants(lobby);
         if (remaining.length <= 1) {
@@ -569,7 +569,6 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
         }
 
         resolveWinSideBets(lobby, currentPlayer.username);
-        syncLifetimeLedgerBalances(lobby);
 
         const remaining = getActiveParticipants(lobby);
         if (remaining.length <= 1) {
@@ -701,14 +700,12 @@ function resolveRoundEnd(lobby) {
         if (loser.lives <= 0 && !loser.eliminated) {
             loser.eliminated = true;
             resolveFirstToLoseBets(lobby, loser.username);
-            syncLifetimeLedgerBalances(lobby);
             if (loser.id && typeof loser.id === 'object') {
                 lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
             }
         }
 
         resolveWinSideBets(lobby, winner.username);
-        syncLifetimeLedgerBalances(lobby);
 
         if (getActiveParticipants(lobby).length <= 1) {
             awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
@@ -772,8 +769,6 @@ function awardTournamentWinner(lobby, winner) {
     lobby.tournamentWinner = winner.username;
     const winIdx = lobby.players.findIndex(p => p.username === winner.username);
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
-
-    syncLifetimeLedgerBalances(lobby);
 
     lobby.gameState = 'tournamentEnd';
     lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 6s...`;
@@ -1098,6 +1093,5 @@ module.exports = {
     scheduleBotActions,
     leaveLobby,
     resolveUserId,
-    recordSessionAndLifetimeDebt,
-    syncLifetimeLedgerBalances
+    recordSessionAndLifetimeDebt
 };
