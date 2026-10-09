@@ -1,4 +1,4 @@
-// server.js - PART 1 OF 2
+// server.js - Express Server, LiveKit Voice & WebSocket Dispatcher (PART 1 OF 2)
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -19,7 +19,7 @@ const server = http.createServer(app);
 // -------------------------------------------------------------
 // 1. MIDDLEWARE & ROUTING CONFIGURATION
 // -------------------------------------------------------------
-// Body parsers for registration, login, and token requests
+// Body parsers for auth actions and API payloads
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -69,7 +69,7 @@ function broadcastLobbyList() {
     });
 }
 
-// Connection heartbeat to prune broken client tunnels
+// Connection heartbeat to prune terminated client tunnels
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach(ws => {
         if (ws.isAlive === false) {
@@ -97,7 +97,7 @@ wss.on('connection', (ws, req) => {
         ws.isAlive = true;
     });
 
-    // Deliver active public lobbies upon socket handshake
+    // Provide initial available lobby list upon socket handshake
     try {
         ws.send(JSON.stringify({
             type: 'LOBBY_LIST',
@@ -133,7 +133,7 @@ wss.on('connection', (ws, req) => {
         if (parsed.type === 'GET_LIFETIME_LEDGER') {
             let uid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || null);
 
-            // Fallback A: decode token if passed directly in the payload
+            // Fallback A: decode token if passed directly in payload
             if (!uid && parsed.token) {
                 try {
                     const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
@@ -144,7 +144,7 @@ wss.on('connection', (ws, req) => {
                 } catch (e) {}
             }
 
-            // Fallback B: resolve by username in SQLite
+            // Fallback B: match by username in SQLite
             if (!uid) {
                 const targetUsername = parsed.username || ws.currentUsername;
                 if (targetUsername && db && typeof db.findUserByUsername === 'function') {
@@ -165,17 +165,40 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // 3. Direct bilateral debt clearance & credit application
+        // 3. Bilateral debt clearance & credit settlement
         if (parsed.type === 'APPLY_CREDIT') {
-            const debtorId = parsed.debtorId;
+            // Re-authenticate from token if session is unset
+            if (!ws.user && parsed.token) {
+                try {
+                    const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
+                    ws.user = decoded;
+                    ws.userId = decoded.id || decoded.userId;
+                    ws.currentUsername = decoded.username;
+                } catch (e) {}
+            }
+
+            const debtorId = parsed.debtorId || (ws.user && (ws.user.id || ws.user.userId)) || ws.userId;
             const creditorId = parsed.creditorId;
             const amount = Number(parsed.amount);
 
             if (debtorId && creditorId && amount > 0 && db && typeof db.recordLifetimeDebt === 'function') {
+                // In pairwise netting, creditor writes offsetting balance against debtor
                 db.recordLifetimeDebt(debtorId, creditorId, amount);
+
                 const uid = (ws.user && (ws.user.id || ws.user.userId)) || ws.userId || debtorId;
                 const balances = db.getLifetimeBalances(uid);
                 ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+
+                // Broadcast live balance update to the credited player if online
+                wss.clients.forEach(client => {
+                    const cUid = (client.user && (client.user.id || client.user.userId)) || client.userId;
+                    if (client !== ws && client.readyState === WebSocket.OPEN && cUid && (cUid === debtorId || cUid === creditorId)) {
+                        try {
+                            const cBalances = db.getLifetimeBalances(cUid);
+                            client.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances: cBalances }));
+                        } catch (e) {}
+                    }
+                });
             }
             return;
         }
