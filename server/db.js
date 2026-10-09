@@ -1,9 +1,9 @@
-// server/db.js
+// server/db.js - SQLite Persistence with better-sqlite3
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure data.sqlite is created in the project root directory
+// Ensure data.sqlite resolves to the persistent project root
 const rootDir = fs.existsSync(path.join(__dirname, '..', 'package.json')) 
     ? path.join(__dirname, '..') 
     : __dirname;
@@ -11,15 +11,15 @@ const dbPath = path.join(rootDir, 'data.sqlite');
 
 const db = new Database(dbPath);
 
-// Enable Write-Ahead Logging for high concurrency and speed
+// Enable Write-Ahead Logging for speed and concurrency
 db.pragma('journal_mode = WAL');
 
 // Initialize schema for accounts and persistent pairwise debt
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,          -- 'local', 'google', 'facebook', 'instagram'
-    provider_id TEXT UNIQUE,        -- Provider UID, sub, or lowercase email
+    provider TEXT NOT NULL,          -- 'local', 'google', etc.
+    provider_id TEXT UNIQUE,        -- Provider UID or lowercase identifier
     username TEXT NOT NULL,
     password_hash TEXT,             -- NULL for OAuth social logins
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -51,10 +51,14 @@ module.exports = {
     return db.prepare('SELECT id, provider, username, created_at FROM users WHERE id = ?').get(id);
   },
 
-  // Lookup by username (case-insensitive) to bridge session ledger usernames to SQLite IDs
+  // CRITICAL FIX: Explicitly selects password_hash and provider_id alongside username
   findUserByUsername: (username) => {
     if (!username) return null;
-    return db.prepare('SELECT id, provider, username, created_at FROM users WHERE LOWER(username) = LOWER(?)').get(username.trim());
+    return db.prepare(`
+      SELECT id, provider, provider_id, username, password_hash, created_at 
+      FROM users 
+      WHERE LOWER(username) = LOWER(?)
+    `).get(username.trim());
   },
 
   createUser: (id, provider, providerId, username, passwordHash = null) => {
@@ -69,7 +73,7 @@ module.exports = {
 
   /**
    * Records that debtorId owes creditorId a given amount.
-   * Automatically calculates reverse debt to net balances out.
+   * Automatically nets balances out against existing reverse debt.
    */
   recordLifetimeDebt: (debtorId, creditorId, amount) => {
     if (!debtorId || !creditorId || debtorId === creditorId || amount <= 0) return;
@@ -164,13 +168,11 @@ module.exports = {
     }
 
     if (creditAmount >= entry.amount) {
-      // Wiped clear
       db.prepare(`
         DELETE FROM lifetime_ledger WHERE debtor_id = ? AND creditor_id = ?
       `).run(debtorId, creditorId);
       return { success: true, remaining: 0 };
     } else {
-      // Partial credit reduction
       db.prepare(`
         UPDATE lifetime_ledger 
         SET amount = amount - ?, updated_at = CURRENT_TIMESTAMP 
