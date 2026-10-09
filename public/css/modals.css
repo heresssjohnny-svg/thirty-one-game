@@ -81,9 +81,9 @@
 #dealer-draw-desc,
 #pool-modal-instruction,
 #tie-breaker-stream-msg {
-    font-size: 0.74rem;
+    font-size: 0.72rem;
     color: #94a3b8;
-    margin: 2px 0 6px 0;
+    margin: 1px 0 4px 0;
     font-weight: 600;
     text-align: center;
 }
@@ -111,7 +111,7 @@
 }
 
 /* =============================================================
-   3. FULL-SCREEN DEALER CUT MODAL (ALL PLAYERS VISIBLE + TIGHT CARDS)
+   3. FULL-SCREEN DEALER CUT MODAL (3 ROWS OF 2 PLAYERS + 11x5 CARDS)
    ============================================================= */
 .modal-backdrop.fullscreen-modal,
 .modal-overlay.fullscreen-modal,
@@ -151,12 +151,12 @@
     align-items: center !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
-    padding: max(10px, env(safe-area-inset-top, 10px)) 6px max(10px, env(safe-area-inset-bottom, 10px)) 6px !important;
+    padding: max(8px, env(safe-area-inset-top, 8px)) 6px max(8px, env(safe-area-inset-bottom, 8px)) 6px !important;
 }
 
 #dealer-draw-title,
 #pool-modal-title {
-    font-size: 1.15rem !important;
+    font-size: 1.1rem !important;
     font-weight: 900 !important;
     color: var(--accent-gold, #d4af37) !important;
     text-align: center !important;
@@ -177,37 +177,36 @@
     max-width: 480px !important;
     flex: 1 !important;
     min-height: 0 !important;
-    gap: 4px !important;
+    gap: 3px !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
 }
 
 /* -------------------------------------------------------------
-   PLAYER SHOWCASE: ALL 6 PLAYERS FULLY VISIBLE (STRAY LABEL HIDDEN)
+   PLAYER SHOWCASE: 3 ROWS IN SETS OF 2 (ENLARGED & READABLE)
    ------------------------------------------------------------- */
 .draw-showcase-sidebar,
 .results-stream,
 #draw-results-stream,
 #pool-cards-container > :first-child:not(.draw-pool-panel):not(.pool-52-grid) {
     width: 100% !important;
-    max-width: 440px !important;
+    max-width: 420px !important;
     display: grid !important;
-    grid-template-columns: repeat(3, 1fr) !important;
-    grid-auto-rows: auto !important;
-    gap: 4px 6px !important;
+    grid-template-columns: repeat(2, 1fr) !important; /* Sets of 2 */
+    grid-auto-rows: auto !important; /* 3 rows for up to 6 players */
+    gap: 4px 10px !important;
     justify-items: center !important;
     align-items: center !important;
     border: none !important;
     border-bottom: 1.5px solid rgba(212, 175, 55, 0.3) !important;
-    padding: 2px 4px 6px 4px !important;
+    padding: 2px 6px 6px 6px !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
-    min-height: auto !important;
-    max-height: 190px !important;
+    max-height: 235px !important;
     overflow-y: auto !important;
 }
 
-/* Hide stray text labels so they never consume a player slot in the grid */
+/* Suppress stray label elements inside grid */
 .draw-showcase-sidebar > *:not(.draw-showcase-item):not(.result-item),
 .results-stream > *:not(.draw-showcase-item):not(.result-item),
 #draw-results-stream > *:not(.draw-showcase-item):not(.result-item),
@@ -215,76 +214,76 @@
     display: none !important;
 }
 
-/* Individual Player Pod */
+/* Enlarged Player Pod */
 .draw-showcase-item,
 .result-item {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 2px !important;
+    gap: 3px !important;
     background: rgba(4, 20, 13, 0.95) !important;
-    border: 1.5px solid rgba(212, 175, 55, 0.5) !important;
+    border: 1.5px solid rgba(212, 175, 55, 0.55) !important;
     border-radius: 6px !important;
-    padding: 3px 4px !important;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6) !important;
+    padding: 4px 8px !important;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.6) !important;
     width: 100% !important;
-    max-width: 125px !important;
+    max-width: 175px !important;
     box-sizing: border-box !important;
 }
 
 .draw-picker-badge {
-    font-size: 0.68rem !important;
+    font-size: 0.74rem !important;
     font-weight: 800 !important;
     color: #f6e05e !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
-    max-width: 110px !important;
+    max-width: 155px !important;
     text-align: center !important;
 }
 
 .draw-card-waiting {
-    width: 30px !important;
-    height: 42px !important;
+    width: 38px !important;
+    height: 52px !important;
     border: 1.5px dashed #64748b !important;
     border-radius: 4px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    font-size: 0.55rem !important;
+    font-size: 0.6rem !important;
     font-weight: 700 !important;
     color: #94a3b8 !important;
     background: rgba(0, 0, 0, 0.35) !important;
 }
 
-/* Playing Card in Player Pod */
+/* Enlarged Playing Card in Player Pod */
 .draw-showcase-item .playing-card {
-    width: 30px !important;
-    height: 42px !important;
-    padding: 1px 2px !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.7) !important;
+    width: 38px !important;
+    height: 52px !important;
+    padding: 2px 3px !important;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.7) !important;
     border-radius: 4px !important;
     box-sizing: border-box !important;
 }
 
 .draw-showcase-item .playing-card .corner-val {
-    font-size: 0.6rem !important;
+    font-size: 0.72rem !important;
     font-weight: 900 !important;
     line-height: 1 !important;
 }
 
 .draw-showcase-item .playing-card .corner-suit {
-    font-size: 0.5rem !important;
+    font-size: 0.6rem !important;
     line-height: 1 !important;
 }
 
 .draw-showcase-item .playing-card .card-center-pip {
-    font-size: 0.85rem !important;
+    font-size: 1.05rem !important;
     line-height: 1 !important;
 }
 
-/* POOL INSTRUCTION LABELS */
+/* POOL LABELS */
 .draw-pool-panel {
     display: flex !important;
     flex-direction: column !important;
@@ -295,13 +294,13 @@
     min-height: 0 !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
-    padding-top: 2px !important;
+    padding-top: 1px !important;
 }
 
 .draw-pool-panel > span,
 .draw-pool-panel > p,
 #pool-cards-container > span {
-    font-size: 0.68rem !important;
+    font-size: 0.66rem !important;
     color: #94a3b8 !important;
     font-weight: 700 !important;
     margin: 1px 4px !important;
@@ -318,28 +317,28 @@
 .draw-pool-panel > div:last-child {
     display: grid !important;
     grid-template-columns: repeat(11, 1fr) !important;
-    grid-template-rows: repeat(5, auto) !important; /* Prevents rows from stretching */
-    gap: 3px 2px !important; /* Tight gaps between rows & columns */
+    grid-template-rows: repeat(5, auto) !important;
+    gap: 2px 2px !important; /* Tight gaps between rows and cards */
     width: 100% !important;
     max-width: 460px !important;
-    margin: 4px auto 0 auto !important;
-    padding: 2px !important;
+    margin: 2px auto 0 auto !important;
+    padding: 1px !important;
     box-sizing: border-box !important;
     justify-items: center !important;
-    align-content: start !important; /* Groups rows together at the top */
+    align-content: start !important;
 }
 
-/* Individual Card Sizing */
+/* Individual 52 Cards */
 .card-pool-item,
 .pool-card-item {
     width: 100% !important;
-    height: clamp(34px, 4.6vh, 42px) !important;
-    max-height: 42px !important;
-    min-height: 32px !important;
+    height: clamp(30px, 4.2vh, 38px) !important;
+    max-height: 38px !important;
+    min-height: 30px !important;
     aspect-ratio: 2 / 2.7 !important;
     background: linear-gradient(135deg, #1d4ed8 0%, #0f172a 100%) !important;
     border: 1.5px solid #93c5fd !important;
-    border-radius: 4px !important;
+    border-radius: 3px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
