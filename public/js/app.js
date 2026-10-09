@@ -1,7 +1,105 @@
-// public/js/app.js - Authentication, Session Persistence & View Coordinator (PART 1 OF 2)
+// public/js/app.js - Modal Controls, Auth Management & Session State (PART 1 OF 2)
 
 // -------------------------------------------------------------
-// 1. TOKEN & SESSION PERSISTENCE HELPERS
+// 1. UNIVERSAL MODAL & DRAWER CONTROLLER
+// -------------------------------------------------------------
+function getModalElement(id) {
+    return document.getElementById(id) || null;
+}
+
+function openModal(id) {
+    const el = getModalElement(id);
+    if (el) {
+        el.style.display = 'flex';
+        el.classList.remove('hidden');
+    }
+}
+
+function closeModal(id) {
+    const el = getModalElement(id);
+    if (el) {
+        el.style.display = 'none';
+        el.classList.add('hidden');
+    }
+}
+
+function toggleModal(id) {
+    const el = getModalElement(id);
+    if (!el) return;
+    const isHidden = !el.style.display || el.style.display === 'none' || el.classList.contains('hidden');
+    if (isHidden) {
+        openModal(id);
+    } else {
+        closeModal(id);
+    }
+}
+
+// Settings Modal Controls
+function openSettingsModal() { openModal('settings-modal'); }
+function closeSettingsModal() { closeModal('settings-modal'); }
+
+// Active Bets Modal Controls
+function openActiveBetsModal() { openModal('active-bets-modal'); }
+function closeActiveBetsModal() { closeModal('active-bets-modal'); }
+
+// Ledger Modal Controls (Handles #ledger-modal and #session-ledger-modal)
+function toggleGlobalSidebar() {
+    const ledger = getModalElement('ledger-modal') || getModalElement('session-ledger-modal');
+    if (ledger) toggleModal(ledger.id);
+}
+function openLedgerModal() {
+    const ledger = getModalElement('ledger-modal') || getModalElement('session-ledger-modal');
+    if (ledger) openModal(ledger.id);
+}
+function closeLedgerModal() {
+    const ledger = getModalElement('ledger-modal') || getModalElement('session-ledger-modal');
+    if (ledger) closeModal(ledger.id);
+}
+
+// Chat Window Controls (Handles both #chat-window and #chat-drawer)
+function toggleChatWindow() {
+    const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
+    if (!chat) return;
+    const isHidden = !chat.style.display || chat.style.display === 'none' || chat.classList.contains('hidden');
+    chat.style.display = isHidden ? 'flex' : 'none';
+    chat.classList.toggle('hidden', !isHidden);
+    if (isHidden) {
+        const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
+        if (inp) setTimeout(() => inp.focus(), 80);
+    }
+}
+function closeChatWindow() {
+    const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
+    if (chat) {
+        chat.style.display = 'none';
+        chat.classList.add('hidden');
+    }
+}
+
+// Dismiss modal overlays when tapping outside the modal card
+document.addEventListener('click', (e) => {
+    if (e.target.classList && (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-backdrop'))) {
+        e.target.style.display = 'none';
+        e.target.classList.add('hidden');
+    }
+});
+
+// Bind modal controllers to window for inline HTML onclick attributes
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.toggleModal = toggleModal;
+window.openSettingsModal = openSettingsModal;
+window.closeSettingsModal = closeSettingsModal;
+window.openActiveBetsModal = openActiveBetsModal;
+window.closeActiveBetsModal = closeActiveBetsModal;
+window.toggleGlobalSidebar = toggleGlobalSidebar;
+window.openLedgerModal = openLedgerModal;
+window.closeLedgerModal = closeLedgerModal;
+window.toggleChatWindow = toggleChatWindow;
+window.closeChatWindow = closeChatWindow;
+
+// -------------------------------------------------------------
+// 2. TOKEN & SESSION PERSISTENCE HELPERS
 // -------------------------------------------------------------
 function getStoredAuthToken() {
     return sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || null;
@@ -25,7 +123,7 @@ function clearStoredAuthToken() {
 }
 
 // -------------------------------------------------------------
-// 2. AUTH UI FEEDBACK & TAB SWITCHING
+// 3. AUTH UI FEEDBACK & TAB SWITCHING
 // -------------------------------------------------------------
 function showAuthError(msg) {
     const errBox = document.getElementById('auth-error-msg');
@@ -65,7 +163,6 @@ function switchAuthTab(tab) {
     const registerFields = document.getElementById('register-fields');
     const forgotFields = document.getElementById('forgot-fields');
 
-    // Reset recovery step containers
     const forgotStep1 = document.getElementById('forgot-step-1');
     const forgotStep2 = document.getElementById('forgot-step-2');
     if (forgotStep1) forgotStep1.style.display = 'block';
@@ -97,7 +194,7 @@ function switchAuthTab(tab) {
 }
 
 // -------------------------------------------------------------
-// 3. MAIN MENU TRANSITION & PROFILE INITIALIZATION
+// 4. MAIN MENU TRANSITION & PROFILE INITIALIZATION
 // -------------------------------------------------------------
 function updateViewForAuth(user) {
     const authOverlay = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
@@ -119,35 +216,90 @@ function updateViewForAuth(user) {
         window.clientState.username = displayName;
     }
 
-    // Refresh public lobbies upon transition
     if (typeof window.refreshLobbies === 'function') {
         window.refreshLobbies();
     }
 }
 
 // -------------------------------------------------------------
-// 4. AUTH ACTION DISPATCHERS (LOGIN & REGISTRATION)
+// 5. GOOGLE IDENTITY SERVICES INITIALIZATION
+// -------------------------------------------------------------
+function initializeGoogleIdentity() {
+    const clientId = window.GOOGLE_CLIENT_ID || "420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com";
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+        try {
+            window.google.accounts.id.initialize({
+                client_id: clientId,
+                callback: handleGoogleCredentialResponse,
+                auto_select: false,
+                cancel_on_tap_outside: true
+            });
+
+            const btnContainer = document.getElementById('google-signin-btn');
+            if (btnContainer) {
+                window.google.accounts.id.renderButton(btnContainer, {
+                    theme: 'outline',
+                    size: 'large',
+                    width: btnContainer.offsetWidth || 280,
+                    text: 'signin_with',
+                    shape: 'pill'
+                });
+            }
+        } catch (e) {
+            console.warn('[GIS] Error initializing Google button:', e);
+        }
+    } else {
+        setTimeout(initializeGoogleIdentity, 300);
+    }
+}
+
+async function handleGoogleCredentialResponse(response) {
+    if (!response || !response.credential) return;
+
+    try {
+        const res = await fetch('/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: response.credential })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+            saveStoredAuthToken(data.token, true);
+            window.userSession = data.user;
+            if (typeof window.connectSocket === 'function') window.connectSocket();
+            updateViewForAuth(data.user);
+        } else {
+            showAuthError(data.error || 'Google sign-in failed.');
+        }
+    } catch (err) {
+        showAuthError('Server communication error during Google login.');
+    }
+}
+// public/js/app.js - Auth Handlers, Password Recovery & Lifecycle (PART 2 OF 2)
+
+// -------------------------------------------------------------
+// 6. NATIVE AUTHENTICATION FORM DISPATCHERS
 // -------------------------------------------------------------
 async function submitAuthLogin() {
     clearAuthError();
 
     const usernameInput = document.getElementById('login-username');
     const passwordInput = document.getElementById('login-password');
-    const rememberMeBox = document.getElementById('login-remember-me');
+    const rememberMeInput = document.getElementById('remember-me-checkbox');
 
     const username = usernameInput ? usernameInput.value.trim() : '';
     const password = passwordInput ? passwordInput.value : '';
-    const rememberMe = rememberMeBox ? rememberMeBox.checked : true;
+    const rememberMe = rememberMeInput ? rememberMeInput.checked : true;
 
     if (!username || !password) {
-        return showAuthError('Please enter both username/email and password.');
+        return showAuthError('Username and password are required.');
     }
 
     try {
         const res = await fetch('/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password, rememberMe })
+            body: JSON.stringify({ username, password })
         });
 
         const data = await res.json();
@@ -164,32 +316,23 @@ async function submitAuthLogin() {
             showAuthError(data.error || 'Invalid credentials.');
         }
     } catch (err) {
-        showAuthError('Unable to connect to game authentication server.');
+        showAuthError('Server communication error during login.');
     }
 }
 
 async function submitAuthRegister() {
     clearAuthError();
 
-    const usernameInput = document.getElementById('reg-username');
-    const emailInput = document.getElementById('reg-email');
-    const passwordInput = document.getElementById('reg-password');
+    const usernameInput = document.getElementById('reg-username') || document.getElementById('register-username');
+    const emailInput = document.getElementById('reg-email') || document.getElementById('register-email');
+    const passwordInput = document.getElementById('reg-password') || document.getElementById('register-password');
 
     const username = usernameInput ? usernameInput.value.trim() : '';
-    const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
+    const email = emailInput ? emailInput.value.trim() : '';
     const password = passwordInput ? passwordInput.value : '';
 
-    if (!username || !email || !password) {
-        return showAuthError('All fields (Username, Email, and Password) are required.');
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        return showAuthError('Please provide a valid email format (e.g. name@example.com).');
-    }
-
-    if (password.length < 6) {
-        return showAuthError('Password must be at least 6 characters.');
+    if (!username || !password) {
+        return showAuthError('Username and password are required.');
     }
 
     try {
@@ -210,16 +353,42 @@ async function submitAuthRegister() {
 
             updateViewForAuth(data.user);
         } else {
-            showAuthError(data.error || 'Account registration failed.');
+            showAuthError(data.error || 'Registration failed.');
         }
     } catch (err) {
-        showAuthError('Unable to connect to game authentication server.');
+        showAuthError('Server communication error during registration.');
     }
 }
-// public/js/app.js - PART 2 OF 2
+
+async function submitGuestLogin() {
+    clearAuthError();
+
+    try {
+        const res = await fetch('/auth/guest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await res.json();
+        if (res.ok && data.token) {
+            saveStoredAuthToken(data.token, false);
+            window.userSession = data.user;
+
+            if (typeof window.connectSocket === 'function') {
+                window.connectSocket();
+            }
+
+            updateViewForAuth(data.user);
+        } else {
+            showAuthError(data.error || 'Guest login currently unavailable.');
+        }
+    } catch (err) {
+        showAuthError('Unable to initialize guest session.');
+    }
+}
 
 // -------------------------------------------------------------
-// 5. PASSWORD RECOVERY DISPATCHERS
+// 7. PASSWORD RECOVERY DISPATCHERS
 // -------------------------------------------------------------
 async function submitForgotPasswordRequest() {
     clearAuthError();
@@ -304,12 +473,12 @@ async function submitResetPassword() {
 }
 
 // -------------------------------------------------------------
-// 6. SESSION REHYDRATION ON BOOT
+// 8. SESSION REHYDRATION ON BOOT
 // -------------------------------------------------------------
 async function checkExistingSession() {
     const token = getStoredAuthToken();
     if (!token) {
-        const authScreen = document.getElementById('auth-screen');
+        const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
         if (authScreen) authScreen.style.display = 'flex';
         return;
     }
@@ -333,18 +502,17 @@ async function checkExistingSession() {
             updateViewForAuth(data.user);
         } else {
             clearStoredAuthToken();
-            const authScreen = document.getElementById('auth-screen');
+            const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
             if (authScreen) authScreen.style.display = 'flex';
         }
     } catch (err) {
-        // Fallback: keep auth modal visible if offline
-        const authScreen = document.getElementById('auth-screen');
+        const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
         if (authScreen) authScreen.style.display = 'flex';
     }
 }
 
 // -------------------------------------------------------------
-// 7. LOGOUT SESSION
+// 9. LOGOUT SESSION
 // -------------------------------------------------------------
 function logoutSession() {
     clearStoredAuthToken();
@@ -359,7 +527,7 @@ function logoutSession() {
 
     const mainMenu = document.getElementById('main-menu');
     const gameView = document.getElementById('game-view');
-    const authScreen = document.getElementById('auth-screen');
+    const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
 
     if (mainMenu) mainMenu.style.display = 'none';
     if (gameView) gameView.style.display = 'none';
@@ -372,46 +540,17 @@ function logoutSession() {
 }
 
 // -------------------------------------------------------------
-// SETTINGS & GENERIC MODAL CONTROLS
+// 10. GLOBAL EXPORTS & LIFECYCLE LISTENERS
 // -------------------------------------------------------------
-function openSettingsModal() {
-    const modal = document.getElementById('settings-modal');
-    if (modal) modal.style.display = 'flex';
-}
-
-function closeSettingsModal() {
-    const modal = document.getElementById('settings-modal');
-    if (modal) modal.style.display = 'none';
-}
-
-function toggleModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (!modal) return;
-    const isHidden = !modal.style.display || modal.style.display === 'none';
-    modal.style.display = isHidden ? 'flex' : 'none';
-}
-
-// Global window bindings
-window.openSettingsModal = openSettingsModal;
-window.closeSettingsModal = closeSettingsModal;
-window.toggleModal = toggleModal;
-// -------------------------------------------------------------
-// 8. GLOBAL EXPORTS & LIFECYCLE LISTENERS
-// -------------------------------------------------------------
-window.getStoredAuthToken = getStoredAuthToken;
-window.saveStoredAuthToken = saveStoredAuthToken;
-window.clearStoredAuthToken = clearStoredAuthToken;
-window.showAuthError = showAuthError;
-window.showAuthSuccess = showAuthSuccess;
-window.clearAuthError = clearAuthError;
-window.switchAuthTab = switchAuthTab;
-window.updateViewForAuth = updateViewForAuth;
 window.submitAuthLogin = submitAuthLogin;
 window.submitAuthRegister = submitAuthRegister;
+window.submitGuestLogin = submitGuestLogin;
 window.submitForgotPasswordRequest = submitForgotPasswordRequest;
 window.submitResetPassword = submitResetPassword;
 window.logoutSession = logoutSession;
+window.checkExistingSession = checkExistingSession;
 
 document.addEventListener('DOMContentLoaded', () => {
     checkExistingSession();
+    initializeGoogleIdentity();
 });
