@@ -372,6 +372,30 @@ function logoutSession() {
 }
 
 // -------------------------------------------------------------
+// SETTINGS & GENERIC MODAL CONTROLS
+// -------------------------------------------------------------
+function openSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function toggleModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    const isHidden = !modal.style.display || modal.style.display === 'none';
+    modal.style.display = isHidden ? 'flex' : 'none';
+}
+
+// Global window bindings
+window.openSettingsModal = openSettingsModal;
+window.closeSettingsModal = closeSettingsModal;
+window.toggleModal = toggleModal;
+// -------------------------------------------------------------
 // 8. GLOBAL EXPORTS & LIFECYCLE LISTENERS
 // -------------------------------------------------------------
 window.getStoredAuthToken = getStoredAuthToken;
