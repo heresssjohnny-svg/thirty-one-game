@@ -1,4 +1,4 @@
-// public/js/ui.js - Complete DOM Coordinator, Table Render, Audio & Celebrations
+// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT SAFEGUARDS
@@ -45,9 +45,10 @@ function sendSocket(payload) {
     }
 }
 
-// Safe wrapper for haptic vibrations
 function triggerVibration(pattern) {
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    if (typeof window.triggerVibration === 'function') {
+        window.triggerVibration(pattern);
+    } else if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
             navigator.vibrate(pattern);
         } catch (e) {}
@@ -378,7 +379,7 @@ window.resetToMainMenu = function() {
 };
 
 // -------------------------------------------------------------
-// 5. IN-GAME ACTIONS, AUDIO & CARD INTERACTIONS
+// 5. IN-GAME ACTIONS & CARD INTERACTIONS
 // -------------------------------------------------------------
 window.drawCard = function(source) {
     if (window.clientState.isSpectator) return;
@@ -469,7 +470,7 @@ window.kickPeekerAction = function(spectatorUsername) {
 };
 
 // -------------------------------------------------------------
-// 6. KNOCK VALIDATION, AUDIO & VIBRATION
+// 6. KNOCK VALIDATION & EXECUTION
 // -------------------------------------------------------------
 function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
@@ -674,7 +675,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER, AUDIO CUES & CELEBRATIONS
+// 8. MASTER TABLE RENDER & SPECTATOR LOGIC
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -912,7 +913,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 10. TURN ACTION & AUDIO CUE TRIGGER
+    // 10. TURN ACTION & AUDIO TRIGGER
     const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
@@ -1029,10 +1030,10 @@ window.updateUIFromLobby = function(lobby) {
             if (nextHandOverlay) nextHandOverlay.style.display = 'block';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
-                    nextBtn.innerText = 'Waiting for players (Auto in 6s)...';
+                    nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
                     nextBtn.disabled = true;
                 } else {
-                    nextBtn.innerText = 'Next Hand (Auto in 6s)';
+                    nextBtn.innerText = 'Next Hand (Auto in 8s)';
                     nextBtn.disabled = false;
                 }
             }
@@ -1043,8 +1044,8 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. DEALER DRAW & TIE BREAKER MODALS
-    const dealerDrawModal = document.getElementById('dealer-draw-modal');
+    // 14. DEALER DRAW & TIE BREAKER MODALS (CORRECTED DOM IDs)
+    const dealerDrawModal = document.getElementById('dealer-draw-modal') || document.getElementById('pool-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
 
@@ -1053,13 +1054,13 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
     }
 
-    // --- A. DEALER DRAW MODAL ---
+    // --- A. DEALER DRAW SHOWCASE ---
     if (lobby.gameState === 'dealerDraw') {
         if (dealerDrawModal) dealerDrawModal.style.display = 'flex';
         if (revealModal) revealModal.style.display = 'none';
 
-        const pTitle = document.getElementById('dealer-draw-title');
-        const pInstr = document.getElementById('dealer-draw-status');
+        const pTitle = document.getElementById('dealer-draw-title') || document.getElementById('pool-modal-title');
+        const pInstr = document.getElementById('dealer-draw-status') || document.getElementById('pool-modal-instruction');
         if (pTitle) pTitle.innerText = 'Picking for Dealer';
         if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
 
@@ -1079,6 +1080,7 @@ window.updateUIFromLobby = function(lobby) {
         });
         showcaseHtml += '</div>';
 
+        // Full 52-card pool
         let poolHtml = '';
         (lobby.drawPool || []).forEach((slot) => {
             if (slot.chosenBy) {
@@ -1091,11 +1093,28 @@ window.updateUIFromLobby = function(lobby) {
 
         const poolGrid = document.getElementById('draw-pool-grid');
         const orderStrip = document.getElementById('draw-order-sequence');
+        const poolContainer = document.getElementById('pool-cards-container');
+
         if (poolGrid) poolGrid.innerHTML = poolHtml;
         if (orderStrip) orderStrip.innerHTML = showcaseHtml;
+
+        if (poolContainer) {
+            poolContainer.className = 'draw-modal-split-layout';
+            poolContainer.innerHTML = `
+                ${showcaseHtml}
+                <div class="draw-pool-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
+                        <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">Available Deck Pool</span>
+                        <span style="font-size:0.65rem; color:var(--accent-cyan);">Tap a card</span>
+                    </div>
+                    <div class="pool-52-grid">${poolHtml}</div>
+                </div>
+            `;
+        }
+
         if (turnBanner) turnBanner.innerText = 'Dealer Draw Phase';
     } 
-    // --- B. TIE BREAKER MODAL ---
+    // --- B. TIE BREAKER SHOWCASE (CARDS LEFT IN DECK) ---
     else if (lobby.gameState === 'tieBreaker') {
         if (dealerDrawModal) dealerDrawModal.style.display = 'none';
         if (revealModal) revealModal.style.display = 'flex';
