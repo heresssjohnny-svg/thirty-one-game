@@ -10,17 +10,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Cache-busted stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=50">
-    <link rel="stylesheet" href="/css/table.css?v=50">
-    <link rel="stylesheet" href="/css/modals.css?v=50">
+    <link rel="stylesheet" href="/css/main.css?v=30">
+    <link rel="stylesheet" href="/css/table.css?v=30">
+    <link rel="stylesheet" href="/css/modals.css?v=30">
 
-    <!-- LiveKit SDK & Google Auth -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- LiveKit WebRTC SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body class="casino-theme">
     <div id="app">
-        <!-- 1. AUTH SCREEN (Preserved SQLite/Guest/Google Authentication) -->
+        <!-- 1. AUTH SCREEN (Email-Linked Accounts, Remember Me & Password Recovery) -->
         <div id="auth-screen" class="auth-overlay">
             <div class="auth-card casino-panel">
                 <div class="auth-header">
@@ -28,41 +27,84 @@
                     <p class="subtitle">Authentic Casino Table Game</p>
                 </div>
 
-                <div class="auth-tabs">
+                <div class="auth-tabs" id="auth-tab-bar">
                     <button id="tab-login" class="tab-btn active" onclick="switchAuthTab('login')">Log In</button>
                     <button id="tab-register" class="tab-btn" onclick="switchAuthTab('register')">Register</button>
                 </div>
 
                 <div id="auth-form-container">
+                    <!-- LOGIN FORM -->
                     <div id="login-fields">
                         <div class="form-group">
-                            <label for="login-username">Username</label>
-                            <input type="text" id="login-username" placeholder="Username" autocomplete="username">
+                            <label for="login-username">Username or Email</label>
+                            <input type="text" id="login-username" placeholder="Username or Email" autocomplete="username">
                         </div>
                         <div class="form-group">
                             <label for="login-password">Password</label>
                             <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
                         </div>
+                        
+                        <div class="auth-options-row" style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 14px; font-size: 0.85rem;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #cbd5e1;">
+                                <input type="checkbox" id="login-remember-me" checked style="accent-color: #d97706; cursor: pointer;">
+                                Remember Me
+                            </label>
+                            <a href="#" onclick="switchAuthTab('forgot'); return false;" style="color: #fbbf24; text-decoration: none; font-weight: 600;">Forgot Password?</a>
+                        </div>
+
                         <button class="primary-btn gold-btn full-width" onclick="submitAuthLogin()">Log In</button>
                     </div>
 
+                    <!-- REGISTER FORM -->
                     <div id="register-fields" style="display: none;">
                         <div class="form-group">
                             <label for="reg-username">Username</label>
-                            <input type="text" id="reg-username" placeholder="Choose username" autocomplete="username">
+                            <input type="text" id="reg-username" placeholder="Choose a username" autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-email">Recovery Email</label>
+                            <input type="email" id="reg-email" placeholder="name@example.com" autocomplete="email">
                         </div>
                         <div class="form-group">
                             <label for="reg-password">Password</label>
                             <input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password">
                         </div>
-                        <button class="primary-btn gold-btn full-width" onclick="submitAuthRegister()">Create Account</button>
+                        <button class="primary-btn gold-btn full-width" onclick="submitAuthRegister()" style="margin-top: 10px;">Create Account</button>
                     </div>
 
-                    <div class="auth-divider"><span>OR</span></div>
+                    <!-- PASSWORD RECOVERY FORM -->
+                    <div id="forgot-fields" style="display: none;">
+                        <div id="forgot-step-1">
+                            <p style="font-size: 0.84rem; color: #cbd5e1; margin-bottom: 12px; text-align: center;">
+                                Enter your username or registered recovery email to receive a 6-digit recovery code.
+                            </p>
+                            <div class="form-group">
+                                <label for="forgot-identifier">Username or Email</label>
+                                <input type="text" id="forgot-identifier" placeholder="Account username or email">
+                            </div>
+                            <button class="primary-btn gold-btn full-width" onclick="submitForgotPasswordRequest()">Send Recovery Code</button>
+                        </div>
 
-                    <div class="social-auth-actions">
-                        <div id="google-signin-btn" class="social-btn-container"></div>
-                        <button class="social-btn guest-btn" onclick="submitAuthGuest()">Play as Guest</button>
+                        <div id="forgot-step-2" style="display: none; margin-top: 10px;">
+                            <p style="font-size: 0.84rem; color: #34d399; margin-bottom: 12px; text-align: center;">
+                                Code generated! Enter your 6-digit code and new password below.
+                            </p>
+                            <div class="form-group">
+                                <label for="reset-code">6-Digit Recovery Code</label>
+                                <input type="text" id="reset-code" placeholder="123456" maxlength="6">
+                            </div>
+                            <div class="form-group">
+                                <label for="reset-new-password">New Password</label>
+                                <input type="password" id="reset-new-password" placeholder="Min. 6 characters">
+                            </div>
+                            <button class="primary-btn gold-btn full-width" onclick="submitResetPassword()">Set New Password</button>
+                        </div>
+
+                        <div style="text-align: center; margin-top: 14px;">
+                            <a href="#" onclick="switchAuthTab('login'); return false;" style="color: #94a3b8; font-size: 0.85rem; text-decoration: none;">
+                                ← Back to Log In
+                            </a>
+                        </div>
                     </div>
                 </div>
 
@@ -70,12 +112,12 @@
             </div>
         </div>
 
-        <!-- 2. MAIN MENU SCREEN (Preserved Table Setup & Live Tables) -->
+        <!-- 2. MAIN MENU SCREEN -->
         <div id="main-menu" class="main-menu-container" style="display: none;">
             <header class="menu-header">
                 <div class="brand">
                     <h1 class="gold-text">Blitz 31</h1>
-                    <span class="user-badge" id="menu-user-badge">Guest</span>
+                    <span class="user-badge" id="menu-user-badge">Player</span>
                 </div>
                 <div class="header-actions">
                     <button class="icon-btn gold-border" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
@@ -125,281 +167,310 @@
             </main>
         </div>
 
-        <!-- 3. IN-GAME VIEW & TABLE ARENA -->
-        <div id="game-view" style="display: none;">
-            <!-- IN-GAME HEADER -->
-            <header id="in-game-header">
-                <div class="room-title-bar">
-                    <span id="room-title-display">Table [----]</span>
+        <!-- 3. IN-GAME TABLE VIEW -->
+        <div id="game-view" class="game-view-container" style="display: none;">
+            <!-- TOP IN-GAME HEADER -->
+            <header class="in-game-header casino-topbar">
+                <div class="header-left">
+                    <span class="room-title gold-text" id="room-title-display">Table</span>
                     <span class="spectator-counter" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></span>
-                    <div id="active-peeking-banner" style="display: none;" onclick="stopPeekingAction()">
-                        <span>👀 Viewing Hand</span>
-                        <button class="stop-peek-btn">✕</button>
+                    <div id="active-peeking-banner" class="active-peeking-pill" style="display: none;" onclick="stopPeekingAction()">
+                        <span>Peeking</span>
+                        <button class="pill-close-btn">✕</button>
                     </div>
                 </div>
 
-                <div id="turn-banner" class="turn-banner">Waiting for players...</div>
-
-                <!-- Primary Action Row -->
-                <div id="in-game-top-row-btns">
-                    <button id="ready-btn" onclick="toggleReady()">Ready Up</button>
-                    <button id="stand-up-btn" onclick="standUp()">Stand Up</button>
-                    <button id="sit-btn" style="display: none;" onclick="sitDown()">Sit Down</button>
-                    <button id="end-game-btn" onclick="proposeEndGame()">End Match</button>
-                    <button id="leave-lobby-btn" onclick="leaveLobby()">Leave</button>
+                <div class="header-center">
+                    <span id="turn-banner" class="turn-status-banner">Waiting...</span>
                 </div>
 
-                <!-- Secondary Tools Row -->
-                <div id="in-game-tools-row">
-                    <button id="voice-btn" class="feature-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
-                    <button id="chat-toggle-btn" class="feature-btn" onclick="toggleChatWindow()">💬 Chat</button>
-                    <button id="bets-btn" class="feature-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
-                    <button id="ledger-btn" class="feature-btn" onclick="if(typeof openSessionLedgerModal==='function'){openSessionLedgerModal();}else if(typeof toggleSessionLedger==='function'){toggleSessionLedger(true);}else{toggleModal('session-ledger-modal');}">📊 Ledger</button>
-                    <button id="board-btn" class="feature-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
-                    <button id="settings-btn" class="feature-btn" onclick="openSettingsModal()">⚙️</button>
-                </div>
-
-                <!-- Host Controls Bar -->
-                <div id="lobby-config-bar">
-                    <div class="config-item">
-                        <span>Starting Lives:</span>
-                        <select id="config-lives" onchange="updateSettings()">
-                            <option value="1">1 Life</option>
-                            <option value="2" selected>2 Lives</option>
-                            <option value="3">3 Lives</option>
-                        </select>
+                <div class="header-right">
+                    <div id="in-game-top-row-btns" class="button-strip">
+                        <button id="ready-btn" class="action-btn ready-btn" onclick="toggleReady()">Ready Up</button>
+                        <button id="sit-btn" class="action-btn sit-btn" style="display: none;" onclick="sitDown()">Sit Down</button>
+                        <button id="stand-up-btn" class="action-btn stand-btn" onclick="standUp()">Stand Up</button>
+                        <button id="end-game-btn" class="action-btn end-btn" onclick="proposeEndGame()">End Match</button>
+                        <button id="leave-lobby-btn" class="action-btn leave-btn" onclick="leaveLobby()">Leave</button>
                     </div>
-                    <div class="config-item">
-                        <span>Table Wager:</span>
-                        <select id="config-wager" onchange="updateWager()">
-                            <option value="1">$1</option>
-                            <option value="5" selected>$5</option>
-                            <option value="10">$10</option>
-                            <option value="20">$20</option>
-                        </select>
-                    </div>
-                    <div class="bot-controls">
-                        <button id="add-bot-btn" onclick="addBot()">+ Add Bot</button>
-                        <button id="remove-bot-btn" onclick="removeBot()">- Remove Bot</button>
-                    </div>
-                </div>
-
-                <!-- DOCKED NOTIFICATIONS & PROPOSALS BANNER -->
-                <div id="pending-bets-banner" style="display: none;"></div>
-                <div id="global-proposals-container" style="display: none;"></div>
-                <div id="center-notification-banner" class="center-banner" style="display: none;"></div>
-                <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
-                    <div id="discard-pickup-card-content"></div>
-                </div>
-                <div id="fed-card-topright-modal" class="corner-modal top-right-corner" style="display: none;">
-                    <span id="fed-card-label"></span>
-                    <div id="fed-card-content"></div>
                 </div>
             </header>
 
-            <!-- CARD TABLE FELT -->
-            <main id="table-container">
-                <div id="table-oval-container"></div>
-                <div id="next-hand-overlay" style="display: none;">
-                    <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
-                </div>
-            </main>
-
-            <!-- PLAYER HAND CONTROLS (Docks Above Android System Bar) -->
-            <footer id="my-hand-area" class="bottom-player-hud">
-                <div class="my-hand-header-bar">
-                    <div id="my-hand-title">My Hand (Score: <strong id="my-score-display">0</strong>)</div>
-                    <button id="knock-btn" class="knock-action-btn" style="display: none;" onclick="knockRound()">Knock (21+)</button>
-                </div>
-                <div id="my-cards-container"></div>
-            </footer>
-        </div>
-
-        <!-- 4. MODALS, POPUPS & DRAWERS -->
-        <canvas id="celebration-canvas"></canvas>
-        <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
-
-        <!-- DEALER CUT / DRAW PHASE MODAL (Zero-scroll grid layout) -->
-        <div id="dealer-draw-modal" class="modal-overlay fullscreen-modal" style="display: none;">
-            <div class="modal-card full-pool-card">
-                <h2 id="dealer-draw-title">Pick a Card for Dealer</h2>
-                <p id="dealer-draw-desc">Lowest card deals. Ace is high.</p>
-                <div id="draw-results-stream" class="results-stream"></div>
-                <div id="draw-pool-grid" class="card-pool-grid pool-52-grid"></div>
+            <!-- IN-GAME TOOLS BAR -->
+            <div id="in-game-tools-row" class="tools-bar">
+                <button id="vc-main-btn" class="tool-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
+                <button id="chat-toggle-btn" class="tool-btn" onclick="toggleChatWindow()">💬 Chat</button>
+                <button class="tool-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
+                <button class="tool-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
+                <button class="tool-btn" onclick="openSettingsModal()">⚙️</button>
             </div>
-        </div>
 
-        <div id="pool-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide">
-                <h3 id="pool-modal-title">Picking for Dealer</h3>
-                <p id="pool-modal-instruction" class="subtitle">Lowest card deals (Ace highest). Tap any card!</p>
-                <div id="pool-cards-container" class="draw-modal-split-layout pool-52-grid"></div>
-            </div>
-        </div>
-
-        <!-- TIE BREAKER RESOLUTION MODAL -->
-        <div id="tie-breaker-reveal-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide">
-                <h3>Tie Breaker Resolution</h3>
-                <p id="tie-breaker-stream-msg" class="subtitle">Drawing to resolve lowest score...</p>
-                <div id="tie-breaker-stream-grid" class="draw-modal-split-layout"></div>
-            </div>
-        </div>
-
-        <!-- LIVES VOTE MODAL -->
-        <div id="lives-vote-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Vote on Starting Lives</h3>
-                <p id="lives-vote-prompt" class="subtitle"></p>
-                <div class="modal-actions">
-                    <button class="gold-btn" onclick="submitLivesVote(true)">Agree</button>
-                    <button class="secondary-btn" onclick="submitLivesVote(false)">Decline</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- HAND PEEK REQUEST MODAL -->
-        <div id="peek-request-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Hand Peek Request</h3>
-                <p id="peek-modal-msg" class="subtitle"></p>
-                <div class="modal-actions">
-                    <button id="peek-allow-btn" class="gold-btn">Allow</button>
-                    <button id="peek-deny-btn" class="secondary-btn">Deny</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- SEAT ACTION & BET MODALS -->
-        <div id="seat-action-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3 id="seat-action-title">Seat Actions</h3>
-                <div id="seat-action-body"></div>
-            </div>
-        </div>
-
-        <div id="bet-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3 id="bet-modal-title">Side Bet Proposal</h3>
-                <div id="bet-modal-body"></div>
-            </div>
-        </div>
-
-        <!-- SPECTATORS MODAL -->
-        <div id="spectators-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Active Spectators</h3>
-                <div id="spectators-list-content"></div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('spectators-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- ACTIVE BETS MODAL -->
-        <div id="active-bets-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Current Bets</h3>
-                <div id="active-bets-content"></div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('active-bets-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- LOBBY SESSION LEDGER MODAL -->
-        <div id="session-ledger-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box wide">
-                <h3 class="gold-text">📊 Lobby Session Ledger</h3>
-                <div id="ledger-tables-wrapper">
-                    <h4 style="margin: 12px 0 6px 0; color: #86efac; font-size: 0.95rem;">Active Side Bets in Play</h4>
-                    <div id="active-session-bets-list" class="ledger-section" style="max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; font-size: 0.85rem;">
-                        <div class="empty-list-notice">No active side bets.</div>
-                    </div>
-
-                    <h4 style="margin: 14px 0 6px 0; color: #fde047; font-size: 0.95rem;">Session Net Balances (Main Pot & Side Bets)</h4>
-                    <div id="session-settled-ledger-list" class="ledger-section" style="max-height: 160px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; font-size: 0.85rem;">
-                        <div id="session-ledger-display" class="empty-list-notice">No debts settled this session.</div>
-                    </div>
-                </div>
-                <div class="modal-actions" style="margin-top: 15px; display: flex; justify-content: space-between; gap: 10px;">
-                    <button type="button" class="feature-btn" onclick="if(typeof exportLedgerImage==='function') exportLedgerImage();">📸 Share Ledger</button>
-                    <button type="button" class="secondary-btn" onclick="toggleModal('session-ledger-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- SETTINGS MODAL -->
-        <div id="settings-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Audio & Settings</h3>
-                <div class="form-group">
-                    <label>Audio Output Device:</label>
-                    <select id="audio-output-select" onchange="setAudioOutputDevice(this.value)">
-                        <option value="default">Default Speaker</option>
+            <!-- HOST WAITING ROOM CONFIG BAR -->
+            <div id="lobby-config-bar" class="lobby-controls" style="display: none;">
+                <div class="config-item">
+                    <label>Starting Lives:</label>
+                    <select id="config-lives" onchange="updateSettings()">
+                        <option value="1">1 Life</option>
+                        <option value="2" selected>2 Lives</option>
+                        <option value="3">3 Lives</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Voice Chat Volume:</label>
-                    <input type="range" id="voice-volume-slider" min="0" max="1" step="0.05" value="1" oninput="setVoiceChatVolume(this.value)">
+                <div class="config-item">
+                    <label>Table Wager:</label>
+                    <select id="config-wager" onchange="updateWager()">
+                        <option value="5" selected>$5</option>
+                        <option value="10">$10</option>
+                        <option value="20">$20</option>
+                    </select>
                 </div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('settings-modal')">Close</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- LIFETIME LEDGER MODAL -->
-        <div id="lifetime-ledger-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box wide">
-                <h3>Lifetime Ledger Balances</h3>
-                <div id="lifetime-ledger-table-container">
-                    <div class="empty-list-notice">No balance entries found.</div>
-                </div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('lifetime-ledger-modal')">Close</button>
+                <div class="config-item bot-actions">
+                    <button class="btn-sm" onclick="addBot()">+ Add Bot</button>
+                    <button class="btn-sm danger" onclick="removeBot()">- Remove Bot</button>
                 </div>
             </div>
-        </div>
 
-        <!-- CHAT DRAWER -->
+            <!-- IN-GAME REVEAL MODALS -->
+            <div id="center-notification-banner" class="notification-pill" style="display: none;"></div>
+            <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
+                <span class="modal-label">Picked Discard:</span>
+                <div id="discard-pickup-card-content"></div>
+            </div>
+            <div id="fed-card-topright-modal" class="corner-modal top-right-corner" style="display: none;">
+                <span id="fed-card-label" class="modal-label">Fed Card:</span>
+                <div id="fed-card-content"></div>
+            </div>
+
+            <!-- CASINO FELT OVAL TABLE CONTAINER -->
+            <div class="table-outer-wrapper">
+                <div id="table-oval-container" class="casino-felt-table">
+                    <!-- CENTER FELT (Deck & Discard) -->
+                    <div class="table-center-area">
+                        <div id="deck-pile" class="deck-pile card-deck" onclick="drawFromDeck()">
+                            <div class="card-back-pattern">🂠</div>
+                            <span class="pile-label">DECK</span>
+                        </div>
+                        <div id="discard-pile" class="discard-pile card-discard" onclick="drawFromDiscard()">
+                            <div id="discard-top-card" class="card-placeholder">Empty</div>
+                            <span class="pile-label">DISCARD</span>
+                        </div>
+                    </div>
+
+                    <!-- 6 PLAYER SEATS (Seats 0 to 5) -->
+                    <div id="seat-0" class="player-seat seat seat-0 seat-pos-0" data-seat="0" onclick="handleSeatClick(0)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-1" class="player-seat seat seat-1 seat-pos-1" data-seat="1" onclick="handleSeatClick(1)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-2" class="player-seat seat seat-2 seat-pos-2" data-seat="2" onclick="handleSeatClick(2)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-3" class="player-seat seat seat-3 seat-pos-3" data-seat="3" onclick="handleSeatClick(3)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-4" class="player-seat seat seat-4 seat-pos-4" data-seat="4" onclick="handleSeatClick(4)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-5" class="player-seat seat seat-5 seat-pos-5" data-seat="5" onclick="handleSeatClick(5)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PLAYER HAND CONTROLS (Docked Bottom) -->
+            <footer class="player-hand-container">
+                <div class="hand-header">
+                    <span id="my-hand-title">My Hand</span>
+                    <button id="knock-btn" class="knock-action-btn" style="display: none;" onclick="knockRound()" disabled>Knock!</button>
+                </div>
+                <div id="my-cards-container" class="cards-flex-row"></div>
+            </footer>
+
+            <!-- ROUND OVERLAY -->
+            <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
+                <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
+            </div>
+        </div>
+        <!-- 4. CHAT DRAWER (Form-free to prevent accidental mobile reloads) -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h4>Table Chat</h4>
+            <div class="chat-header">
+                <span class="gold-text">Table Chat</span>
                 <button class="close-btn" onclick="toggleChatWindow()">✕</button>
             </div>
-            <div id="chat-messages" class="drawer-body"></div>
-            <div class="drawer-footer">
-                <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                <button id="chat-send-btn" type="button" onclick="sendChatMessage()">Send</button>
+            <div id="chat-messages" class="chat-messages-container"></div>
+            <div class="chat-input-bar">
+                <input type="text" id="chat-input" placeholder="Type a message..." maxlength="140" onkeydown="if(event.key==='Enter') sendChatMessage()">
+                <button type="button" id="chat-send-btn" class="primary-btn gold-btn" onclick="sendChatMessage()">Send</button>
             </div>
         </div>
 
-        <!-- GLOBAL SIDE BETS SIDEBAR -->
-        <div id="global-side-bets-sidebar" class="global-bets-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h4>Global Side Bets</h4>
-                <button class="close-btn" onclick="toggleGlobalSidebar()">✕</button>
+        <!-- 5. DEALER DRAW & TIE-BREAKER MODAL -->
+        <div id="dealer-draw-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box casino-panel dealer-draw-box">
+                <div class="modal-header">
+                    <h3 id="dealer-draw-title" class="gold-text">Pick a Card for Dealer</h3>
+                </div>
+                <div id="draw-order-sequence" class="draw-order-strip"></div>
+                <div id="draw-pool-grid" class="draw-cards-grid"></div>
+                <p id="dealer-draw-status" class="draw-status-message">Lowest card deals</p>
             </div>
-            <div id="global-side-bets-list" class="drawer-body"></div>
         </div>
 
-        <!-- AUDIO ENGINE ELEMENTS -->
-        <audio id="knock-sound" src="/audio/knock.mp3" preload="auto"></audio>
-        <audio id="turn-sound" src="/audio/yourturn.mp3" preload="auto"></audio>
-        <audio id="deal-sound" src="/audio/deal.mp3" preload="auto"></audio>
-        <audio id="win-sound" src="/audio/win.mp3" preload="auto"></audio>
+        <!-- 6. SIDE BETS MODAL -->
+        <div id="active-bets-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box casino-panel bets-modal-box">
+                <div class="modal-header">
+                    <h3 class="gold-text">Side Bets & Wagers</h3>
+                    <button class="close-btn" onclick="closeActiveBetsModal()">✕</button>
+                </div>
+                <div class="bets-tabs-bar">
+                    <button id="bets-tab-active" class="tab-btn active" onclick="switchBetsTab('active')">Active</button>
+                    <button id="bets-tab-propose" class="tab-btn" onclick="switchBetsTab('propose')">Propose Bet</button>
+                </div>
+                <div id="active-bets-content" class="bets-content-container">
+                    <div id="active-bets-list" class="bets-list">
+                        <div class="empty-list-notice">No active side bets.</div>
+                    </div>
+                    <div id="propose-bet-fields" style="display: none;">
+                        <div class="form-group">
+                            <label for="bet-target-player">Target Player</label>
+                            <select id="bet-target-player"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="bet-wager-amount">Wager Amount ($)</label>
+                            <input type="number" id="bet-wager-amount" value="5" min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="bet-type-select">Bet Type</label>
+                            <select id="bet-type-select">
+                                <option value="first_to_lose">First to Lose a Life</option>
+                                <option value="win_round">Wins Next Round</option>
+                            </select>
+                        </div>
+                        <button class="primary-btn gold-btn full-width" onclick="submitSideBetProposal()">Send Proposal</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. SPECTATOR LIST MODAL -->
+        <div id="spectator-list-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box casino-panel spec-modal-box">
+                <div class="modal-header">
+                    <h3 class="gold-text">Spectators</h3>
+                    <button class="close-btn" onclick="closeSpectatorListModal()">✕</button>
+                </div>
+                <div id="spectators-list" class="spectators-container">
+                    <div class="empty-list-notice">No spectators currently watching.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. SETTINGS MODAL -->
+        <div id="settings-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box casino-panel settings-box">
+                <div class="modal-header">
+                    <h3 class="gold-text">Settings</h3>
+                    <button class="close-btn" onclick="closeSettingsModal()">✕</button>
+                </div>
+                <div class="settings-content">
+                    <div class="setting-row">
+                        <span>Sound Effects</span>
+                        <label class="switch-toggle">
+                            <input type="checkbox" id="setting-sfx" checked onchange="toggleSoundSetting()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <span>Voice Audio Output</span>
+                        <select id="setting-audio-output" onchange="changeVoiceOutputDevice()">
+                            <option value="default">Default Speaker</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 9. SESSION LEDGER MODAL -->
+        <div id="session-ledger-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box casino-panel ledger-modal-box">
+                <div class="modal-header">
+                    <h3 class="gold-text">Session Ledger</h3>
+                    <button class="close-btn" onclick="closeSessionLedgerModal()">✕</button>
+                </div>
+                <div id="session-ledger-content" class="ledger-content">
+                    <div class="empty-list-notice">No active session debts.</div>
+                </div>
+                <div class="modal-actions" style="display: flex; justify-content: space-between; margin-top: 14px;">
+                    <button class="primary-btn gold-btn" onclick="shareLedgerSnapshot()">📸 Share</button>
+                    <button class="secondary-btn" onclick="closeSessionLedgerModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 10. LIFETIME LEDGER MODAL -->
+        <div id="lifetime-ledger-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-box casino-panel ledger-modal-box">
+                <div class="modal-header">
+                    <h3 class="gold-text">Lifetime Ledger Balances</h3>
+                    <button class="close-btn" onclick="closeLifetimeLedgerModal()">✕</button>
+                </div>
+                <div id="lifetime-ledger-table-container" class="ledger-content">
+                    <div class="empty-list-notice">No balance entries found.</div>
+                </div>
+                <div class="modal-actions" style="margin-top: 14px; text-align: right;">
+                    <button class="secondary-btn" onclick="closeLifetimeLedgerModal()">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <!-- SOUND ENGINE AUDIO TAGS -->
+    <audio id="sound-knock" src="/audio/knock.mp3" preload="auto"></audio>
+    <audio id="sound-yourturn" src="/audio/yourturn.mp3" preload="auto"></audio>
+
+    <!-- CELEBRATION EFFECT CANVAS -->
+    <canvas id="celebration-canvas" style="display: none;"></canvas>
+
     <!-- CLIENT SCRIPT PIPELINE -->
-    <script src="/js/config.js"></script>
-    <script src="/js/audio.js"></script>
-    <script src="/js/celebration.js"></script>
-    <script src="/js/voice.js"></script>
-    <script src="/js/ledger.js"></script>
-    <script src="/js/music.js"></script>
-    <script src="/js/network.js"></script>
-    <script src="/js/ui.js"></script>
-    <script src="/js/app.js"></script>
+    <script src="/js/network.js?v=40"></script>
+    <script src="/js/ledger.js?v=40"></script>
+    <script src="/js/voice.js?v=40"></script>
+    <script src="/js/ui.js?v=40"></script>
+    <script src="/js/app.js?v=40"></script>
 </body>
 </html>
