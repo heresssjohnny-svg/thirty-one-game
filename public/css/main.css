@@ -1,23 +1,17 @@
 /* =============================================================
-   BLITZ 31 - CASINO MAIN STYLESHEET (PART 1 OF 2)
+   BLITZ 31 - CASINO MASTER STYLESHEET
    ============================================================= */
 
 :root {
     --bg-dark: #071e13;
     --felt-green: #0e3d26;
-    --felt-dark: #061c11;
-    --felt-border: #14532d;
     --accent-gold: #d4af37;
     --accent-gold-bright: #f6e05e;
-    --accent-gold-dark: #8c6d13;
-    --accent-cyan: #38bdf8;
     --accent-emerald: #10b981;
-    --accent-rose: #f43f5e;
     --accent-red: #ef4444;
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
-    --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-    --gold-glow: 0 0 14px rgba(212, 175, 55, 0.45);
+    --gold-glow: 0 0 12px rgba(212, 175, 55, 0.45);
 }
 
 * {
@@ -31,273 +25,272 @@
 html, body {
     width: 100%;
     height: 100%;
-    min-height: 100vh;
     height: 100dvh;
     background-color: var(--bg-dark);
     color: var(--text-main);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     overflow-x: hidden;
-    overflow-y: auto;
 }
 
-/* -------------------------------------------------------------
-   1. MAIN MENU & TABLE SETUP SCREEN (CASINO THEME)
-   ------------------------------------------------------------- */
-#main-menu,
+/* =============================================================
+   1. AUTH OVERLAY
+   ============================================================= */
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, rgba(6, 78, 59, 0.95) 0%, rgba(2, 44, 34, 0.98) 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 16px;
+}
+
+.auth-card.casino-panel {
+    width: 100%;
+    max-width: 380px;
+    background: rgba(10, 35, 25, 0.92);
+    border: 2px solid var(--accent-gold);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), var(--gold-glow);
+    padding: 24px 20px;
+    backdrop-filter: blur(8px);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.gold-text {
+    color: var(--accent-gold) !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    padding-bottom: 8px;
+}
+
+.auth-tabs .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.auth-tabs .tab-btn.active {
+    background: rgba(212, 175, 55, 0.15);
+    color: var(--accent-gold);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.form-group input,
+#username-input,
+#lobby-name-input,
+#lobby-code-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(4, 22, 14, 0.9);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 6px;
+    color: #f8fafc;
+    font-size: 0.95rem;
+    outline: none;
+}
+
+.gold-btn, .primary-btn.gold-btn {
+    background: linear-gradient(180deg, #d4af37 0%, #aa820a 100%);
+    color: #0b1e16;
+    font-weight: 800;
+    border: 1px solid #fef08a;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    text-transform: uppercase;
+}
+
+.full-width { width: 100%; }
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 14px 0;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.auth-divider::before, .auth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.auth-divider span { padding: 0 10px; }
+
+.guest-btn {
+    width: 100%;
+    padding: 9px;
+    background: rgba(51, 65, 85, 0.6);
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* =============================================================
+   2. MAIN MENU SCREEN
+   ============================================================= */
 .main-menu-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
     min-height: 100vh;
     min-height: 100dvh;
-    width: 100%;
     padding: 24px 16px 40px;
     background: radial-gradient(circle at 50% 25%, #14472d 0%, #072315 70%, #03120b 100%);
 }
 
-#main-menu h1 {
-    font-size: 2.5rem;
-    font-weight: 900;
-    color: var(--accent-gold);
-    text-shadow: 0 3px 6px rgba(0, 0, 0, 0.8), var(--gold-glow);
-    margin: 0 0 6px 0;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    text-align: center;
-}
-
-.menu-subtitle {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-bottom: 16px;
-    text-align: center;
-}
-
-.user-bar, .user-badge-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 18px;
-}
-
-#menu-user-badge {
-    font-size: 1.05rem;
-    font-weight: 800;
-    color: var(--accent-gold-bright);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-}
-
-.icon-btn, .menu-action-btn {
-    background: rgba(15, 35, 24, 0.85);
-    border: 1px solid rgba(212, 175, 55, 0.5);
-    color: var(--accent-gold);
-    border-radius: 8px;
-    padding: 6px 12px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.2s ease;
-}
-
-.icon-btn:hover, .menu-action-btn:hover {
-    border-color: var(--accent-gold-bright);
-    background: rgba(20, 50, 35, 0.95);
-    transform: translateY(-1px);
-}
-
-.menu-card, .table-setup-box {
-    background: rgba(6, 28, 17, 0.9);
-    border: 2px solid var(--accent-gold);
-    border-radius: 14px;
-    padding: 20px;
+.menu-header {
     width: 100%;
-    max-width: 400px;
-    box-shadow: var(--card-shadow), inset 0 0 25px rgba(0, 0, 0, 0.6);
+    max-width: 440px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
 }
 
-.menu-card h2, .table-setup-box h2 {
-    color: var(--accent-gold);
-    font-size: 1.3rem;
-    margin-top: 0;
-    margin-bottom: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: 800;
-    text-align: center;
+.brand h1 {
+    font-size: 2.2rem;
+    font-weight: 900;
 }
 
-.setup-group {
+.user-badge {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--accent-gold-bright);
+}
+
+.menu-content {
+    width: 100%;
+    max-width: 440px;
     display: flex;
     flex-direction: column;
-    margin-bottom: 12px;
-    text-align: left;
+    gap: 16px;
 }
 
-.setup-group label {
-    font-size: 0.72rem;
-    font-weight: 800;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 4px;
+.menu-card.casino-panel {
+    background: rgba(6, 28, 17, 0.9);
+    border: 2px solid var(--accent-gold);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
 }
 
-.setup-group input[type="text"],
-#lobby-name-input,
-#username-input,
-#lobby-code-input {
-    width: 100%;
-    background: #04160e;
-    border: 1px solid rgba(212, 175, 55, 0.5);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: #ffffff;
-    font-size: 0.95rem;
-    font-weight: 600;
-    outline: none;
-    transition: border-color 0.2s ease;
-}
+.checkbox-group { margin-bottom: 12px; font-size: 0.85rem; color: var(--text-muted); }
+.checkbox-group label { display: flex; align-items: center; gap: 6px; }
+.divider-line { border-top: 1px solid rgba(212, 175, 55, 0.25); margin: 14px 0; }
+.form-inline { display: flex; gap: 8px; }
+.form-inline input { flex: 1; }
 
-.setup-group input[type="text"]:focus,
-#lobby-name-input:focus,
-#username-input:focus,
-#lobby-code-input:focus {
-    border-color: var(--accent-gold-bright);
-    box-shadow: 0 0 10px rgba(246, 224, 94, 0.4);
-}
-
-.checkbox-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0 14px 0;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    font-weight: 700;
-    cursor: pointer;
-}
-
-.checkbox-row input[type="checkbox"] {
-    accent-color: var(--accent-gold);
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.gold-btn, #create-table-btn {
-    background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%);
-    color: #04190e;
-    font-size: 1rem;
-    font-weight: 900;
-    padding: 11px 16px;
-    border-radius: 8px;
-    border: 1px solid #fef08a;
-    width: 100%;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    transition: transform 0.1s ease, filter 0.2s ease;
-}
-
-.gold-btn:active, #create-table-btn:active {
-    transform: translateY(1px);
-    filter: brightness(0.9);
-}
-
-.join-direct-row {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-    width: 100%;
-}
-
-.join-direct-row input { flex: 1; }
-
-.join-btn-direct {
+.secondary-btn {
     background: #1e293b;
     border: 1px solid #475569;
     color: #cbd5e1;
-    font-weight: 800;
-    border-radius: 8px;
-    padding: 0 18px;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 8px 14px;
     cursor: pointer;
 }
 
-.live-tables-section {
-    width: 100%;
-    max-width: 400px;
-}
-
-.live-tables-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.live-tables-header h3 {
-    margin: 0;
-    font-size: 1.15rem;
+.icon-btn {
+    background: rgba(15, 35, 24, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.4);
     color: var(--accent-gold);
-    font-weight: 800;
-    letter-spacing: 0.5px;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
 }
 
-#lobby-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-}
-
+.lobby-list-container { display: flex; flex-direction: column; gap: 8px; }
 .lobby-item {
     background: rgba(6, 28, 17, 0.85);
     border: 1px solid rgba(212, 175, 55, 0.4);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 10px 14px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
     cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-    transition: all 0.2s ease;
 }
 
-.lobby-item:hover {
-    border-color: var(--accent-gold-bright);
-    background: rgba(14, 46, 29, 0.95);
-    transform: translateY(-1px);
+/* =============================================================
+   3. IN-GAME TABLE VIEW & SAFE AREA BOUNDARIES
+   ============================================================= */
+#game-view,
+.game-view-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: radial-gradient(circle at 50% 50%, #0e3d26 0%, #061c11 75%, #020a06 100%);
+    overflow: hidden;
+    box-sizing: border-box;
+
+    /* High padding ensures mobile status bar & Android nav bar do not cover table UI */
+    padding-top: max(46px, env(safe-area-inset-top, 46px)) !important;
+    padding-bottom: max(32px, env(safe-area-inset-bottom, 32px)) !important;
+    padding-left: max(8px, env(safe-area-inset-left, 8px)) !important;
+    padding-right: max(8px, env(safe-area-inset-right, 8px)) !important;
 }
 
-/* -------------------------------------------------------------
-   2. IN-GAME HEADER & TIGHTENED ROW CONTROLS
-   ------------------------------------------------------------- */
 #in-game-header,
 .in-game-header {
     position: relative !important;
     width: 100% !important;
-    max-width: 580px;
+    max-width: 600px;
     margin: 0 auto;
-    padding: 2px 8px 4px 8px !important; /* Compact padding */
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px !important;                  /* Tightened row gap */
-    background: rgba(4, 20, 13, 0.94);
-    border-bottom: 1.5px solid rgba(212, 175, 55, 0.4);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
-    z-index: 300 !important;
-    box-sizing: border-box;
+    gap: 4px;
+    z-index: 300 !important; /* Above all banners and overlays */
 }
 
 .room-title-bar, .header-left {
@@ -305,7 +298,7 @@ html, body {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 800;
     color: var(--accent-gold);
 }
@@ -314,51 +307,43 @@ html, body {
     background: rgba(14, 46, 29, 0.8);
     border: 1px solid rgba(212, 175, 55, 0.4);
     color: var(--accent-gold);
-    padding: 1px 6px;
-    border-radius: 10px;
+    padding: 2px 7px;
+    border-radius: 12px;
     font-size: 0.72rem;
     cursor: pointer;
 }
 
 .turn-banner, #turn-banner {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 800;
     color: #f8fafc;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-    margin: 0 !important;
-    line-height: 1.1;
 }
 
-/* Primary Action Buttons (Ready Up, Stand Up, Sit Down, End Match, Leave) */
+/* Header Buttons Rows */
 #in-game-top-row-btns,
-.in-game-primary-row {
+#in-game-tools-row {
+    position: relative !important;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: 3px !important;                 /* Reduced from 6px */
+    gap: 4px;
     width: 100%;
-    margin: 1px 0 !important;
     z-index: 301 !important;
 }
 
-#ready-btn,
-#stand-up-btn,
-#sit-btn,
-#end-game-btn,
-#leave-lobby-btn,
-.game-action-btn {
+#in-game-top-row-btns button,
+.action-btn {
     background: linear-gradient(180deg, #164e32 0%, #0a291a 100%);
     border: 1px solid rgba(212, 175, 55, 0.5);
     color: #f8fafc;
     border-radius: 5px;
-    padding: 3px 8px !important;         /* Reduced from 6px 12px */
-    font-size: 0.76rem !important;
+    padding: 5px 10px;
+    font-size: 0.78rem;
     font-weight: 800;
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-    transition: all 0.15s ease;
-    text-transform: capitalize;
+    pointer-events: auto !important;
 }
 
 #ready-btn.ready-active {
@@ -368,404 +353,169 @@ html, body {
 }
 
 #leave-lobby-btn, #end-game-btn {
-    border-color: rgba(239, 68, 68, 0.45) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
     color: #fca5a5 !important;
 }
 
-/* Secondary Tools Row (Voice, Chat, Bets, Board, Settings) */
-#in-game-tools-row,
-.in-game-secondary-row {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 3px !important;                 /* Reduced from 6px */
-    width: 100%;
-    margin: 1px 0 !important;
-    z-index: 301 !important;
-}
-
-#voice-btn,
-#chat-toggle-btn,
-#bets-btn,
-#board-btn,
-#ledger-btn,
-#settings-btn,
-.feature-btn,
-.game-tool-btn {
-    background: rgba(14, 46, 29, 0.8);
-    border: 1px solid rgba(212, 175, 55, 0.4);
+.feature-btn, .tool-btn {
+    background: rgba(14, 46, 29, 0.75);
+    border: 1px solid rgba(212, 175, 55, 0.35);
     color: var(--accent-gold);
     border-radius: 5px;
-    padding: 3px 7px !important;         /* Reduced from 5px 10px */
-    font-size: 0.74rem !important;
+    padding: 4px 8px;
+    font-size: 0.75rem;
     font-weight: 700;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    transition: all 0.15s ease;
+    pointer-events: auto !important;
 }
 
-/* Host Configuration Controls (Lives, Wager, Add/Remove Bot) */
-#lobby-config-bar,
-.lobby-host-controls {
+/* Host Configuration Controls */
+#lobby-config-bar, .lobby-controls {
+    position: relative !important;
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
     justify-content: center;
-    gap: 6px !important;                 /* Reduced from 10px */
-    width: 100%;
-    margin: 2px 0 0 0 !important;
-    padding: 2px 0 0 0 !important;
-    border-top: 1px solid rgba(212, 175, 55, 0.2);
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
     z-index: 301 !important;
 }
 
 .config-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
     font-size: 0.72rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
 }
 
-#config-lives,
-#config-wager,
-select {
+.config-item select {
     background: #04160e;
-    border: 1px solid rgba(212, 175, 55, 0.5);
+    border: 1px solid rgba(212, 175, 55, 0.4);
     color: #f8fafc;
-    border-radius: 4px;
-    padding: 2px 5px !important;
-    font-size: 0.74rem !important;
+    border-radius: 5px;
+    padding: 3px 6px;
+    font-size: 0.74rem;
     font-weight: 700;
-    outline: none;
-    cursor: pointer;
+    pointer-events: auto !important;
 }
 
-.bot-controls button,
-.bot-actions button,
-.bot-action-btn {
-    background: rgba(15, 35, 24, 0.95);
+.bot-controls button, .bot-actions button {
+    background: rgba(15, 35, 24, 0.9);
     border: 1px solid rgba(212, 175, 55, 0.4);
     color: #cbd5e1;
     font-size: 0.72rem;
-    font-weight: 700;
-    padding: 2px 6px !important;
+    padding: 3px 6px;
     border-radius: 4px;
     cursor: pointer;
+    pointer-events: auto !important;
 }
-/* =============================================================
-   BLITZ 31 - CASINO MAIN STYLESHEET (PART 2 OF 2)
+
+/*  =============================================================
+   4. NOTIFICATION PILLS (Fitted Below Buttons & Above Top Player)
    ============================================================= */
-
-/* -------------------------------------------------------------
-   3. ACTIVE GAME VIEWPORT & FELT ARENA
-   ------------------------------------------------------------- */
-#game-view,
-.game-viewport {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    background: radial-gradient(circle at 50% 45%, var(--felt-green) 0%, var(--felt-dark) 75%, #020a06 100%);
-    overflow: hidden;
-    box-sizing: border-box;
+#in-game-header {
+    position: relative !important;
 }
 
-/* Floating Table Notifications (Placed between header and top seats) */
 #center-notification-banner,
-.center-notification-pill {
-    position: absolute;
-    top: max(96px, 12vh);
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(4, 20, 13, 0.96);
-    color: var(--accent-gold-bright);
-    border: 1.5px solid var(--accent-gold);
-    border-radius: 20px;
-    padding: 5px 16px;
-    font-size: 0.8rem;
-    font-weight: 800;
-    text-align: center;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
-    z-index: 250;
-    display: none;
-    white-space: nowrap;
-    pointer-events: none;
+.notification-pill,
+.center-banner {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 250 !important;
+    pointer-events: none !important;
+    width: max-content !important;
+    max-width: 86vw !important;
+    background: rgba(4, 28, 16, 0.95) !important;
+    border: 1.5px solid var(--accent-gold, #d4af37) !important;
+    border-radius: 8px !important;
+    padding: 5px 14px !important;
+    font-size: 0.76rem !important;
+    font-weight: 800 !important;
+    color: #f8fafc !important;
+    text-align: center !important;
+    line-height: 1.25 !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8) !important;
+    white-space: normal !important;
 }
 
 #discard-pickup-topleft-modal,
-#fed-card-topright-modal {
-    position: absolute;
-    top: max(98px, 12.5vh);
-    background: rgba(6, 28, 17, 0.92);
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    border-radius: 6px;
-    padding: 3px 8px;
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    display: none;
-    z-index: 240;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+.corner-modal.top-left-corner {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    left: 8px !important;
+    right: auto !important;
+    z-index: 240 !important;
+    pointer-events: none !important;
+    background: rgba(4, 20, 13, 0.95) !important;
+    border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
+    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75) !important;
 }
 
-#discard-pickup-topleft-modal { left: 10px; }
-#fed-card-topright-modal { right: 10px; }
-
-/* -------------------------------------------------------------
-   4. TABLE FELT OVAL & CENTER CARD DECKS
-   ------------------------------------------------------------- */
-#table-oval-container,
-.table-felt-area {
-    position: relative;
-    width: 96vw;
-    max-width: 620px;
-    flex: 1;
-    min-height: 0;
-    margin: 4px auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    box-sizing: border-box;
+#fed-card-topright-modal,
+.corner-modal.top-right-corner {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    right: 8px !important;
+    left: auto !important;
+    z-index: 240 !important;
+    pointer-events: none !important;
+    background: rgba(4, 20, 13, 0.95) !important;
+    border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
+    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75) !important;
 }
-
-.felt-oval-border {
-    position: absolute;
-    width: 94%;
-    height: 84%;
-    border-radius: 120px;
-    border: 4px solid var(--felt-border);
-    box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.8), 0 0 15px rgba(20, 83, 45, 0.5);
-    pointer-events: none;
-}
-
-/* Center Felt Card Slots (Deck & Discard Pile) */
-.felt-center-slots,
-#center-decks-area {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    z-index: 20;
-}
-
-.card-deck-slot,
-#felt-deck-slot,
-#felt-discard-slot {
-    position: relative;
-    width: 62px;
-    height: 88px;
-    border-radius: 6px;
-    cursor: pointer;
-    box-sizing: border-box;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.card-deck-slot:active,
-#felt-deck-slot:active,
-#felt-discard-slot:active {
-    transform: scale(0.96);
-}
-
-#felt-deck-slot {
-    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
-    border: 1.5px solid #60a5fa;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #93c5fd;
-    font-weight: 900;
-    font-size: 0.85rem;
-}
-
-#felt-discard-slot {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1.5px dashed rgba(212, 175, 55, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.empty-discard-box {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: rgba(212, 175, 55, 0.6);
-    text-transform: uppercase;
-}
-
-/* -------------------------------------------------------------
-   5. PLAYER HAND, SCORE BADGE & ACTION ROW
-   ------------------------------------------------------------- */
-#player-bottom-area,
-.player-dock-bottom {
-    position: relative;
+ =============================================================
+   5. PLAYER BOTTOM HUD
+   ============================================================= */
+#my-hand-area,
+.player-hand-container {
     width: 100%;
-    max-width: 580px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-bottom: max(6px, env(safe-area-inset-bottom, 6px));
-    background: linear-gradient(180deg, transparent 0%, rgba(3, 15, 9, 0.95) 30%);
-    z-index: 100;
-    box-sizing: border-box;
+    gap: 4px;
+    z-index: 180;
 }
 
-.hand-info-row {
+.my-hand-header-bar, .hand-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    width: 90%;
-    max-width: 380px;
-    margin-bottom: 4px;
-}
-
-#my-score-display,
-.score-badge {
-    background: rgba(4, 20, 13, 0.9);
-    border: 1px solid var(--accent-gold);
-    color: var(--accent-gold-bright);
-    font-size: 0.82rem;
-    font-weight: 900;
-    padding: 2px 10px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-}
-
-.hand-actions-bar {
-    display: flex;
-    gap: 8px;
-}
-
-#knock-btn {
-    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
-    border: 1px solid #f87171;
-    color: #ffffff;
-    font-size: 0.8rem;
-    font-weight: 900;
-    padding: 4px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-    text-transform: uppercase;
-}
-
-#player-cards-container,
-.cards-hand-wrapper {
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-    gap: 8px;
-    height: 105px;
-    padding: 0 10px;
-    box-sizing: border-box;
-}
-
-.hand-card-wrapper {
-    position: relative;
-    transition: transform 0.15s ease;
-}
-
-.hand-card-wrapper.clickable-card {
-    cursor: pointer;
-}
-
-.hand-card-wrapper.clickable-card:hover,
-.hand-card-wrapper.clickable-card:active {
-    transform: translateY(-14px);
-}
-
-/* -------------------------------------------------------------
-   6. NEXT HAND READY OVERLAY
-   ------------------------------------------------------------- */
-#next-hand-overlay,
-.next-hand-modal {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: none;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    z-index: 500;
-    backdrop-filter: blur(4px);
+    width: 100%;
+    max-width: 440px;
+    padding: 0 4px;
 }
 
-.next-hand-card {
-    background: rgba(6, 28, 17, 0.98);
-    border: 2px solid var(--accent-gold);
-    border-radius: 12px;
-    padding: 20px 24px;
-    text-align: center;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.9);
-    max-width: 320px;
+#my-hand-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--accent-gold);
 }
 
-.next-hand-card h3 {
-    color: var(--accent-gold-bright);
-    font-size: 1.15rem;
-    margin-bottom: 6px;
-    text-transform: uppercase;
+.knock-action-btn, #knock-btn {
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+    color: #ffffff;
     font-weight: 900;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 0.8rem;
+    cursor: pointer;
 }
 
-.next-hand-card p {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-bottom: 14px;
-}
-
-/* -------------------------------------------------------------
-   7. RESPONSIVENESS & MOBILE SAFE AREAS
-   ------------------------------------------------------------- */
-@media (max-width: 480px) {
-    #in-game-header {
-        padding: 2px 4px 3px 4px !important;
-        gap: 2px !important;
-    }
-
-    #in-game-top-row-btns,
-    #in-game-tools-row {
-        gap: 2px !important;
-    }
-
-    #ready-btn,
-    #stand-up-btn,
-    #sit-btn,
-    #end-game-btn,
-    #leave-lobby-btn {
-        padding: 2px 6px !important;
-        font-size: 0.72rem !important;
-    }
-
-    #voice-btn,
-    #chat-toggle-btn,
-    #bets-btn,
-    #board-btn,
-    #ledger-btn,
-    #settings-btn {
-        padding: 2px 5px !important;
-        font-size: 0.7rem !important;
-    }
-
-    .card-deck-slot,
-    #felt-deck-slot,
-    #felt-discard-slot {
-        width: 52px;
-        height: 74px;
-    }
-
-    #player-cards-container {
-        height: 92px;
-        gap: 6px;
-    }
+#my-cards-container, .cards-flex-row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
 }
