@@ -1,12 +1,19 @@
 // server/game/lobbyManager.js - Core Match Logic, State Management & Ledger Sync
 const WebSocket = require('ws');
+
 let db;
 try {
     db = require('../db');
 } catch (e) {
     db = null;
 }
-const { executeBotTurn } = require('./bot');
+
+let botModule;
+try {
+    botModule = require('./bot');
+} catch (e) {
+    botModule = null;
+}
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -48,7 +55,7 @@ function calculateScore(cards) {
 
     let maxScore = Math.max(...Object.values(suitTotals));
 
-    // Three of a kind of the same rank = 30.5 points
+    // Three of a kind of the same numerical rank/face = 30.5 points
     if (cards.length >= 3) {
         const counts = {};
         cards.forEach(c => { counts[c.val] = (counts[c.val] || 0) + 1; });
@@ -96,7 +103,7 @@ function getFeeder21OutOf31(lobby, winnerPlayer, winningSuit) {
         const hasAce = matchingCards.some(c => c.val === 'A');
         const hasFaceOrTen = matchingCards.some(c => ['10', 'J', 'Q', 'K'].includes(c.val));
         if (hasAce && hasFaceOrTen) {
-            return lobby.players.find(p => p.username === donorName && !p.eliminated) || null;
+            return lobby.players.find(p => p.username.toLowerCase() === donorName.toLowerCase() && !p.eliminated) || null;
         }
     }
     return null;
@@ -303,6 +310,7 @@ function getSanitizedLobby(lobby, wsOrId) {
 
             return {
                 username: p.username,
+                isMe: isMe,
                 lives: p.lives,
                 wager: p.wager || 5,
                 seat: p.seat !== undefined ? p.seat : idx,
@@ -537,7 +545,7 @@ function handleTurnAction(lobby, wsId, actionType) {
             lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
         }
 
-        if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
+        if (lobby.lastDiscardDonor && lobby.lastDiscardDonor.toLowerCase() !== currentPlayer.username.toLowerCase()) {
             if (!lobby.fedCardsHistory) lobby.fedCardsHistory = {};
             if (!lobby.fedCardsHistory[currentPlayer.username]) lobby.fedCardsHistory[currentPlayer.username] = {};
             if (!lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor]) {
@@ -583,7 +591,7 @@ function handleTurnAction(lobby, wsId, actionType) {
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
             lobby.players.forEach(p => {
-                if (p.username !== currentPlayer.username && !p.eliminated) {
+                if (p.username.toLowerCase() !== currentPlayer.username.toLowerCase() && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
@@ -631,7 +639,8 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
         currentPlayer.cards.splice(cardIndex, 1);
         lobby.discardPile.push(discarded);
         currentPlayer.pickedUpDiscardCard = null;
-        if (lobby.lastDiscardPickup?.username === currentPlayer.username && lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
+        if (lobby.lastDiscardPickup?.username.toLowerCase() === currentPlayer.username.toLowerCase() && 
+            lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
             lobby.lastDiscardPickup = null;
         }
         lobby.phaseMessage = `📢 ${currentPlayer.username} put the discard back. Must draw from deck!`;
@@ -646,7 +655,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
 
     if (lobby.fedCardReminders) {
         for (const donor in lobby.fedCardReminders) {
-            if (lobby.fedCardReminders[donor].target === currentPlayer.username) {
+            if (lobby.fedCardReminders[donor].target.toLowerCase() === currentPlayer.username.toLowerCase()) {
                 const remCard = lobby.fedCardReminders[donor].card;
                 if (remCard.val === discarded.val && remCard.suit === discarded.suit) {
                     delete lobby.fedCardReminders[donor];
@@ -656,7 +665,8 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     }
 
     lobby.lastDiscardDonor = currentPlayer.username;
-    if (lobby.lastDiscardPickup?.username === currentPlayer.username && lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
+    if (lobby.lastDiscardPickup?.username.toLowerCase() === currentPlayer.username.toLowerCase() && 
+        lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
         lobby.lastDiscardPickup = null;
     }
 
@@ -683,7 +693,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
             lobby.players.forEach(p => {
-                if (p.username !== currentPlayer.username && !p.eliminated) {
+                if (p.username.toLowerCase() !== currentPlayer.username.toLowerCase() && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
@@ -890,7 +900,7 @@ function awardTournamentWinner(lobby, winner) {
 
     lobby.players.forEach(p => {
         p.cards = [];
-        if (p.username !== winner.username) {
+        if (p.username.toLowerCase() !== winner.username.toLowerCase()) {
             const amt = p.wager || 5;
             const isBotInvolved = p.isBot || winner.isBot;
             const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
@@ -901,7 +911,7 @@ function awardTournamentWinner(lobby, winner) {
 
     lobby.lastGameWinner = winner.username;
     lobby.tournamentWinner = winner.username;
-    const winIdx = lobby.players.findIndex(p => p.username === winner.username);
+    const winIdx = lobby.players.findIndex(p => p.username.toLowerCase() === winner.username.toLowerCase());
     if (winIdx !== -1) lobby.dealerIndex = winIdx;
 
     syncLifetimeLedgerBalances(lobby);
@@ -1008,7 +1018,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
 
 function handleSetReady(lobby, username, isReady) {
     if (lobby.gameState !== 'lobby') return;
-    const player = lobby.players.find(p => p.username === username);
+    const player = lobby.players.find(p => p.username.toLowerCase() === (username || '').toLowerCase());
     if (!player) return;
 
     player.ready = Boolean(isReady);
@@ -1066,11 +1076,26 @@ function scheduleBotActions(lobby) {
             const bot = curLobby.players[curLobby.turnIndex];
             if (!bot || bot.id !== cur.id) return;
 
-            executeBotTurn(curLobby, bot, {
-                handleKnock,
-                handleTurnAction,
-                handleDiscardAction
-            });
+            if (botModule && typeof botModule.executeBotTurn === 'function') {
+                botModule.executeBotTurn(curLobby, bot, {
+                    handleKnock,
+                    handleTurnAction,
+                    handleDiscardAction
+                });
+            } else {
+                // Fallback bot turn execution
+                if (curLobby.discardPile.length > 0 && Math.random() < 0.3) {
+                    handleTurnAction(curLobby, bot.id, 'DRAW_DISCARD');
+                } else {
+                    handleTurnAction(curLobby, bot.id, 'DRAW_DECK');
+                }
+                setTimeout(() => {
+                    const freshLobby = lobbies[curLobby.code];
+                    if (freshLobby && bot.cards && bot.cards.length === 4) {
+                        handleDiscardAction(freshLobby, bot.id, 3);
+                    }
+                }, 500);
+            }
         }, 700 + Math.random() * 500);
     }
 }
@@ -1078,7 +1103,7 @@ function scheduleBotActions(lobby) {
 function resolveWinSideBets(lobby, winnerUsername) {
     if (!lobby || !lobby.activeBets) return;
     lobby.activeBets.forEach(bet => {
-        if (bet.type === 'win' && bet.pickUser === winnerUsername) {
+        if (bet.type === 'win' && bet.pickUser.toLowerCase() === winnerUsername.toLowerCase()) {
             recordSessionAndLifetimeDebt(lobby, lobby.sideBetLedger, bet.opponent, bet.proposer, bet.wagerAmt);
         }
     });
@@ -1087,7 +1112,7 @@ function resolveWinSideBets(lobby, winnerUsername) {
 function resolveFirstToLoseBets(lobby, loserUsername) {
     if (!lobby || !lobby.activeBets) return;
     lobby.activeBets.forEach(bet => {
-        if (bet.type === 'first_out' && bet.pickUser === loserUsername) {
+        if (bet.type === 'first_out' && bet.pickUser.toLowerCase() === loserUsername.toLowerCase()) {
             recordSessionAndLifetimeDebt(lobby, lobby.sideBetLedger, bet.opponent, bet.proposer, bet.wagerAmt);
         }
     });
@@ -1098,7 +1123,7 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         code,
         name: name || `${hostUsername}'s Room`,
         host: hostUsername,
-        isPrivate: !!isPrivate,
+        isPrivate: Boolean(isPrivate),
         defaultLives: defaultLives || 2,
         gameState: 'lobby',
         players: [],
