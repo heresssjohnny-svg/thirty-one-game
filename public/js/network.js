@@ -1,11 +1,11 @@
-// public/js/network.js - WebSocket Engine, Dispatcher & Game Event Relay (PART 1 OF 2)
+// public/js/network.js - WebSocket Engine, Event Routing & State Cache (PART 1 OF 2)
 
 // -------------------------------------------------------------
 // 1. STATE & PERSISTENT ENVIRONMENT INITIALIZATION
 // -------------------------------------------------------------
 window.appGlobals = window.appGlobals || {};
 
-// Rehydrate active room code from localStorage so force-closes do not drop table context
+// Rehydrate active room code from localStorage so backgrounding/reload retains table context
 window.appGlobals.currentJoinedCode = localStorage.getItem('blitz31_active_room') || null;
 window.appGlobals.ws = null;
 window.appGlobals.isConnected = false;
@@ -39,7 +39,7 @@ window.clientState = window.clientState || {
     pendingBetsList: []
 };
 
-// Input persistence helpers
+// Input field persistence helpers
 window.saveInputs = window.saveInputs || function() {
     try {
         const u = document.getElementById('username-input');
@@ -105,17 +105,20 @@ window.connectSocket = function() {
         }
 
         // 1. Authenticate socket session if JWT token exists
-        const jwtToken = localStorage.getItem('31_jwt');
+        const jwtToken = localStorage.getItem('31_jwt') || sessionStorage.getItem('31_jwt');
         if (jwtToken) {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Reclaim seat if returning to an active game from background or restart
+        // 2. Reclaim seat if returning to an active game from background or network blip
         const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
         if (activeRoom) {
             window.appGlobals.currentJoinedCode = activeRoom;
             const usernameInput = document.getElementById('username-input');
-            const activeUsername = usernameInput?.value.trim() || localStorage.getItem('saved_username') || window.clientState.username || 'Player1';
+            const activeUsername = usernameInput?.value.trim() 
+                || localStorage.getItem('saved_username') 
+                || window.clientState.username 
+                || 'Player1';
 
             ws.send(JSON.stringify({
                 type: 'JOIN_LOBBY',
@@ -130,7 +133,7 @@ window.connectSocket = function() {
             ws.send(JSON.stringify(msg));
         }
 
-        // 4. Update lobby browser lists
+        // 4. Update lobby list browser
         if (typeof window.initSocketAndSend === 'function') {
             window.initSocketAndSend({ type: 'GET_LOBBIES' });
             window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
@@ -153,7 +156,7 @@ window.connectSocket = function() {
         window.ws = null;
         window.appGlobals.ws = null;
 
-        // Auto-reconnect if authenticated or participating in an ongoing table
+        // Auto-reconnect if user has an active session or is in an active room
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
@@ -171,7 +174,7 @@ window.connectSocket = function() {
 };
 
 /**
- * Routes incoming server payloads directly to client modules
+ * Routes incoming server payloads directly to client UI and audio modules
  */
 function handleIncomingServerMessage(data) {
     switch (data.type) {
@@ -193,7 +196,7 @@ function handleIncomingServerMessage(data) {
                 window.appGlobals.latestLobbySnapshot = data.lobby;
             }
 
-            // Sync WebRTC Voice Session
+            // Connect LiveKit voice room isolated to this lobby
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
@@ -204,7 +207,7 @@ function handleIncomingServerMessage(data) {
                 }
             }
 
-            // Transition from Menu to Active Table
+            // Transition view to table felt
             if (data.lobby && typeof window.updateUIFromLobby === 'function') {
                 window.updateUIFromLobby(data.lobby);
             } else if (data.lobby && typeof window.renderLobbyState === 'function') {
@@ -221,6 +224,12 @@ function handleIncomingServerMessage(data) {
                 }
                 window.appGlobals.latestLobbySnapshot = data.lobby;
 
+                // Trigger 31 Blitz or Match Win celebrations (confetti & audio fanfare)
+                if (typeof window.checkAndTriggerCelebrations === 'function') {
+                    window.checkAndTriggerCelebrations(data.lobby);
+                }
+
+                // Maintain lobby-scoped LiveKit voice connection
                 if (data.livekitHost && data.livekitToken) {
                     if (typeof window.connectLiveKit === 'function') {
                         window.connectLiveKit(data.livekitToken, data.livekitHost, data.lobby.code);
@@ -276,7 +285,7 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'ERROR':
-            if (data.message && (data.message.includes('not found') || data.message.includes('Lobby'))) {
+            if (data.message && (data.message.includes('not found') || data.message.includes('Lobby') || data.message.includes('closed'))) {
                 window.appGlobals.currentJoinedCode = null;
                 localStorage.removeItem('blitz31_active_room');
             }
@@ -326,7 +335,10 @@ window.createLobby = function() {
     const livesSelect = document.getElementById('lobby-lives-select') || document.getElementById('initial-lives-select');
 
     const usernameInput = document.getElementById('username-input');
-    const activeUsername = usernameInput?.value.trim() || localStorage.getItem('saved_username') || window.clientState.username || 'Player1';
+    const activeUsername = usernameInput?.value.trim() 
+        || localStorage.getItem('saved_username') 
+        || window.clientState.username 
+        || 'Player1';
 
     const lobbyName = nameInput ? nameInput.value.trim() : `${activeUsername}'s Table`;
     const isPrivate = privateCheckbox ? Boolean(privateCheckbox.checked) : false;
@@ -345,7 +357,10 @@ window.joinLobby = function(code) {
     if (!code) return;
     window.saveInputs();
     const usernameInput = document.getElementById('username-input');
-    const activeUsername = usernameInput?.value.trim() || localStorage.getItem('saved_username') || window.clientState.username || 'Player1';
+    const activeUsername = usernameInput?.value.trim() 
+        || localStorage.getItem('saved_username') 
+        || window.clientState.username 
+        || 'Player1';
 
     window.appGlobals.currentJoinedCode = code;
     localStorage.setItem('blitz31_active_room', code);
@@ -508,8 +523,27 @@ window.respondPeek = function(requesterPlayer, allow) {
 };
 
 // -------------------------------------------------------------
-// 8. SIDE BETS & WAGER PROPOSALS
+// 8. SIDE BETS & TAB SWITCHING
 // -------------------------------------------------------------
+window.switchBetsTab = function(tab) {
+    const tabActive = document.getElementById('bets-tab-active');
+    const tabPropose = document.getElementById('bets-tab-propose');
+    const listActive = document.getElementById('active-bets-list');
+    const formPropose = document.getElementById('propose-bet-fields');
+
+    if (tab === 'active') {
+        if (tabActive) tabActive.classList.add('active');
+        if (tabPropose) tabPropose.classList.remove('active');
+        if (listActive) listActive.style.display = 'block';
+        if (formPropose) formPropose.style.display = 'none';
+    } else {
+        if (tabActive) tabActive.classList.remove('active');
+        if (tabPropose) tabPropose.classList.add('active');
+        if (listActive) listActive.style.display = 'none';
+        if (formPropose) formPropose.style.display = 'block';
+    }
+};
+
 window.submitSideBetProposal = function() {
     const targetSelect = document.getElementById('bet-target-player');
     const wagerInput = document.getElementById('bet-wager-amount');
