@@ -1,4 +1,4 @@
-// public/js/ui.js - HUD Notifications, Audio Cues, Dynamic Seats, Deck & Action Engine
+// public/js/ui.js - HUD Notifications, Audio Cues, Seats Engine, Deck & Bot Controls
 
 // -------------------------------------------------------------
 // 1. NOTIFICATION BANNERS & IN-GAME ALERTS
@@ -55,14 +55,18 @@ window.triggerAudioCue = function(cueType) {
                 knockAudio.play().catch(() => {});
             }
             if (navigator.vibrate) navigator.vibrate([150, 100, 200]);
+        } else if (cueType === 'card') {
+            if (typeof window.playCardSound === 'function') {
+                window.playCardSound();
+            }
         }
     } catch (e) {
-        console.warn('[Audio] Trigger exception:', e);
+        console.warn('[Audio] Trigger error:', e);
     }
 };
 
 // -------------------------------------------------------------
-// 3. CARD HTML GENERATOR
+// 3. CARD HTML GENERATOR (AUTHENTIC DUAL-CORNER PIP CARDS)
 // -------------------------------------------------------------
 window.renderCardHTML = function(card, customClasses = '') {
     if (!card || card.val === '?' || card.suit === '?') {
@@ -164,7 +168,7 @@ window.renderDealerDrawPhase = function(lobby) {
 };
 
 // -------------------------------------------------------------
-// 5. TABLE SEATS RENDERER (EMPTY SEATS HIDDEN)
+// 5. TABLE SEATS RENDERER (EMPTY SEATS COMPLETELY HIDDEN)
 // -------------------------------------------------------------
 window.renderSeats = function(lobby) {
     for (let seatIndex = 0; seatIndex < 6; seatIndex++) {
@@ -178,7 +182,7 @@ window.renderSeats = function(lobby) {
 
         const player = lobby.players?.find(p => p.seat === seatIndex);
 
-        // 1. Hide empty seats completely
+        // 1. Hide empty seats completely from view
         if (!player) {
             seatEl.style.display = 'none';
             seatEl.innerHTML = '';
@@ -186,8 +190,8 @@ window.renderSeats = function(lobby) {
             continue;
         }
 
-        // 2. Render occupied seat
-        seatEl.style.display = ''; // Restore default display
+        // 2. Display occupied seat
+        seatEl.style.display = ''; // Restore default display from stylesheet
         const isDealer = lobby.dealerIndex === lobby.players?.indexOf(player);
         const isTurn = lobby.currentTurnUser?.toLowerCase() === player.username?.toLowerCase();
         const isEliminated = Boolean(player.eliminated);
@@ -253,10 +257,10 @@ window.renderSeats = function(lobby) {
 };
 
 // -------------------------------------------------------------
-// 6. FELT CENTER (DECK CASINO GRAPHIC & DISCARD SLOTS)
+// 6. FELT CENTER (AUTHENTIC CASINO DECK & DISCARD SLOTS)
 // -------------------------------------------------------------
 window.renderFeltCenter = function(lobby) {
-    // 1. Deck Pile (Always render casino card back)
+    // 1. Deck Pile
     const deckSlot = document.getElementById('deck-card-slot') || 
                      document.getElementById('deck-slot') || 
                      document.getElementById('deck-pile') ||
@@ -264,10 +268,10 @@ window.renderFeltCenter = function(lobby) {
 
     if (deckSlot) {
         deckSlot.innerHTML = `
-            <div class="card playing-card card-back deck-card" style="cursor:pointer; margin:0 auto; box-shadow: 2px 2px 8px rgba(0,0,0,0.4);">
+            <div class="card playing-card card-back deck-card" style="cursor:pointer; margin:0 auto; box-shadow: 2px 2px 10px rgba(0,0,0,0.5);">
                 <div class="card-back-pattern" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; font-size:1.1rem; color:#f8fafc;">
                     <span>🂠</span>
-                    <span style="font-size:0.65rem; font-weight:700; letter-spacing:0.5px;">DECK</span>
+                    <span style="font-size:0.65rem; font-weight:800; letter-spacing:0.5px; margin-top:2px;">DECK</span>
                 </div>
             </div>
         `;
@@ -299,7 +303,7 @@ window.renderFeltCenter = function(lobby) {
         }
     }
 
-    // 3. Pot & Turn Status
+    // 3. Pot & Title Status
     const potEl = document.getElementById('pot-display') || document.getElementById('pot-total');
     if (potEl) potEl.innerText = `$${lobby.potTotal || 0}`;
 
@@ -307,13 +311,18 @@ window.renderFeltCenter = function(lobby) {
                     document.getElementById('phase-message') || 
                     document.getElementById('game-status-banner');
     if (phaseEl && lobby.phaseMessage) phaseEl.innerText = lobby.phaseMessage;
+
+    const titleEl = document.getElementById('room-title-display') || document.getElementById('lobby-title');
+    if (titleEl && lobby.code) {
+        titleEl.innerText = `${lobby.name || 'Table'} (${lobby.code})`;
+    }
 };
 
 // -------------------------------------------------------------
-// 7. MY HAND
+// 7. MY HAND (HORIZONTAL ENLARGED CARDS)
 // -------------------------------------------------------------
 window.renderMyHand = function(lobby) {
-    const container = document.getElementById('my-cards-container');
+    const container = document.getElementById('my-cards-container') || document.getElementById('my-cards');
     if (!container) return;
 
     const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
@@ -343,7 +352,7 @@ window.renderMyHand = function(lobby) {
 };
 
 // -------------------------------------------------------------
-// 8. ACTION CONTROLS & BOT MANAGEMENT
+// 8. ACTION BUTTONS & BOT MANAGEMENT
 // -------------------------------------------------------------
 let previousTurnUser = null;
 let previousKnockedBy = null;
@@ -353,12 +362,15 @@ window.updateActionButtons = function(lobby) {
     const me = lobby.players?.find(p => p.isMe) || 
                lobby.players?.find(p => p.username?.toLowerCase() === myName);
 
-    const isHost = lobby.host && (lobby.host.toLowerCase() === myName);
+    const isHost = (me && lobby.host && me.username?.toLowerCase() === lobby.host.toLowerCase()) ||
+                   (me && lobby.players && lobby.players[0] === me) ||
+                   (lobby.host && myName && lobby.host.toLowerCase() === myName);
+
     const isLobby = lobby.gameState === 'lobby';
     const isMyTurn = lobby.currentTurnUser?.toLowerCase() === me?.username?.toLowerCase();
     const isPlaying = lobby.gameState === 'playing' || lobby.gameState === 'finalTurn';
 
-    // 1. Ready Button
+    // 1. Ready Up Button
     const readyBtn = document.getElementById('ready-btn');
     if (readyBtn) {
         if (isLobby) {
@@ -370,7 +382,19 @@ window.updateActionButtons = function(lobby) {
         }
     }
 
-    // 2. Bot Buttons (Resolve or Dynamically Mount next to Ready)
+    // 2. Next Hand Button (Showdown phase)
+    const nextHandBtn = document.getElementById('next-hand-btn');
+    if (nextHandBtn) {
+        if (lobby.gameState === 'roundOver') {
+            nextHandBtn.style.display = 'inline-flex';
+            nextHandBtn.disabled = Boolean(me?.nextHandReady);
+            nextHandBtn.innerText = me?.nextHandReady ? 'Waiting...' : 'Next Hand';
+        } else {
+            nextHandBtn.style.display = 'none';
+        }
+    }
+
+    // 3. Bot Buttons (Locate existing or dynamically mount next to Ready Up)
     let addBotBtn = document.getElementById('add-bot-btn') || 
                     document.getElementById('add-bot') || 
                     document.getElementById('bot-add-btn');
@@ -379,24 +403,26 @@ window.updateActionButtons = function(lobby) {
                        document.getElementById('remove-bot') || 
                        document.getElementById('bot-remove-btn');
 
-    if (!addBotBtn && readyBtn && readyBtn.parentElement) {
+    const topControlsRow = readyBtn ? readyBtn.parentElement : document.querySelector('.table-controls, .action-bar');
+
+    if (!addBotBtn && topControlsRow) {
         addBotBtn = document.createElement('button');
         addBotBtn.id = 'add-bot-btn';
         addBotBtn.className = 'secondary';
         addBotBtn.innerText = '+ Bot';
         addBotBtn.style.marginLeft = '6px';
         addBotBtn.onclick = (e) => { e.preventDefault(); window.addBot(); };
-        readyBtn.parentElement.appendChild(addBotBtn);
+        topControlsRow.appendChild(addBotBtn);
     }
 
-    if (!removeBotBtn && readyBtn && readyBtn.parentElement) {
+    if (!removeBotBtn && topControlsRow) {
         removeBotBtn = document.createElement('button');
         removeBotBtn.id = 'remove-bot-btn';
         removeBotBtn.className = 'secondary';
         removeBotBtn.innerText = '- Bot';
         removeBotBtn.style.marginLeft = '6px';
         removeBotBtn.onclick = (e) => { e.preventDefault(); window.removeBot(); };
-        readyBtn.parentElement.appendChild(removeBotBtn);
+        topControlsRow.appendChild(removeBotBtn);
     }
 
     const currentBots = lobby.players ? lobby.players.filter(p => p.isBot).length : 0;
@@ -409,7 +435,7 @@ window.updateActionButtons = function(lobby) {
         removeBotBtn.style.display = (isLobby && isHost && currentBots > 0) ? 'inline-flex' : 'none';
     }
 
-    // 3. Draw & Knock Actions
+    // 4. Draw & Knock Actions
     const drawDeckBtn = document.getElementById('draw-deck-btn');
     const drawDiscardBtn = document.getElementById('draw-discard-btn');
     const knockBtn = document.getElementById('knock-btn');
@@ -427,28 +453,139 @@ window.updateActionButtons = function(lobby) {
 };
 
 // -------------------------------------------------------------
-// 9. MASTER TABLE RENDER LOOP
+// 9. TOP HUD FEEDS: DISCARD PICKUP & FED CARDS
+// -------------------------------------------------------------
+window.updateTopCornerFeeds = function(lobby) {
+    const discardFeed = document.getElementById('discard-pickup-topleft-modal') || 
+                        document.getElementById('discard-pickup-modal');
+    const discardCardBox = document.getElementById('discard-pickup-card-content');
+
+    if (discardFeed && discardCardBox) {
+        if (lobby.lastDiscardPickup && lobby.lastDiscardPickup.card) {
+            discardCardBox.innerHTML = `
+                <span>${lobby.lastDiscardPickup.username} drew:</span>
+                <span class="mini-card ${lobby.lastDiscardPickup.card.suit === '♥' || lobby.lastDiscardPickup.card.suit === '♦' ? 'red-suit' : 'black-suit'}">
+                    ${lobby.lastDiscardPickup.card.val}${lobby.lastDiscardPickup.card.suit}
+                </span>
+            `;
+            discardFeed.style.display = 'flex';
+        } else {
+            discardFeed.style.display = 'none';
+        }
+    }
+
+    const fedFeed = document.getElementById('fed-card-topright-modal') || 
+                    document.getElementById('fed-card-modal');
+    const fedLabel = document.getElementById('fed-card-label');
+
+    if (fedFeed) {
+        if (lobby.myFedCardReminder && lobby.myFedCardReminder.card) {
+            if (fedLabel) {
+                fedLabel.innerText = `Fed to ${lobby.myFedCardReminder.target}: ${lobby.myFedCardReminder.card.val}${lobby.myFedCardReminder.card.suit}`;
+            }
+            fedFeed.style.display = 'flex';
+        } else {
+            fedFeed.style.display = 'none';
+        }
+    }
+};
+
+// -------------------------------------------------------------
+// 10. CHAT & MODAL DIALOG TOGGLES
+// -------------------------------------------------------------
+window.appendChatMessage = function(username, message) {
+    const chatContainer = document.getElementById('chat-messages');
+    if (!chatContainer) return;
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-entry';
+    msgDiv.innerHTML = `<strong style="color:var(--accent-gold, #f59e0b);">${username}:</strong> <span>${message}</span>`;
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    const chatWindow = document.getElementById('chat-window');
+    const toggleBtn = document.getElementById('chat-toggle-btn');
+    if (toggleBtn && (!chatWindow || chatWindow.style.display === 'none')) {
+        toggleBtn.classList.add('unread');
+    }
+};
+
+window.toggleChatWindow = function() {
+    const chatWindow = document.getElementById('chat-window');
+    const toggleBtn = document.getElementById('chat-toggle-btn');
+    if (!chatWindow) return;
+
+    const isVisible = chatWindow.style.display === 'flex';
+    chatWindow.style.display = isVisible ? 'none' : 'flex';
+
+    if (toggleBtn && !isVisible) {
+        toggleBtn.classList.remove('unread');
+    }
+};
+
+window.toggleModal = function(modalId, forceState) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    const isOpen = modal.style.display === 'flex' || modal.style.display === 'block';
+    const nextState = typeof forceState === 'boolean' ? forceState : !isOpen;
+
+    modal.style.display = nextState ? 'flex' : 'none';
+};
+
+// -------------------------------------------------------------
+// 11. MASTER TABLE RENDER LOOP
 // -------------------------------------------------------------
 window.updateUIFromLobby = window.renderLobbyState = function(lobby) {
     if (!lobby) return;
 
     const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
+
+    // Turn audio cues
     if (lobby.currentTurnUser && lobby.currentTurnUser.toLowerCase() === myName && previousTurnUser !== myName) {
         window.triggerAudioCue('yourturn');
     }
     previousTurnUser = lobby.currentTurnUser ? lobby.currentTurnUser.toLowerCase() : null;
 
+    // Knock alert
     if (lobby.knockedBy && lobby.knockedBy !== previousKnockedBy) {
         window.showKnockAlert(lobby.knockedBy);
     }
     previousKnockedBy = lobby.knockedBy || null;
 
+    // 31 Blitz and Tournament Celebrations
+    if (lobby.hit31Player && lobby.hit31Player !== window.previous31Player) {
+        window.previous31Player = lobby.hit31Player;
+        if (typeof window.launchConfetti === 'function') {
+            window.launchConfetti();
+        } else if (typeof window.startCelebration === 'function') {
+            window.startCelebration();
+        }
+        window.showCenterNotification(`⚡ ${lobby.hit31Player} HIT 31!`, 4000);
+    } else if (!lobby.hit31Player) {
+        window.previous31Player = null;
+    }
+
+    if (lobby.gameState === 'tournamentEnd' && lobby.tournamentWinner && !window.hasCelebratedTournament) {
+        window.hasCelebratedTournament = true;
+        if (typeof window.launchConfetti === 'function') {
+            window.launchConfetti();
+        } else if (typeof window.startCelebration === 'function') {
+            window.startCelebration();
+        }
+    } else if (lobby.gameState !== 'tournamentEnd') {
+        window.hasCelebratedTournament = false;
+    }
+
+    // Sub-layer UI updates
     window.renderDealerDrawPhase(lobby);
+    window.updateTopCornerFeeds(lobby);
     window.renderSeats(lobby);
     window.renderFeltCenter(lobby);
     window.renderMyHand(lobby);
     window.updateActionButtons(lobby);
 
+    // Spectator counter badge
     const specCount = document.getElementById('spectator-count-badge');
     if (specCount && lobby.spectators) {
         specCount.innerText = `${lobby.spectators.length} Spectating`;
