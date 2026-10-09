@@ -1,91 +1,36 @@
-// server/auth.js - Authentication Router & Token Verifier
+// server/auth.js - Local Email-Linked Authentication & Password Recovery
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 const config = require('./config');
 
-// Safe fallbacks to guarantee secretOrPrivateKey is never empty
 const JWT_SECRET = (config && config.JWT_SECRET) || process.env.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com';
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // -------------------------------------------------------------
-// 1. GOOGLE IDENTITY SERVICES VERIFIER
-// -------------------------------------------------------------
-router.post('/google', async (req, res) => {
-    const { credential } = req.body;
-    if (!credential) {
-        return res.status(400).json({ error: 'Missing Google credential token.' });
-    }
-
-    try {
-        const ticket = await googleClient.verifyIdToken({
-            idToken: credential,
-            audience: GOOGLE_CLIENT_ID
-        });
-
-        const payload = ticket.getPayload();
-        if (!payload || !payload.sub) {
-            return res.status(401).json({ error: 'Invalid Google token payload.' });
-        }
-
-        const providerId = payload.sub;
-        const email = payload.email || '';
-        let displayName = payload.name || (email ? email.split('@')[0] : 'Player');
-        displayName = displayName.trim().slice(0, 15);
-
-        // Check if user already exists
-        let user = db.findUserByProviderId(providerId);
-
-        if (!user) {
-            let uniqueName = displayName;
-            let counter = 1;
-            while (db.findUserByUsername(uniqueName)) {
-                uniqueName = `${displayName}${counter}`;
-                counter++;
-            }
-
-            const newUserId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
-            user = db.createUser(newUserId, 'google', providerId, uniqueName, null);
-        }
-
-        const token = jwt.sign(
-            { userId: user.id, username: user.username, isGuest: false },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-
-        return res.json({
-            token,
-            user: {
-                id: user.id,
-                username: user.username,
-                isGuest: false
-            }
-        });
-    } catch (err) {
-        console.error('[Auth] Google Token Verification failed:', err.message);
-        return res.status(401).json({ error: 'Failed to verify Google credential.' });
-    }
-});
-
-// -------------------------------------------------------------
-// 2. STANDARD LOCAL USER REGISTRATION
+// 1. REGISTRATION (WITH LINKED EMAIL)
 // -------------------------------------------------------------
 router.post('/register', async (req, res) => {
-    const { username, password } = req.body;
+    const { username, email, password } = req.body;
     const cleanUser = (username || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
 
     if (!cleanUser || !password || password.length < 6) {
         return res.status(400).json({ error: 'Username required, and password must be at least 6 characters.' });
     }
 
-    const existing = db.findUserByUsername(cleanUser);
-    if (existing) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+        return res.status(400).json({ error: 'A valid email address is required for password recovery.' });
+    }
+
+    if (db.findUserByUsername(cleanUser)) {
         return res.status(409).json({ error: 'Username is already taken.' });
+    }
+
+    if (db.findUserByEmail(cleanEmail)) {
+        return res.status(409).json({ error: 'This email is already registered.' });
     }
 
     try {
@@ -93,20 +38,21 @@ router.post('/register', async (req, res) => {
         const userId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
         const providerId = `local_${cleanUser.toLowerCase()}`;
 
-        const user = db.createUser(userId, 'local', providerId, cleanUser, passwordHash);
+        // Create user with linked email
+        db.prepare(`
+            INSERT INTO users (id, provider, provider_id, username, email, password_hash, created_at)
+            VALUES (?, 'local', ?, ?, ?, ?, datetime('now'))
+        `).run(userId, providerId, cleanUser, cleanEmail, passwordHash);
+
         const token = jwt.sign(
-            { userId: user.id, username: user.username, isGuest: false },
+            { userId, username: cleanUser, isGuest: false },
             JWT_SECRET,
-            { expiresIn: '7d' }
+            { expiresIn: '30d' }
         );
 
         return res.json({
             token,
-            user: {
-                id: user.id,
-                username: user.username,
-                isGuest: false
-            }
+            user: { id: userId, username: cleanUser, email: cleanEmail, isGuest: false }
         });
     } catch (err) {
         console.error('[Auth] Register error:', err);
@@ -115,40 +61,38 @@ router.post('/register', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 3. STANDARD LOCAL USER LOGIN
+// 2. LOGIN (SUPPORTS USERNAME OR EMAIL + REMEMBER ME)
 // -------------------------------------------------------------
 router.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    const cleanUser = (username || '').trim();
+    const { username, password, rememberMe } = req.body;
+    const identifier = (username || '').trim();
 
-    if (!cleanUser || !password) {
-        return res.status(400).json({ error: 'Please enter username and password.' });
+    if (!identifier || !password) {
+        return res.status(400).json({ error: 'Please enter your username/email and password.' });
     }
 
-    const user = db.findUserByUsername(cleanUser);
+    const user = db.findUserByIdentifier(identifier);
     if (!user || !user.password_hash) {
-        return res.status(401).json({ error: 'Invalid username or password.' });
+        return res.status(401).json({ error: 'Invalid username/email or password.' });
     }
 
     try {
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
-            return res.status(401).json({ error: 'Invalid username or password.' });
+            return res.status(401).json({ error: 'Invalid username/email or password.' });
         }
 
+        // Token lifetime: 30 days if Remember Me is checked, otherwise 1 day
+        const tokenDuration = rememberMe ? '30d' : '1d';
         const token = jwt.sign(
             { userId: user.id, username: user.username, isGuest: false },
             JWT_SECRET,
-            { expiresIn: '7d' }
+            { expiresIn: tokenDuration }
         );
 
         return res.json({
             token,
-            user: {
-                id: user.id,
-                username: user.username,
-                isGuest: false
-            }
+            user: { id: user.id, username: user.username, email: user.email, isGuest: false }
         });
     } catch (err) {
         console.error('[Auth] Login error:', err);
@@ -157,26 +101,71 @@ router.post('/login', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 4. EPHEMERAL GUEST AUTHENTICATION
+// 3. PASSWORD RECOVERY: REQUEST RESET CODE
 // -------------------------------------------------------------
-router.post('/guest', (req, res) => {
-    const guestId = 'gst_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5);
-    const guestUsername = 'Guest_' + Math.floor(1000 + Math.random() * 9000);
+router.post('/forgot-password', async (req, res) => {
+    const { identifier } = req.body;
+    if (!identifier) {
+        return res.status(400).json({ error: 'Please enter your username or registered email.' });
+    }
 
-    const token = jwt.sign(
-        { userId: guestId, username: guestUsername, isGuest: true },
-        JWT_SECRET,
-        { expiresIn: '1d' }
-    );
+    const user = db.findUserByIdentifier(identifier);
+    if (!user) {
+        // Obscure user enumeration for security
+        return res.json({ message: 'If an account exists with that identifier, a recovery code has been generated.' });
+    }
 
-    return res.json({
-        token,
-        user: {
-            id: guestId,
-            username: guestUsername,
-            isGuest: true
-        }
+    // Generate 6-digit numeric recovery code valid for 15 minutes
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = Date.now() + 15 * 60 * 1000;
+
+    db.setResetToken(user.id, resetCode, expiry);
+
+    // Logs the reset PIN to the terminal / PM2 logs
+    console.log(`\n======================================================`);
+    console.log(`[PASSWORD RECOVERY CODE] User: ${user.username} | Email: ${user.email}`);
+    console.log(`CODE: ${resetCode} (Expires in 15 minutes)`);
+    console.log(`======================================================\n`);
+
+    return res.json({ 
+        message: 'Recovery code generated! Check your email (or server PM2 logs) for the 6-digit code.',
+        userId: user.id 
     });
+});
+
+// -------------------------------------------------------------
+// 4. PASSWORD RECOVERY: VERIFY CODE & SET NEW PASSWORD
+// -------------------------------------------------------------
+router.post('/reset-password', async (req, res) => {
+    const { identifier, code, newPassword } = req.body;
+
+    if (!identifier || !code || !newPassword) {
+        return res.status(400).json({ error: 'All fields (account, code, and new password) are required.' });
+    }
+
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+    }
+
+    const user = db.findUserByIdentifier(identifier);
+    if (!user) {
+        return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    const isValid = db.verifyResetToken(user.id, code.trim());
+    if (!isValid) {
+        return res.status(400).json({ error: 'Invalid or expired recovery code. Please request a new one.' });
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+        db.updatePassword(user.id, passwordHash);
+
+        return res.json({ message: 'Password reset successfully! You can now log in with your new password.' });
+    } catch (err) {
+        console.error('[Auth] Password reset error:', err);
+        return res.status(500).json({ error: 'Failed to update password.' });
+    }
 });
 
 // -------------------------------------------------------------
@@ -195,7 +184,7 @@ router.get('/me', (req, res) => {
             user: {
                 id: decoded.userId,
                 username: decoded.username,
-                isGuest: !!decoded.isGuest
+                isGuest: false
             }
         });
     } catch (err) {
