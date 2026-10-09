@@ -203,7 +203,6 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'PONG':
-            // Keep-alive heartbeat acknowledgement
             break;
 
         case 'LOBBY_LIST':
@@ -211,6 +210,8 @@ function handleIncomingServerMessage(data) {
                 window.renderLobbyList(data.lobbies || []);
             } else if (typeof window.renderPublicLobbies === 'function') {
                 window.renderPublicLobbies(data.lobbies || []);
+            } else {
+                renderDefaultLobbyList(data.lobbies || []);
             }
             break;
 
@@ -222,7 +223,7 @@ function handleIncomingServerMessage(data) {
             }
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
-            // 1. Force screen transition: Hide Main Menu/Auth and Show Game Felt
+            // Transition from Menu to Game View
             const mainMenu = document.getElementById('main-menu');
             const authScreen = document.getElementById('auth-screen');
             const gameView = document.getElementById('game-view');
@@ -233,7 +234,6 @@ function handleIncomingServerMessage(data) {
                 gameView.style.visibility = 'visible';
             }
 
-            // 2. Connect LiveKit Voice Room
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
@@ -244,7 +244,6 @@ function handleIncomingServerMessage(data) {
                 }
             }
 
-            // 3. Render table view
             if (data.lobby && typeof window.updateUIFromLobby === 'function') {
                 window.updateUIFromLobby(data.lobby);
             } else if (data.lobby && typeof window.renderLobbyState === 'function') {
@@ -261,7 +260,6 @@ function handleIncomingServerMessage(data) {
                 }
                 window.appGlobals.latestLobbySnapshot = data.lobby;
 
-                // Ensure game view is visible if receiving active lobby update
                 const activeMenu = document.getElementById('main-menu');
                 const activeView = document.getElementById('game-view');
                 if (activeMenu && activeMenu.style.display !== 'none') activeMenu.style.display = 'none';
@@ -290,16 +288,7 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'LEFT_LOBBY':
-            window.appGlobals.currentJoinedCode = null;
-            window.appGlobals.latestLobbySnapshot = null;
-            localStorage.removeItem('blitz31_active_room');
-
-            if (typeof window.disconnectLiveKit === 'function') {
-                window.disconnectLiveKit();
-            }
-            if (typeof window.resetToMainMenu === 'function') {
-                window.resetToMainMenu();
-            }
+            window.resetToMainMenu();
             break;
 
         case 'LIFETIME_LEDGER_DATA':
@@ -323,11 +312,7 @@ function handleIncomingServerMessage(data) {
 
         case 'ERROR':
             if (data.message && data.message.includes('Table does not exist')) {
-                window.appGlobals.currentJoinedCode = null;
-                localStorage.removeItem('blitz31_active_room');
-                if (typeof window.resetToMainMenu === 'function') {
-                    window.resetToMainMenu();
-                }
+                window.resetToMainMenu();
             }
             if (typeof window.showCenterNotification === 'function') {
                 window.showCenterNotification(data.message || 'Error occurred');
@@ -341,6 +326,30 @@ function handleIncomingServerMessage(data) {
     }
 }
 
+function renderDefaultLobbyList(lobbies) {
+    const list = document.getElementById('lobby-list');
+    if (!list) return;
+
+    if (!lobbies || lobbies.length === 0) {
+        list.innerHTML = '<div class="empty-list-placeholder">No active public tables.</div>';
+        return;
+    }
+
+    let html = '';
+    lobbies.forEach(l => {
+        html += `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:0.82rem;">
+                <div>
+                    <strong>${l.name || l.code}</strong> (${l.code})
+                    <div style="font-size:0.72rem; color:var(--text-muted);">${l.playerCount}/6 Players</div>
+                </div>
+                <button class="primary-btn" style="padding:4px 10px; font-size:0.75rem;" onclick="window.joinLobbyCode('${l.code}')">Join</button>
+            </div>
+        `;
+    });
+    list.innerHTML = html;
+}
+
 // -------------------------------------------------------------
 // 3. OUTGOING MESSAGE DISPATCHER
 // -------------------------------------------------------------
@@ -349,7 +358,7 @@ window.initSocketAndSend = function(payload) {
 
     if (window.userSession) {
         payload.userId = window.userSession.id || window.userSession.userId;
-        payload.isGuest = !!window.userSession.isGuest;
+        payload.isGuest = Boolean(window.userSession.isGuest);
     }
 
     const ws = window.appGlobals?.ws || window.ws;
@@ -369,6 +378,27 @@ window.sendSocket = window.initSocketAndSend;
 // -------------------------------------------------------------
 // 4. GLOBAL GAME & MENU ACTIONS
 // -------------------------------------------------------------
+window.resetToMainMenu = function() {
+    window.appGlobals.currentJoinedCode = null;
+    window.appGlobals.latestLobbySnapshot = null;
+    localStorage.removeItem('blitz31_active_room');
+
+    const mainMenu = document.getElementById('main-menu');
+    const gameView = document.getElementById('game-view');
+    const authScreen = document.getElementById('auth-screen');
+
+    if (gameView) gameView.style.display = 'none';
+    if (authScreen) authScreen.style.display = 'none';
+    if (mainMenu) mainMenu.style.display = 'flex';
+
+    if (typeof window.disconnectLiveKit === 'function') {
+        window.disconnectLiveKit();
+    }
+    if (typeof window.refreshLobbies === 'function') {
+        window.refreshLobbies();
+    }
+};
+
 window.createLobby = function() {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
@@ -462,21 +492,26 @@ window.refreshLobbies = function() {
 };
 
 window.leaveLobby = function() {
-    window.appGlobals.currentJoinedCode = null;
-    localStorage.removeItem('blitz31_active_room');
     window.initSocketAndSend({ type: 'LEAVE_LOBBY' });
-    if (typeof window.disconnectLiveKit === 'function') window.disconnectLiveKit();
-    if (typeof window.resetToMainMenu === 'function') window.resetToMainMenu();
+    window.resetToMainMenu();
 };
 
 window.sitDown = function() { window.initSocketAndSend({ type: 'SIT_DOWN' }); };
 window.standUp = function() { window.initSocketAndSend({ type: 'STAND_UP' }); };
 
 window.toggleReady = function() {
-    const nextState = !window.clientState.isReady;
-    window.clientState.isReady = nextState;
+    const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
+    const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username?.toLowerCase() === myName);
+    const current = me ? Boolean(me.ready) : Boolean(window.clientState?.isReady);
+    const nextState = !current;
+
+    if (window.clientState) window.clientState.isReady = nextState;
+
     const btn = document.getElementById('ready-btn');
-    if (btn) btn.innerText = nextState ? 'Unready' : 'Ready Up';
+    if (btn) {
+        btn.innerText = nextState ? 'Unready' : 'Ready Up';
+        btn.style.background = nextState ? '#eab308' : '#15803d';
+    }
 
     window.initSocketAndSend({
         type: 'SET_READY',
@@ -549,7 +584,7 @@ window.updateSettings = function() {
 window.submitLivesVote = function(agree) {
     window.initSocketAndSend({
         type: 'VOTE_LIVES',
-        agree: !!agree
+        agree: Boolean(agree)
     });
     const modal = document.getElementById('lives-vote-modal');
     if (modal) modal.style.display = 'none';
@@ -584,7 +619,7 @@ window.submitEliminationProposal = function(target, wagerAmt) {
         target,
         wagerAmt: parseInt(wagerAmt, 10) || 5
     });
-    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal');
+    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal', false);
 };
 
 window.submitGlobalProposal = function(pickUser, wagerAmt) {
@@ -593,7 +628,7 @@ window.submitGlobalProposal = function(pickUser, wagerAmt) {
         pickUser,
         wagerAmt: parseInt(wagerAmt, 10) || 5
     });
-    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal');
+    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal', false);
 };
 
 window.acceptGlobalProposal = function(proposalId) {
@@ -611,8 +646,8 @@ window.respondGlobalBet = function(proposalId, accept) {
         proposalId,
         betId: proposalId,
         id: proposalId,
-        accept: !!accept,
-        confirm: !!accept
+        accept: Boolean(accept),
+        confirm: Boolean(accept)
     });
 };
 
@@ -623,8 +658,8 @@ window.confirmGlobalBet = function(proposalId, acceptedUser, confirmChoice) {
         betId: proposalId,
         id: proposalId,
         acceptedUser,
-        confirm: !!confirmChoice,
-        accept: !!confirmChoice
+        confirm: Boolean(confirmChoice),
+        accept: Boolean(confirmChoice)
     });
     const modal = document.getElementById('bet-modal');
     if (modal) modal.style.display = 'none';
@@ -636,8 +671,8 @@ window.respondToBet = function(betId, accept) {
         betId,
         proposalId: betId,
         id: betId,
-        accept: !!accept,
-        confirm: !!accept
+        accept: Boolean(accept),
+        confirm: Boolean(accept)
     });
     const modal = document.getElementById('bet-modal');
     if (modal) modal.style.display = 'none';
@@ -657,7 +692,7 @@ window.requestPeekAction = function(targetUsername) {
 };
 
 window.respondPeekAction = function(spectatorUsername, allow) {
-    window.initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername, allow: !!allow });
+    window.initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername, allow: Boolean(allow) });
 };
 
 window.stopPeekingAction = function() {
@@ -674,38 +709,33 @@ window.kickPeekerAction = function(spectatorUsername) {
 // 5. UNIVERSAL DOM BUTTON ATTACHMENT & LEDGER BRIDGING
 // -------------------------------------------------------------
 function bindAllMenuAndLedgerButtons() {
-    // Intercept form submissions from refreshing mobile browsers
     document.querySelectorAll('form').forEach(f => {
         f.onsubmit = (e) => { e.preventDefault(); };
     });
 
-    // Create Table buttons
-    ['create-lobby-btn', 'create-table-btn', 'create-btn', 'btn-create-lobby'].forEach(id => {
+    ['create-lobby-btn', 'create-table-btn', 'create-btn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.onclick = (e) => { e.preventDefault(); window.createLobby(); };
     });
 
-    // Join Table buttons
-    ['join-lobby-btn', 'join-table-btn', 'join-btn', 'btn-join-lobby'].forEach(id => {
+    ['join-lobby-btn', 'join-table-btn', 'join-btn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.onclick = (e) => { e.preventDefault(); window.joinLobby(); };
     });
 
-    // Refresh Lobby buttons
-    ['refresh-lobbies-btn', 'refresh-btn', 'btn-refresh-lobbies'].forEach(id => {
+    ['refresh-lobbies-btn', 'refresh-btn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.onclick = (e) => { e.preventDefault(); window.refreshLobbies(); };
     });
 
-    // Ledger buttons (Main Menu, Top Bar, HUD)
-    ['ledger-btn', 'open-ledger-btn', 'session-ledger-btn', 'in-game-ledger-btn', 'menu-ledger-btn'].forEach(id => {
+    ['ledger-btn', 'open-ledger-btn', 'session-ledger-btn', 'in-game-ledger-btn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.onclick = (e) => { e.preventDefault(); window.toggleLedgerModal(); };
     });
 }
 
 // Universal Ledger Opener Bridge
-window.toggleLedgerModal = window.openLedgerModal = window.toggleSessionLedger = function() {
+window.toggleLedgerModal = window.openLedgerModal = window.toggleSessionLedger = function(forceState) {
     const modal = document.getElementById('session-ledger-modal') || 
                   document.getElementById('ledger-modal') || 
                   document.getElementById('lifetime-ledger-modal');
@@ -714,9 +744,11 @@ window.toggleLedgerModal = window.openLedgerModal = window.toggleSessionLedger =
         return;
     }
     const isVisible = modal.style.display === 'flex' || modal.style.display === 'block';
-    modal.style.display = isVisible ? 'none' : 'flex';
+    const nextState = typeof forceState === 'boolean' ? forceState : !isVisible;
 
-    if (!isVisible) {
+    modal.style.display = nextState ? 'flex' : 'none';
+
+    if (nextState) {
         window.initSocketAndSend({ type: 'GET_LIFETIME_LEDGER' });
         if (typeof window.renderSessionLedger === 'function') {
             window.renderSessionLedger();
@@ -765,6 +797,5 @@ if (document.readyState === 'loading') {
     bindAllMenuAndLedgerButtons();
 }
 
-// Restore saved form values and establish connection on boot
 window.restoreSavedInputs();
 window.connectSocket();
