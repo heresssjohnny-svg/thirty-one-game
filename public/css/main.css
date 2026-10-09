@@ -64,16 +64,6 @@ html, body {
     text-align: center;
 }
 
-.menu-subtitle {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-bottom: 20px;
-    text-align: center;
-}
-
-/* User profile row */
 .user-bar, .user-badge-container {
     display: flex;
     align-items: center;
@@ -110,7 +100,6 @@ html, body {
     transform: translateY(-1px);
 }
 
-/* Table Setup Container */
 .menu-card, .table-setup-box {
     background: rgba(6, 28, 17, 0.9);
     border: 2px solid var(--accent-gold);
@@ -212,7 +201,6 @@ html, body {
     filter: brightness(0.9);
 }
 
-/* Join Table Row */
 .join-direct-row {
     display: flex;
     gap: 8px;
@@ -239,7 +227,6 @@ html, body {
     background: #334155;
 }
 
-/* Live Tables */
 .live-tables-section {
     width: 100%;
     max-width: 400px;
@@ -285,115 +272,281 @@ html, body {
     background: rgba(14, 46, 29, 0.95);
     transform: translateY(-1px);
 }
+
+/* -------------------------------------------------------------
+   2. IN-GAME WAITING ROOM & TABLE CONTROLS (CASINO THEME)
+   ------------------------------------------------------------- */
+#in-game-header,
+.in-game-header-container,
+#game-view > header {
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: rgba(4, 20, 13, 0.92);
+    border-bottom: 1.5px solid rgba(212, 175, 55, 0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+}
+
+#room-title-display {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--accent-gold);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.6px;
+    text-align: center;
+}
+
+#turn-banner,
+#phase-message-display {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #e2e8f0;
+    letter-spacing: 0.4px;
+    text-align: center;
+}
+
+/* Primary Top Action Row (Ready Up, Stand Up, Sit Down, End Match, Leave) */
+#in-game-top-row-btns,
+.in-game-primary-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+#ready-btn,
+#stand-up-btn,
+#sit-btn,
+#end-game-btn,
+#leave-lobby-btn,
+.game-action-btn {
+    background: linear-gradient(180deg, #164e32 0%, #0a291a 100%);
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    color: #f8fafc;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    transition: all 0.15s ease;
+    text-transform: capitalize;
+}
+
+#ready-btn:active,
+#stand-up-btn:active,
+#sit-btn:active,
+#leave-lobby-btn:active {
+    transform: translateY(1px);
+    background: #082215;
+}
+
+#ready-btn.ready-active {
+    background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%);
+    color: #04190e;
+    border-color: #fef08a;
+}
+
+/* Secondary Utility & Social Row (Voice, Chat, Bets, Board, Settings) */
+#in-game-tools-row,
+.in-game-secondary-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+#voice-btn,
+#chat-toggle-btn,
+#bets-btn,
+#board-btn,
+#settings-btn,
+.game-tool-btn {
+    background: rgba(14, 46, 29, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: var(--accent-gold);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+}
+
+#chat-toggle-btn:hover,
+#settings-btn:hover {
+    border-color: var(--accent-gold-bright);
+    background: rgba(20, 60, 38, 0.95);
+}
+
+/* Waiting Room Config Bar (Starting Lives, Table Wager, Add/Remove Bot) */
+#lobby-config-bar,
+.lobby-host-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-top: 2px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#config-lives,
+#config-wager,
+.theme-select {
+    background: #04160e;
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    color: #f8fafc;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    outline: none;
+    cursor: pointer;
+}
+
+#config-lives:focus,
+#config-wager:focus {
+    border-color: var(--accent-gold-bright);
+}
+
+.bot-controls,
+.bot-btn-group {
+    display: flex;
+    gap: 4px;
+}
+
+#add-bot-btn,
+#remove-bot-btn,
+.bot-action-btn {
+    background: rgba(15, 35, 24, 0.95);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+#add-bot-btn:hover {
+    border-color: var(--accent-emerald);
+    color: var(--accent-emerald);
+}
+
+#remove-bot-btn:hover {
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
 /* =============================================================
    BLITZ 31 - CASINO MAIN STYLESHEET (PART 2 OF 2)
    ============================================================= */
 
 /* -------------------------------------------------------------
-   2. IN-GAME HEADER & HUD BARS
+   3. TABLE SURFACE, CHIPS & CARD PLACEMENT
    ------------------------------------------------------------- */
+#game-view,
 #game-screen {
     position: relative;
     width: 100vw;
     height: 100vh;
+    min-height: 100vh;
     overflow: hidden;
     background: radial-gradient(circle at 50% 50%, #0e3d26 0%, #061c11 75%, #020a06 100%);
-}
-
-.game-header-top {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 48px;
-    background: rgba(4, 20, 13, 0.92);
-    border-bottom: 1px solid rgba(212, 175, 55, 0.35);
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 16px;
-    box-sizing: border-box;
-    z-index: 100;
-    backdrop-filter: blur(6px);
+    flex-direction: column;
 }
 
-.game-title-hud {
-    font-size: 1.15rem;
-    font-weight: 900;
-    color: var(--accent-gold);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-}
-
-.game-room-code {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--accent-gold-bright);
-    background: rgba(0, 0, 0, 0.4);
-    padding: 3px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(212, 175, 55, 0.3);
-}
-
-.header-action-group {
+#table-container {
+    position: relative;
+    flex: 1;
+    width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
 }
 
-.hud-btn {
-    background: rgba(14, 46, 29, 0.85);
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    color: var(--accent-gold);
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s ease;
+/* Center Pot & Wager Pill HUD */
+.score-pot-hud,
+.center-pot-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin: 8px auto 0;
+    z-index: 50;
 }
 
-.hud-btn:hover {
-    border-color: var(--accent-gold-bright);
-    background: rgba(20, 60, 38, 0.95);
-}
-
-/* Secondary In-Game Status / Phase Bar */
-.game-phase-bar {
-    position: absolute;
-    top: 48px;
-    left: 0;
-    width: 100%;
-    background: rgba(0, 0, 0, 0.65);
-    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
-    padding: 6px 16px;
-    text-align: center;
-    font-size: 0.85rem;
-    font-weight: 700;
+.hand-score-badge {
+    font-size: 0.95rem;
+    font-weight: 800;
     color: #e2e8f0;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.hand-score-badge span {
+    color: var(--accent-gold-bright);
+}
+
+#pot-indicator,
+.pot-badge {
+    background: rgba(4, 20, 13, 0.9);
+    border: 1.5px solid var(--accent-gold);
+    color: var(--accent-gold-bright);
+    padding: 3px 16px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.88rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), var(--gold-glow);
     letter-spacing: 0.5px;
-    z-index: 90;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 /* -------------------------------------------------------------
-   3. CHAT DRAWER & NOTIFICATIONS
+   4. CHAT DRAWER & SIDE BET INTERACTION
    ------------------------------------------------------------- */
 #chat-drawer {
     position: absolute;
     bottom: 0;
     right: 0;
     width: 320px;
-    height: 240px;
-    background: rgba(4, 20, 13, 0.94);
-    border: 1px solid rgba(212, 175, 55, 0.4);
+    height: 250px;
+    background: rgba(4, 20, 13, 0.96);
+    border: 1px solid rgba(212, 175, 55, 0.45);
     border-top-left-radius: 12px;
     display: flex;
     flex-direction: column;
     z-index: 150;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.7);
     transform: translateY(100%);
-    transition: transform 0.25s ease-in-out;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #chat-drawer.open {
@@ -401,7 +554,7 @@ html, body {
 }
 
 .chat-header {
-    background: rgba(14, 46, 29, 0.9);
+    background: rgba(14, 46, 29, 0.95);
     padding: 8px 12px;
     display: flex;
     justify-content: space-between;
@@ -412,9 +565,10 @@ html, body {
 
 .chat-header h4 {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--accent-gold);
     text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .chat-messages {
@@ -429,6 +583,7 @@ html, body {
 
 .chat-bubble {
     background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(212, 175, 55, 0.15);
     padding: 4px 8px;
     border-radius: 6px;
     line-height: 1.3;
@@ -445,6 +600,7 @@ html, body {
     padding: 6px;
     gap: 6px;
     border-top: 1px solid rgba(212, 175, 55, 0.2);
+    background: rgba(2, 10, 6, 0.8);
 }
 
 .chat-input-bar input {
@@ -466,10 +622,15 @@ html, body {
     border-radius: 4px;
     padding: 0 12px;
     cursor: pointer;
+    transition: filter 0.15s ease;
+}
+
+.chat-input-bar button:active {
+    filter: brightness(0.9);
 }
 
 /* -------------------------------------------------------------
-   4. CELEBRATION & TOURNAMENT WINNER OVERLAYS
+   5. CELEBRATION, TOAST NOTIFICATIONS & OVERLAYS
    ------------------------------------------------------------- */
 #celebration-canvas {
     position: fixed;
@@ -506,221 +667,49 @@ html, body {
 }
 
 /* -------------------------------------------------------------
-   5. MOBILE & COMPACT VIEWPORT OPTIMIZATIONS
+   6. MOBILE VIEWPORT OPTIMIZATIONS
    ------------------------------------------------------------- */
 @media (max-width: 600px) {
-    #main-menu h1 {
-        font-size: 2.1rem;
+    #in-game-header,
+    .in-game-header-container,
+    #game-view > header {
+        padding: 6px 8px;
+        gap: 5px;
     }
-    
-    .menu-card, .table-setup-box {
-        padding: 18px 14px;
+
+    #in-game-top-row-btns,
+    #in-game-tools-row,
+    #lobby-config-bar {
+        gap: 4px;
+    }
+
+    #ready-btn,
+    #stand-up-btn,
+    #sit-btn,
+    #end-game-btn,
+    #leave-lobby-btn,
+    .game-action-btn {
+        padding: 5px 9px;
+        font-size: 0.76rem;
+    }
+
+    #voice-btn,
+    #chat-toggle-btn,
+    #bets-btn,
+    #board-btn,
+    #settings-btn,
+    .game-tool-btn {
+        padding: 4px 8px;
+        font-size: 0.74rem;
+    }
+
+    .config-item {
+        font-size: 0.72rem;
     }
 
     #chat-drawer {
         width: 100%;
-        height: 210px;
+        height: 220px;
         border-top-right-radius: 12px;
     }
-}
-/* =============================================================
-   IN-GAME TABLE HEADER & LOBBY CONTROLS THEME
-   ============================================================= */
-
-/* Main Header Container */
-.game-header, #table-header, .table-controls-container {
-    width: 100%;
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    background: rgba(4, 20, 13, 0.85);
-    border-bottom: 2px solid rgba(212, 175, 55, 0.4);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
-}
-
-/* Room Title & Status */
-.room-title-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    font-size: 1.1rem;
-    font-weight: 800;
-    color: #d4af37;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 0.5px;
-}
-
-#phase-indicator, .phase-status-text {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #cbd5e1;
-    text-align: center;
-}
-
-/* Control Button Rows */
-.btn-row, .hud-action-row {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-}
-
-/* Primary Action Buttons (Ready, Stand Up, End Match, Leave) */
-.hud-action-row button,
-#ready-btn,
-#stand-up-btn,
-#end-match-btn,
-#leave-lobby-btn,
-.hud-btn {
-    background: linear-gradient(180deg, #164e32 0%, #0a291a 100%);
-    border: 1px solid rgba(212, 175, 55, 0.5);
-    color: #f8fafc;
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 0.82rem;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-    transition: all 0.15s ease;
-    text-transform: capitalize;
-}
-
-.hud-action-row button:active,
-#ready-btn:active,
-#stand-up-btn:active {
-    transform: translateY(1px);
-    background: #0a291a;
-}
-
-/* Ready Active Highlight */
-#ready-btn.ready-active {
-    background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%);
-    color: #04190e;
-    border-color: #fef08a;
-    font-weight: 800;
-}
-
-/* Secondary Feature Buttons (Voice, Chat, Bets, Board, Settings) */
-.feature-btn,
-#voice-btn,
-#chat-toggle-btn,
-#bets-btn,
-#board-btn,
-#settings-btn {
-    background: rgba(14, 46, 29, 0.7);
-    border: 1px solid rgba(212, 175, 55, 0.35);
-    color: #d4af37;
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.feature-btn:hover,
-#chat-toggle-btn:hover {
-    background: rgba(20, 60, 38, 0.9);
-    border-color: #f6e05e;
-}
-
-/* Host Wager, Lives & Bot Controls Row */
-.host-controls-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    width: 100%;
-    margin-top: 4px;
-    padding-top: 6px;
-    border-top: 1px solid rgba(212, 175, 55, 0.15);
-}
-
-.host-control-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-/* Themed Select Dropdowns */
-.host-control-item select,
-#starting-lives-select,
-#table-wager-select {
-    background: #04160e;
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    color: #f8fafc;
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 0.82rem;
-    font-weight: 700;
-    outline: none;
-    cursor: pointer;
-}
-
-.host-control-item select:focus {
-    border-color: #f6e05e;
-}
-
-/* Bot Control Buttons */
-.bot-btn-group {
-    display: flex;
-    gap: 4px;
-}
-
-#add-bot-btn,
-#remove-bot-btn {
-    background: rgba(15, 35, 24, 0.9);
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    color: #cbd5e1;
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 4px 8px;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-#add-bot-btn:hover {
-    border-color: #10b981;
-    color: #10b981;
-}
-
-#remove-bot-btn:hover {
-    border-color: #ef4444;
-    color: #ef4444;
-}
-
-/* Pot & Hand Score Badges */
-.score-pot-hud {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    margin-top: 6px;
-}
-
-#pot-indicator, .pot-badge {
-    background: rgba(4, 20, 13, 0.85);
-    border: 1.5px solid #d4af37;
-    color: #f6e05e;
-    padding: 3px 14px;
-    border-radius: 20px;
-    font-weight: 800;
-    font-size: 0.9rem;
-    box-shadow: 0 0 10px rgba(212, 175, 55, 0.25);
 }
