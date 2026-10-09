@@ -1,27 +1,32 @@
-// server/db.js - SQLite Persistence with better-sqlite3
+// server/db.js - SQLite Database, Local Authentication & Lifetime Ledger
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure data.sqlite resolves to the persistent project root
-const rootDir = fs.existsSync(path.join(__dirname, '..', 'package.json')) 
-    ? path.join(__dirname, '..') 
+// Resolve database file to the persistent project root
+const rootDir = fs.existsSync(path.join(__dirname, '..', 'package.json'))
+    ? path.join(__dirname, '..')
     : __dirname;
 const dbPath = path.join(rootDir, 'data.sqlite');
 
 const db = new Database(dbPath);
 
-// Enable Write-Ahead Logging for speed and concurrency
+// Enable Write-Ahead Logging for high concurrency
 db.pragma('journal_mode = WAL');
 
-// Initialize schema for accounts and persistent pairwise debt
+// -------------------------------------------------------------
+// 1. SCHEMA DEFINITION & SAFE MIGRATIONS
+// -------------------------------------------------------------
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,          -- 'local', 'google', etc.
-    provider_id TEXT UNIQUE,        -- Provider UID or lowercase identifier
+    provider TEXT DEFAULT 'local',
+    provider_id TEXT UNIQUE,
     username TEXT NOT NULL,
-    password_hash TEXT,             -- NULL for OAuth social logins
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    reset_token TEXT,
+    reset_expiry INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -36,56 +41,122 @@ db.exec(`
   );
 `);
 
+// Apply column migrations if an existing database file is present on disk
+try { db.prepare('ALTER TABLE users ADD COLUMN email TEXT').run(); } catch (e) {}
+try { db.prepare('ALTER TABLE users ADD COLUMN reset_token TEXT').run(); } catch (e) {}
+try { db.prepare('ALTER TABLE users ADD COLUMN reset_expiry INTEGER').run(); } catch (e) {}
+
+// -------------------------------------------------------------
+// 2. USER LOOKUP, REGISTRATION & PASSWORD RECOVERY
+// -------------------------------------------------------------
 module.exports = {
   db,
+  prepare: (...args) => db.prepare(...args),
+  exec: (...args) => db.exec(...args),
 
-  // --- USER LOOKUP & CREATION ---
-
-  findUserByProviderId: (providerId) => {
-    if (!providerId) return null;
-    return db.prepare('SELECT * FROM users WHERE provider_id = ?').get(providerId.toLowerCase());
+  // Lookup by identifier (allows logging in via username OR email)
+  findUserByIdentifier: (identifier) => {
+    if (!identifier) return null;
+    const clean = identifier.trim().toLowerCase();
+    return db.prepare(`
+      SELECT id, username, email, password_hash, reset_token, reset_expiry, created_at 
+      FROM users 
+      WHERE LOWER(username) = ? OR LOWER(email) = ?
+      LIMIT 1
+    `).get(clean, clean);
   },
 
-  findUserById: (id) => {
-    if (!id) return null;
-    return db.prepare('SELECT id, provider, username, created_at FROM users WHERE id = ?').get(id);
-  },
-
-  // CRITICAL FIX: Explicitly selects password_hash and provider_id alongside username
+  // Lookup by username
   findUserByUsername: (username) => {
     if (!username) return null;
     return db.prepare(`
-      SELECT id, provider, provider_id, username, password_hash, created_at 
+      SELECT id, username, email, password_hash, reset_token, reset_expiry, created_at 
       FROM users 
       WHERE LOWER(username) = LOWER(?)
+      LIMIT 1
     `).get(username.trim());
   },
 
-  createUser: (id, provider, providerId, username, passwordHash = null) => {
-    db.prepare(`
-      INSERT INTO users (id, provider, provider_id, username, password_hash)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, provider, providerId.toLowerCase(), username.trim(), passwordHash);
-    return { id, provider, provider_id: providerId.toLowerCase(), username: username.trim() };
+  // Lookup by recovery email
+  findUserByEmail: (email) => {
+    if (!email) return null;
+    return db.prepare(`
+      SELECT id, username, email, password_hash, reset_token, reset_expiry, created_at 
+      FROM users 
+      WHERE LOWER(email) = LOWER(?)
+      LIMIT 1
+    `).get(email.trim());
   },
 
-  // --- LIFETIME LEDGER OPERATIONS ---
+  // Lookup by user ID
+  findUserById: (id) => {
+    if (!id) return null;
+    return db.prepare(`
+      SELECT id, username, email, created_at 
+      FROM users 
+      WHERE id = ?
+    `).get(id);
+  },
+
+  // Create local user linked to mandatory email
+  createUser: (id, username, email, passwordHash) => {
+    const cleanUser = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const providerId = `local_${cleanUser.toLowerCase()}`;
+
+    db.prepare(`
+      INSERT INTO users (id, provider, provider_id, username, email, password_hash, created_at)
+      VALUES (?, 'local', ?, ?, ?, ?, datetime('now'))
+    `).run(id, providerId, cleanUser, cleanEmail, passwordHash);
+
+    return { id, username: cleanUser, email: cleanEmail };
+  },
+
+  // Save 6-digit recovery code and expiration timestamp
+  setResetToken: (userId, token, expiry) => {
+    return db.prepare(`
+      UPDATE users 
+      SET reset_token = ?, reset_expiry = ? 
+      WHERE id = ?
+    `).run(token, expiry, userId);
+  },
+
+  // Verify recovery code validity and expiry window
+  verifyResetToken: (userId, token) => {
+    const user = db.prepare('SELECT id, reset_token, reset_expiry FROM users WHERE id = ?').get(userId);
+    if (!user || !user.reset_token || user.reset_token !== token) return false;
+    if (Date.now() > user.reset_expiry) return false;
+    return true;
+  },
+
+  // Update password and invalidate used reset token
+  updatePassword: (userId, newPasswordHash) => {
+    return db.prepare(`
+      UPDATE users 
+      SET password_hash = ?, reset_token = NULL, reset_expiry = NULL 
+      WHERE id = ?
+    `).run(newPasswordHash, userId);
+  },
+
+  // -------------------------------------------------------------
+  // 3. LIFETIME LEDGER & BILATERAL NETTING OPERATIONS
+  // -------------------------------------------------------------
 
   /**
-   * Records that debtorId owes creditorId a given amount.
-   * Automatically nets balances out against existing reverse debt.
+   * Records that debtorId owes creditorId an amount.
+   * Nets balances out if the creditor already owes the debtor.
    */
   recordLifetimeDebt: (debtorId, creditorId, amount) => {
     if (!debtorId || !creditorId || debtorId === creditorId || amount <= 0) return;
 
-    // Check if the creditor currently owes the debtor money (reverse debt)
+    // Check if the opposite debt exists (creditor owes debtor)
     const reverse = db.prepare(`
       SELECT amount FROM lifetime_ledger WHERE debtor_id = ? AND creditor_id = ?
     `).get(creditorId, debtorId);
 
     if (reverse) {
       if (reverse.amount > amount) {
-        // Reverse debt is larger: decrease creditor's existing debt
+        // Reverse debt is larger: deduct from creditor's existing debt
         db.prepare(`
           UPDATE lifetime_ledger 
           SET amount = amount - ?, updated_at = CURRENT_TIMESTAMP 
@@ -93,7 +164,7 @@ module.exports = {
         `).run(amount, creditorId, debtorId);
         return;
       } else if (reverse.amount === amount) {
-        // Reverse debt exactly equals this amount: fully settled
+        // Both debts cancel out completely
         db.prepare(`
           DELETE FROM lifetime_ledger WHERE debtor_id = ? AND creditor_id = ?
         `).run(creditorId, debtorId);
@@ -125,9 +196,9 @@ module.exports = {
   },
 
   /**
-   * Retrieves all net balances for a user:
-   *  +net means the other player owes this user.
-   *  -net means this user owes the other player.
+   * Retrieves bilateral net balances for a user:
+   *  +net: Other player owes this user
+   *  -net: This user owes the other player
    */
   getLifetimeBalances: (userId) => {
     if (!userId) return [];
@@ -152,7 +223,7 @@ module.exports = {
   },
 
   /**
-   * Allows a creditor to mark an amount as paid/credited towards a player who owes them.
+   * Clears or partially credits an outstanding balance.
    */
   applyCredit: (creditorId, debtorId, creditAmount) => {
     if (!creditorId || !debtorId || creditAmount <= 0) {
