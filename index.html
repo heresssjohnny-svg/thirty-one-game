@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Cache-busted stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=25">
-    <link rel="stylesheet" href="/css/table.css?v=25">
-    <link rel="stylesheet" href="/css/modals.css?v=25">
+    <link rel="stylesheet" href="/css/main.css?v=28">
+    <link rel="stylesheet" href="/css/table.css?v=28">
+    <link rel="stylesheet" href="/css/modals.css?v=28">
 
     <!-- Google Identity SDK & LiveKit -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -20,7 +20,7 @@
 </head>
 <body class="casino-theme">
     <div id="app">
-        <!-- 1. AUTH OVERLAY SCREEN (Preserved SQLite/Guest/Google Authentication) -->
+        <!-- 1. AUTH SCREEN (Preserved Login / Register / Guest / Google) -->
         <div id="auth-screen" class="auth-overlay">
             <div class="auth-card casino-panel">
                 <div class="auth-header">
@@ -70,7 +70,7 @@
             </div>
         </div>
 
-        <!-- 2. MAIN MENU SCREEN (Preserved Setup & Ledger Integration) -->
+        <!-- 2. MAIN MENU (Preserved Table Setup & Live Lobby List) -->
         <div id="main-menu" class="main-menu-container" style="display: none;">
             <header class="menu-header">
                 <div class="brand">
@@ -102,7 +102,7 @@
                         </label>
                     </div>
                     <div class="button-row">
-                        <button class="primary-btn gold-btn" onclick="createLobby()">Create Table</button>
+                        <button class="primary-btn gold-btn full-width" onclick="createLobby()">Create Table</button>
                     </div>
 
                     <div class="divider-line"></div>
@@ -125,10 +125,10 @@
             </main>
         </div>
 
-        <!-- 3. IN-GAME TABLE VIEW (Restored Original Layout & Button IDs) -->
+        <!-- 3. IN-GAME TABLE VIEW -->
         <div id="game-view" class="game-view-container" style="display: none;">
             <!-- TOP IN-GAME HEADER -->
-            <div class="in-game-header casino-topbar">
+            <header class="in-game-header casino-topbar">
                 <div class="header-left">
                     <span class="room-title gold-text" id="room-title-display">Table</span>
                     <span class="spectator-counter" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></span>
@@ -145,15 +145,15 @@
                 <div class="header-right">
                     <div id="in-game-top-row-btns" class="button-strip">
                         <button id="ready-btn" class="action-btn ready-btn" onclick="toggleReady()">Ready Up</button>
-                        <button id="sit-btn" class="action-btn sit-btn" style="display:none;" onclick="sitDown()">Sit Down</button>
+                        <button id="sit-btn" class="action-btn sit-btn" style="display: none;" onclick="sitDown()">Sit Down</button>
                         <button id="stand-up-btn" class="action-btn stand-btn" onclick="standUp()">Stand Up</button>
                         <button id="end-game-btn" class="action-btn end-btn" onclick="proposeEndGame()">End Match</button>
                         <button id="leave-lobby-btn" class="action-btn leave-btn" onclick="leaveLobby()">Leave</button>
                     </div>
                 </div>
-            </div>
+            </header>
 
-            <!-- IN-GAME TOOLS ROW -->
+            <!-- IN-GAME TOOLS BAR -->
             <div id="in-game-tools-row" class="tools-bar">
                 <button id="vc-main-btn" class="tool-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
                 <button id="chat-toggle-btn" class="tool-btn" onclick="toggleChatWindow()">💬 Chat</button>
@@ -186,7 +186,7 @@
                 </div>
             </div>
 
-            <!-- CARD REVEALS / NOTIFICATIONS -->
+            <!-- IN-GAME REVEAL MODALS -->
             <div id="center-notification-banner" class="notification-pill" style="display: none;"></div>
             <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
                 <span class="modal-label">Picked Discard:</span>
@@ -197,30 +197,98 @@
                 <div id="fed-card-content"></div>
             </div>
 
-            <!-- CASINO FELT OVAL TABLE -->
+            <!-- CASINO FELT OVAL TABLE CONTAINER -->
             <div class="table-outer-wrapper">
-                <div id="table-oval-container" class="casino-felt-table"></div>
+                <div id="table-oval-container" class="casino-felt-table">
+                    <!-- CENTER FELT (Deck & Discard) -->
+                    <div class="table-center-area">
+                        <div id="deck-pile" class="deck-pile card-deck" onclick="drawFromDeck()">
+                            <div class="card-back-pattern">🂠</div>
+                            <span class="pile-label">DECK</span>
+                        </div>
+                        <div id="discard-pile" class="discard-pile card-discard" onclick="drawFromDiscard()">
+                            <div id="discard-top-card" class="card-placeholder">Empty</div>
+                            <span class="pile-label">DISCARD</span>
+                        </div>
+                    </div>
+
+                    <!-- 6 PLAYER SEATS (Seats 0 to 5) -->
+                    <div id="seat-0" class="player-seat seat seat-0 seat-pos-0" data-seat="0" onclick="handleSeatClick(0)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-1" class="player-seat seat seat-1 seat-pos-1" data-seat="1" onclick="handleSeatClick(1)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-2" class="player-seat seat seat-2 seat-pos-2" data-seat="2" onclick="handleSeatClick(2)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-3" class="player-seat seat seat-3 seat-pos-3" data-seat="3" onclick="handleSeatClick(3)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-4" class="player-seat seat seat-4 seat-pos-4" data-seat="4" onclick="handleSeatClick(4)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+
+                    <div id="seat-5" class="player-seat seat seat-5 seat-pos-5" data-seat="5" onclick="handleSeatClick(5)">
+                        <div class="seat-avatar">👤</div>
+                        <div class="seat-info">
+                            <span class="seat-player-name">Empty</span>
+                            <span class="seat-lives"></span>
+                        </div>
+                        <span class="seat-status-badge">Open</span>
+                    </div>
+                </div>
             </div>
 
-            <!-- PLAYER HAND CONTROLS -->
-            <div class="player-hand-container">
+            <!-- PLAYER HAND CONTROLS (Docked Bottom) -->
+            <footer class="player-hand-container">
                 <div class="hand-header">
                     <span id="my-hand-title">My Hand</span>
                     <button id="knock-btn" class="knock-action-btn" style="display: none;" onclick="knockRound()" disabled>Knock!</button>
                 </div>
                 <div id="my-cards-container" class="cards-flex-row"></div>
-            </div>
+            </footer>
 
-            <!-- NEXT HAND OVERLAY -->
+            <!-- ROUND OVERLAY -->
             <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
                 <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
             </div>
         </div>
 
-        <!-- MODALS, DRAWERS & SIDEBARS -->
+        <!-- MODALS, DRAWERS & AUDIO -->
         <canvas id="celebration-canvas"></canvas>
         <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
 
+        <!-- Chat Drawer (No Form Tag to prevent page refreshes) -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
             <div class="drawer-header">
                 <h4>Table Chat</h4>
@@ -229,10 +297,11 @@
             <div id="chat-messages" class="drawer-body"></div>
             <div class="drawer-footer">
                 <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                <button onclick="sendChatMessage()">Send</button>
+                <button id="chat-send-btn" type="button" onclick="sendChatMessage()">Send</button>
             </div>
         </div>
 
+        <!-- Global Side Bets Sidebar -->
         <div id="global-side-bets-sidebar" class="global-bets-drawer" style="display: none;">
             <div class="drawer-header">
                 <h4>Global Side Bets</h4>
@@ -241,11 +310,12 @@
             <div id="global-side-bets-list" class="drawer-body"></div>
         </div>
 
-        <div id="pool-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
+        <!-- Draw Phase Modals -->
+        <div id="dealer-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
             <div class="modal-box wide">
-                <h3 id="pool-modal-title">Draw Phase</h3>
-                <p id="pool-modal-instruction" class="subtitle">Lowest card deals (Ace highest).</p>
-                <div id="pool-cards-container" class="draw-modal-split-layout"></div>
+                <h3 id="dealer-draw-title">Dealer Draw Phase</h3>
+                <p id="dealer-draw-instruction" class="subtitle">Lowest card deals (Ace is highest).</p>
+                <div id="draw-pool-grid" class="draw-modal-split-layout"></div>
             </div>
         </div>
 
@@ -307,6 +377,12 @@
                 </div>
             </div>
         </div>
+
+        <!-- Audio Elements -->
+        <audio id="knock-sound" src="/audio/knock.mp3" preload="auto"></audio>
+        <audio id="turn-sound" src="/audio/yourturn.mp3" preload="auto"></audio>
+        <audio id="deal-sound" src="/audio/deal.mp3" preload="auto"></audio>
+        <audio id="win-sound" src="/audio/win.mp3" preload="auto"></audio>
     </div>
 
     <!-- Script Pipeline -->
