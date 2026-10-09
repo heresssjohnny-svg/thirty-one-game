@@ -1223,8 +1223,8 @@ window.updateUIFromLobby = function(lobby) {
         if (poolModal) poolModal.style.display = 'flex';
         if (revealModal) revealModal.style.display = 'none';
 
-        const pTitle = document.getElementById('pool-modal-title');
-        const pInstr = document.getElementById('pool-modal-instruction');
+        const pTitle = document.getElementById('dealer-modal-title');
+        const pInstr = document.getElementById('dealer-modal-instruction');
         if (pTitle) pTitle.innerText = 'Picking for Dealer';
         if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
 
