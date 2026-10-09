@@ -139,11 +139,26 @@ wss.on('connection', (ws, req) => {
         handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
     });
 
-    ws.on('close', () => {
+        ws.on('close', () => {
         if (ws.currentLobbyCode) {
-            leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
+            const { lobbies, broadcastLobbyUpdate } = require('./server/game/lobbyManager');
+            const lobby = lobbies[ws.currentLobbyCode];
+            if (lobby) {
+                const player = lobby.players.find(p => p.id === ws);
+                if (player) {
+                    player.id = null; // Detach dead socket without removing player from the table
+                    player.disconnectedAt = Date.now();
+                    broadcastLobbyUpdate(ws.currentLobbyCode);
+                }
+                const spectator = lobby.spectators.find(s => s.idSocket === ws);
+                if (spectator) {
+                    spectator.idSocket = null;
+                    spectator.disconnectedAt = Date.now();
+                }
+            }
         }
     });
+
 });
 
 // -------------------------------------------------------------
