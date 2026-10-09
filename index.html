@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Cache-busted stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=32">
-    <link rel="stylesheet" href="/css/table.css?v=32">
-    <link rel="stylesheet" href="/css/modals.css?v=32">
+    <link rel="stylesheet" href="/css/main.css?v=45">
+    <link rel="stylesheet" href="/css/table.css?v=45">
+    <link rel="stylesheet" href="/css/modals.css?v=45">
 
     <!-- LiveKit SDK & Google Auth -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -70,7 +70,7 @@
             </div>
         </div>
 
-        <!-- 2. MAIN MENU SCREEN (Preserved Setup & Ledger Integration) -->
+        <!-- 2. MAIN MENU SCREEN (Preserved Table Setup & Live Tables) -->
         <div id="main-menu" class="main-menu-container" style="display: none;">
             <header class="menu-header">
                 <div class="brand">
@@ -125,7 +125,7 @@
             </main>
         </div>
 
-        <!-- 3. IN-GAME VIEW (Original Layout + Safe-Area Boundaries) -->
+        <!-- 3. IN-GAME VIEW & TABLE ARENA -->
         <div id="game-view" style="display: none;">
             <!-- IN-GAME HEADER -->
             <header id="in-game-header">
@@ -182,19 +182,19 @@
                         <button id="remove-bot-btn" onclick="removeBot()">- Remove Bot</button>
                     </div>
                 </div>
+
+                <!-- DOCKED NOTIFICATIONS (Placed strictly between bot buttons & table felt) -->
+                <div id="center-notification-banner" class="center-banner" style="display: none;"></div>
+                <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
+                    <div id="discard-pickup-card-content"></div>
+                </div>
+                <div id="fed-card-topright-modal" class="corner-modal top-right-corner" style="display: none;">
+                    <span id="fed-card-label"></span>
+                    <div id="fed-card-content"></div>
+                </div>
             </header>
 
-            <!-- CARD REVEALS / NOTIFICATIONS -->
-            <div id="center-notification-banner" class="center-banner" style="display: none;"></div>
-            <div id="discard-pickup-topleft-modal" style="display: none;">
-                <div id="discard-pickup-card-content"></div>
-            </div>
-            <div id="fed-card-topright-modal" style="display: none;">
-                <span id="fed-card-label"></span>
-                <div id="fed-card-content"></div>
-            </div>
-
-            <!-- CARD TABLE SURFACE -->
+            <!-- CARD TABLE FELT -->
             <main id="table-container">
                 <div id="table-oval-container"></div>
                 <div id="next-hand-overlay" style="display: none;">
@@ -211,12 +211,11 @@
                 <div id="my-cards-container"></div>
             </footer>
         </div>
-
-        <!-- 4. MODALS & POPUPS (Restored exact ui.js element IDs) -->
+        <!-- 4. MODALS, POPUPS & DRAWERS -->
         <canvas id="celebration-canvas"></canvas>
-        <div id="knock-alert-modal" class="knock-banner" style="display: none;"></div>
+        <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
 
-        <!-- DEALER DRAW CUT DEAL MODAL -->
+        <!-- DEALER CUT / DRAW PHASE MODAL (Zero-scroll grid layout) -->
         <div id="pool-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
             <div class="modal-box wide">
                 <h3 id="pool-modal-title">Picking for Dealer</h3>
@@ -328,7 +327,7 @@
             </div>
         </div>
 
-        <!-- CHAT DRAWER -->
+        <!-- CHAT DRAWER (Uses explicit div container to prevent page reload redirects) -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
             <div class="drawer-header">
                 <h4>Table Chat</h4>
@@ -337,7 +336,7 @@
             <div id="chat-messages" class="drawer-body"></div>
             <div class="drawer-footer">
                 <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                <button onclick="sendChatMessage()">Send</button>
+                <button id="chat-send-btn" type="button" onclick="sendChatMessage()">Send</button>
             </div>
         </div>
 
@@ -349,9 +348,15 @@
             </div>
             <div id="global-side-bets-list" class="drawer-body"></div>
         </div>
+
+        <!-- AUDIO ENGINE ELEMENTS -->
+        <audio id="knock-sound" src="/audio/knock.mp3" preload="auto"></audio>
+        <audio id="turn-sound" src="/audio/yourturn.mp3" preload="auto"></audio>
+        <audio id="deal-sound" src="/audio/deal.mp3" preload="auto"></audio>
+        <audio id="win-sound" src="/audio/win.mp3" preload="auto"></audio>
     </div>
 
-    <!-- Script Pipeline -->
+    <!-- CLIENT SCRIPT PIPELINE -->
     <script src="/js/config.js"></script>
     <script src="/js/audio.js"></script>
     <script src="/js/celebration.js"></script>
