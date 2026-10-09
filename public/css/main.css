@@ -1,6 +1,5 @@
 /* =============================================================
-   BLITZ 31 - COMPLETE STYLESHEET
-   Preserves Original In-Game Waiting Room & Restores Themed Menu
+   BLITZ 31 - MASTER CASINO STYLESHEET
    ============================================================= */
 
 :root {
@@ -10,8 +9,12 @@
     --felt-border: #14532d;
     --accent-gold: #d4af37;
     --accent-gold-bright: #f6e05e;
+    --accent-gold-dark: #8c6d13;
+    --accent-emerald: #10b981;
+    --accent-red: #ef4444;
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
+    --gold-glow: 0 0 12px rgba(212, 175, 55, 0.45);
 }
 
 * {
@@ -32,9 +35,211 @@ html, body {
 }
 
 /* =============================================================
-   1. MAIN MENU SCREEN (THEMED WITH PERSISTENT LOGIN)
+   1. AUTHENTICATION OVERLAY
    ============================================================= */
-#main-menu {
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, rgba(6, 78, 59, 0.95) 0%, rgba(2, 44, 34, 0.98) 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 16px;
+}
+
+.auth-card.casino-panel {
+    width: 100%;
+    max-width: 380px;
+    background: rgba(10, 35, 25, 0.92);
+    border: 2px solid var(--accent-gold);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), var(--gold-glow);
+    padding: 24px 20px;
+    color: #e2e8f0;
+    backdrop-filter: blur(8px);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.gold-text {
+    color: var(--accent-gold) !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.auth-header .subtitle {
+    margin: 4px 0 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    padding-bottom: 8px;
+}
+
+.auth-tabs .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.auth-tabs .tab-btn.active {
+    background: rgba(212, 175, 55, 0.15);
+    color: var(--accent-gold);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 14px;
+    text-align: left;
+}
+
+.form-group label {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    margin-bottom: 5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input,
+#username-input,
+#lobby-name-input,
+#lobby-code-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(4, 22, 14, 0.9);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 6px;
+    color: #f8fafc;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+#username-input:focus,
+#lobby-name-input:focus,
+#lobby-code-input:focus {
+    border-color: var(--accent-gold-bright);
+    box-shadow: 0 0 8px rgba(246, 224, 94, 0.35);
+}
+
+.gold-btn, .primary-btn.gold-btn {
+    background: linear-gradient(180deg, #d4af37 0%, #aa820a 100%);
+    color: #0b1e16;
+    font-weight: 800;
+    border: 1px solid #fef08a;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.gold-btn:hover {
+    filter: brightness(1.08);
+}
+
+.gold-btn:active {
+    transform: translateY(1px);
+}
+
+.full-width {
+    width: 100%;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 16px 0;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.auth-divider span {
+    padding: 0 10px;
+}
+
+.social-auth-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.social-btn-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.guest-btn {
+    width: 100%;
+    padding: 9px;
+    background: rgba(51, 65, 85, 0.6);
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.guest-btn:hover {
+    background: rgba(71, 85, 105, 0.8);
+    color: #ffffff;
+}
+
+.auth-error {
+    margin-top: 12px;
+    padding: 8px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid #ef4444;
+    color: #fca5a5;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+/* =============================================================
+   2. MAIN MENU SCREEN
+   ============================================================= */
+.main-menu-container {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -45,31 +250,35 @@ html, body {
     background: radial-gradient(circle at 50% 25%, #14472d 0%, #072315 70%, #03120b 100%);
 }
 
-#main-menu h1 {
-    font-size: 2.5rem;
-    font-weight: 900;
-    color: var(--accent-gold);
-    text-shadow: 0 3px 6px rgba(0, 0, 0, 0.8), 0 0 12px rgba(212, 175, 55, 0.35);
-    margin: 0 0 12px 0;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    text-align: center;
-}
-
-.user-bar, .user-badge-container {
+.menu-header {
+    width: 100%;
+    max-width: 440px;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
     margin-bottom: 20px;
 }
 
-#menu-user-badge {
-    font-size: 1.05rem;
+.brand h1 {
+    font-size: 2.2rem;
+    font-weight: 900;
+    margin: 0;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.user-badge {
+    font-size: 0.95rem;
     font-weight: 800;
     color: var(--accent-gold-bright);
 }
 
-.icon-btn, .menu-action-btn {
+.header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.icon-btn {
     background: rgba(15, 35, 24, 0.85);
     border: 1px solid rgba(212, 175, 55, 0.4);
     color: var(--accent-gold);
@@ -82,134 +291,118 @@ html, body {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    transition: all 0.2s ease;
 }
 
-.menu-card, .table-setup-box {
+.icon-btn:hover {
+    border-color: var(--accent-gold-bright);
+    background: rgba(20, 50, 35, 0.95);
+    transform: translateY(-1px);
+}
+
+.icon-btn.danger {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
+
+.menu-content {
+    width: 100%;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.menu-card.casino-panel {
     background: rgba(6, 28, 17, 0.9);
     border: 2px solid var(--accent-gold);
     border-radius: 14px;
     padding: 20px;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 25px rgba(0, 0, 0, 0.6);
-    margin-bottom: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), inset 0 0 25px rgba(0, 0, 0, 0.6);
 }
 
-.menu-card h2, .table-setup-box h2 {
-    color: var(--accent-gold);
-    font-size: 1.3rem;
+.menu-card h3 {
+    margin-top: 0;
     margin-bottom: 14px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    text-align: center;
-}
-
-.setup-group {
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 14px;
-    text-align: left;
-}
-
-.setup-group label {
-    font-size: 0.72rem;
-    font-weight: 800;
-    color: var(--text-muted);
+    font-size: 1.25rem;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    margin-bottom: 5px;
 }
 
-.setup-group input[type="text"],
-#lobby-name-input,
-#username-input,
-#lobby-code-input {
-    width: 100%;
-    background: #04160e;
-    border: 1px solid rgba(212, 175, 55, 0.5);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: #ffffff;
-    font-size: 0.95rem;
-    font-weight: 600;
-    outline: none;
+.checkbox-group {
+    margin-bottom: 14px;
 }
 
-.checkbox-row {
+.checkbox-group label {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 10px 0 16px 0;
     color: var(--text-muted);
     font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
 }
 
-.checkbox-row input[type="checkbox"] {
+.checkbox-group input[type="checkbox"] {
     accent-color: var(--accent-gold);
     width: 18px;
     height: 18px;
 }
 
-.gold-btn, #create-table-btn {
-    background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%);
-    color: #04190e;
-    font-size: 1rem;
-    font-weight: 900;
-    padding: 12px 16px;
-    border-radius: 8px;
-    border: 1px solid #fef08a;
+.button-row {
     width: 100%;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-    text-transform: uppercase;
 }
 
-.join-direct-row {
+.divider-line {
+    border-top: 1px solid rgba(212, 175, 55, 0.25);
+    margin: 16px 0;
+}
+
+.form-inline {
     display: flex;
     gap: 8px;
-    margin-top: 14px;
     width: 100%;
 }
 
-.join-direct-row input {
+.form-inline input {
     flex: 1;
 }
 
-.join-btn-direct {
+.secondary-btn {
     background: #1e293b;
     border: 1px solid #475569;
     color: #cbd5e1;
     font-weight: 800;
-    border-radius: 8px;
-    padding: 0 16px;
+    border-radius: 6px;
+    padding: 0 18px;
     cursor: pointer;
+    transition: background 0.2s;
 }
 
-.live-tables-section {
-    width: 100%;
-    max-width: 400px;
+.secondary-btn:hover {
+    background: #334155;
 }
 
-.live-tables-header {
+.card-header-flex {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
-.live-tables-header h3 {
-    margin: 0;
-    font-size: 1.15rem;
+.refresh-btn {
+    background: rgba(15, 35, 24, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.4);
     color: var(--accent-gold);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
 }
 
-#lobby-list {
+.lobby-list-container {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: 100%;
 }
 
 .lobby-item {
@@ -221,12 +414,19 @@ html, body {
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lobby-item:hover {
+    border-color: var(--accent-gold-bright);
+    background: rgba(14, 46, 29, 0.95);
+    transform: translateY(-1px);
 }
 
 /* =============================================================
-   2. ORIGINAL IN-GAME LOBBY / WAITING ROOM LAYOUT RESTORATION
+   3. IN-GAME WAITING ROOM & TABLE HUD RESTORATION
    ============================================================= */
-#game-view, #game-screen {
+.game-view-container {
     position: relative;
     width: 100vw;
     height: 100vh;
@@ -236,153 +436,348 @@ html, body {
     overflow: hidden;
 }
 
-/* Fixed Top Header Bar containing all top buttons */
-.game-header, #table-header, .table-controls-container, #game-view > header {
+/* DOCKED TOP BAR */
+.in-game-header.casino-topbar {
     position: relative;
     top: 0;
     left: 0;
     width: 100%;
     background: rgba(4, 20, 13, 0.95);
     border-bottom: 2px solid rgba(212, 175, 55, 0.4);
-    padding: 6px 10px;
+    padding: 8px 12px;
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
     align-items: center;
-    gap: 5px;
     z-index: 100;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+    box-sizing: border-box;
 }
 
-/* Room code & phase text at the very top */
-#room-title-display, .room-title-bar {
-    font-size: 1rem;
-    font-weight: 800;
-    color: var(--accent-gold);
-    letter-spacing: 0.5px;
-}
-
-#turn-banner, #phase-message-display, .phase-status-text {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: #e2e8f0;
-}
-
-/* Row 1: Ready Up, Stand Up, End Match, Leave */
-.hud-action-row, #in-game-top-row-btns {
+.header-left {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.room-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+}
+
+.spectator-counter {
+    background: rgba(14, 46, 29, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: var(--accent-gold);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.turn-status-banner {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: 0.4px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* PRIMARY ACTION BUTTONS (Ready, Sit, Stand, End, Leave) */
+.button-strip, #in-game-top-row-btns {
+    display: flex;
     align-items: center;
     gap: 6px;
-    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
-.hud-action-row button,
-#ready-btn, #stand-up-btn, #sit-btn, #end-game-btn, #end-match-btn, #leave-lobby-btn {
+.action-btn,
+#ready-btn,
+#sit-btn,
+#stand-up-btn,
+#end-game-btn,
+#leave-lobby-btn {
     background: linear-gradient(180deg, #164e32 0%, #0a291a 100%) !important;
     border: 1px solid rgba(212, 175, 55, 0.5) !important;
     color: #f8fafc !important;
     border-radius: 6px !important;
-    padding: 5px 10px !important;
+    padding: 6px 12px !important;
     font-size: 0.8rem !important;
     font-weight: 800 !important;
-    cursor: pointer;
+    cursor: pointer !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    transition: all 0.15s ease !important;
+    text-transform: capitalize !important;
 }
 
+.action-btn:hover,
+#ready-btn:hover,
+#stand-up-btn:hover {
+    border-color: var(--accent-gold-bright) !important;
+    background: linear-gradient(180deg, #1d613e 0%, #0e3723 100%) !important;
+}
+
+.action-btn:active,
+#ready-btn:active {
+    transform: translateY(1px) !important;
+    background: #082215 !important;
+}
+
+/* READY STATE HIGHLIGHT */
 #ready-btn.ready-active {
     background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%) !important;
     color: #04190e !important;
     border-color: #fef08a !important;
+    box-shadow: var(--gold-glow) !important;
 }
 
-/* Row 2: Voice, Chat, Bets, Board, Settings */
-.in-game-secondary-row, #in-game-tools-row {
+.action-btn.end-btn,
+.action-btn.leave-btn,
+#end-game-btn,
+#leave-lobby-btn {
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    color: #fca5a5 !important;
+}
+
+.action-btn.end-btn:hover,
+.action-btn.leave-btn:hover {
+    border-color: #ef4444 !important;
+    background: linear-gradient(180deg, #381216 0%, #1e090b 100%) !important;
+}
+
+/* IN-GAME TOOLS BAR (Voice, Chat, Bets, Board, Settings) */
+.tools-bar, #in-game-tools-row {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     width: 100%;
+    background: rgba(4, 20, 13, 0.85);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+    padding: 6px 10px;
+    z-index: 95;
+    box-sizing: border-box;
 }
 
-#voice-btn, #chat-toggle-btn, #bets-btn, #board-btn, #settings-btn, .feature-btn, .game-tool-btn {
+.tool-btn,
+#vc-main-btn,
+#chat-toggle-btn {
     background: rgba(14, 46, 29, 0.85) !important;
     border: 1px solid rgba(212, 175, 55, 0.4) !important;
     color: var(--accent-gold) !important;
     border-radius: 6px !important;
-    padding: 4px 8px !important;
-    font-size: 0.78rem !important;
+    padding: 5px 12px !important;
+    font-size: 0.8rem !important;
     font-weight: 700 !important;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+    transition: all 0.15s ease !important;
 }
 
-/* Row 3: Starting Lives, Table Wager, Add/Remove Bot (Docks directly below row 2) */
-#lobby-config-bar, .lobby-host-controls, .host-controls-row {
+.tool-btn:hover,
+#vc-main-btn:hover,
+#chat-toggle-btn:hover {
+    border-color: var(--accent-gold-bright) !important;
+    background: rgba(20, 60, 38, 0.95) !important;
+    color: #ffffff !important;
+}
+
+/* WAITING ROOM HOST CONTROLS BAR */
+.lobby-controls, #lobby-config-bar {
     position: relative !important;
     top: 0 !important;
     left: 0 !important;
-    margin: 4px 0 0 0 !important;
+    width: 100% !important;
     display: flex !important;
     flex-wrap: wrap !important;
     justify-content: center !important;
     align-items: center !important;
-    gap: 8px !important;
-    width: 100% !important;
+    gap: 12px !important;
+    background: rgba(6, 28, 17, 0.92) !important;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.25) !important;
+    padding: 7px 12px !important;
+    z-index: 90 !important;
+    box-sizing: border-box;
 }
 
-.config-item, .host-control-item {
-    font-size: 0.75rem;
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
     font-weight: 800;
     color: var(--text-muted);
     text-transform: uppercase;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    letter-spacing: 0.5px;
 }
 
-select#config-lives,
-select#config-wager,
-#starting-lives-select,
-#table-wager-select,
-select {
+.config-item select,
+#config-lives,
+#config-wager {
     background: #04160e !important;
-    border: 1px solid var(--accent-gold) !important;
-    color: #ffffff !important;
-    border-radius: 5px !important;
-    padding: 3px 6px !important;
+    border: 1px solid rgba(212, 175, 55, 0.5) !important;
+    color: #f8fafc !important;
+    border-radius: 6px !important;
+    padding: 4px 8px !important;
     font-size: 0.8rem !important;
     font-weight: 700 !important;
+    outline: none !important;
+    cursor: pointer !important;
 }
 
-#add-bot-btn, #remove-bot-btn, .bot-action-btn {
-    background: #072114 !important;
-    border: 1px solid rgba(212, 175, 55, 0.5) !important;
-    color: #e2e8f0 !important;
-    font-size: 0.75rem !important;
+.config-item select:focus {
+    border-color: var(--accent-gold-bright) !important;
+}
+
+.bot-actions, .bot-btn-group {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-sm,
+button[onclick*="addBot"],
+button[onclick*="removeBot"] {
+    background: rgba(15, 35, 24, 0.95) !important;
+    border: 1px solid rgba(212, 175, 55, 0.4) !important;
+    color: #cbd5e1 !important;
+    font-size: 0.76rem !important;
     font-weight: 700 !important;
+    padding: 4px 10px !important;
     border-radius: 5px !important;
-    padding: 3px 7px !important;
-    cursor: pointer;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
 }
 
-/* Center Table Felts, Deck & Pot */
-#pot-indicator, .pot-badge {
-    background: rgba(4, 20, 13, 0.9);
-    border: 1.5px solid var(--accent-gold);
-    color: var(--accent-gold-bright);
-    padding: 3px 14px;
-    border-radius: 20px;
-    font-weight: 800;
+.btn-sm:hover,
+button[onclick*="addBot"]:hover {
+    border-color: var(--accent-emerald) !important;
+    color: var(--accent-emerald) !important;
+}
+
+.btn-sm.danger:hover,
+button[onclick*="removeBot"]:hover {
+    border-color: var(--accent-red) !important;
+    color: var(--accent-red) !important;
+}
+
+/* TABLE CASINO WRAPPER */
+.table-outer-wrapper {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* PLAYER HAND CONTAINER */
+.player-hand-container {
+    width: 100%;
+    background: rgba(4, 20, 13, 0.92);
+    border-top: 1.5px solid rgba(212, 175, 55, 0.4);
+    padding: 8px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 85;
+}
+
+.hand-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 6px;
+}
+
+#my-hand-title {
     font-size: 0.88rem;
-    margin: 10px auto;
-    display: table;
+    font-weight: 800;
+    color: var(--accent-gold);
+    text-transform: uppercase;
 }
 
-/* Bottom Player Badge positioning (Clear from phone navigation bar) */
-.my-player-badge, #my-seat-container, [data-seat="0"], .seat-0 {
-    bottom: 20px !important;
-    margin-bottom: 12px;
+.knock-action-btn, #knock-btn {
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%) !important;
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    border: 1px solid #fca5a5 !important;
+    border-radius: 6px !important;
+    padding: 5px 14px !important;
+    cursor: pointer !important;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.5) !important;
+}
+
+.cards-flex-row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+/* MODALS & OVERLAYS */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 16px;
+    backdrop-filter: blur(4px);
+}
+
+.modal-box {
+    background: rgba(6, 28, 17, 0.95);
+    border: 2px solid var(--accent-gold);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 420px;
+    color: #f8fafc;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+.modal-box.wide {
+    max-width: 600px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+/* MOBILE RESPONSIVE TWEAKS */
+@media (max-width: 600px) {
+    .in-game-header.casino-topbar {
+        flex-direction: column;
+        gap: 6px;
+        padding: 6px 10px;
+    }
+    
+    .button-strip, #in-game-top-row-btns {
+        justify-content: center;
+    }
+
+    .tools-bar, #in-game-tools-row {
+        gap: 4px;
+        padding: 4px 6px;
+    }
+
+    .tool-btn {
+        padding: 4px 8px !important;
+        font-size: 0.75rem !important;
+    }
 }
