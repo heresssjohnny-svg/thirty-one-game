@@ -182,60 +182,67 @@
     box-sizing: border-box !important;
 }
 
-/* TOP PLAYERS SHOWCASE: STRICT HORIZONTAL ROW (Fixes Stacking) */
+/* -------------------------------------------------------------
+   TOP PLAYERS SHOWCASE: 2 ROWS OF 3 PLAYERS (3 TOP, 3 BOTTOM)
+   ------------------------------------------------------------- */
 .draw-showcase-sidebar,
 .results-stream,
-#draw-results-stream {
+#draw-results-stream,
+#pool-cards-container > :first-child:not(.draw-pool-panel):not(.pool-52-grid) {
     width: 100% !important;
-    display: flex !important;
-    flex-direction: row !important; /* Kept horizontal so badges don't stack */
-    flex-wrap: wrap !important;
-    justify-content: center !important;
+    max-width: 380px !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    grid-template-rows: repeat(2, auto) !important;
+    gap: 4px 6px !important;
+    justify-items: center !important;
     align-items: center !important;
-    gap: 8px !important;
     border: none !important;
     border-bottom: 1px solid rgba(212, 175, 55, 0.25) !important;
     padding: 2px 4px 6px 4px !important;
-    min-height: 48px !important;
-    max-height: 80px !important;
-    overflow-y: auto !important;
     box-sizing: border-box !important;
+    margin: 0 auto 4px auto !important;
 }
 
+/* Hide stray text label to preserve the clean 3x2 grid */
 .draw-showcase-sidebar h4,
 .draw-showcase-sidebar .sidebar-title,
-.draw-showcase-sidebar > span:first-child {
-    font-size: 0.68rem !important;
-    font-weight: 800 !important;
-    color: var(--accent-gold, #d4af37) !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    margin: 0 4px 0 0 !important;
+.draw-showcase-sidebar > span:first-child:not(.draw-showcase-item):not(.result-item) {
+    display: none !important;
 }
 
+/* Individual Player Badge in 3x2 Grid */
 .draw-showcase-item,
 .result-item {
-    display: inline-flex !important;
+    display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
+    justify-content: center !important;
     gap: 2px !important;
     background: rgba(4, 20, 13, 0.92) !important;
     border: 1px solid rgba(212, 175, 55, 0.45) !important;
-    border-radius: 6px !important;
-    padding: 2px 6px !important;
+    border-radius: 5px !important;
+    padding: 2px 4px !important;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;
+    width: 100% !important;
+    max-width: 110px !important;
+    box-sizing: border-box !important;
 }
 
 .draw-picker-badge {
-    font-size: 0.62rem !important;
+    font-size: 0.6rem !important;
     font-weight: 800 !important;
     color: #f6e05e !important;
     white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 95px !important;
+    text-align: center !important;
 }
 
 .draw-card-waiting {
-    width: 24px !important;
-    height: 34px !important;
+    width: 22px !important;
+    height: 30px !important;
     border: 1.5px dashed #475569 !important;
     border-radius: 3px !important;
     display: flex !important;
@@ -247,13 +254,25 @@
 }
 
 .draw-showcase-item .playing-card {
-    width: 24px !important;
-    height: 34px !important;
+    width: 22px !important;
+    height: 30px !important;
     padding: 1px 2px !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6) !important;
 }
 
-/* POOL LABELS (Fixes "Available Deck PoolTap a card" Text Collision) */
+.draw-showcase-item .playing-card .corner-val {
+    font-size: 0.5rem !important;
+}
+
+.draw-showcase-item .playing-card .corner-suit {
+    font-size: 0.42rem !important;
+}
+
+.draw-showcase-item .playing-card .card-center-pip {
+    font-size: 0.65rem !important;
+}
+
+/* POOL LABELS */
 .draw-pool-panel {
     display: flex !important;
     flex-direction: column !important;
@@ -269,7 +288,7 @@
 .draw-pool-panel > span,
 .draw-pool-panel > p,
 #pool-cards-container > span {
-    font-size: 0.7rem !important;
+    font-size: 0.68rem !important;
     color: #94a3b8 !important;
     font-weight: 700 !important;
     margin: 1px 6px !important;
@@ -290,21 +309,21 @@
     max-width: 440px !important;
     flex: 1 !important;
     height: 100% !important;
-    max-height: none !important; /* Removed 58vh cap so rows 5-8 can render */
-    margin: 4px auto 0 auto !important;
+    max-height: none !important;
+    margin: 2px auto 0 auto !important;
     padding: 2px !important;
     box-sizing: border-box !important;
     align-items: stretch !important;
     justify-items: center !important;
 }
 
-/* INDIVIDUAL 52 CARDS SIZED TO FILL THE SCREEN */
+/* INDIVIDUAL 52 CARDS */
 .card-pool-item,
 .pool-card-item {
     width: 100% !important;
     height: 100% !important;
-    min-height: 36px !important;
-    max-height: 52px !important;
+    min-height: 34px !important;
+    max-height: 48px !important;
     aspect-ratio: 2 / 2.8 !important;
     background: linear-gradient(135deg, #1d4ed8 0%, #0f172a 100%) !important;
     border: 1.5px solid #93c5fd !important;
@@ -314,7 +333,7 @@
     justify-content: center !important;
     color: #ffffff !important;
     font-weight: 900 !important;
-    font-size: 0.78rem !important;
+    font-size: 0.76rem !important;
     cursor: pointer !important;
     box-sizing: border-box !important;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6) !important;
