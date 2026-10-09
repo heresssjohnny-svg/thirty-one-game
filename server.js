@@ -28,8 +28,6 @@ app.use('/auth', authRouter);
 
 // Serve static frontend assets from /public and project root
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/mp3s', express.static(path.join(__dirname, 'mp3s')));
-
 app.use(express.static(__dirname));
 
 // LiveKit WebRTC Token Generator Endpoint
