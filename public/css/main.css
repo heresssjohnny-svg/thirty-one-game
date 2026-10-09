@@ -1,399 +1,783 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Blitz 31</title>
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#071e13">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+/* =============================================================
+   BLITZ 31 - MASTER CASINO STYLESHEET
+   ============================================================= */
 
-    <!-- Cache-busted stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=28">
-    <link rel="stylesheet" href="/css/table.css?v=28">
-    <link rel="stylesheet" href="/css/modals.css?v=28">
+:root {
+    --bg-dark: #071e13;
+    --felt-green: #0e3d26;
+    --felt-dark: #061c11;
+    --felt-border: #14532d;
+    --accent-gold: #d4af37;
+    --accent-gold-bright: #f6e05e;
+    --accent-gold-dark: #8c6d13;
+    --accent-emerald: #10b981;
+    --accent-red: #ef4444;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --gold-glow: 0 0 12px rgba(212, 175, 55, 0.45);
+}
 
-    <!-- Google Identity SDK & LiveKit -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
-</head>
-<body class="casino-theme">
-    <div id="app">
-        <!-- 1. AUTH SCREEN (Preserved Login / Register / Guest / Google) -->
-        <div id="auth-screen" class="auth-overlay">
-            <div class="auth-card casino-panel">
-                <div class="auth-header">
-                    <h2 class="gold-text">Blitz 31</h2>
-                    <p class="subtitle">Authentic Casino Table Game</p>
-                </div>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
 
-                <div class="auth-tabs">
-                    <button id="tab-login" class="tab-btn active" onclick="switchAuthTab('login')">Log In</button>
-                    <button id="tab-register" class="tab-btn" onclick="switchAuthTab('register')">Register</button>
-                </div>
+html, body {
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow-x: hidden;
+}
 
-                <div id="auth-form-container">
-                    <div id="login-fields">
-                        <div class="form-group">
-                            <label for="login-username">Username</label>
-                            <input type="text" id="login-username" placeholder="Username" autocomplete="username">
-                        </div>
-                        <div class="form-group">
-                            <label for="login-password">Password</label>
-                            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-                        </div>
-                        <button class="primary-btn gold-btn full-width" onclick="submitAuthLogin()">Log In</button>
-                    </div>
+/* =============================================================
+   1. AUTHENTICATION OVERLAY
+   ============================================================= */
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, rgba(6, 78, 59, 0.95) 0%, rgba(2, 44, 34, 0.98) 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 16px;
+}
 
-                    <div id="register-fields" style="display: none;">
-                        <div class="form-group">
-                            <label for="reg-username">Username</label>
-                            <input type="text" id="reg-username" placeholder="Choose username" autocomplete="username">
-                        </div>
-                        <div class="form-group">
-                            <label for="reg-password">Password</label>
-                            <input type="password" id="reg-password" placeholder="Min. 6 characters" autocomplete="new-password">
-                        </div>
-                        <button class="primary-btn gold-btn full-width" onclick="submitAuthRegister()">Create Account</button>
-                    </div>
+.auth-card.casino-panel {
+    width: 100%;
+    max-width: 380px;
+    background: rgba(10, 35, 25, 0.92);
+    border: 2px solid var(--accent-gold);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), var(--gold-glow);
+    padding: 24px 20px;
+    color: #e2e8f0;
+    backdrop-filter: blur(8px);
+}
 
-                    <div class="auth-divider"><span>OR</span></div>
+.auth-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
 
-                    <div class="social-auth-actions">
-                        <div id="google-signin-btn" class="social-btn-container"></div>
-                        <button class="social-btn guest-btn" onclick="submitAuthGuest()">Play as Guest</button>
-                    </div>
-                </div>
+.gold-text {
+    color: var(--accent-gold) !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
 
-                <div id="auth-error-msg" class="auth-error" style="display: none;"></div>
-            </div>
-        </div>
+.auth-header .subtitle {
+    margin: 4px 0 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
 
-        <!-- 2. MAIN MENU (Preserved Table Setup & Live Lobby List) -->
-        <div id="main-menu" class="main-menu-container" style="display: none;">
-            <header class="menu-header">
-                <div class="brand">
-                    <h1 class="gold-text">Blitz 31</h1>
-                    <span class="user-badge" id="menu-user-badge">Guest</span>
-                </div>
-                <div class="header-actions">
-                    <button class="icon-btn gold-border" onclick="openLifetimeLedgerModal()" title="Lifetime Balances">📊 Ledger</button>
-                    <button class="icon-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
-                    <button class="icon-btn danger" onclick="logoutSession()" title="Log Out">🚪</button>
-                </div>
-            </header>
+.auth-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    padding-bottom: 8px;
+}
 
-            <main class="menu-content">
-                <section class="menu-card casino-panel create-join-card">
-                    <h3 class="gold-text">Table Setup</h3>
-                    <div class="form-group">
-                        <label for="username-input">Player Handle</label>
-                        <input type="text" id="username-input" placeholder="Display Name">
-                    </div>
-                    <div class="form-group">
-                        <label for="lobby-name-input">Table Name</label>
-                        <input type="text" id="lobby-name-input" placeholder="Table Name (optional)">
-                    </div>
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" id="private-lobby-checkbox">
-                            Private Table
-                        </label>
-                    </div>
-                    <div class="button-row">
-                        <button class="primary-btn gold-btn full-width" onclick="createLobby()">Create Table</button>
-                    </div>
+.auth-tabs .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
 
-                    <div class="divider-line"></div>
+.auth-tabs .tab-btn.active {
+    background: rgba(212, 175, 55, 0.15);
+    color: var(--accent-gold);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+}
 
-                    <div class="form-inline">
-                        <input type="text" id="lobby-code-input" placeholder="Table Code" maxlength="5">
-                        <button class="secondary-btn" onclick="joinLobby()">Join</button>
-                    </div>
-                </section>
+.form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 14px;
+    text-align: left;
+}
 
-                <section class="menu-card casino-panel public-lobbies-card">
-                    <div class="card-header-flex">
-                        <h3 class="gold-text">Live Tables</h3>
-                        <button class="refresh-btn" onclick="refreshLobbies()">🔄</button>
-                    </div>
-                    <div id="lobby-list" class="lobby-list-container">
-                        <div class="empty-list-notice">Searching for tables...</div>
-                    </div>
-                </section>
-            </main>
-        </div>
+.form-group label {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    margin-bottom: 5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
 
-        <!-- 3. IN-GAME TABLE VIEW -->
-        <div id="game-view" class="game-view-container" style="display: none;">
-            <!-- TOP IN-GAME HEADER -->
-            <header class="in-game-header casino-topbar">
-                <div class="header-left">
-                    <span class="room-title gold-text" id="room-title-display">Table</span>
-                    <span class="spectator-counter" onclick="openSpectatorListModal()">👀 <span id="spec-count">0</span></span>
-                    <div id="active-peeking-banner" class="active-peeking-pill" style="display: none;" onclick="stopPeekingAction()">
-                        <span>Peeking</span>
-                        <button class="pill-close-btn">✕</button>
-                    </div>
-                </div>
+.form-group input,
+#username-input,
+#lobby-name-input,
+#lobby-code-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(4, 22, 14, 0.9);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 6px;
+    color: #f8fafc;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
 
-                <div class="header-center">
-                    <span id="turn-banner" class="turn-status-banner">Waiting...</span>
-                </div>
+.form-group input:focus,
+#username-input:focus,
+#lobby-name-input:focus,
+#lobby-code-input:focus {
+    border-color: var(--accent-gold-bright);
+    box-shadow: 0 0 8px rgba(246, 224, 94, 0.35);
+}
 
-                <div class="header-right">
-                    <div id="in-game-top-row-btns" class="button-strip">
-                        <button id="ready-btn" class="action-btn ready-btn" onclick="toggleReady()">Ready Up</button>
-                        <button id="sit-btn" class="action-btn sit-btn" style="display: none;" onclick="sitDown()">Sit Down</button>
-                        <button id="stand-up-btn" class="action-btn stand-btn" onclick="standUp()">Stand Up</button>
-                        <button id="end-game-btn" class="action-btn end-btn" onclick="proposeEndGame()">End Match</button>
-                        <button id="leave-lobby-btn" class="action-btn leave-btn" onclick="leaveLobby()">Leave</button>
-                    </div>
-                </div>
-            </header>
+.gold-btn, .primary-btn.gold-btn {
+    background: linear-gradient(180deg, #d4af37 0%, #aa820a 100%);
+    color: #0b1e16;
+    font-weight: 800;
+    border: 1px solid #fef08a;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: filter 0.15s ease, transform 0.1s ease;
+}
 
-            <!-- IN-GAME TOOLS BAR -->
-            <div id="in-game-tools-row" class="tools-bar">
-                <button id="vc-main-btn" class="tool-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
-                <button id="chat-toggle-btn" class="tool-btn" onclick="toggleChatWindow()">💬 Chat</button>
-                <button class="tool-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
-                <button class="tool-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
-                <button class="tool-btn" onclick="openSettingsModal()">⚙️</button>
-            </div>
+.gold-btn:hover {
+    filter: brightness(1.08);
+}
 
-            <!-- HOST WAITING ROOM CONFIG BAR -->
-            <div id="lobby-config-bar" class="lobby-controls" style="display: none;">
-                <div class="config-item">
-                    <label>Starting Lives:</label>
-                    <select id="config-lives" onchange="updateSettings()">
-                        <option value="1">1 Life</option>
-                        <option value="2" selected>2 Lives</option>
-                        <option value="3">3 Lives</option>
-                    </select>
-                </div>
-                <div class="config-item">
-                    <label>Table Wager:</label>
-                    <select id="config-wager" onchange="updateWager()">
-                        <option value="5" selected>$5</option>
-                        <option value="10">$10</option>
-                        <option value="20">$20</option>
-                    </select>
-                </div>
-                <div class="config-item bot-actions">
-                    <button class="btn-sm" onclick="addBot()">+ Add Bot</button>
-                    <button class="btn-sm danger" onclick="removeBot()">- Remove Bot</button>
-                </div>
-            </div>
+.gold-btn:active {
+    transform: translateY(1px);
+}
 
-            <!-- IN-GAME REVEAL MODALS -->
-            <div id="center-notification-banner" class="notification-pill" style="display: none;"></div>
-            <div id="discard-pickup-topleft-modal" class="corner-modal top-left-corner" style="display: none;">
-                <span class="modal-label">Picked Discard:</span>
-                <div id="discard-pickup-card-content"></div>
-            </div>
-            <div id="fed-card-topright-modal" class="corner-modal top-right-corner" style="display: none;">
-                <span id="fed-card-label" class="modal-label">Fed Card:</span>
-                <div id="fed-card-content"></div>
-            </div>
+.full-width {
+    width: 100%;
+}
 
-            <!-- CASINO FELT OVAL TABLE CONTAINER -->
-            <div class="table-outer-wrapper">
-                <div id="table-oval-container" class="casino-felt-table">
-                    <!-- CENTER FELT (Deck & Discard) -->
-                    <div class="table-center-area">
-                        <div id="deck-pile" class="deck-pile card-deck" onclick="drawFromDeck()">
-                            <div class="card-back-pattern">🂠</div>
-                            <span class="pile-label">DECK</span>
-                        </div>
-                        <div id="discard-pile" class="discard-pile card-discard" onclick="drawFromDiscard()">
-                            <div id="discard-top-card" class="card-placeholder">Empty</div>
-                            <span class="pile-label">DISCARD</span>
-                        </div>
-                    </div>
+.auth-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 16px 0;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
 
-                    <!-- 6 PLAYER SEATS (Seats 0 to 5) -->
-                    <div id="seat-0" class="player-seat seat seat-0 seat-pos-0" data-seat="0" onclick="handleSeatClick(0)">
-                        <div class="seat-avatar">👤</div>
-                        <div class="seat-info">
-                            <span class="seat-player-name">Empty</span>
-                            <span class="seat-lives"></span>
-                        </div>
-                        <span class="seat-status-badge">Open</span>
-                    </div>
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
 
-                    <div id="seat-1" class="player-seat seat seat-1 seat-pos-1" data-seat="1" onclick="handleSeatClick(1)">
-                        <div class="seat-avatar">👤</div>
-                        <div class="seat-info">
-                            <span class="seat-player-name">Empty</span>
-                            <span class="seat-lives"></span>
-                        </div>
-                        <span class="seat-status-badge">Open</span>
-                    </div>
+.auth-divider span {
+    padding: 0 10px;
+}
 
-                    <div id="seat-2" class="player-seat seat seat-2 seat-pos-2" data-seat="2" onclick="handleSeatClick(2)">
-                        <div class="seat-avatar">👤</div>
-                        <div class="seat-info">
-                            <span class="seat-player-name">Empty</span>
-                            <span class="seat-lives"></span>
-                        </div>
-                        <span class="seat-status-badge">Open</span>
-                    </div>
+.social-auth-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
 
-                    <div id="seat-3" class="player-seat seat seat-3 seat-pos-3" data-seat="3" onclick="handleSeatClick(3)">
-                        <div class="seat-avatar">👤</div>
-                        <div class="seat-info">
-                            <span class="seat-player-name">Empty</span>
-                            <span class="seat-lives"></span>
-                        </div>
-                        <span class="seat-status-badge">Open</span>
-                    </div>
+.social-btn-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
 
-                    <div id="seat-4" class="player-seat seat seat-4 seat-pos-4" data-seat="4" onclick="handleSeatClick(4)">
-                        <div class="seat-avatar">👤</div>
-                        <div class="seat-info">
-                            <span class="seat-player-name">Empty</span>
-                            <span class="seat-lives"></span>
-                        </div>
-                        <span class="seat-status-badge">Open</span>
-                    </div>
+.guest-btn {
+    width: 100%;
+    padding: 9px;
+    background: rgba(51, 65, 85, 0.6);
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
 
-                    <div id="seat-5" class="player-seat seat seat-5 seat-pos-5" data-seat="5" onclick="handleSeatClick(5)">
-                        <div class="seat-avatar">👤</div>
-                        <div class="seat-info">
-                            <span class="seat-player-name">Empty</span>
-                            <span class="seat-lives"></span>
-                        </div>
-                        <span class="seat-status-badge">Open</span>
-                    </div>
-                </div>
-            </div>
+.guest-btn:hover {
+    background: rgba(71, 85, 105, 0.8);
+    color: #ffffff;
+}
 
-            <!-- PLAYER HAND CONTROLS (Docked Bottom) -->
-            <footer class="player-hand-container">
-                <div class="hand-header">
-                    <span id="my-hand-title">My Hand</span>
-                    <button id="knock-btn" class="knock-action-btn" style="display: none;" onclick="knockRound()" disabled>Knock!</button>
-                </div>
-                <div id="my-cards-container" class="cards-flex-row"></div>
-            </footer>
+.auth-error {
+    margin-top: 12px;
+    padding: 8px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid #ef4444;
+    color: #fca5a5;
+    font-size: 0.8rem;
+    text-align: center;
+}
 
-            <!-- ROUND OVERLAY -->
-            <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
-                <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
-            </div>
-        </div>
+/* =============================================================
+   2. MAIN MENU SCREEN
+   ============================================================= */
+.main-menu-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    width: 100%;
+    padding: 24px 16px 40px;
+    background: radial-gradient(circle at 50% 25%, #14472d 0%, #072315 70%, #03120b 100%);
+}
 
-        <!-- MODALS, DRAWERS & AUDIO -->
-        <canvas id="celebration-canvas"></canvas>
-        <div id="knock-alert-modal" class="knock-pulse-overlay" style="display: none;"></div>
+.menu-header {
+    width: 100%;
+    max-width: 440px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
 
-        <!-- Chat Drawer (No Form Tag to prevent page refreshes) -->
-        <div id="chat-window" class="chat-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h4>Table Chat</h4>
-                <button class="close-btn" onclick="toggleChatWindow()">✕</button>
-            </div>
-            <div id="chat-messages" class="drawer-body"></div>
-            <div class="drawer-footer">
-                <input type="text" id="chat-input" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-                <button id="chat-send-btn" type="button" onclick="sendChatMessage()">Send</button>
-            </div>
-        </div>
+.brand h1 {
+    font-size: 2.2rem;
+    font-weight: 900;
+    margin: 0;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
 
-        <!-- Global Side Bets Sidebar -->
-        <div id="global-side-bets-sidebar" class="global-bets-drawer" style="display: none;">
-            <div class="drawer-header">
-                <h4>Global Side Bets</h4>
-                <button class="close-btn" onclick="toggleGlobalSidebar()">✕</button>
-            </div>
-            <div id="global-side-bets-list" class="drawer-body"></div>
-        </div>
+.user-badge {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--accent-gold-bright);
+}
 
-        <!-- Draw Phase Modals -->
-        <div id="dealer-draw-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide">
-                <h3 id="dealer-draw-title">Dealer Draw Phase</h3>
-                <p id="dealer-draw-instruction" class="subtitle">Lowest card deals (Ace is highest).</p>
-                <div id="draw-pool-grid" class="draw-modal-split-layout"></div>
-            </div>
-        </div>
+.header-actions {
+    display: flex;
+    gap: 8px;
+}
 
-        <div id="tie-breaker-reveal-modal" class="modal-backdrop fullscreen-modal" style="display: none;">
-            <div class="modal-box wide">
-                <h3>Tie Breaker Resolution</h3>
-                <p id="tie-breaker-stream-msg" class="subtitle">Drawing to resolve lowest score...</p>
-                <div id="tie-breaker-stream-grid" class="draw-modal-split-layout"></div>
-            </div>
-        </div>
+.icon-btn {
+    background: rgba(15, 35, 24, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: var(--accent-gold);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
 
-        <div id="spectators-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Active Spectators</h3>
-                <div id="spectators-list-content"></div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('spectators-modal')">Close</button>
-                </div>
-            </div>
-        </div>
+.icon-btn:hover {
+    border-color: var(--accent-gold-bright);
+    background: rgba(20, 50, 35, 0.95);
+    transform: translateY(-1px);
+}
 
-        <div id="active-bets-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Current Bets</h3>
-                <div id="active-bets-content"></div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('active-bets-modal')">Close</button>
-                </div>
-            </div>
-        </div>
+.icon-btn.danger {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
 
-        <div id="settings-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box">
-                <h3>Audio & Settings</h3>
-                <div class="settings-group">
-                    <label>Audio Output Device:</label>
-                    <select id="audio-output-select" onchange="setAudioOutputDevice(this.value)">
-                        <option value="default">Default Speaker</option>
-                    </select>
-                </div>
-                <div class="settings-group">
-                    <label>Voice Chat Volume:</label>
-                    <input type="range" id="voice-volume-slider" min="0" max="1" step="0.05" value="1" oninput="setVoiceChatVolume(this.value)">
-                </div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('settings-modal')">Close</button>
-                </div>
-            </div>
-        </div>
+.menu-content {
+    width: 100%;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
 
-        <div id="lifetime-ledger-modal" class="modal-backdrop" style="display: none;">
-            <div class="modal-box wide">
-                <h3>Lifetime Ledger Balances</h3>
-                <div id="lifetime-ledger-table-container">
-                    <div class="empty-list-notice">No balance entries found.</div>
-                </div>
-                <div class="modal-actions">
-                    <button class="secondary-btn" onclick="toggleModal('lifetime-ledger-modal')">Close</button>
-                </div>
-            </div>
-        </div>
+.menu-card.casino-panel {
+    background: rgba(6, 28, 17, 0.9);
+    border: 2px solid var(--accent-gold);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), inset 0 0 25px rgba(0, 0, 0, 0.6);
+}
 
-        <!-- Audio Elements -->
-        <audio id="knock-sound" src="/audio/knock.mp3" preload="auto"></audio>
-        <audio id="turn-sound" src="/audio/yourturn.mp3" preload="auto"></audio>
-        <audio id="deal-sound" src="/audio/deal.mp3" preload="auto"></audio>
-        <audio id="win-sound" src="/audio/win.mp3" preload="auto"></audio>
-    </div>
+.menu-card h3 {
+    margin-top: 0;
+    margin-bottom: 14px;
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
 
-    <!-- Script Pipeline -->
-    <script src="/js/config.js"></script>
-    <script src="/js/audio.js"></script>
-    <script src="/js/celebration.js"></script>
-    <script src="/js/voice.js"></script>
-    <script src="/js/ledger.js"></script>
-    <script src="/js/music.js"></script>
-    <script src="/js/network.js"></script>
-    <script src="/js/ui.js"></script>
-    <script src="/js/app.js"></script>
-</body>
-</html>
+.checkbox-group {
+    margin-bottom: 14px;
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+    accent-color: var(--accent-gold);
+    width: 18px;
+    height: 18px;
+}
+
+.button-row {
+    width: 100%;
+}
+
+.divider-line {
+    border-top: 1px solid rgba(212, 175, 55, 0.25);
+    margin: 16px 0;
+}
+
+.form-inline {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.form-inline input {
+    flex: 1;
+}
+
+.secondary-btn {
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    font-weight: 800;
+    border-radius: 6px;
+    padding: 0 18px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.secondary-btn:hover {
+    background: #334155;
+}
+
+.card-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.refresh-btn {
+    background: rgba(15, 35, 24, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: var(--accent-gold);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.lobby-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lobby-item {
+    background: rgba(6, 28, 17, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lobby-item:hover {
+    border-color: var(--accent-gold-bright);
+    background: rgba(14, 46, 29, 0.95);
+    transform: translateY(-1px);
+}
+
+/* =============================================================
+   3. IN-GAME WAITING ROOM & TABLE HUD RESTORATION
+   ============================================================= */
+.game-view-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: radial-gradient(circle at 50% 50%, #0e3d26 0%, #061c11 75%, #020a06 100%);
+    overflow: hidden;
+}
+
+/* DOCKED TOP BAR */
+.in-game-header.casino-topbar {
+    position: relative;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(4, 20, 13, 0.95);
+    border-bottom: 2px solid rgba(212, 175, 55, 0.4);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 100;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+    box-sizing: border-box;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.room-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+}
+
+.spectator-counter {
+    background: rgba(14, 46, 29, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    color: var(--accent-gold);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.turn-status-banner {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: 0.4px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* PRIMARY ACTION BUTTONS (Ready, Sit, Stand, End, Leave) */
+.button-strip, #in-game-top-row-btns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.action-btn,
+#ready-btn,
+#sit-btn,
+#stand-up-btn,
+#end-game-btn,
+#leave-lobby-btn {
+    background: linear-gradient(180deg, #164e32 0%, #0a291a 100%) !important;
+    border: 1px solid rgba(212, 175, 55, 0.5) !important;
+    color: #f8fafc !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    transition: all 0.15s ease !important;
+    text-transform: capitalize !important;
+}
+
+.action-btn:hover,
+#ready-btn:hover,
+#stand-up-btn:hover {
+    border-color: var(--accent-gold-bright) !important;
+    background: linear-gradient(180deg, #1d613e 0%, #0e3723 100%) !important;
+}
+
+.action-btn:active,
+#ready-btn:active {
+    transform: translateY(1px) !important;
+    background: #082215 !important;
+}
+
+/* READY STATE HIGHLIGHT */
+#ready-btn.ready-active {
+    background: linear-gradient(180deg, #d4af37 0%, #9e7609 100%) !important;
+    color: #04190e !important;
+    border-color: #fef08a !important;
+    box-shadow: var(--gold-glow) !important;
+}
+
+.action-btn.end-btn,
+.action-btn.leave-btn,
+#end-game-btn,
+#leave-lobby-btn {
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    color: #fca5a5 !important;
+}
+
+.action-btn.end-btn:hover,
+.action-btn.leave-btn:hover {
+    border-color: #ef4444 !important;
+    background: linear-gradient(180deg, #381216 0%, #1e090b 100%) !important;
+}
+
+/* IN-GAME TOOLS BAR (Voice, Chat, Bets, Board, Settings) */
+.tools-bar, #in-game-tools-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: rgba(4, 20, 13, 0.85);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+    padding: 6px 10px;
+    z-index: 95;
+    box-sizing: border-box;
+}
+
+.tool-btn,
+#vc-main-btn,
+#chat-toggle-btn {
+    background: rgba(14, 46, 29, 0.85) !important;
+    border: 1px solid rgba(212, 175, 55, 0.4) !important;
+    color: var(--accent-gold) !important;
+    border-radius: 6px !important;
+    padding: 5px 12px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+    transition: all 0.15s ease !important;
+}
+
+.tool-btn:hover,
+#vc-main-btn:hover,
+#chat-toggle-btn:hover {
+    border-color: var(--accent-gold-bright) !important;
+    background: rgba(20, 60, 38, 0.95) !important;
+    color: #ffffff !important;
+}
+
+/* WAITING ROOM HOST CONTROLS BAR */
+.lobby-controls, #lobby-config-bar {
+    position: relative !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 12px !important;
+    background: rgba(6, 28, 17, 0.92) !important;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.25) !important;
+    padding: 7px 12px !important;
+    z-index: 90 !important;
+    box-sizing: border-box;
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.config-item select,
+#config-lives,
+#config-wager {
+    background: #04160e !important;
+    border: 1px solid rgba(212, 175, 55, 0.5) !important;
+    color: #f8fafc !important;
+    border-radius: 6px !important;
+    padding: 4px 8px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    outline: none !important;
+    cursor: pointer !important;
+}
+
+.config-item select:focus {
+    border-color: var(--accent-gold-bright) !important;
+}
+
+.bot-actions, .bot-btn-group {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-sm,
+button[onclick*="addBot"],
+button[onclick*="removeBot"] {
+    background: rgba(15, 35, 24, 0.95) !important;
+    border: 1px solid rgba(212, 175, 55, 0.4) !important;
+    color: #cbd5e1 !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    padding: 4px 10px !important;
+    border-radius: 5px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+}
+
+.btn-sm:hover,
+button[onclick*="addBot"]:hover {
+    border-color: var(--accent-emerald) !important;
+    color: var(--accent-emerald) !important;
+}
+
+.btn-sm.danger:hover,
+button[onclick*="removeBot"]:hover {
+    border-color: var(--accent-red) !important;
+    color: var(--accent-red) !important;
+}
+
+/* TABLE CASINO WRAPPER */
+.table-outer-wrapper {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* PLAYER HAND CONTAINER */
+.player-hand-container {
+    width: 100%;
+    background: rgba(4, 20, 13, 0.92);
+    border-top: 1.5px solid rgba(212, 175, 55, 0.4);
+    padding: 8px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 85;
+}
+
+.hand-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 6px;
+}
+
+#my-hand-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: var(--accent-gold);
+    text-transform: uppercase;
+}
+
+.knock-action-btn, #knock-btn {
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%) !important;
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    border: 1px solid #fca5a5 !important;
+    border-radius: 6px !important;
+    padding: 5px 14px !important;
+    cursor: pointer !important;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.5) !important;
+}
+
+.cards-flex-row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+/* MODALS & OVERLAYS */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 16px;
+    backdrop-filter: blur(4px);
+}
+
+.modal-box {
+    background: rgba(6, 28, 17, 0.95);
+    border: 2px solid var(--accent-gold);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 420px;
+    color: #f8fafc;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+.modal-box.wide {
+    max-width: 600px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+/* MOBILE RESPONSIVE TWEAKS */
+@media (max-width: 600px) {
+    .in-game-header.casino-topbar {
+        flex-direction: column;
+        gap: 6px;
+        padding: 6px 10px;
+    }
+    
+    .button-strip, #in-game-top-row-btns {
+        justify-content: center;
+    }
+
+    .tools-bar, #in-game-tools-row {
+        gap: 4px;
+        padding: 4px 6px;
+    }
+
+    .tool-btn {
+        padding: 4px 8px !important;
+        font-size: 0.75rem !important;
+    }
+}
