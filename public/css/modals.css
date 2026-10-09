@@ -1,11 +1,15 @@
 /* =============================================================
-   BLITZ 31 - CASINO MODALS & CARD POOL ENGINE
+   BLITZ 31 - CASINO MODALS & FULL-SCREEN CARD SELECTION ENGINE
    ============================================================= */
 
+/* BASE MODAL BACKDROP */
 .modal-backdrop,
 .modal-overlay {
     position: fixed;
     inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     background: rgba(0, 0, 0, 0.82);
     display: flex;
     justify-content: center;
@@ -13,6 +17,7 @@
     z-index: 1000;
     padding: 12px;
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     box-sizing: border-box;
 }
 
@@ -21,18 +26,17 @@
     background: rgba(6, 28, 17, 0.98);
     border: 2px solid var(--accent-gold, #d4af37);
     border-radius: 12px;
-    padding: 16px;
+    padding: 18px;
     width: 100%;
-    max-width: 400px;
+    max-width: 420px;
     color: #f8fafc;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
     box-sizing: border-box;
 }
 
 .modal-box.wide,
-.modal-card.wide,
-.full-pool-card {
-    max-width: 500px;
+.modal-card.wide {
+    max-width: 520px;
 }
 
 .modal-header,
@@ -40,7 +44,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
 .close-x-btn,
@@ -48,159 +52,243 @@
     background: transparent;
     border: none;
     color: #cbd5e1;
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     font-weight: 800;
     cursor: pointer;
 }
 
 /* =============================================================
-   DEALER DRAW & TIE BREAKER 52-CARD POOL (ZERO SCROLL FIT)
+   FULL-SCREEN DEALER DRAW & TIE-BREAKER MODAL
    ============================================================= */
-.fullscreen-modal .modal-box,
-#pool-draw-modal .modal-box,
-#dealer-draw-modal .modal-card,
-#tie-breaker-reveal-modal .modal-box {
-    max-height: 85vh;
-    overflow: hidden !important; /* Strictly prevents page scrolling */
-    display: flex;
-    flex-direction: column;
-    padding: 10px 8px;
+.modal-backdrop.fullscreen-modal,
+#pool-draw-modal.modal-backdrop,
+#tie-breaker-reveal-modal.modal-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: radial-gradient(circle at 50% 35%, #0e3d26 0%, #061c11 75%, #020a06 100%) !important;
+    z-index: 9999 !important;
 }
 
+.fullscreen-modal .modal-box,
+#pool-draw-modal .modal-box,
+#tie-breaker-reveal-modal .modal-box {
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    padding: max(16px, env(safe-area-inset-top, 16px)) 10px max(18px, env(safe-area-inset-bottom, 18px)) 10px !important;
+}
+
+/* HEADERS */
 #pool-modal-title,
 #dealer-draw-title {
-    font-size: 0.98rem;
-    font-weight: 900;
-    color: #d4af37;
-    text-align: center;
-    text-transform: uppercase;
-    margin-bottom: 2px;
+    font-size: 1.15rem !important;
+    font-weight: 900 !important;
+    color: var(--accent-gold, #d4af37) !important;
+    text-align: center !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    margin: 0 0 2px 0 !important;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8) !important;
 }
 
 #pool-modal-instruction,
-#dealer-draw-desc,
+#dealer-draw-instruction,
 #tie-breaker-stream-msg {
-    font-size: 0.7rem;
-    color: #94a3b8;
-    text-align: center;
-    margin-bottom: 6px;
+    font-size: 0.75rem !important;
+    color: #94a3b8 !important;
+    text-align: center !important;
+    margin: 0 0 8px 0 !important;
+    font-weight: 600 !important;
 }
 
-/* Split layout holding picks stream and cards */
+/* MAIN LAYOUT: STACKS TOP SHOWCASE OVER FULL-WIDTH DECK */
 .draw-modal-split-layout {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    width: 100% !important;
+    max-width: 650px !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    gap: 8px !important;
     overflow: hidden !important;
 }
 
-/* Selected Results Stream / Showcases */
+/* 1. TOP HORIZONTAL SHOWCASE FOR PLAYER PICKS */
 .draw-showcase-sidebar,
 .results-stream,
 #draw-results-stream {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 6px;
-    max-height: 60px;
-    overflow: hidden;
-    padding: 2px;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.3) !important;
+    padding: 2px 4px 8px 4px !important;
+    max-height: 115px !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
 }
 
 .draw-showcase-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(2, 18, 10, 0.8);
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    border-radius: 4px;
-    padding: 2px 6px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 3px !important;
+    background: rgba(4, 20, 13, 0.9) !important;
+    border: 1px solid rgba(212, 175, 55, 0.35) !important;
+    border-radius: 6px !important;
+    padding: 3px 6px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
 }
 
 .draw-picker-badge {
-    font-size: 0.65rem;
-    font-weight: 800;
-    color: #f6e05e;
+    font-size: 0.65rem !important;
+    font-weight: 800 !important;
+    color: #f6e05e !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Compact scale for revealed playing cards in the showcase */
+.draw-showcase-item .playing-card {
+    width: 36px !important;
+    height: 52px !important;
+    padding: 2px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6) !important;
+}
+
+.draw-showcase-item .playing-card .corner-val {
+    font-size: 0.62rem !important;
+    font-weight: 900 !important;
+}
+
+.draw-showcase-item .playing-card .corner-suit {
+    font-size: 0.52rem !important;
+}
+
+.draw-showcase-item .playing-card .card-center-pip {
+    font-size: 0.88rem !important;
 }
 
 .draw-card-waiting {
-    width: 22px;
-    height: 30px;
-    border: 1px dashed #64748b;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.55rem;
-    color: #cbd5e1;
+    width: 36px !important;
+    height: 52px !important;
+    border: 1.5px dashed #475569 !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.55rem !important;
+    color: #94a3b8 !important;
+    background: rgba(0, 0, 0, 0.3) !important;
 }
 
-/* 52-Card Deck Grid: Exact 13x4 Grid Fitted Cleanly Across Screen */
+/* 2. FULL-SCREEN 52-CARD DECK POOL PANEL */
+.draw-pool-panel {
+    flex: 1 !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding: 4px 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* 13-COLUMN BY 4-ROW COMPLETE GRID SPREAD */
 .pool-52-grid,
 #draw-pool-grid,
-.card-pool-grid,
-.draw-pool-panel {
+.card-pool-grid {
     display: grid !important;
     grid-template-columns: repeat(13, 1fr) !important;
-    gap: 2px !important;
+    grid-template-rows: repeat(4, 1fr) !important;
+    gap: 4px !important;
     width: 100% !important;
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 4px 0 !important;
-    overflow: hidden !important;
+    max-width: 580px !important;
+    flex: 1 !important;
+    max-height: 440px !important;
+    margin: 0 auto !important;
+    padding: 8px 4px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
 }
 
 .pool-card-item,
 .card-pool-item {
     width: 100% !important;
+    height: 100% !important;
+    max-height: 72px !important;
+    min-height: 42px !important;
     aspect-ratio: 2 / 3 !important;
-    max-height: 38px !important;
-    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
-    border: 1px solid #60a5fa;
-    color: #ffffff;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    font-size: 0.65rem;
-    cursor: pointer;
-    box-sizing: border-box;
-    transition: transform 0.1s ease;
+    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%) !important;
+    border: 1.5px solid #60a5fa !important;
+    color: #ffffff !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: 900 !important;
+    font-size: 0.85rem !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5) !important;
+    transition: transform 0.15s ease, border-color 0.15s ease !important;
 }
 
 .pool-card-item:hover,
-.card-pool-item:hover {
-    transform: scale(1.08);
-    border-color: #f6e05e;
+.pool-card-item:active {
+    transform: scale(1.16) !important;
+    border-color: #f6e05e !important;
+    box-shadow: 0 0 10px rgba(246, 224, 94, 0.8) !important;
+    z-index: 10 !important;
 }
 
 .pool-card-item.taken,
 .card-pool-item.taken {
-    background: #061c11 !important;
-    border-color: #334155 !important;
+    background: #04140b !important;
+    border: 1px solid #143521 !important;
     color: #10b981 !important;
-    cursor: default !important;
+    cursor: not-allowed !important;
+    opacity: 0.3 !important;
     transform: none !important;
-    opacity: 0.45;
+    box-shadow: none !important;
 }
 
-/* Tie Breaker Specific Display */
+/* TIE-BREAKER CONTAINER ALIGNMENT */
 #tie-breaker-stream-grid {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    max-height: 50vh;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 650px !important;
+    flex: 1 !important;
     overflow: hidden !important;
-    margin-top: 6px;
 }
 
-/* Chat & Bets Drawers */
+/* =============================================================
+   CHAT & SIDE BETS DRAWERS
+   ============================================================= */
 .chat-drawer, .global-bets-drawer {
     position: fixed;
     bottom: 0;
