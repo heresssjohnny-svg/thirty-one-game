@@ -1,17 +1,17 @@
-// server.js - Express Server, LiveKit Access & WebSocket Hookup (PART 1 OF 2)
+// server.js - PART 1 OF 2
 const express = require('express');
 const http = require('http');
 const path = require('path');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 
-// Safe internal module loaders
+// Internal module loaders
 const config = require('./server/config');
 const db = require('./server/db');
 const authRouter = require('./server/auth');
 const { generateLiveKitToken } = require('./server/services/livekit');
 const { handleWebSocketMessage } = require('./server/game/wsHandler');
-const { getPublicLobbiesList } = require('./server/game/lobbyManager');
+const { getPublicLobbiesList, leaveLobby } = require('./server/game/lobbyManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,7 +19,7 @@ const server = http.createServer(app);
 // -------------------------------------------------------------
 // 1. MIDDLEWARE & ROUTING CONFIGURATION
 // -------------------------------------------------------------
-// Body parsers for auth actions and API payloads
+// Body parsers for registration, login, and token requests
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -69,7 +69,7 @@ function broadcastLobbyList() {
     });
 }
 
-// Connection heartbeat to cleanly prune broken client tunnels
+// Connection heartbeat to prune broken client tunnels
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach(ws => {
         if (ws.isAlive === false) {
@@ -89,6 +89,7 @@ wss.on('close', () => {
 wss.on('connection', (ws, req) => {
     ws.isAlive = true;
     ws.user = null;
+    ws.userId = null;
     ws.currentUsername = null;
     ws.currentLobbyCode = null;
 
@@ -96,7 +97,7 @@ wss.on('connection', (ws, req) => {
         ws.isAlive = true;
     });
 
-    // Provide initial available lobby list upon socket handshake
+    // Deliver active public lobbies upon socket handshake
     try {
         ws.send(JSON.stringify({
             type: 'LOBBY_LIST',
@@ -112,19 +113,50 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // Direct Lifetime Ledger WebSocket Interceptor with Main Menu Fallback
-        if (parsed.type === 'GET_LIFETIME_LEDGER') {
-            const targetUsername = parsed.username || ws.currentUsername;
-            let uid = (ws.user && !ws.user.isGuest && ws.user.userId) ? ws.user.userId : null;
+        // 1. Authenticate WebSocket session from stored JWT
+        if (parsed.type === 'AUTH_TOKEN') {
+            try {
+                const token = parsed.token;
+                if (token) {
+                    const decoded = jwt.verify(token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
+                    ws.user = decoded;
+                    ws.userId = decoded.id || decoded.userId;
+                    ws.currentUsername = decoded.username;
+                }
+            } catch (err) {
+                console.error('[WS Auth] Invalid auth token:', err.message);
+            }
+            return;
+        }
 
-            if (!uid && targetUsername && db && typeof db.findUserByUsername === 'function') {
-                const found = db.findUserByUsername(targetUsername);
-                if (found && found.id && !found.id.startsWith('gst_')) {
-                    uid = found.id;
+        // 2. Direct Lifetime Ledger query with resilient fallback
+        if (parsed.type === 'GET_LIFETIME_LEDGER') {
+            let uid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || null);
+
+            // Fallback A: decode token if passed directly in the payload
+            if (!uid && parsed.token) {
+                try {
+                    const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
+                    ws.user = decoded;
+                    uid = decoded.id || decoded.userId;
+                    ws.userId = uid;
+                    ws.currentUsername = decoded.username;
+                } catch (e) {}
+            }
+
+            // Fallback B: resolve by username in SQLite
+            if (!uid) {
+                const targetUsername = parsed.username || ws.currentUsername;
+                if (targetUsername && db && typeof db.findUserByUsername === 'function') {
+                    const found = db.findUserByUsername(targetUsername);
+                    if (found && found.id && !found.id.startsWith('gst_')) {
+                        uid = found.id;
+                        ws.userId = uid;
+                    }
                 }
             }
 
-            if (uid && !uid.startsWith('gst_') && db && typeof db.getLifetimeBalances === 'function') {
+            if (uid && db && typeof db.getLifetimeBalances === 'function') {
                 const balances = db.getLifetimeBalances(uid);
                 ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
             } else {
@@ -133,6 +165,7 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
+        // 3. Direct bilateral debt clearance & credit application
         if (parsed.type === 'APPLY_CREDIT') {
             const debtorId = parsed.debtorId;
             const creditorId = parsed.creditorId;
@@ -140,7 +173,7 @@ wss.on('connection', (ws, req) => {
 
             if (debtorId && creditorId && amount > 0 && db && typeof db.recordLifetimeDebt === 'function') {
                 db.recordLifetimeDebt(debtorId, creditorId, amount);
-                const uid = ws.user ? ws.user.userId : debtorId;
+                const uid = (ws.user && (ws.user.id || ws.user.userId)) || ws.userId || debtorId;
                 const balances = db.getLifetimeBalances(uid);
                 ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
             }
@@ -153,10 +186,7 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
         if (ws.currentLobbyCode) {
-            const { leaveLobby } = require('./server/game/lobbyManager');
-            if (typeof leaveLobby === 'function') {
-                leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
-            }
+            leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
         }
     });
 });
@@ -164,7 +194,7 @@ wss.on('connection', (ws, req) => {
 // -------------------------------------------------------------
 // 3. SERVER BOOT & BINDING
 // -------------------------------------------------------------
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`[Blitz 31] HTTP & WebSocket Server running on port ${PORT}`);
 });
