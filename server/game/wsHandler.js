@@ -25,7 +25,7 @@ const config = require('../config');
 function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     let data;
     try {
-        data = JSON.parse(message);
+        data = typeof message === 'string' ? JSON.parse(message) : JSON.parse(message.toString());
     } catch (e) {
         return;
     }
@@ -128,11 +128,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
             if (existingPlayer) {
-                // Re-bind reconnecting socket and clear background disconnect state
                 existingPlayer.id = ws;
                 existingPlayer.disconnectedAt = null;
             } else if (existingSpec) {
-                // Re-bind spectator socket
                 existingSpec.idSocket = ws;
                 existingSpec.disconnectedAt = null;
             } else {
@@ -578,17 +576,22 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        case 'PROPOSE_GLOBAL_SIDE_BET': {
+        case 'PROPOSE_GLOBAL_SIDE_BET':
+        case 'PROPOSE_GLOBAL_BET': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
                 const newProp = {
-                    id: `prop_${Date.now()}_${Math.random()}`,
+                    id: data.id || `prop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                     proposer: currentUsername,
-                    pickUser: data.pickUser,
+                    creator: currentUsername,
+                    pickUser: data.pickUser || currentUsername,
+                    condition: data.condition || 'Win the Match',
+                    betType: data.betType || 'win',
                     wagerAmt,
-                    acceptedBy: []
+                    acceptedBy: [],
+                    deniedBy: []
                 };
                 if (!lobby.globalProposals) lobby.globalProposals = [];
                 lobby.globalProposals.push(newProp);
@@ -601,41 +604,93 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const prop = (lobby.globalProposals || []).find(gp => gp.id === data.proposalId);
-                if (prop && prop.proposer !== currentUsername && !prop.acceptedBy.includes(currentUsername)) {
-                    prop.acceptedBy.push(currentUsername);
+                const propId = data.proposalId || data.betId || data.id;
+                const prop = (lobby.globalProposals || []).find(gp => gp.id === propId);
+                const proposerName = prop ? (prop.proposer || prop.creator) : null;
+                if (prop && proposerName !== currentUsername) {
+                    if (!prop.acceptedBy) prop.acceptedBy = [];
+                    if (!prop.acceptedBy.includes(currentUsername)) {
+                        prop.acceptedBy.push(currentUsername);
+                    }
                     broadcastLobbyUpdate(currentLobbyCode);
                 }
             }
             break;
         }
 
-        case 'CONFIRM_GLOBAL_BET': {
+        case 'CONFIRM_GLOBAL_BET':
+        case 'RESPOND_GLOBAL_BET': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const pIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === data.proposalId);
+                const propId = data.proposalId || data.betId || data.id;
+                const pIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === propId);
                 if (pIdx !== -1) {
                     const prop = lobby.globalProposals[pIdx];
-                    if (prop.proposer === currentUsername) {
-                        const accUser = data.acceptedUser;
-                        prop.acceptedBy = prop.acceptedBy.filter(u => u !== accUser);
-                        if (data.confirm) {
-                            if (!lobby.activeBets) lobby.activeBets = [];
-                            lobby.activeBets.push({
-                                id: `gbet_${Date.now()}_${Math.random()}`,
-                                type: 'win',
-                                proposer: prop.proposer,
-                                target: accUser,
-                                pickUser: prop.pickUser,
-                                wagerAmt: prop.wagerAmt
-                            });
+                    const proposerName = prop.proposer || prop.creator;
+                    const isProposer = (proposerName === currentUsername);
+                    const isAccept = data.confirm !== undefined ? !!data.confirm : (data.accept !== undefined ? !!data.accept : true);
+
+                    if (isProposer) {
+                        const accUser = data.acceptedUser || data.target || data.username || (prop.acceptedBy && prop.acceptedBy[0]);
+                        if (accUser) {
+                            prop.acceptedBy = (prop.acceptedBy || []).filter(u => u !== accUser);
+                            if (isAccept) {
+                                if (!lobby.activeBets) lobby.activeBets = [];
+                                lobby.activeBets.push({
+                                    id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                                    type: prop.betType || 'win',
+                                    proposer: proposerName,
+                                    bettor: proposerName,
+                                    target: accUser,
+                                    pickUser: prop.pickUser || proposerName,
+                                    wagerAmt: prop.wagerAmt || 5,
+                                    condition: prop.condition || 'Win the Match'
+                                });
+                            }
                         }
-                        if (prop.acceptedBy.length === 0) {
+                        if (!prop.acceptedBy || prop.acceptedBy.length === 0) {
                             lobby.globalProposals.splice(pIdx, 1);
                         }
-                        broadcastLobbyUpdate(currentLobbyCode);
+                    } else {
+                        if (!prop.deniedBy) prop.deniedBy = [];
+                        if (!prop.acceptedBy) prop.acceptedBy = [];
+
+                        if (isAccept) {
+                            if (!prop.acceptedBy.includes(currentUsername)) {
+                                prop.acceptedBy.push(currentUsername);
+                            }
+                            if (!lobby.activeBets) lobby.activeBets = [];
+                            const alreadyActive = lobby.activeBets.some(b => 
+                                (b.proposer === proposerName && b.target === currentUsername) ||
+                                (b.bettor === proposerName && b.target === currentUsername)
+                            );
+                            if (!alreadyActive) {
+                                lobby.activeBets.push({
+                                    id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                                    type: prop.betType || 'win',
+                                    proposer: proposerName,
+                                    bettor: proposerName,
+                                    target: currentUsername,
+                                    pickUser: prop.pickUser || proposerName,
+                                    wagerAmt: prop.wagerAmt || 5,
+                                    condition: prop.condition || 'Win the Match'
+                                });
+                            }
+                        } else {
+                            if (!prop.deniedBy.includes(currentUsername)) {
+                                prop.deniedBy.push(currentUsername);
+                            }
+                            prop.acceptedBy = prop.acceptedBy.filter(u => u !== currentUsername);
+                        }
+
+                        const activeHumans = lobby.players.filter(p => !p.eliminated).map(p => p.username);
+                        const totalResponded = new Set([...prop.acceptedBy, ...prop.deniedBy, proposerName]);
+                        if (activeHumans.every(u => totalResponded.has(u))) {
+                            lobby.globalProposals.splice(pIdx, 1);
+                        }
                     }
+                    broadcastLobbyUpdate(currentLobbyCode);
                 }
             }
             break;
@@ -645,15 +700,58 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const bIdx = (lobby.pendingBets || []).findIndex(b => b.id === data.betId);
+                const betId = data.betId || data.proposalId || data.id;
+                const bIdx = (lobby.pendingBets || []).findIndex(b => b.id === betId);
+                const isAccept = data.accept !== undefined ? !!data.accept : !!data.confirm;
+
                 if (bIdx !== -1) {
                     const bet = lobby.pendingBets.splice(bIdx, 1)[0];
-                    if (data.accept) {
+                    if (isAccept) {
                         if (!lobby.activeBets) lobby.activeBets = [];
                         lobby.activeBets.push(bet);
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
+                } else {
+                    const gpIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === betId);
+                    if (gpIdx !== -1) {
+                        const prop = lobby.globalProposals[gpIdx];
+                        const proposerName = prop.proposer || prop.creator;
+                        if (isAccept) {
+                            if (!prop.acceptedBy) prop.acceptedBy = [];
+                            if (!prop.acceptedBy.includes(currentUsername)) prop.acceptedBy.push(currentUsername);
+                            if (!lobby.activeBets) lobby.activeBets = [];
+                            lobby.activeBets.push({
+                                id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                                type: prop.betType || 'win',
+                                proposer: proposerName,
+                                bettor: proposerName,
+                                target: currentUsername,
+                                pickUser: prop.pickUser || proposerName,
+                                wagerAmt: prop.wagerAmt || 5,
+                                condition: prop.condition || 'Win the Match'
+                            });
+                        } else {
+                            if (!prop.deniedBy) prop.deniedBy = [];
+                            if (!prop.deniedBy.includes(currentUsername)) prop.deniedBy.push(currentUsername);
+                        }
+                        broadcastLobbyUpdate(currentLobbyCode);
+                    }
                 }
+            }
+            break;
+        }
+
+        case 'GET_SESSION_LEDGER':
+        case 'GET_LEDGER': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                ws.send(JSON.stringify({
+                    type: 'SESSION_LEDGER_DATA',
+                    mainGameLedger: lobby.mainGameLedger || {},
+                    sideBetLedger: lobby.sideBetLedger || {},
+                    botBetLedger: lobby.botBetLedger || {},
+                    activeBets: lobby.activeBets || []
+                }));
             }
             break;
         }
@@ -796,5 +894,6 @@ function setupWebSocket(wss, broadcastLobbyList) {
 
 module.exports = {
     handleWebSocketMessage,
+    handleWsMessage: handleWebSocketMessage,
     setupWebSocket
 };
