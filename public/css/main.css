@@ -804,3 +804,83 @@ select {
     z-index: 80;
 }
 
+/* =============================================================
+   FORCE HUD RE-DOCKING & KILL RAW WHITE BUTTONS
+   ============================================================= */
+
+/* 1. Force the host controls (Lives, Wager, Bots) to dock at the top under the header */
+#lobby-config-bar,
+.lobby-host-controls,
+.host-controls-row {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    margin: 4px auto 8px auto !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+    z-index: 120 !important;
+}
+
+/* 2. Style ALL unstyled buttons and icons across the board */
+#in-game-tools-row button,
+.feature-btn,
+.hud-btn,
+button#voice-btn,
+button#chat-toggle-btn,
+button#bets-btn,
+button#board-btn,
+button#settings-btn {
+    background: #0b2e1c !important;
+    background-color: #0b2e1c !important;
+    border: 1px solid #d4af37 !important;
+    color: #d4af37 !important;
+    border-radius: 6px !important;
+    padding: 5px 10px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5) !important;
+}
+
+/* 3. Style the bot buttons */
+#add-bot-btn,
+#remove-bot-btn,
+.bot-action-btn,
+button[onclick*="addBot"],
+button[onclick*="removeBot"] {
+    background: #072114 !important;
+    border: 1px solid rgba(212, 175, 55, 0.5) !important;
+    color: #e2e8f0 !important;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    border-radius: 4px !important;
+    padding: 4px 8px !important;
+}
+
+/* 4. Style dropdowns */
+select#config-lives,
+select#config-wager,
+select {
+    background: #04160e !important;
+    border: 1px solid #d4af37 !important;
+    color: #ffffff !important;
+    border-radius: 5px !important;
+    padding: 3px 6px !important;
+    font-weight: 700 !important;
+}
+
+/* 5. Center deck & table oval so it stays below controls */
+#table-oval-container,
+.deck-center {
+    margin-top: 15px !important;
+}
+
+/* 6. Push bottom player HUD up so it is completely visible */
+.seat-0,
+[data-seat="0"],
+.seat-name-area[onclick*="Pollo"] {
+    margin-bottom: 25px !important;
+}
