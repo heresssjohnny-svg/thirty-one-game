@@ -1,789 +1,262 @@
-/* public/css/modals.css */
+/* =============================================================
+   BLITZ 31 - CASINO MODALS & CARD POOL ENGINE
+   ============================================================= */
 
-/* ==========================================================================
-   1. Base Modal Overlay & Container
-   ========================================================================== */
-.modal {
+.modal-backdrop,
+.modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(15, 23, 42, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    display: none;
-    align-items: center;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.82);
+    display: flex;
     justify-content: center;
-    z-index: 2000;
+    align-items: center;
+    z-index: 1000;
     padding: 12px;
+    backdrop-filter: blur(4px);
     box-sizing: border-box;
 }
 
-.modal-content {
-    background: var(--panel-bg, rgba(6, 95, 70, 0.95));
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+.modal-box,
+.modal-card {
+    background: rgba(6, 28, 17, 0.98);
+    border: 2px solid var(--accent-gold, #d4af37);
+    border-radius: 12px;
     padding: 16px;
-    border-radius: 14px;
-    width: 95%;
+    width: 100%;
     max-width: 400px;
+    color: #f8fafc;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
+    box-sizing: border-box;
+}
+
+.modal-box.wide,
+.modal-card.wide,
+.full-pool-card {
+    max-width: 500px;
+}
+
+.modal-header,
+.drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.close-x-btn,
+.close-btn {
+    background: transparent;
+    border: none;
+    color: #cbd5e1;
+    font-size: 1.1rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+/* =============================================================
+   DEALER DRAW & TIE BREAKER 52-CARD POOL (ZERO SCROLL FIT)
+   ============================================================= */
+.fullscreen-modal .modal-box,
+#pool-draw-modal .modal-box,
+#dealer-draw-modal .modal-card,
+#tie-breaker-reveal-modal .modal-box {
     max-height: 85vh;
+    overflow: hidden !important; /* Strictly prevents page scrolling */
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    border: 1.5px solid var(--border-color, rgba(250, 204, 21, 0.35));
-    text-align: center;
-    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85);
-    overflow-y: auto;
-    box-sizing: border-box;
-    animation: modalPop 0.18s ease-out;
+    padding: 10px 8px;
 }
 
-@keyframes modalPop {
-    from { transform: scale(0.92); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-}
-
-.modal-content h3 {
-    color: var(--accent-gold, #facc15);
-    font-size: 1.15rem;
-    margin: 0;
+#pool-modal-title,
+#dealer-draw-title {
+    font-size: 0.98rem;
     font-weight: 900;
+    color: #d4af37;
+    text-align: center;
+    text-transform: uppercase;
+    margin-bottom: 2px;
 }
 
-.button-group {
+#pool-modal-instruction,
+#dealer-draw-desc,
+#tie-breaker-stream-msg {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    text-align: center;
+    margin-bottom: 6px;
+}
+
+/* Split layout holding picks stream and cards */
+.draw-modal-split-layout {
     display: flex;
     flex-direction: column;
     gap: 6px;
     width: 100%;
+    overflow: hidden !important;
 }
 
-.modal-content button {
-    cursor: pointer;
-    border-radius: 6px;
-    font-weight: 700;
-    transition: opacity 0.15s ease, transform 0.1s ease;
-}
-
-.modal-content button:active {
-    transform: scale(0.98);
-}
-
-.modal-content input[type="range"] {
-    cursor: pointer;
-}
-
-/* ==========================================================================
-   2. Dealer Draw & Tie-Breaker Split Showcase
-   ========================================================================== */
-#pool-draw-modal .modal-content,
-#tie-breaker-reveal-modal .modal-content {
-    max-width: min(96vw, 620px);
-    max-height: 88vh;
-    padding: 12px 10px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.draw-modal-split-layout {
+/* Selected Results Stream / Showcases */
+.draw-showcase-sidebar,
+.results-stream,
+#draw-results-stream {
     display: flex;
     flex-direction: row;
-    gap: 10px;
-    width: 100%;
-    max-height: 68vh;
-    align-items: stretch;
-    justify-content: space-between;
-    box-sizing: border-box;
-    overflow: hidden;
-    margin-top: 6px;
-}
-
-.draw-showcase-sidebar {
-    width: 110px;
-    min-width: 100px;
-    max-width: 125px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-    padding: 6px;
-    background: rgba(15, 23, 42, 0.75);
-    border: 1.5px solid rgba(250, 204, 21, 0.35);
-    border-radius: 10px;
-    box-sizing: border-box;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
-    flex-shrink: 0;
+    gap: 6px;
+    max-height: 60px;
+    overflow: hidden;
+    padding: 2px;
 }
 
 .draw-showcase-item {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 4px;
-    width: 100%;
+    background: rgba(2, 18, 10, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 4px;
+    padding: 2px 6px;
 }
 
 .draw-picker-badge {
-    font-size: 0.72rem;
-    font-weight: 800;
-    color: var(--accent-gold, #facc15);
-    background: rgba(15, 23, 42, 0.95);
-    border: 1px solid rgba(250, 204, 21, 0.5);
-    padding: 2px 6px;
-    border-radius: 10px;
-    white-space: nowrap;
-    max-width: 95px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    text-align: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-}
-
-.draw-showcase-item .playing-card {
-    width: 60px;
-    height: 86px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
-    cursor: default;
-    flex-shrink: 0;
-}
-
-.draw-showcase-item .playing-card .card-center-pip {
-    font-size: 1.85rem;
-}
-
-.draw-showcase-item .draw-card-waiting {
-    width: 60px;
-    height: 86px;
-    border-radius: 7px;
-    border: 1.5px dashed #60a5fa;
-    background: rgba(30, 58, 138, 0.35);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: #93c5fd;
     font-size: 0.65rem;
-    font-weight: bold;
-    animation: pulseBorder 1.5s infinite;
+    font-weight: 800;
+    color: #f6e05e;
 }
 
-@keyframes pulseBorder {
-    0% { border-color: #60a5fa; box-shadow: 0 0 4px rgba(96, 165, 250, 0.3); }
-    50% { border-color: var(--accent-gold, #facc15); box-shadow: 0 0 10px rgba(250, 204, 21, 0.6); }
-    100% { border-color: #60a5fa; box-shadow: 0 0 4px rgba(96, 165, 250, 0.3); }
-}
-
-.draw-pool-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    background: rgba(15, 23, 42, 0.55);
-    border: 1px solid rgba(250, 204, 21, 0.25);
-    border-radius: 10px;
-    padding: 6px;
-    box-sizing: border-box;
-}
-
-.pool-52-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-    overflow-y: auto;
-    flex: 1;
-    padding: 3px;
-    align-content: start;
-    box-sizing: border-box;
-}
-
-@media (min-width: 480px) {
-    .pool-52-grid {
-        grid-template-columns: repeat(8, 1fr);
-        gap: 5px;
-    }
-}
-
-.pool-card-item {
-    aspect-ratio: 5 / 7;
-    height: auto;
-    min-height: 32px;
-    max-height: 44px;
-    background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
-    border: 1.5px solid #60a5fa;
-    border-radius: 4px;
+.draw-card-waiting {
+    width: 22px;
+    height: 30px;
+    border: 1px dashed #64748b;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.85rem;
-    color: #93c5fd;
+    font-size: 0.55rem;
+    color: #cbd5e1;
+}
+
+/* 52-Card Deck Grid: Exact 13x4 Grid Fitted Cleanly Across Screen */
+.pool-52-grid,
+#draw-pool-grid,
+.card-pool-grid,
+.draw-pool-panel {
+    display: grid !important;
+    grid-template-columns: repeat(13, 1fr) !important;
+    gap: 2px !important;
+    width: 100% !important;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 4px 0 !important;
+    overflow: hidden !important;
+}
+
+.pool-card-item,
+.card-pool-item {
+    width: 100% !important;
+    aspect-ratio: 2 / 3 !important;
+    max-height: 38px !important;
+    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+    border: 1px solid #60a5fa;
+    color: #ffffff;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-weight: 900;
+    font-size: 0.65rem;
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-    transition: transform 0.1s ease, border-color 0.1s ease;
-    user-select: none;
+    box-sizing: border-box;
+    transition: transform 0.1s ease;
 }
 
-.pool-card-item:hover, .pool-card-item:active {
-    transform: scale(1.12);
-    border-color: var(--accent-gold, #facc15);
-    color: #ffffff;
-    z-index: 5;
+.pool-card-item:hover,
+.card-pool-item:hover {
+    transform: scale(1.08);
+    border-color: #f6e05e;
 }
 
-.pool-card-item.taken {
-    background: rgba(15, 23, 42, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.2);
-    cursor: not-allowed;
-    pointer-events: none;
-    box-shadow: none;
-    transform: none;
+.pool-card-item.taken,
+.card-pool-item.taken {
+    background: #061c11 !important;
+    border-color: #334155 !important;
+    color: #10b981 !important;
+    cursor: default !important;
+    transform: none !important;
+    opacity: 0.45;
 }
 
-/* ==========================================================================
-   3. In-Game Floating Alerts & Banners
-   ========================================================================== */
-#center-notification-banner {
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(4, 78, 54, 0.98);
-    border: 2px solid var(--accent-gold, #facc15);
-    color: var(--text-main, #f8fafc);
-    padding: 8px 24px;
-    border-radius: 8px;
-    font-weight: 900;
-    font-size: 0.95rem;
-    text-align: center;
-    z-index: 4000;
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.85);
-    display: none;
-    pointer-events: none;
-}
-
-#knock-alert-modal {
-    position: absolute;
-    top: 75px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 20%, rgba(185, 28, 28, 0.96) 100%);
-    border: 3px solid var(--accent-gold, #facc15);
-    color: #ffffff;
-    padding: 12px 34px;
-    border-radius: 35px;
-    font-weight: 900;
-    font-size: 1.25rem;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    display: none;
-    z-index: 3800;
-    pointer-events: none;
-    animation: prominentKnockPulse 1.1s infinite alternate;
-}
-
-@keyframes prominentKnockPulse {
-    0% {
-        transform: translateX(-50%) scale(1);
-        box-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
-    }
-    100% {
-        transform: translateX(-50%) scale(1.08);
-        box-shadow: 0 0 35px rgba(250, 204, 21, 1);
-    }
-}
-
-#discard-pickup-topleft-modal,
-.discard-pickup-modal-topleft {
-    position: absolute;
-    top: 60px;
-    left: 12px;
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: var(--accent-cyan, #38bdf8);
-    z-index: 2500;
-    display: none;
-    flex-direction: column;
-    gap: 3px;
-    align-items: flex-start;
-    background: rgba(15, 23, 42, 0.95);
-    padding: 8px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--accent-gold, #facc15);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.7);
-    animation: slideInTopLeft 0.3s ease-out;
-}
-
-@keyframes slideInTopLeft {
-    from { opacity: 0; transform: translateY(-5px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-#fed-card-topright-modal,
-.fed-card-modal-topright {
-    position: absolute;
-    top: 60px;
-    right: 12px;
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: var(--accent-gold, #facc15);
-    z-index: 2500;
-    display: none;
-    flex-direction: column;
-    gap: 3px;
-    align-items: flex-end;
-    background: rgba(15, 23, 42, 0.95);
-    padding: 8px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--accent-cyan, #38bdf8);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
-    animation: slideInTopRight 0.3s ease-out;
-}
-
-@keyframes slideInTopRight {
-    from { opacity: 0; transform: translateY(-5px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-#active-peeking-banner {
-    display: none;
-    background: rgba(30, 58, 138, 0.95);
-    border: 1px solid var(--accent-cyan, #38bdf8);
-    padding: 4px 12px;
-    border-radius: 14px;
-    font-size: 0.75rem;
-    color: #ffffff;
+/* Tie Breaker Specific Display */
+#tie-breaker-stream-grid {
+    display: flex;
+    justify-content: center;
     align-items: center;
     gap: 8px;
-    margin-top: 2px;
+    flex-wrap: wrap;
+    max-height: 50vh;
+    overflow: hidden !important;
+    margin-top: 6px;
 }
 
-/* ==========================================================================
-   4. Chat Window & Floating Sidebar
-   ========================================================================== */
-#chat-container {
-    position: relative;
-    display: inline-block;
-}
-
-#chat-toggle-btn {
-    background: #475569;
-    border: none;
-    color: #fff;
-    font-size: 0.75rem;
-    padding: 5px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-#chat-toggle-btn.unread {
-    background: #ef4444;
-    color: #fff;
-    animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
-}
-
-#chat-window {
-    position: absolute;
-    top: 45px;
-    left: calc(50% - 120px);
-    width: 240px;
-    height: 160px;
-    background: rgba(30, 41, 59, 0.98);
-    border: 1px solid #475569;
-    border-radius: 8px;
-    display: none;
+/* Chat & Bets Drawers */
+.chat-drawer, .global-bets-drawer {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    max-width: 340px;
+    height: 240px;
+    background: rgba(4, 20, 13, 0.96);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-top-left-radius: 10px;
+    display: flex;
     flex-direction: column;
-    padding: 6px;
-    z-index: 3000;
-    font-size: 0.7rem;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    z-index: 500;
 }
 
-.chat-header-row {
+.drawer-header {
+    background: rgba(14, 46, 29, 0.95);
+    padding: 6px 10px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
-    border-bottom: 1px solid #334155;
-    padding-bottom: 3px;
-    color: #38bdf8;
-    font-weight: bold;
-}
-
-#chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin-bottom: 4px;
-}
-
-.chat-input-row {
-    display: flex;
-    gap: 3px;
-}
-
-.chat-input-row input {
-    flex: 1;
-    padding: 3px;
-    font-size: 0.7rem;
-}
-
-.chat-input-row button {
-    padding: 3px 6px;
-    font-size: 0.7rem;
-}
-
-#global-side-bets-sidebar {
-    position: absolute;
-    right: 8px;
-    top: 60px;
-    width: 190px;
-    max-height: 200px;
-    background: rgba(4, 78, 54, 0.92);
-    border: 1px solid var(--border-color, rgba(250, 204, 21, 0.3));
-    border-radius: 6px;
-    padding: 6px;
-    display: none;
-    flex-direction: column;
-    gap: 4px;
-    z-index: 100;
-    font-size: 0.7rem;
-    overflow-y: auto;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-}
-
-.global-bet-item {
-    background: rgba(15, 23, 42, 0.8);
-    padding: 5px;
-    border-radius: 4px;
-    border: 1px solid rgba(250, 204, 21, 0.2);
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-/* ==========================================================================
-   5. Next Hand & High-Visibility Victory Celebration
-   ========================================================================== */
-#next-hand-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1500;
-    display: none;
-}
-
-#next-hand-btn {
-    background: #10b981;
-    color: #fff;
-    font-size: 1rem;
-    padding: 10px 20px;
-    border-radius: 6px;
-    font-weight: bold;
-    border: 2px solid #34d399;
-}
-
-#next-hand-btn:hover {
-    background: #059669;
-}
-
-#winner-celebration-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 9999;
-    pointer-events: none;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-}
-
-#celebration-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-}
-
-/* Identical deep gradient and gold trim as the Knocked & Your Turn modals */
-#winner-celebration-card {
-    position: relative;
-    z-index: 10000;
-    text-align: center;
-    padding: 24px 38px;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 15%, rgba(6, 95, 70, 0.98) 100%);
-    border: 3.5px solid var(--accent-gold, #facc15);
-    border-radius: 22px;
-    box-shadow: 0 0 45px rgba(250, 204, 21, 0.85), 0 16px 55px rgba(0, 0, 0, 0.95);
-    animation: zoomInBounce 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    max-width: 90vw;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    pointer-events: auto;
-}
-
-@keyframes zoomInBounce {
-    0% { transform: scale(0.3); opacity: 0; }
-    70% { transform: scale(1.08); opacity: 1; }
-    100% { transform: scale(1); }
-}
-
-#celebration-winner-title {
-    font-size: 2.1rem;
-    font-weight: 900;
-    color: var(--accent-gold, #facc15);
-    text-shadow: 0 0 25px rgba(250, 204, 21, 0.85), 0 3px 8px rgba(0, 0, 0, 0.95);
-    letter-spacing: 1.2px;
-}
-
-#celebration-subtitle {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: #ffffff;
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95);
-    letter-spacing: 0.6px;
-    margin-top: 2px;
-}
-
-/* ==========================================================================
-   6. Rules & Ledger Modals
-   ========================================================================== */
-.rules-scrollable-body {
-    max-height: 52vh;
-    overflow-y: auto;
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-right: 6px;
-}
-
-.rule-block {
-    background: rgba(15, 23, 42, 0.7);
-    padding: 8px 10px;
-    border-radius: 6px;
-    border: 1px solid rgba(250, 204, 21, 0.2);
-}
-
-.rule-block h4 {
-    color: var(--accent-gold, #facc15);
-    margin: 0 0 2px 0;
-    font-size: 0.9rem;
-}
-
-.rule-block p, 
-.rule-block ul, 
-.rule-block ol {
-    font-size: 0.78rem;
-    color: #cbd5e1;
-    line-height: 1.35;
-    margin: 0;
-}
-
-.rule-block ul, 
-.rule-block ol {
-    margin-left: 18px;
-    margin-top: 4px;
-}
-
-#screenshot-modal .modal-content {
-    max-width: 380px;
-    user-select: auto;
-    -webkit-user-select: auto;
-}
-/* =============================================================
-   AUTHENTICATION & BASE MODAL RESTORATION
-   ============================================================= */
-
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10000;
-    padding: 16px;
-    box-sizing: border-box;
-}
-
-.modal-box {
-    background: #0f3d28;
-    border: 2px solid #d4af37;
-    border-radius: 12px;
-    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(0, 0, 0, 0.5);
-    color: #f1f5f9;
-    padding: 24px;
-    box-sizing: border-box;
-    width: 100%;
-}
-
-.modal-box.auth-modal {
-    max-width: 380px;
-    text-align: center;
-}
-
-.auth-header h2 {
-    margin: 0;
-    font-size: 2rem;
-    color: #d4af37;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-    letter-spacing: 1px;
-}
-
-.auth-header .subtitle {
-    margin: 4px 0 16px;
-    font-size: 0.85rem;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.auth-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
     border-bottom: 1px solid rgba(212, 175, 55, 0.3);
-    padding-bottom: 8px;
 }
 
-.auth-tabs .tab-btn {
+.drawer-body {
     flex: 1;
-    background: transparent;
-    border: none;
-    color: #94a3b8;
-    font-size: 0.95rem;
-    font-weight: 700;
-    padding: 8px;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-.auth-tabs .tab-btn.active {
-    background: rgba(212, 175, 55, 0.2);
-    color: #d4af37;
-    border: 1px solid rgba(212, 175, 55, 0.5);
-}
-
-.form-group {
+    overflow-y: auto;
+    padding: 6px 10px;
+    font-size: 0.78rem;
     display: flex;
     flex-direction: column;
-    margin-bottom: 14px;
-    text-align: left;
+    gap: 4px;
 }
 
-.form-group label {
-    font-size: 0.75rem;
-    color: #cbd5e1;
-    margin-bottom: 4px;
-    font-weight: 600;
-    text-transform: uppercase;
+.drawer-footer {
+    display: flex;
+    padding: 6px;
+    gap: 6px;
+    border-top: 1px solid rgba(212, 175, 55, 0.2);
 }
 
-.form-group input {
-    width: 100%;
-    padding: 10px 12px;
-    background: rgba(6, 32, 20, 0.9);
-    border: 1px solid rgba(212, 175, 55, 0.4);
-    border-radius: 6px;
-    color: #ffffff;
-    font-size: 0.95rem;
-    outline: none;
-    box-sizing: border-box;
+.drawer-footer input {
+    flex: 1;
+    background: #020a06;
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    color: #fff;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    border-radius: 4px;
 }
 
-.form-group input:focus {
-    border-color: #f6e05e;
-    box-shadow: 0 0 6px rgba(246, 224, 94, 0.5);
-}
-
-.primary-btn {
-    background: linear-gradient(180deg, #d4af37 0%, #aa820a 100%);
-    color: #062b18;
+.drawer-footer button {
+    background: var(--accent-gold);
+    color: #04190e;
     font-weight: 800;
-    border: 1px solid #fef08a;
-    border-radius: 6px;
-    padding: 11px 16px;
-    cursor: pointer;
-    font-size: 0.95rem;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-}
-
-.primary-btn:active {
-    transform: translateY(1px);
-}
-
-.secondary-btn {
-    background: rgba(15, 23, 42, 0.75);
-    border: 1px solid #475569;
-    color: #cbd5e1;
-    font-weight: 700;
-    border-radius: 6px;
-    padding: 10px 14px;
-    cursor: pointer;
-    font-size: 0.9rem;
-}
-
-.full-width {
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.auth-divider {
-    display: flex;
-    align-items: center;
-    text-align: center;
-    margin: 18px 0;
-    color: #64748b;
-    font-size: 0.75rem;
-    font-weight: 700;
-}
-
-.auth-divider::before,
-.auth-divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
-}
-
-.auth-divider span {
+    border: none;
+    border-radius: 4px;
     padding: 0 10px;
-}
-
-.social-auth-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-}
-
-#google-signin-btn {
-    display: flex;
-    justify-content: center;
-    width: 100%;
 }
