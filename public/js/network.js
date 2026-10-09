@@ -1,21 +1,28 @@
-// public/js/network.js - WebSocket Engine, Event Relay & Menu Dispatcher
+// public/js/network.js - WebSocket Engine, Event Routing & State Cache (PART 1 OF 2)
 
 // -------------------------------------------------------------
-// 1. STATE & ENVIRONMENT INITIALIZATION
+// 1. STATE & PERSISTENT ENVIRONMENT INITIALIZATION
 // -------------------------------------------------------------
-window.appGlobals = window.appGlobals || {
-    ws: null,
-    isConnected: false,
-    pendingQueue: [],
-    currentJoinedCode: localStorage.getItem('blitz31_active_room') || null,
-    latestLobbySnapshot: null,
-    lastKnownKnockedBy: null,
-    lastPhaseMessage: '',
-    lastGameState: ''
-};
+window.appGlobals = window.appGlobals || {};
+
+// Rehydrate active room code from localStorage so backgrounding/reload retains table context
+window.appGlobals.currentJoinedCode = localStorage.getItem('blitz31_active_room') || null;
+window.appGlobals.ws = null;
+window.appGlobals.isConnected = false;
+window.appGlobals.pendingQueue = [];
+window.appGlobals.latestLobbySnapshot = null;
+window.appGlobals.wasMyTurn = false;
+window.appGlobals.lastKnownKnockedBy = null;
+window.appGlobals.hasChosenPoolCard = false;
+window.appGlobals.lastPhaseMessage = '';
+window.appGlobals.lastGameState = '';
+window.appGlobals.lastCelebratedWinner = null;
+window.appGlobals.lastCelebrated31 = null;
+window.appGlobals.lastChatCount = 0;
+window.appGlobals.notificationTimer = null;
 
 window.clientState = window.clientState || {
-    username: localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || 'Player1',
+    username: localStorage.getItem('saved_username') || 'Player1',
     isReady: false,
     playersList: [],
     spectatorsList: [],
@@ -32,20 +39,19 @@ window.clientState = window.clientState || {
     pendingBetsList: []
 };
 
+// Input field persistence helpers
 window.saveInputs = window.saveInputs || function() {
     try {
         const u = document.getElementById('username-input');
         const l = document.getElementById('lobby-name-input');
         if (u) {
-            const val = u.value.trim();
-            if (val) {
-                localStorage.setItem('saved_username', val);
-                localStorage.setItem('p31_username', val);
-                if (window.clientState) window.clientState.username = val;
-            }
+            localStorage.setItem('saved_username', u.value);
+            localStorage.setItem('blitz31_username', u.value);
+            if (window.clientState) window.clientState.username = u.value.trim() || 'Player1';
         }
         if (l) {
-            localStorage.setItem('saved_lobby_name', l.value.trim());
+            localStorage.setItem('saved_lobby_name', l.value);
+            localStorage.setItem('blitz31_lobby_name', l.value);
         }
     } catch (e) {}
 };
@@ -54,21 +60,20 @@ window.restoreSavedInputs = window.restoreSavedInputs || function() {
     try {
         const u = document.getElementById('username-input');
         const l = document.getElementById('lobby-name-input');
-        const savedU = localStorage.getItem('saved_username') || localStorage.getItem('p31_username');
-        const savedL = localStorage.getItem('saved_lobby_name');
+        const savedU = localStorage.getItem('saved_username') || localStorage.getItem('blitz31_username');
+        const savedL = localStorage.getItem('saved_lobby_name') || localStorage.getItem('blitz31_lobby_name');
         if (u && savedU) u.value = savedU;
         if (l && savedL) l.value = savedL;
-        if (window.clientState && savedU) {
-            window.clientState.username = savedU;
+        if (window.clientState && u) {
+            window.clientState.username = u.value.trim() || 'Player1';
         }
     } catch (e) {}
 };
 
 // -------------------------------------------------------------
-// 2. WEBSOCKET CONNECTION, KEEP-ALIVE & EVENT ROUTING
+// 2. WEBSOCKET CONNECTION & EVENT ROUTING
 // -------------------------------------------------------------
 let reconnectTimer = null;
-let heartbeatTimer = null;
 
 function getWebSocketUrl() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -99,48 +104,40 @@ window.connectSocket = function() {
             reconnectTimer = null;
         }
 
-        if (heartbeatTimer) clearInterval(heartbeatTimer);
-        heartbeatTimer = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'PING' }));
-            }
-        }, 20000);
-
-        // 1. Authenticate with all recognized stored token keys
-        const jwtToken = localStorage.getItem('auth_token') || 
-                         localStorage.getItem('token') || 
-                         localStorage.getItem('jwt') || 
-                         localStorage.getItem('31_jwt');
+        // 1. Authenticate socket session if JWT token exists
+        const jwtToken = localStorage.getItem('31_jwt') || sessionStorage.getItem('31_jwt');
         if (jwtToken) {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Auto-reclaim seat only if not on auth screen
-        const authScreen = document.getElementById('auth-screen');
-        const isAuthScreenVisible = authScreen && authScreen.style.display !== 'none';
-        const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-
-        if (activeRoom && !isAuthScreenVisible) {
+        // 2. Reclaim seat if returning to an active game from background or network blip
+        const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+        if (activeRoom) {
             window.appGlobals.currentJoinedCode = activeRoom;
-            const myName = (document.getElementById('username-input')?.value || 
-                            window.clientState?.username || 
-                            localStorage.getItem('saved_username') || 
-                            'Player1').trim();
+            const usernameInput = document.getElementById('username-input');
+            const activeUsername = usernameInput?.value.trim() 
+                || localStorage.getItem('saved_username') 
+                || window.clientState.username 
+                || 'Player1';
+
             ws.send(JSON.stringify({
                 type: 'JOIN_LOBBY',
-                code: activeRoom.toUpperCase(),
-                username: myName
+                code: activeRoom,
+                username: activeUsername
             }));
         }
 
-        // 3. Flush buffered messages
-        while (window.appGlobals.pendingQueue.length > 0) {
+        // 3. Flush any queued messages buffered while offline
+        while (window.appGlobals.pendingQueue && window.appGlobals.pendingQueue.length > 0) {
             const msg = window.appGlobals.pendingQueue.shift();
             ws.send(JSON.stringify(msg));
         }
 
-        // 4. Query current public lobbies
-        window.initSocketAndSend({ type: 'GET_LOBBIES' });
+        // 4. Update lobby list browser
+        if (typeof window.initSocketAndSend === 'function') {
+            window.initSocketAndSend({ type: 'GET_LOBBIES' });
+            window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
+        }
     };
 
     ws.onmessage = (event) => {
@@ -148,6 +145,7 @@ window.connectSocket = function() {
         try {
             data = JSON.parse(event.data);
         } catch (err) {
+            console.error('[WS] JSON Parse Error:', err);
             return;
         }
         handleIncomingServerMessage(data);
@@ -158,82 +156,47 @@ window.connectSocket = function() {
         window.ws = null;
         window.appGlobals.ws = null;
 
-        if (heartbeatTimer) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = null;
-        }
-
+        // Auto-reconnect if user has an active session or is in an active room
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
-                const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+                const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
                 if (window.userSession || activeRoom) {
                     window.connectSocket();
                 }
-            }, 1200);
+            }, 1000);
         }
     };
 
     ws.onerror = (err) => {
-        console.warn('[WS] Socket event:', err);
+        console.warn('[WS] Socket error event:', err);
     };
 };
 
+/**
+ * Routes incoming server payloads directly to client UI and audio modules
+ */
 function handleIncomingServerMessage(data) {
     switch (data.type) {
-        case 'AUTH_SUCCESS':
-            window.userSession = data.user;
-            if (data.user && data.user.username) {
-                window.clientState.username = data.user.username;
-                localStorage.setItem('saved_username', data.user.username);
-                const uIn = document.getElementById('username-input');
-                if (uIn) uIn.value = data.user.username;
-            }
-            if (typeof window.updateViewForAuth === 'function') {
-                window.updateViewForAuth(data.user);
-            }
-            window.initSocketAndSend({ type: 'GET_LOBBIES' });
-            break;
-
-        case 'AUTH_ERROR':
-            window.userSession = null;
-            if (typeof window.updateViewForAuth === 'function') {
-                window.updateViewForAuth(null);
-            }
-            break;
-
-        case 'PONG':
-            break;
-
         case 'LOBBY_LIST':
             if (typeof window.renderLobbyList === 'function') {
                 window.renderLobbyList(data.lobbies || []);
             } else if (typeof window.renderPublicLobbies === 'function') {
                 window.renderPublicLobbies(data.lobbies || []);
-            } else {
-                renderDefaultLobbyList(data.lobbies || []);
             }
             break;
 
         case 'LOBBY_CREATED':
         case 'LOBBY_JOINED':
             if (data.code) {
-                window.appGlobals.currentJoinedCode = data.code.toUpperCase();
-                localStorage.setItem('blitz31_active_room', data.code.toUpperCase());
+                window.appGlobals.currentJoinedCode = data.code;
+                localStorage.setItem('blitz31_active_room', data.code);
             }
-            if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
-
-            // Transition from Menu to Game View
-            const mainMenu = document.getElementById('main-menu');
-            const authScreen = document.getElementById('auth-screen');
-            const gameView = document.getElementById('game-view');
-            if (mainMenu) mainMenu.style.display = 'none';
-            if (authScreen) authScreen.style.display = 'none';
-            if (gameView) {
-                gameView.style.display = 'flex';
-                gameView.style.visibility = 'visible';
+            if (data.lobby) {
+                window.appGlobals.latestLobbySnapshot = data.lobby;
             }
 
+            // Connect LiveKit voice room isolated to this lobby
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
@@ -244,6 +207,7 @@ function handleIncomingServerMessage(data) {
                 }
             }
 
+            // Transition view to table felt
             if (data.lobby && typeof window.updateUIFromLobby === 'function') {
                 window.updateUIFromLobby(data.lobby);
             } else if (data.lobby && typeof window.renderLobbyState === 'function') {
@@ -255,16 +219,17 @@ function handleIncomingServerMessage(data) {
         case 'LOBBY_UPDATE':
             if (data.lobby) {
                 if (data.lobby.code) {
-                    window.appGlobals.currentJoinedCode = data.lobby.code.toUpperCase();
-                    localStorage.setItem('blitz31_active_room', data.lobby.code.toUpperCase());
+                    window.appGlobals.currentJoinedCode = data.lobby.code;
+                    localStorage.setItem('blitz31_active_room', data.lobby.code);
                 }
                 window.appGlobals.latestLobbySnapshot = data.lobby;
 
-                const activeMenu = document.getElementById('main-menu');
-                const activeView = document.getElementById('game-view');
-                if (activeMenu && activeMenu.style.display !== 'none') activeMenu.style.display = 'none';
-                if (activeView && activeView.style.display !== 'flex') activeView.style.display = 'flex';
+                // Trigger 31 Blitz or Match Win celebrations (confetti & audio fanfare)
+                if (typeof window.checkAndTriggerCelebrations === 'function') {
+                    window.checkAndTriggerCelebrations(data.lobby);
+                }
 
+                // Maintain lobby-scoped LiveKit voice connection
                 if (data.livekitHost && data.livekitToken) {
                     if (typeof window.connectLiveKit === 'function') {
                         window.connectLiveKit(data.livekitToken, data.livekitHost, data.lobby.code);
@@ -288,7 +253,16 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'LEFT_LOBBY':
-            window.resetToMainMenu();
+            window.appGlobals.currentJoinedCode = null;
+            window.appGlobals.latestLobbySnapshot = null;
+            localStorage.removeItem('blitz31_active_room');
+
+            if (typeof window.disconnectLiveKit === 'function') {
+                window.disconnectLiveKit();
+            }
+            if (typeof window.resetToMainMenu === 'function') {
+                window.resetToMainMenu();
+            }
             break;
 
         case 'LIFETIME_LEDGER_DATA':
@@ -311,13 +285,14 @@ function handleIncomingServerMessage(data) {
             break;
 
         case 'ERROR':
-            if (data.message && data.message.includes('Table does not exist')) {
-                window.resetToMainMenu();
+            if (data.message && (data.message.includes('not found') || data.message.includes('Lobby') || data.message.includes('closed'))) {
+                window.appGlobals.currentJoinedCode = null;
+                localStorage.removeItem('blitz31_active_room');
             }
             if (typeof window.showCenterNotification === 'function') {
                 window.showCenterNotification(data.message || 'Error occurred');
             } else {
-                alert(data.message || 'Error occurred');
+                alert(data.message || 'An error occurred.');
             }
             break;
 
@@ -325,192 +300,114 @@ function handleIncomingServerMessage(data) {
             break;
     }
 }
-
-function renderDefaultLobbyList(lobbies) {
-    const list = document.getElementById('lobby-list');
-    if (!list) return;
-
-    if (!lobbies || lobbies.length === 0) {
-        list.innerHTML = '<div class="empty-list-placeholder">No active public tables.</div>';
-        return;
-    }
-
-    let html = '';
-    lobbies.forEach(l => {
-        html += `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:0.82rem;">
-                <div>
-                    <strong>${l.name || l.code}</strong> (${l.code})
-                    <div style="font-size:0.72rem; color:var(--text-muted);">${l.playerCount}/6 Players</div>
-                </div>
-                <button class="primary-btn" style="padding:4px 10px; font-size:0.75rem;" onclick="window.joinLobbyCode('${l.code}')">Join</button>
-            </div>
-        `;
-    });
-    list.innerHTML = html;
-}
+// public/js/network.js - Outgoing Dispatchers, Table Actions & Lifecycle (PART 2 OF 2)
 
 // -------------------------------------------------------------
-// 3. OUTGOING MESSAGE DISPATCHER
+// 3. OUTGOING MESSAGE DISPATCHERS
 // -------------------------------------------------------------
-window.initSocketAndSend = function(payload) {
-    if (!payload || typeof payload !== 'object') return;
-
-    if (window.userSession) {
-        payload.userId = window.userSession.id || window.userSession.userId;
-        payload.isGuest = Boolean(window.userSession.isGuest);
-    }
-
-    const ws = window.appGlobals?.ws || window.ws;
+window.initSocketAndSend = function(data) {
+    if (!data) return;
+    const ws = window.appGlobals.ws;
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
+        ws.send(JSON.stringify(data));
     } else {
-        window.appGlobals.pendingQueue.push(payload);
+        if (!window.appGlobals.pendingQueue) window.appGlobals.pendingQueue = [];
+        window.appGlobals.pendingQueue.push(data);
         if (typeof window.connectSocket === 'function') {
             window.connectSocket();
         }
     }
 };
 
-window.sendSocketMessage = window.initSocketAndSend;
 window.sendSocket = window.initSocketAndSend;
 
 // -------------------------------------------------------------
-// 4. GLOBAL GAME & MENU ACTIONS
+// 4. LOBBY CREATION & NAVIGATION CONTROLS
 // -------------------------------------------------------------
-window.resetToMainMenu = function() {
+window.refreshLobbies = function() {
+    window.initSocketAndSend({ type: 'GET_LOBBIES' });
+};
+
+window.createLobby = function() {
+    window.saveInputs();
+    const nameInput = document.getElementById('lobby-name-input');
+    const privateCheckbox = document.getElementById('lobby-private-toggle') || document.getElementById('private-lobby-checkbox');
+    const livesSelect = document.getElementById('lobby-lives-select') || document.getElementById('initial-lives-select');
+
+    const usernameInput = document.getElementById('username-input');
+    const activeUsername = usernameInput?.value.trim() 
+        || localStorage.getItem('saved_username') 
+        || window.clientState.username 
+        || 'Player1';
+
+    const lobbyName = nameInput ? nameInput.value.trim() : `${activeUsername}'s Table`;
+    const isPrivate = privateCheckbox ? Boolean(privateCheckbox.checked) : false;
+    const defaultLives = livesSelect ? (parseInt(livesSelect.value, 10) || 2) : 2;
+
+    window.initSocketAndSend({
+        type: 'CREATE_LOBBY',
+        name: lobbyName || `${activeUsername}'s Table`,
+        username: activeUsername,
+        isPrivate: isPrivate,
+        defaultLives: defaultLives
+    });
+};
+
+window.joinLobby = function(code) {
+    if (!code) return;
+    window.saveInputs();
+    const usernameInput = document.getElementById('username-input');
+    const activeUsername = usernameInput?.value.trim() 
+        || localStorage.getItem('saved_username') 
+        || window.clientState.username 
+        || 'Player1';
+
+    window.appGlobals.currentJoinedCode = code;
+    localStorage.setItem('blitz31_active_room', code);
+
+    window.initSocketAndSend({
+        type: 'JOIN_LOBBY',
+        code: code.trim().toUpperCase(),
+        username: activeUsername
+    });
+};
+
+window.leaveLobby = function() {
     window.appGlobals.currentJoinedCode = null;
     window.appGlobals.latestLobbySnapshot = null;
     localStorage.removeItem('blitz31_active_room');
 
-    const mainMenu = document.getElementById('main-menu');
-    const gameView = document.getElementById('game-view');
-    const authScreen = document.getElementById('auth-screen');
-
-    if (gameView) gameView.style.display = 'none';
-    if (authScreen) authScreen.style.display = 'none';
-    if (mainMenu) mainMenu.style.display = 'flex';
+    window.initSocketAndSend({ type: 'LEAVE_LOBBY' });
 
     if (typeof window.disconnectLiveKit === 'function') {
         window.disconnectLiveKit();
     }
-    if (typeof window.refreshLobbies === 'function') {
-        window.refreshLobbies();
+    if (typeof window.resetToMainMenu === 'function') {
+        window.resetToMainMenu();
     }
 };
 
-window.createLobby = function() {
-    try {
-        if (typeof window.saveInputs === 'function') window.saveInputs();
-        const userIn = document.getElementById('username-input');
-        const nameIn = document.getElementById('lobby-name-input');
-        const privIn = document.getElementById('private-lobby-checkbox');
-
-        const username = (userIn?.value || '').trim() || 
-                         (window.clientState && window.clientState.username) || 
-                         localStorage.getItem('saved_username') || 
-                         'Player1';
-        const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
-        const isPrivate = privIn ? privIn.checked : false;
-
-        window.clientState = window.clientState || {};
-        window.clientState.username = username;
-        localStorage.setItem('saved_username', username);
-
-        window.initSocketAndSend({
-            type: 'CREATE_LOBBY',
-            username,
-            lobbyName,
-            isPrivate
-        });
-    } catch (err) {
-        alert("Create Table Error: " + err.message);
-    }
+// -------------------------------------------------------------
+// 5. TABLE SEATING & PRE-GAME CONTROLS
+// -------------------------------------------------------------
+window.sitDown = function() {
+    window.initSocketAndSend({ type: 'SIT_DOWN' });
 };
 
-window.joinLobby = function() {
-    try {
-        if (typeof window.saveInputs === 'function') window.saveInputs();
-        const userIn = document.getElementById('username-input');
-        const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
-
-        const username = (userIn?.value || '').trim() || 
-                         (window.clientState && window.clientState.username) || 
-                         localStorage.getItem('saved_username') || 
-                         'Player1';
-        const code = (codeIn?.value || '').trim().toUpperCase();
-
-        if (!code) {
-            alert('Please enter a table code.');
-            return;
-        }
-
-        window.clientState = window.clientState || {};
-        window.clientState.username = username;
-        localStorage.setItem('saved_username', username);
-        if (window.appGlobals) window.appGlobals.currentJoinedCode = code;
-        localStorage.setItem('blitz31_active_room', code);
-
-        window.initSocketAndSend({
-            type: 'JOIN_LOBBY',
-            code,
-            username
-        });
-    } catch (err) {
-        alert("Join Table Error: " + err.message);
-    }
+window.standUp = function() {
+    window.initSocketAndSend({ type: 'STAND_UP' });
 };
-
-window.joinLobbyCode = function(code) {
-    if (!code) return;
-    if (typeof window.saveInputs === 'function') window.saveInputs();
-    const userIn = document.getElementById('username-input');
-    const username = (userIn?.value || '').trim() || 
-                     (window.clientState && window.clientState.username) || 
-                     localStorage.getItem('saved_username') || 
-                     'Player1';
-
-    const normalizedCode = code.toUpperCase();
-    window.clientState = window.clientState || {};
-    window.clientState.username = username;
-    localStorage.setItem('saved_username', username);
-    if (window.appGlobals) window.appGlobals.currentJoinedCode = normalizedCode;
-    localStorage.setItem('blitz31_active_room', normalizedCode);
-
-    window.initSocketAndSend({
-        type: 'JOIN_LOBBY',
-        code: normalizedCode,
-        username
-    });
-};
-
-window.joinLobbyDirect = window.joinLobbyCode;
-
-window.refreshLobbies = function() {
-    window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
-    window.initSocketAndSend({ type: 'GET_LOBBIES' });
-};
-
-window.leaveLobby = function() {
-    window.initSocketAndSend({ type: 'LEAVE_LOBBY' });
-    window.resetToMainMenu();
-};
-
-window.sitDown = function() { window.initSocketAndSend({ type: 'SIT_DOWN' }); };
-window.standUp = function() { window.initSocketAndSend({ type: 'STAND_UP' }); };
 
 window.toggleReady = function() {
-    const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
-    const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username?.toLowerCase() === myName);
-    const current = me ? Boolean(me.ready) : Boolean(window.clientState?.isReady);
-    const nextState = !current;
+    const nextState = !Boolean(window.clientState && window.clientState.isReady);
+    if (window.clientState) {
+        window.clientState.isReady = nextState;
+    }
 
-    if (window.clientState) window.clientState.isReady = nextState;
-
-    const btn = document.getElementById('ready-btn');
+    const btn = document.getElementById('ready-btn') || document.getElementById('btn-ready');
     if (btn) {
         btn.innerText = nextState ? 'Unready' : 'Ready Up';
-        btn.style.background = nextState ? '#eab308' : '#15803d';
+        btn.classList.toggle('ready-active', nextState);
     }
 
     window.initSocketAndSend({
@@ -519,50 +416,16 @@ window.toggleReady = function() {
     });
 };
 
-window.clickNextHand = function() {
-    const btn = document.getElementById('next-hand-btn');
-    if (btn) {
-        btn.innerText = 'Waiting...';
-        btn.disabled = true;
-    }
-    window.initSocketAndSend({ type: 'NEXT_HAND_READY' });
-    window.initSocketAndSend({ type: 'NEXT_HAND' });
+window.addBot = function() {
+    window.initSocketAndSend({ type: 'ADD_BOT' });
 };
 
-window.drawCard = function(source) {
-    window.initSocketAndSend({
-        type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD'
-    });
+window.removeBot = function() {
+    window.initSocketAndSend({ type: 'REMOVE_BOT' });
 };
-
-window.drawFromDeck = function() { window.drawCard('deck'); };
-window.drawFromDiscard = function() { window.drawCard('discard'); };
-
-window.discardCard = function(cardIndex) {
-    window.initSocketAndSend({
-        type: 'DISCARD_CARD',
-        cardIndex: cardIndex,
-        index: cardIndex
-    });
-};
-
-window.knockRound = function() { window.initSocketAndSend({ type: 'KNOCK' }); };
-
-window.choosePoolCard = function(cardIndex) {
-    const idx = (typeof cardIndex === 'number') ? cardIndex : parseInt(cardIndex, 10);
-    if (isNaN(idx)) return;
-    window.initSocketAndSend({
-        type: 'CHOOSE_POOL_CARD',
-        cardIndex: idx,
-        index: idx,
-        slotIndex: idx
-    });
-};
-
-window.chooseTieCard = window.choosePoolCard;
 
 window.updateWager = function() {
-    const sel = document.getElementById('config-wager');
+    const sel = document.getElementById('config-wager') || document.getElementById('lobby-wager-select');
     if (sel) {
         window.initSocketAndSend({
             type: 'UPDATE_WAGER',
@@ -572,230 +435,203 @@ window.updateWager = function() {
 };
 
 window.updateSettings = function() {
-    const sel = document.getElementById('config-lives');
+    const sel = document.getElementById('config-lives') || document.getElementById('lobby-lives-select');
     if (sel) {
         window.initSocketAndSend({
             type: 'UPDATE_SETTINGS',
-            lives: parseInt(sel.value, 10) || 3
+            lives: parseInt(sel.value, 10) || 2
         });
     }
 };
 
-window.submitLivesVote = function(agree) {
-    window.initSocketAndSend({
-        type: 'VOTE_LIVES',
-        agree: Boolean(agree)
-    });
-    const modal = document.getElementById('lives-vote-modal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.addBot = function() { window.initSocketAndSend({ type: 'ADD_BOT' }); };
-window.removeBot = function() { window.initSocketAndSend({ type: 'REMOVE_BOT' }); };
-
 window.proposeEndGame = function() {
-    if (confirm("Propose ending the match and returning to waiting room?")) {
+    if (confirm("End current match and return to the waiting lobby?")) {
         window.initSocketAndSend({ type: 'END_GAME_PROPOSAL' });
     }
 };
 
+// -------------------------------------------------------------
+// 6. IN-GAME TURN & CARD ACTIONS
+// -------------------------------------------------------------
+window.drawFromDeck = function() {
+    window.initSocketAndSend({ type: 'DRAW_DECK' });
+};
+
+window.drawFromDiscard = function() {
+    window.initSocketAndSend({ type: 'DRAW_DISCARD' });
+};
+
+window.discardCard = function(cardIndex) {
+    window.initSocketAndSend({
+        type: 'DISCARD_CARD',
+        cardIndex: parseInt(cardIndex, 10) || 0
+    });
+};
+
+window.knockGame = function() {
+    window.initSocketAndSend({ type: 'KNOCK' });
+};
+
+window.selectPoolCard = function(poolIndex) {
+    if (window.appGlobals.hasChosenPoolCard) return;
+    window.appGlobals.hasChosenPoolCard = true;
+    window.initSocketAndSend({
+        type: 'CHOOSE_POOL_CARD',
+        poolIndex: parseInt(poolIndex, 10)
+    });
+};
+
+window.readyNextHand = function() {
+    const overlay = document.getElementById('next-hand-overlay');
+    if (overlay) overlay.style.display = 'none';
+    window.initSocketAndSend({ type: 'READY_NEXT_HAND' });
+};
+
+// -------------------------------------------------------------
+// 7. IN-GAME CHAT & PEEKER ACTIONS
+// -------------------------------------------------------------
 window.sendChatMessage = function() {
-    const input = document.getElementById('chat-input');
+    const input = document.getElementById('chat-input') || document.getElementById('chat-text-input');
     if (!input) return;
-    const text = input.value.trim();
-    if (text) {
-        window.initSocketAndSend({
-            type: 'CHAT_MESSAGE',
-            message: text,
-            text: text
-        });
-        input.value = '';
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    window.initSocketAndSend({
+        type: 'CHAT_MESSAGE',
+        message: msg
+    });
+
+    input.value = '';
+    input.focus();
+};
+
+window.requestPeek = function(targetPlayer) {
+    if (!targetPlayer) return;
+    window.initSocketAndSend({
+        type: 'REQUEST_PEEK',
+        target: targetPlayer
+    });
+};
+
+window.respondPeek = function(requesterPlayer, allow) {
+    if (!requesterPlayer) return;
+    window.initSocketAndSend({
+        type: 'RESPOND_PEEK',
+        requester: requesterPlayer,
+        allow: Boolean(allow)
+    });
+};
+
+// -------------------------------------------------------------
+// 8. SIDE BETS & TAB SWITCHING
+// -------------------------------------------------------------
+window.switchBetsTab = function(tab) {
+    const tabActive = document.getElementById('bets-tab-active');
+    const tabPropose = document.getElementById('bets-tab-propose');
+    const listActive = document.getElementById('active-bets-list');
+    const formPropose = document.getElementById('propose-bet-fields');
+
+    if (tab === 'active') {
+        if (tabActive) tabActive.classList.add('active');
+        if (tabPropose) tabPropose.classList.remove('active');
+        if (listActive) listActive.style.display = 'block';
+        if (formPropose) formPropose.style.display = 'none';
+    } else {
+        if (tabActive) tabActive.classList.remove('active');
+        if (tabPropose) tabPropose.classList.add('active');
+        if (listActive) listActive.style.display = 'none';
+        if (formPropose) formPropose.style.display = 'block';
     }
 };
 
-window.submitEliminationProposal = function(target, wagerAmt) {
-    window.initSocketAndSend({
-        type: 'PROPOSE_ELIMINATION_BET',
-        target,
-        wagerAmt: parseInt(wagerAmt, 10) || 5
-    });
-    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal', false);
+window.submitSideBetProposal = function() {
+    const targetSelect = document.getElementById('bet-target-player');
+    const wagerInput = document.getElementById('bet-wager-amount');
+    const typeSelect = document.getElementById('bet-type-select');
+
+    const target = targetSelect ? targetSelect.value : null;
+    const wagerAmt = wagerInput ? (parseInt(wagerInput.value, 10) || 5) : 5;
+    const betType = typeSelect ? typeSelect.value : 'first_to_lose';
+
+    if (!target) {
+        alert("Please select a target player.");
+        return;
+    }
+
+    if (betType === 'first_to_lose') {
+        window.initSocketAndSend({
+            type: 'PROPOSE_ELIMINATION_BET',
+            target: target,
+            wagerAmt: wagerAmt
+        });
+    } else {
+        window.initSocketAndSend({
+            type: 'PROPOSE_GLOBAL_SIDE_BET',
+            pickUser: target,
+            wagerAmt: wagerAmt,
+            betType: 'win',
+            condition: `Backing ${target} to win the game`
+        });
+    }
+
+    if (typeof window.closeActiveBetsModal === 'function') {
+        window.closeActiveBetsModal();
+    }
 };
 
-window.submitGlobalProposal = function(pickUser, wagerAmt) {
+window.respondBet = function(betId, accept) {
     window.initSocketAndSend({
-        type: 'PROPOSE_GLOBAL_SIDE_BET',
-        pickUser,
-        wagerAmt: parseInt(wagerAmt, 10) || 5
+        type: 'RESPOND_BET',
+        betId: betId,
+        accept: Boolean(accept)
     });
-    if (typeof window.toggleModal === 'function') window.toggleModal('bet-modal', false);
 };
 
 window.acceptGlobalProposal = function(proposalId) {
     window.initSocketAndSend({
         type: 'ACCEPT_GLOBAL_PROPOSAL',
-        proposalId,
-        betId: proposalId,
-        id: proposalId
+        proposalId: proposalId
     });
 };
 
-window.respondGlobalBet = function(proposalId, accept) {
-    window.initSocketAndSend({
-        type: 'RESPOND_GLOBAL_BET',
-        proposalId,
-        betId: proposalId,
-        id: proposalId,
-        accept: Boolean(accept),
-        confirm: Boolean(accept)
-    });
-};
-
-window.confirmGlobalBet = function(proposalId, acceptedUser, confirmChoice) {
+window.confirmGlobalBet = function(proposalId, confirmState, acceptedUser) {
     window.initSocketAndSend({
         type: 'CONFIRM_GLOBAL_BET',
-        proposalId,
-        betId: proposalId,
-        id: proposalId,
-        acceptedUser,
-        confirm: Boolean(confirmChoice),
-        accept: Boolean(confirmChoice)
+        proposalId: proposalId,
+        confirm: Boolean(confirmState),
+        acceptedUser: acceptedUser
     });
-    const modal = document.getElementById('bet-modal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.respondToBet = function(betId, accept) {
-    window.initSocketAndSend({
-        type: 'RESPOND_BET',
-        betId,
-        proposalId: betId,
-        id: betId,
-        accept: Boolean(accept),
-        confirm: Boolean(accept)
-    });
-    const modal = document.getElementById('bet-modal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.clearDebtCategory = function(targetUser, category) {
-    window.initSocketAndSend({
-        type: 'CLEAR_DEBT',
-        debtor: targetUser,
-        creditor: (window.clientState?.username || 'Player1'),
-        ledgerType: category
-    });
-};
-
-window.requestPeekAction = function(targetUsername) {
-    window.initSocketAndSend({ type: 'REQUEST_PEEK', targetUsername });
-};
-
-window.respondPeekAction = function(spectatorUsername, allow) {
-    window.initSocketAndSend({ type: 'RESPOND_PEEK', spectatorUsername, allow: Boolean(allow) });
-};
-
-window.stopPeekingAction = function() {
-    window.initSocketAndSend({ type: 'STOP_PEEK' });
-    const banner = document.getElementById('active-peeking-banner');
-    if (banner) banner.style.display = 'none';
-};
-
-window.kickPeekerAction = function(spectatorUsername) {
-    window.initSocketAndSend({ type: 'KICK_PEEKER', spectatorUsername });
 };
 
 // -------------------------------------------------------------
-// 5. UNIVERSAL DOM BUTTON ATTACHMENT & LEDGER BRIDGING
+// 9. BACKGROUND RESILIENCE & WAKE RECOVERY
 // -------------------------------------------------------------
-function bindAllMenuAndLedgerButtons() {
-    document.querySelectorAll('form').forEach(f => {
-        f.onsubmit = (e) => { e.preventDefault(); };
-    });
-
-    ['create-lobby-btn', 'create-table-btn', 'create-btn'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.onclick = (e) => { e.preventDefault(); window.createLobby(); };
-    });
-
-    ['join-lobby-btn', 'join-table-btn', 'join-btn'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.onclick = (e) => { e.preventDefault(); window.joinLobby(); };
-    });
-
-    ['refresh-lobbies-btn', 'refresh-btn'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.onclick = (e) => { e.preventDefault(); window.refreshLobbies(); };
-    });
-
-    ['ledger-btn', 'open-ledger-btn', 'session-ledger-btn', 'in-game-ledger-btn'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.onclick = (e) => { e.preventDefault(); window.toggleLedgerModal(); };
-    });
-}
-
-// Universal Ledger Opener Bridge
-window.toggleLedgerModal = window.openLedgerModal = window.toggleSessionLedger = function(forceState) {
-    const modal = document.getElementById('session-ledger-modal') || 
-                  document.getElementById('ledger-modal') || 
-                  document.getElementById('lifetime-ledger-modal');
-    if (!modal) {
-        alert("Ledger modal not found in DOM.");
-        return;
-    }
-    const isVisible = modal.style.display === 'flex' || modal.style.display === 'block';
-    const nextState = typeof forceState === 'boolean' ? forceState : !isVisible;
-
-    modal.style.display = nextState ? 'flex' : 'none';
-
-    if (nextState) {
-        window.initSocketAndSend({ type: 'GET_LIFETIME_LEDGER' });
-        if (typeof window.renderSessionLedger === 'function') {
-            window.renderSessionLedger();
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+        const ws = window.appGlobals.ws;
+        if ((!ws || ws.readyState !== WebSocket.OPEN) && activeRoom) {
+            window.connectSocket();
         }
     }
-};
-
-// -------------------------------------------------------------
-// 6. MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
-// -------------------------------------------------------------
-function resyncActiveSession() {
-    const authScreen = document.getElementById('auth-screen');
-    if (authScreen && authScreen.style.display !== 'none') {
-        return;
-    }
-
-    const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    const myName = (document.getElementById('username-input')?.value || 
-                    window.clientState?.username || 
-                    localStorage.getItem('saved_username') || 
-                    'Player1').trim();
-    const ws = window.appGlobals.ws;
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        window.connectSocket();
-    } else if (activeRoom) {
-        ws.send(JSON.stringify({
-            type: 'JOIN_LOBBY',
-            code: activeRoom.toUpperCase(),
-            username: myName
-        }));
-    }
-}
-
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) resyncActiveSession();
 });
 
-window.addEventListener('pageshow', () => {
-    resyncActiveSession();
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+        const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+        if (activeRoom) {
+            window.connectSocket();
+        }
+    }
 });
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bindAllMenuAndLedgerButtons);
-} else {
-    bindAllMenuAndLedgerButtons();
-}
+document.addEventListener('DOMContentLoaded', () => {
+    window.restoreSavedInputs();
+    window.connectSocket();
+});
 
-window.restoreSavedInputs();
-window.connectSocket();
+// UI & HTML compatibility aliases
+window.setReady = window.toggleReady;
+window.handleSitDown = window.sitDown;
+window.handleStandUp = window.standUp;
+window.handleLeaveLobby = window.leaveLobby;
