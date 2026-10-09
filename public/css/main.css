@@ -1,11 +1,12 @@
-/* public/css/main.css - Restored Dark Slate/Gold Theme & Viewport Modal Layering */
+/* public/css/main.css - Complete Casino Theme, Controls & HUD (PART 1 OF 2) */
 
 :root {
   --bg-dark: #070b12;
   --bg-surface: #0f172a;
-  --bg-panel: rgba(15, 23, 42, 0.94);
+  --bg-panel: rgba(15, 23, 42, 0.95);
+  --bg-card: #1e293b;
   --accent-gold: #d4af37;
-  --accent-gold-light: #f59e0b;
+  --accent-gold-hover: #f59e0b;
   --accent-cyan: #38bdf8;
   --accent-green: #10b981;
   --danger-red: #ef4444;
@@ -14,6 +15,7 @@
   --border-subtle: rgba(255, 255, 255, 0.12);
   --border-gold: rgba(212, 175, 55, 0.45);
   --shadow-hud: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 10px 30px rgba(0, 0, 0, 0.85);
 }
 
 * {
@@ -35,111 +37,150 @@ html, body {
 }
 
 /* -------------------------------------------------------------
-   1. MODAL OVERLAYS (ENSURES ALL MODALS RENDER FRONT & CENTER)
+   1. GLOBAL BUTTONS & FORM CONTROLS
    ------------------------------------------------------------- */
-.modal-overlay,
-#dealer-draw-modal,
-#pool-draw-modal,
-#tie-breaker-reveal-modal,
-#settings-modal,
-#spectators-modal,
-#active-bets-modal,
-#seat-action-modal,
-#bet-modal,
-#lives-vote-modal,
-#peek-request-modal,
-#session-ledger-modal {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  background: rgba(0, 0, 0, 0.78) !important;
-  z-index: 10000 !important;
-  display: none;
+button {
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-gold);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  gap: 5px;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  background: #334155;
+  border-color: var(--accent-gold-hover);
+  filter: brightness(1.1);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+button.secondary {
+  background: rgba(30, 41, 59, 0.65);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: #334155;
+  color: var(--text-main);
+}
+
+button.danger {
+  background: #991b1b;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select {
+  background: #0f172a;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+select:focus {
+  border-color: var(--accent-gold);
 }
 
 /* -------------------------------------------------------------
-   2. NOTIFICATION BANNER & TOP IN-GAME FEED MODALS
+   2. AUTH & MAIN MENU SCREENS
    ------------------------------------------------------------- */
-#center-notification-banner,
-#notification-banner,
-#center-notification {
-  position: fixed !important;
-  top: 68px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999 !important;
-  background: rgba(15, 23, 42, 0.96);
-  border: 1.5px solid var(--accent-gold);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85);
-  color: var(--text-main);
-  padding: 7px 18px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-align: center;
-  pointer-events: none;
-  display: none;
-}
-
-/* Discard Pickup Top-Left Feed */
-#discard-pickup-topleft-modal,
-#discard-pickup-modal {
-  position: fixed !important;
-  top: 68px;
-  left: 10px;
-  z-index: 9995 !important;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid var(--border-gold);
-  border-radius: 8px;
-  padding: 4px 8px;
-  box-shadow: var(--shadow-hud);
-  display: none;
+#auth-screen,
+#main-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  background: radial-gradient(circle at center, #111827 0%, #070b12 100%);
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  pointer-events: none;
+  justify-content: center;
+  padding: 16px;
 }
 
-#discard-pickup-card-content {
+.menu-card,
+.auth-card {
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border-gold);
+  border-radius: 12px;
+  padding: 22px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.menu-card h2,
+.auth-card h2 {
+  font-size: 1.3rem;
+  color: var(--accent-gold);
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+#lobby-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.lobby-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.75rem;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-/* Fed Card Reminder Top-Right Feed */
-#fed-card-topright-modal,
-#fed-card-modal {
-  position: fixed !important;
-  top: 68px;
-  right: 10px;
-  z-index: 9995 !important;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(239, 68, 68, 0.6);
-  border-radius: 8px;
-  padding: 4px 8px;
-  box-shadow: var(--shadow-hud);
-  display: none;
-  align-items: center;
-  gap: 6px;
-  pointer-events: none;
-}
-
-#fed-card-label {
-  font-size: 0.7rem;
-  color: #f87171;
-  font-weight: 600;
+.lobby-item:hover {
+  background: rgba(212, 175, 55, 0.15);
 }
 
 /* -------------------------------------------------------------
-   3. IN-GAME HEADER & HUD ROW
+   3. IN-GAME HUD & DOUBLE-ROW HEADER
    ------------------------------------------------------------- */
 #game-view {
   width: 100vw;
@@ -155,7 +196,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   background: rgba(11, 15, 25, 0.95);
   border-bottom: 1px solid var(--border-subtle);
   z-index: 500;
@@ -178,6 +219,20 @@ html, body {
   letter-spacing: 0.5px;
 }
 
+.hud-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#lobby-config-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 #active-peeking-banner {
   display: none;
   align-items: center;
@@ -189,9 +244,323 @@ html, body {
   font-size: 0.75rem;
   color: #93c5fd;
 }
+/* public/css/main.css - Complete Casino Theme, Modals, Cards & Feeds (PART 2 OF 2) */
 
 /* -------------------------------------------------------------
-   4. DOCKED GLOBAL PROPOSALS & SIDEBAR
+   4. MODAL OVERLAYS & DIALOG CONTAINERS
+   ------------------------------------------------------------- */
+.modal-overlay,
+#dealer-draw-modal,
+#pool-draw-modal,
+#tie-breaker-reveal-modal,
+#settings-modal,
+#spectators-modal,
+#active-bets-modal,
+#seat-action-modal,
+#bet-modal,
+#lives-vote-modal,
+#peek-request-modal,
+#session-ledger-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.78) !important;
+  z-index: 10000 !important;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-content,
+.modal-box,
+.dealer-draw-container,
+.pool-draw-box {
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border-gold);
+  border-radius: 12px;
+  padding: 16px 20px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text-main);
+  animation: modalScaleIn 0.18s ease-out;
+}
+
+.modal-content h3,
+.modal-box h3,
+#dealer-draw-title,
+#pool-modal-title,
+#bet-modal-title {
+  color: var(--accent-gold);
+  font-size: 1.15rem;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+/* -------------------------------------------------------------
+   5. DEALER DRAW & TIE-BREAKER MODAL LAYOUTS
+   ------------------------------------------------------------- */
+#dealer-draw-modal .modal-content,
+#tie-breaker-reveal-modal .modal-content {
+  max-width: 480px;
+  background: rgba(10, 16, 26, 0.98);
+}
+
+#dealer-draw-status,
+#pool-modal-instruction,
+#tie-breaker-stream-msg {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.draw-showcase-sidebar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.draw-showcase-item {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-gold);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 95px;
+}
+
+.draw-picker-badge {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--accent-gold);
+}
+
+.draw-card-waiting {
+  width: 45px;
+  height: 64px;
+  border: 1.5px dashed var(--text-muted);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+#draw-pool-grid,
+.pool-52-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+  max-width: 100%;
+  justify-content: center;
+  margin: 6px 0;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.pool-card-item {
+  aspect-ratio: 2.4 / 3.4;
+  background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  color: #93c5fd;
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.pool-card-item:hover:not(.taken) {
+  transform: scale(1.08);
+  border-color: var(--accent-gold);
+  color: #fff;
+  z-index: 2;
+}
+
+.pool-card-item.taken {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: #10b981;
+  color: #10b981;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+/* -------------------------------------------------------------
+   6. NOTIFICATION BANNERS, KNOCK ALERT & TOP FEEDS
+   ------------------------------------------------------------- */
+#center-notification-banner,
+#notification-banner,
+#center-notification {
+  position: fixed !important;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999 !important;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1.5px solid var(--accent-gold);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85);
+  color: var(--text-main);
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+  display: none;
+  animation: fadeInDown 0.2s ease-out;
+}
+
+#knock-alert-modal {
+  position: fixed !important;
+  top: 104px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999 !important;
+  background: rgba(185, 28, 28, 0.95);
+  border: 1.5px solid #ef4444;
+  color: #fff;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 4px 18px rgba(239, 68, 68, 0.5);
+  display: none;
+  animation: pulseKnock 1s infinite alternate;
+}
+
+#discard-pickup-topleft-modal,
+#discard-pickup-modal {
+  position: fixed !important;
+  top: 68px;
+  left: 10px;
+  z-index: 9995 !important;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid var(--border-gold);
+  border-radius: 8px;
+  padding: 4px 8px;
+  box-shadow: var(--shadow-hud);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+#discard-pickup-card-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+#fed-card-topright-modal,
+#fed-card-modal {
+  position: fixed !important;
+  top: 68px;
+  right: 10px;
+  z-index: 9995 !important;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  border-radius: 8px;
+  padding: 4px 8px;
+  box-shadow: var(--shadow-hud);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+#fed-card-label {
+  font-size: 0.7rem;
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------
+   7. PLAYING CARDS & MINI CARD RENDERING
+   ------------------------------------------------------------- */
+.playing-card {
+  width: 58px;
+  height: 84px;
+  background: #ffffff;
+  border-radius: 6px;
+  position: relative;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.playing-card.red-suit,
+.mini-card.red-suit {
+  color: #dc2626;
+}
+
+.playing-card.black-suit,
+.mini-card.black-suit {
+  color: #0f172a;
+}
+
+.card-corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  font-size: 0.68rem;
+}
+
+.card-corner.top-left {
+  top: 3px;
+  left: 4px;
+}
+
+.card-corner.bottom-right {
+  bottom: 3px;
+  right: 4px;
+  transform: rotate(180deg);
+}
+
+.card-center-pip {
+  font-size: 1.35rem;
+}
+
+.mini-card {
+  background: #ffffff;
+  border-radius: 4px;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* -------------------------------------------------------------
+   8. DOCKED SIDE BET TOASTS & SIDEBAR
    ------------------------------------------------------------- */
 #global-proposals-container,
 #pending-bets-banner {
@@ -224,7 +593,7 @@ html, body {
   top: 120px;
   right: 8px;
   z-index: 5000;
-  width: 220px;
+  width: 210px;
   max-height: 45vh;
   background: rgba(15, 23, 42, 0.95);
   border: 1px solid var(--border-gold);
@@ -254,7 +623,7 @@ html, body {
 }
 
 /* -------------------------------------------------------------
-   5. CHAT DRAWER
+   9. IN-GAME CHAT WINDOW & ANIMATIONS
    ------------------------------------------------------------- */
 #chat-window {
   position: fixed;
@@ -304,6 +673,33 @@ html, body {
   border-color: #fbbf24 !important;
 }
 
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes pulseKnock {
+  0% { transform: translate(-50%, 0) scale(1); }
+  100% { transform: translate(-50%, 0) scale(1.04); }
+}
+
 @media (max-width: 600px) {
   #chat-window {
     width: 90vw;
@@ -312,6 +708,6 @@ html, body {
     height: 220px;
   }
   #global-side-bets-sidebar {
-    width: 180px;
+    width: 175px;
   }
 }
