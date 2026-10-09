@@ -318,7 +318,7 @@
     display: grid !important;
     grid-template-columns: repeat(11, 1fr) !important;
     grid-template-rows: repeat(5, auto) !important;
-    gap: 2px 2px !important; /* Tight gaps between rows and cards */
+    gap: 2px 2px !important;
     width: 100% !important;
     max-width: 460px !important;
     margin: 2px auto 0 auto !important;
