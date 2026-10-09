@@ -1,4 +1,4 @@
-// server/game/wsHandler.js
+// server/game/wsHandler.js - WebSocket Event Relay & Gameplay Actions (PART 1 OF 2)
 const WebSocket = require('ws');
 const {
     lobbies,
@@ -538,37 +538,42 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             }
             break;
         }
+// server/game/wsHandler.js - PART 2 OF 2
 
         case 'PROPOSE_ELIMINATION_BET': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
+                const wagerAmt = Math.max(1, parseInt(data.wagerAmt, 10) || 5);
                 const targetPlayer = lobby.players.find(p => p.username === data.target);
 
                 if (targetPlayer && targetPlayer.isBot) {
                     if (!lobby.activeBets) lobby.activeBets = [];
                     lobby.activeBets.push({
-                        id: `bet_${Date.now()}_${Math.random()}`,
+                        id: `bet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                         type: 'eliminate',
                         proposer: currentUsername,
+                        bettor: currentUsername,
                         target: data.target,
                         pickUser: data.target,
                         targetSurvivor: currentUsername,
                         wagerAmt,
-                        isBotBet: true
+                        isBotBet: true,
+                        createdAt: Date.now()
                     });
                     lobby.phaseMessage = `🤝 Bot Bet Accepted! ${targetPlayer.username} accepted ${currentUsername}'s $${wagerAmt} bet!`;
                 } else {
                     if (!lobby.pendingBets) lobby.pendingBets = [];
                     lobby.pendingBets.push({
-                        id: `bet_${Date.now()}_${Math.random()}`,
+                        id: `bet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                         type: 'eliminate',
                         proposer: currentUsername,
+                        bettor: currentUsername,
                         target: data.target,
                         pickUser: data.target,
                         targetSurvivor: currentUsername,
-                        wagerAmt
+                        wagerAmt,
+                        createdAt: Date.now()
                     });
                 }
                 broadcastLobbyUpdate(currentLobbyCode);
@@ -581,17 +586,18 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const wagerAmt = parseInt(data.wagerAmt, 10) || 5;
+                const wagerAmt = Math.max(1, parseInt(data.wagerAmt, 10) || 5);
                 const newProp = {
                     id: data.id || `prop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                     proposer: currentUsername,
                     creator: currentUsername,
                     pickUser: data.pickUser || currentUsername,
-                    condition: data.condition || 'Win the Match',
+                    condition: data.condition || `I like ${data.pickUser || currentUsername} to win`,
                     betType: data.betType || 'win',
                     wagerAmt,
                     acceptedBy: [],
-                    deniedBy: []
+                    deniedBy: [currentUsername], // Creator cannot accept their own bet
+                    createdAt: Date.now()
                 };
                 if (!lobby.globalProposals) lobby.globalProposals = [];
                 lobby.globalProposals.push(newProp);
@@ -625,29 +631,44 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 const propId = data.proposalId || data.betId || data.id;
                 const pIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === propId);
+
                 if (pIdx !== -1) {
                     const prop = lobby.globalProposals[pIdx];
                     const proposerName = prop.proposer || prop.creator;
                     const isProposer = (proposerName === currentUsername);
                     const isAccept = data.confirm !== undefined ? !!data.confirm : (data.accept !== undefined ? !!data.accept : true);
 
+                    const partnerUser = isProposer
+                        ? (data.acceptedUser || data.target || data.username || (prop.acceptedBy && prop.acceptedBy[0]))
+                        : currentUsername;
+
+                    if (!lobby.activeBets) lobby.activeBets = [];
+
+                    // Prevent duplicate bet records between the identical pair for this proposal
+                    const alreadyExists = lobby.activeBets.some(b =>
+                        b.proposalId === prop.id &&
+                        ((b.proposer === proposerName && b.target === partnerUser) ||
+                         (b.target === proposerName && b.proposer === partnerUser))
+                    );
+
+                    if (isAccept && partnerUser && partnerUser !== proposerName && !alreadyExists) {
+                        lobby.activeBets.push({
+                            id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                            proposalId: prop.id,
+                            type: prop.betType || 'win',
+                            proposer: proposerName,
+                            bettor: proposerName,
+                            target: partnerUser,
+                            pickUser: prop.pickUser || proposerName,
+                            wagerAmt: Number(prop.wagerAmt) || 5,
+                            condition: prop.condition || 'Win the Match',
+                            createdAt: Date.now()
+                        });
+                    }
+
                     if (isProposer) {
-                        const accUser = data.acceptedUser || data.target || data.username || (prop.acceptedBy && prop.acceptedBy[0]);
-                        if (accUser) {
-                            prop.acceptedBy = (prop.acceptedBy || []).filter(u => u !== accUser);
-                            if (isAccept) {
-                                if (!lobby.activeBets) lobby.activeBets = [];
-                                lobby.activeBets.push({
-                                    id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                                    type: prop.betType || 'win',
-                                    proposer: proposerName,
-                                    bettor: proposerName,
-                                    target: accUser,
-                                    pickUser: prop.pickUser || proposerName,
-                                    wagerAmt: prop.wagerAmt || 5,
-                                    condition: prop.condition || 'Win the Match'
-                                });
-                            }
+                        if (partnerUser) {
+                            prop.acceptedBy = (prop.acceptedBy || []).filter(u => u !== partnerUser);
                         }
                         if (!prop.acceptedBy || prop.acceptedBy.length === 0) {
                             lobby.globalProposals.splice(pIdx, 1);
@@ -657,30 +678,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         if (!prop.acceptedBy) prop.acceptedBy = [];
 
                         if (isAccept) {
-                            if (!prop.acceptedBy.includes(currentUsername)) {
-                                prop.acceptedBy.push(currentUsername);
-                            }
-                            if (!lobby.activeBets) lobby.activeBets = [];
-                            const alreadyActive = lobby.activeBets.some(b => 
-                                (b.proposer === proposerName && b.target === currentUsername) ||
-                                (b.bettor === proposerName && b.target === currentUsername)
-                            );
-                            if (!alreadyActive) {
-                                lobby.activeBets.push({
-                                    id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                                    type: prop.betType || 'win',
-                                    proposer: proposerName,
-                                    bettor: proposerName,
-                                    target: currentUsername,
-                                    pickUser: prop.pickUser || proposerName,
-                                    wagerAmt: prop.wagerAmt || 5,
-                                    condition: prop.condition || 'Win the Match'
-                                });
-                            }
+                            if (!prop.acceptedBy.includes(currentUsername)) prop.acceptedBy.push(currentUsername);
                         } else {
-                            if (!prop.deniedBy.includes(currentUsername)) {
-                                prop.deniedBy.push(currentUsername);
-                            }
+                            if (!prop.deniedBy.includes(currentUsername)) prop.deniedBy.push(currentUsername);
                             prop.acceptedBy = prop.acceptedBy.filter(u => u !== currentUsername);
                         }
 
@@ -701,9 +701,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 const betId = data.betId || data.proposalId || data.id;
-                const bIdx = (lobby.pendingBets || []).findIndex(b => b.id === betId);
                 const isAccept = data.accept !== undefined ? !!data.accept : !!data.confirm;
 
+                const bIdx = (lobby.pendingBets || []).findIndex(b => b.id === betId);
                 if (bIdx !== -1) {
                     const bet = lobby.pendingBets.splice(bIdx, 1)[0];
                     if (isAccept) {
@@ -716,23 +716,34 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     if (gpIdx !== -1) {
                         const prop = lobby.globalProposals[gpIdx];
                         const proposerName = prop.proposer || prop.creator;
-                        if (isAccept) {
+                        if (!lobby.activeBets) lobby.activeBets = [];
+
+                        const alreadyExists = lobby.activeBets.some(b =>
+                            b.proposalId === prop.id &&
+                            ((b.proposer === proposerName && b.target === currentUsername) ||
+                             (b.target === proposerName && b.proposer === currentUsername))
+                        );
+
+                        if (isAccept && !alreadyExists) {
                             if (!prop.acceptedBy) prop.acceptedBy = [];
                             if (!prop.acceptedBy.includes(currentUsername)) prop.acceptedBy.push(currentUsername);
-                            if (!lobby.activeBets) lobby.activeBets = [];
+
                             lobby.activeBets.push({
                                 id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                                proposalId: prop.id,
                                 type: prop.betType || 'win',
                                 proposer: proposerName,
                                 bettor: proposerName,
                                 target: currentUsername,
                                 pickUser: prop.pickUser || proposerName,
-                                wagerAmt: prop.wagerAmt || 5,
-                                condition: prop.condition || 'Win the Match'
+                                wagerAmt: Number(prop.wagerAmt) || 5,
+                                condition: prop.condition || 'Win the Match',
+                                createdAt: Date.now()
                             });
-                        } else {
+                        } else if (!isAccept) {
                             if (!prop.deniedBy) prop.deniedBy = [];
                             if (!prop.deniedBy.includes(currentUsername)) prop.deniedBy.push(currentUsername);
+                            if (prop.acceptedBy) prop.acceptedBy = prop.acceptedBy.filter(u => u !== currentUsername);
                         }
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
