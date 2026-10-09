@@ -1,355 +1,259 @@
-/* public/css/table.css - Casino Felt Oval, Authentic Playing Cards & Face-Down Lattice Deck */
+/* =============================================================
+   BLITZ 31 - CASINO FELT TABLE & SEATING STYLES
+   ============================================================= */
 
-/* High-Contrast Suit Colors */
-.red-suit { color: #e11d48 !important; }  /* Vivid Crimson Red */
-.black-suit { color: #0f172a !important; } /* Deep Slate Jet Black */
-
-/* ==========================================================================
-   Table Oval
-   ========================================================================== */
-.table-oval {
-    width: 95%;
-    max-width: 650px;
-    height: clamp(210px, 38vh, 290px);
-    min-height: 210px;
-    background: radial-gradient(ellipse at center, #065f46 0%, #044e36 60%, #022c1e 100%);
-    border: 8px solid #5c3a21;
-    border-radius: 180px;
+.table-outer-wrapper {
+    flex: 1;
     position: relative;
-    margin: 26px auto 6px auto;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), inset 0 0 25px rgba(0, 0, 0, 0.6);
-    flex-shrink: 0;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px;
+    box-sizing: border-box;
 }
 
-#game-view {
-    padding-top: 4px;
-    overflow-y: hidden;
-    height: 100%;
-    width: 100%;
+/* OVAL TABLE FELT */
+.casino-felt-table,
+#table-oval-container {
+    position: relative;
+    width: 95%;
+    max-width: 680px;
+    height: 90%;
+    max-height: 380px;
+    min-height: 290px;
+    background: radial-gradient(ellipse at center, #14532d 0%, #0c381f 65%, #051d10 100%);
+    border: 10px solid #3d2314; /* Deep mahogany wood rail */
+    outline: 2px solid rgba(212, 175, 55, 0.5); /* Gold rim accent */
+    border-radius: 170px;
+    box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.85), 0 10px 30px rgba(0, 0, 0, 0.8);
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
     align-items: center;
+    justify-content: center;
+    user-select: none;
+    box-sizing: border-box;
 }
 
-.pots-container {
+/* CENTER TABLE (Deck & Discard Piles) */
+.table-center-area {
     position: absolute;
-    top: 18%;
-    left: 50%;
-    transform: translateX(-50%);
     display: flex;
-    flex-direction: column;
-    gap: 3px;
     align-items: center;
-    pointer-events: none;
+    justify-content: center;
+    gap: 16px;
     z-index: 10;
 }
 
-.pot-total-display {
-    background: rgba(15, 23, 42, 0.85);
-    border: 1.5px solid var(--accent-gold);
-    color: var(--accent-gold);
-    font-size: 0.75rem;
-    font-weight: 800;
-    padding: 2px 10px;
-    border-radius: 12px;
-    white-space: nowrap;
-}
-
-.side-pot-total-display {
-    background: rgba(4, 78, 54, 0.9);
-    border: 1px solid var(--accent-cyan);
-    color: var(--accent-cyan);
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 1px 8px;
-    border-radius: 10px;
-    white-space: nowrap;
-}
-
-/* ==========================================================================
-   Center Table Deck & Discard Center
-   ========================================================================== */
-.deck-center {
-    position: absolute;
-    top: 55%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    gap: 14px;
-    align-items: center;
-    justify-content: center;
-    z-index: 20;
-}
-
-/* Base Authentic Playing Card */
-.playing-card, .card-slot, .my-card {
-    width: 64px;
-    height: 92px;
-    background: #ffffff;
-    border-radius: 7px;
-    border: 1px solid #cbd5e1;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45), inset 0 0 1px rgba(0, 0, 0, 0.15);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 4px 5px;
-    cursor: pointer;
-    user-select: none;
-    touch-action: manipulation;
-    box-sizing: border-box;
-    flex-shrink: 0;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.playing-card:active, .my-card:active {
-    transform: translateY(-8px) scale(1.04);
-}
-
-/* Dual Corner Indices */
-.card-corner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    line-height: 1;
-    font-weight: 900;
-    pointer-events: none;
-}
-
-.card-corner .corner-val {
-    font-size: 0.88rem;
-    letter-spacing: -0.5px;
-}
-
-.card-corner .corner-suit {
-    font-size: 0.78rem;
-    margin-top: 1px;
-}
-
-.card-corner.bottom-right {
-    align-self: flex-end;
-    transform: rotate(180deg);
-}
-
-/* Large Center Suit Pip */
-.card-center-pip {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 2.1rem;
-    line-height: 1;
-    pointer-events: none;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
-}
-
-/* Casino Diamond Lattice Card Back */
-.card-slot.back {
-    background: #ffffff !important;
-    padding: 3px !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-}
-
-.card-slot.back .card-back-inner {
-    width: 100%;
-    height: 100%;
-    border-radius: 4px;
-    border: 1.5px solid #ffffff;
-    background-color: #1e3a8a;
-    background-image: 
-        radial-gradient(#3b82f6 15%, transparent 16%), 
-        radial-gradient(#3b82f6 15%, transparent 16%);
-    background-size: 8px 8px;
-    background-position: 0 0, 4px 4px;
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-.deck-counter-badge {
-    position: absolute;
-    bottom: -16px;
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid #93c5fd;
-    color: #bfdbfe;
-    font-size: 0.58rem;
-    font-weight: 800;
-    padding: 1px 6px;
-    border-radius: 10px;
-    letter-spacing: 0.5px;
-    pointer-events: none;
-    white-space: nowrap;
-}
-
-.card-slot.empty-slot {
-    background: rgba(2, 44, 30, 0.4);
-    border: 2px dashed rgba(250, 204, 21, 0.4);
-    color: rgba(250, 204, 21, 0.6);
-    font-size: 0.72rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* ==========================================================================
-   Mini Seat Cards
-   ========================================================================== */
-.mini-card {
-    width: 28px;
-    height: 40px;
-    background: #ffffff;
-    border-radius: 4px;
-    border: 1.5px solid rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 3px;
-    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
-    flex-shrink: 0;
-}
-
-.mini-card .mini-val {
-    font-size: 0.62rem;
-    font-weight: 900;
-    line-height: 1;
-    align-self: flex-start;
-}
-
-.mini-card .mini-suit {
-    font-size: 1.1rem;
-    line-height: 1;
-    margin-top: -2px;
-}
-
-/* ==========================================================================
-   Seat Geometry
-   ========================================================================== */
-.seat {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    z-index: 30;
-    user-select: none;
-}
-
-.seat-name-area {
-    background: rgba(15, 23, 42, 0.88);
-    border: 1px solid rgba(250, 204, 21, 0.35);
+.card-deck,
+.card-discard,
+.deck-pile,
+.discard-pile {
+    width: 52px;
+    height: 74px;
     border-radius: 6px;
-    padding: 3px 6px;
-    font-size: 0.65rem;
-    color: var(--text-main);
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
-    max-width: 120px;
-    line-height: 1.2;
+    position: relative;
+    transition: transform 0.15s ease;
 }
 
-.current-turn-seat .seat-name-area {
-    border-color: var(--accent-gold);
-    box-shadow: 0 0 12px rgba(250, 204, 21, 0.85);
+.card-deck:active,
+.card-discard:active {
+    transform: scale(0.96);
 }
 
-.dealer-badge {
+.card-deck {
+    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+    border: 2px solid #93c5fd;
+    color: #e2e8f0;
+}
+
+.card-back-pattern {
+    font-size: 1.8rem;
+    line-height: 1;
+}
+
+.card-discard {
+    background: #ffffff;
+    border: 2px solid #d4af37;
     color: #0f172a;
-    background: var(--accent-gold);
-    font-weight: 900;
-    border-radius: 50%;
-    padding: 0 4px;
-    font-size: 0.6rem;
-    margin-left: 2px;
-    display: inline-block;
 }
 
-.seat-cards {
-    display: flex;
-    gap: 3px;
-    margin-top: 2px;
-}
-
-.seat-0 { bottom: -14px; left: 50%; transform: translateX(-50%); }
-.seat-1 { bottom: 18%; left: 3%; }
-.seat-2 { top: 10%; left: 6%; }
-.seat-3 { top: -14px; left: 50%; transform: translateX(-50%); }
-.seat-4 { top: 10%; right: 6%; }
-.seat-5 { bottom: 18%; right: 3%; }
-
-/* Next Hand Button */
-#next-hand-overlay {
-    display: none;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 600;
-    pointer-events: auto;
-}
-
-#next-hand-btn {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: #ffffff;
+.card-placeholder {
+    font-size: 0.68rem;
     font-weight: 800;
-    font-size: 0.95rem;
-    padding: 12px 20px;
-    border-radius: 10px;
-    border: 2px solid var(--accent-gold);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
-    cursor: pointer;
+    color: #64748b;
+    text-transform: uppercase;
 }
 
-#next-hand-btn:disabled {
-    background: #475569;
-    border-color: #64748b;
-    color: #cbd5e1;
-    cursor: not-allowed;
+.pile-label {
+    position: absolute;
+    bottom: -16px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--accent-gold, #d4af37);
+    letter-spacing: 0.5px;
 }
 
-/* My Hand Area Dock */
-.my-hand-area {
-    width: 100%;
-    max-width: 650px;
-    background: rgba(2, 44, 30, 0.95);
-    border-top: 2px solid rgba(250, 204, 21, 0.3);
-    padding-top: 6px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-bottom: max(22px, calc(10px + env(safe-area-inset-bottom)));
+/* =============================================================
+   SEAT POSITIONS AROUND THE OVAL
+   ============================================================= */
+.player-seat,
+.seat {
+    position: absolute;
+    width: 92px;
+    background: rgba(4, 20, 13, 0.9);
+    border: 1.5px solid rgba(212, 175, 55, 0.45);
+    border-radius: 8px;
+    padding: 4px 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    margin-top: auto;
-    z-index: 500;
-    flex-shrink: 0;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+    z-index: 20;
+    transition: all 0.2s ease;
 }
 
-.cards-flex {
+.player-seat:hover {
+    border-color: var(--accent-gold-bright, #f6e05e);
+    background: rgba(10, 35, 23, 0.98);
+}
+
+.seat-pos-0 {
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.seat-pos-1 {
+    bottom: 22%;
+    left: 8px;
+}
+
+.seat-pos-2 {
+    top: 22%;
+    left: 8px;
+}
+
+.seat-pos-3 {
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.seat-pos-4 {
+    top: 22%;
+    right: 8px;
+}
+
+.seat-pos-5 {
+    bottom: 22%;
+    right: 8px;
+}
+
+/* SEAT CONTENT BADGES */
+.seat-avatar {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.seat-info {
     display: flex;
-    gap: 10px;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    margin: 3px 0;
-    max-width: 100%;
+    text-align: center;
+    width: 100%;
 }
 
-.bottom-action-bar {
+.seat-player-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #f8fafc;
+    max-width: 82px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.seat-lives {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: var(--accent-gold, #d4af37);
+}
+
+.seat-status-badge {
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+}
+
+.seat.ready .seat-status-badge {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.seat.current-turn {
+    border-color: #f6e05e !important;
+    box-shadow: 0 0 14px rgba(246, 224, 94, 0.8) !important;
+}
+
+/* DEALER CHIP MARKER */
+.dealer-chip {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #d4af37;
+    color: #061c11;
+    font-size: 0.65rem;
+    font-weight: 900;
     display: flex;
-    gap: 6px;
-    width: 100%;
+    align-items: center;
     justify-content: center;
-    flex-wrap: wrap;
+    border: 1px solid #ffffff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+
+/* RESPONSIVE SCALING FOR MOBILE */
+@media (max-width: 480px) {
+    .casino-felt-table,
+    #table-oval-container {
+        width: 98%;
+        height: 94%;
+        min-height: 270px;
+        border-width: 8px;
+        border-radius: 140px;
+    }
+
+    .player-seat,
+    .seat {
+        width: 78px;
+        padding: 3px 4px;
+    }
+
+    .seat-player-name {
+        font-size: 0.66rem;
+        max-width: 70px;
+    }
+
+    .card-deck,
+    .card-discard {
+        width: 44px;
+        height: 64px;
+    }
 }
