@@ -1,10 +1,9 @@
-// public/js/ledger.js - PART 1 OF 2
-// Session & Lifetime Ledger Management Engine
+// public/js/ledger.js - Session & Lifetime Ledger Management Engine (PART 1 OF 2)
 
 /**
- * Calculates pairwise/bilateral net balances from raw ledger debts.
- * Positive value = player is owed money (creditor).
- * Negative value = player owes money (debtor).
+ * Calculates bilateral/pairwise net balances from raw ledger debts.
+ * Positive = player is owed money (creditor).
+ * Negative = player owes money (debtor).
  */
 function calculatePairwiseNet(ledger) {
     if (!ledger) return {};
@@ -24,7 +23,7 @@ function calculatePairwiseNet(ledger) {
 }
 
 /**
- * Opens the in-game Session Ledger modal
+ * Renders the in-game Lobby Session Ledger modal
  */
 function openSessionLedgerModal() {
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
@@ -34,17 +33,11 @@ function openSessionLedgerModal() {
     modal.style.display = 'flex';
 }
 
-/**
- * Closes the in-game Session Ledger modal
- */
 function closeSessionLedgerModal() {
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (modal) modal.style.display = 'none';
 }
 
-/**
- * Renders live in-game session debts (main pot and side bets)
- */
 function renderSessionLedger() {
     const container = document.getElementById('session-ledger-content') 
         || document.getElementById('ledger-content')
@@ -55,7 +48,6 @@ function renderSessionLedger() {
     const mainLedger = state.mainGameLedger || {};
     const sideLedger = state.sideBetLedger || {};
 
-    // Combine all active session transactions
     const combined = {};
     const mergeLedger = (src) => {
         for (const debtor in src) {
@@ -83,10 +75,8 @@ function renderSessionLedger() {
 
             const balance = netMatrix[p1][p2];
             if (balance > 0) {
-                // p2 owes p1
                 rows.push({ debtor: p2, creditor: p1, amount: balance });
             } else if (balance < 0) {
-                // p1 owes p2
                 rows.push({ debtor: p1, creditor: p2, amount: Math.abs(balance) });
             }
         }
@@ -127,7 +117,7 @@ function renderSessionLedger() {
 }
 
 /**
- * Generates an HTML5 Canvas snapshot of the ledger for download or native mobile sharing
+ * HTML5 Canvas Exporter for sharing session ledgers
  */
 async function shareLedgerSnapshot() {
     const state = window.clientState || {};
@@ -168,7 +158,6 @@ async function shareLedgerSnapshot() {
     canvas.height = 300 + (Math.max(rows.length, 1) * 45);
     const ctx = canvas.getContext('2d');
 
-    // Felt background styling
     ctx.fillStyle = '#064e3b';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -176,7 +165,6 @@ async function shareLedgerSnapshot() {
     ctx.lineWidth = 6;
     ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
 
-    // Header title
     ctx.fillStyle = '#fbbf24';
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
@@ -242,6 +230,24 @@ async function shareLedgerSnapshot() {
 // public/js/ledger.js - PART 2 OF 2
 
 // -------------------------------------------------------------
+// IDENTITY & JWT HELPER
+// -------------------------------------------------------------
+function getCurrentUserId() {
+    try {
+        const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token');
+        if (token) {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.id || payload.userId || null;
+        }
+    } catch (e) {}
+
+    return (window.clientState && (window.clientState.userId || window.clientState.id))
+        || (window.userSession && (window.userSession.id || window.userSession.userId))
+        || localStorage.getItem('blitz31_user_id')
+        || null;
+}
+
+// -------------------------------------------------------------
 // LIFETIME LEDGER DISPATCH & RENDERING
 // -------------------------------------------------------------
 
@@ -267,7 +273,6 @@ function requestLifetimeLedger() {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(payload);
     } else {
-        // Retry briefly if the socket connection is still opening
         setTimeout(() => {
             const retryWs = window.gameSocket || window.ws || window.socket;
             if (retryWs && retryWs.readyState === WebSocket.OPEN) {
@@ -284,7 +289,6 @@ function openLifetimeLedgerModal() {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
 
-    // Target lifetime-ledger-table-container from index.html
     const container = document.getElementById('lifetime-ledger-table-container') 
         || document.getElementById('lifetime-ledger-content') 
         || document.getElementById('lifetime-ledger-list')
@@ -312,6 +316,7 @@ function closeLifetimeLedgerModal() {
 
 /**
  * Renders the Lifetime Ledger data received from the backend.
+ * Adds a Credit / Settle action button when other players owe the current user.
  * @param {Array<{ other_id: string, username: string, net: number }>} balances
  */
 function renderLifetimeLedger(balances) {
@@ -334,31 +339,35 @@ function renderLifetimeLedger(balances) {
         return;
     }
 
-    let html = '<div class="lifetime-ledger-rows" style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem;">';
+    let html = '<div class="lifetime-ledger-rows" style="display: flex; flex-direction: column; gap: 0.65rem; margin-top: 0.5rem;">';
 
     activeRows.forEach(row => {
         const net = Number(row.net) || 0;
         const otherName = escapeHtml(row.username || 'Player');
+        const rawNameAttr = (row.username || 'Player').replace(/'/g, "\\'");
 
         if (net > 0) {
-            // Other user owes current user (Creditor perspective)
+            // Other user owes current user (Creditor view -> can credit/settle)
             html += `
-                <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.7rem 0.9rem; border-radius: 6px; border-left: 3px solid #10b981;">
+                <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #10b981; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="font-size: 0.92rem;">
                         <span style="color: #fca5a5; font-weight: 600;">${otherName}</span> owes 
                         <span style="color: #34d399; font-weight: 700;">You</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.65rem;">
                         <span style="font-weight: 700; color: #34d399; font-size: 1.05rem;">
                             +$${net.toFixed(2)}
                         </span>
+                        <button type="button" class="credit-action-btn" onclick="openCreditDialog('${row.other_id}', '${rawNameAttr}', ${net})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 4px 9px; font-size: 0.76rem; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                            Credit
+                        </button>
                     </div>
                 </div>
             `;
         } else {
-            // Current user owes other user (Debtor perspective)
+            // Current user owes other user (Debtor view)
             html += `
-                <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.7rem 0.9rem; border-radius: 6px; border-left: 3px solid #ef4444;">
+                <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #ef4444; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="font-size: 0.92rem;">
                         <span style="color: #f87171; font-weight: 700;">You</span> owe 
                         <span style="color: #86efac; font-weight: 600;">${otherName}</span>
@@ -377,19 +386,135 @@ function renderLifetimeLedger(balances) {
     container.innerHTML = html;
 }
 
-/**
- * Sends a settlement credit to clear bilateral balances in SQLite.
- */
-function applySettlementCredit(debtorId, creditorId, amount) {
-    const ws = window.gameSocket || window.ws || window.socket;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+// -------------------------------------------------------------
+// CREDIT & SETTLEMENT DIALOG ENGINE
+// -------------------------------------------------------------
+let activeCreditTarget = null;
 
+function ensureCreditModalDOM() {
+    let modal = document.getElementById('credit-settle-dialog');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'credit-settle-dialog';
+        modal.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75);
+            display: none; align-items: center; justify-content: center;
+            z-index: 10000; padding: 16px;
+        `;
+        modal.innerHTML = `
+            <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #d97706; border-radius: 10px; width: 100%; max-width: 360px; padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.8); color: #f8fafc; font-family: inherit;">
+                <h3 style="margin: 0 0 6px; color: #fbbf24; font-size: 1.15rem; text-align: center; text-transform: uppercase;">Apply Credit / Settle</h3>
+                <p id="credit-dialog-subtitle" style="margin: 0 0 14px; font-size: 0.88rem; text-align: center; color: #cbd5e1;"></p>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <label style="font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Credit Amount ($)</label>
+                        <input id="credit-dialog-amount" type="number" step="0.5" min="0.5" style="background: #020a06; border: 1.5px solid #d97706; border-radius: 5px; color: #fff; padding: 8px 10px; font-size: 1.05rem; font-weight: bold; outline: none; width: 100%; box-sizing: border-box;" />
+                    </div>
+
+                    <div style="display: flex; gap: 6px;">
+                        <button type="button" id="credit-dialog-full-btn" style="flex: 1; background: rgba(217, 119, 6, 0.2); border: 1px solid #d97706; color: #fbbf24; border-radius: 4px; padding: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer;">
+                            Settle In Full
+                        </button>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <button type="button" onclick="closeCreditDialog()" style="flex: 1; background: #334155; color: #e2e8f0; border: none; border-radius: 5px; padding: 9px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                            Cancel
+                        </button>
+                        <button type="button" id="credit-dialog-confirm-btn" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 5px; padding: 9px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function openCreditDialog(debtorId, debtorName, maxAmount) {
+    const modal = ensureCreditModalDOM();
+    activeCreditTarget = { debtorId, debtorName, maxAmount };
+
+    const subtitle = document.getElementById('credit-dialog-subtitle');
+    const input = document.getElementById('credit-dialog-amount');
+    const fullBtn = document.getElementById('credit-dialog-full-btn');
+    const confirmBtn = document.getElementById('credit-dialog-confirm-btn');
+
+    if (subtitle) {
+        subtitle.innerHTML = `Credit debt owed by <b style="color: #fca5a5;">${escapeHtml(debtorName)}</b> (Max: $${maxAmount.toFixed(2)})`;
+    }
+    if (input) {
+        input.value = maxAmount.toFixed(2);
+        input.max = maxAmount;
+    }
+    if (fullBtn) {
+        fullBtn.onclick = () => {
+            if (input) input.value = maxAmount.toFixed(2);
+        };
+    }
+    if (confirmBtn) {
+        confirmBtn.onclick = () => {
+            const entered = Number(input.value);
+            if (!entered || entered <= 0) {
+                alert('Please enter a valid credit amount.');
+                return;
+            }
+            if (entered > maxAmount) {
+                alert(`Credit amount cannot exceed total debt owed ($${maxAmount.toFixed(2)}).`);
+                return;
+            }
+            applySettlementCredit(debtorId, entered);
+            closeCreditDialog();
+        };
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeCreditDialog() {
+    const modal = document.getElementById('credit-settle-dialog');
+    if (modal) modal.style.display = 'none';
+    activeCreditTarget = null;
+}
+
+/**
+ * Sends an APPLY_CREDIT packet over WebSocket to offset pairwise SQLite debt.
+ */
+function applySettlementCredit(otherUserId, amount) {
+    const ws = window.gameSocket || window.ws || window.socket;
+    const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token');
+    const myId = getCurrentUserId();
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Server connection lost. Please refresh the page and try again.');
+        return;
+    }
+
+    const cleanAmount = Number(amount);
+    if (!cleanAmount || cleanAmount <= 0) return;
+
+    // In bilateral netting: current user (creditor) records an offsetting debt entry
+    // to credit the debtor's balance down to zero or reduced principal
     ws.send(JSON.stringify({
         type: 'APPLY_CREDIT',
-        debtorId,
-        creditorId,
-        amount: Number(amount)
+        debtorId: myId,
+        creditorId: otherUserId,
+        amount: cleanAmount,
+        token: token || null
     }));
+
+    // Briefly display loading status in container
+    const container = document.getElementById('lifetime-ledger-table-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="ledger-loading-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
+                Applying credit of $${cleanAmount.toFixed(2)}...
+            </div>
+        `;
+    }
 }
 
 /**
@@ -418,5 +543,7 @@ window.openLifetimeLedgerModal = openLifetimeLedgerModal;
 window.closeLifetimeLedgerModal = closeLifetimeLedgerModal;
 window.renderLifetimeLedger = renderLifetimeLedger;
 window.handleLifetimeLedgerData = renderLifetimeLedger;
+window.openCreditDialog = openCreditDialog;
+window.closeCreditDialog = closeCreditDialog;
 window.applySettlementCredit = applySettlementCredit;
 window.escapeHtml = escapeHtml;
