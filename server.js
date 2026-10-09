@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const WebSocket = require('ws');
+const jwt = require('jsonwebtoken');
 
 // Safe internal module loaders
 const config = require('./server/config');
@@ -10,7 +11,7 @@ const db = require('./server/db');
 const authRouter = require('./server/auth');
 const { generateLiveKitToken } = require('./server/services/livekit');
 const { handleWebSocketMessage } = require('./server/game/wsHandler');
-const { getPublicLobbiesList, leaveLobby } = require('./server/game/lobbyManager');
+const { getPublicLobbiesList } = require('./server/game/lobbyManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -111,12 +112,23 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // Direct Lifetime Ledger & Credit WebSocket Interceptors
+        // Direct Lifetime Ledger WebSocket Interceptor with Main Menu Fallback
         if (parsed.type === 'GET_LIFETIME_LEDGER') {
-            const uid = ws.user ? ws.user.userId : (db && typeof db.findUserByUsername === 'function' && ws.currentUsername && db.findUserByUsername(ws.currentUsername)?.id);
-            if (uid && db && typeof db.getLifetimeBalances === 'function') {
+            const targetUsername = parsed.username || ws.currentUsername;
+            let uid = (ws.user && !ws.user.isGuest && ws.user.userId) ? ws.user.userId : null;
+
+            if (!uid && targetUsername && db && typeof db.findUserByUsername === 'function') {
+                const found = db.findUserByUsername(targetUsername);
+                if (found && found.id && !found.id.startsWith('gst_')) {
+                    uid = found.id;
+                }
+            }
+
+            if (uid && !uid.startsWith('gst_') && db && typeof db.getLifetimeBalances === 'function') {
                 const balances = db.getLifetimeBalances(uid);
                 ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+            } else {
+                ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances: [] }));
             }
             return;
         }
@@ -135,30 +147,18 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // Forward message to the exported wsHandler function
+        // Forward gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
     });
 
-        ws.on('close', () => {
+    ws.on('close', () => {
         if (ws.currentLobbyCode) {
-            const { lobbies, broadcastLobbyUpdate } = require('./server/game/lobbyManager');
-            const lobby = lobbies[ws.currentLobbyCode];
-            if (lobby) {
-                const player = lobby.players.find(p => p.id === ws);
-                if (player) {
-                    player.id = null; // Detach dead socket without removing player from the table
-                    player.disconnectedAt = Date.now();
-                    broadcastLobbyUpdate(ws.currentLobbyCode);
-                }
-                const spectator = lobby.spectators.find(s => s.idSocket === ws);
-                if (spectator) {
-                    spectator.idSocket = null;
-                    spectator.disconnectedAt = Date.now();
-                }
+            const { leaveLobby } = require('./server/game/lobbyManager');
+            if (typeof leaveLobby === 'function') {
+                leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
             }
         }
     });
-
 });
 
 // -------------------------------------------------------------
