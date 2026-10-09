@@ -1,294 +1,393 @@
-// public/js/app.js - PART 1 OF 2
-// Authentication Coordinator, View Transition & Session Lifecycle
-
-window.userSession = null;
+// public/js/app.js - Authentication, Session Persistence & View Coordinator (PART 1 OF 2)
 
 // -------------------------------------------------------------
-// 1. GOOGLE IDENTITY SERVICES INITIALIZATION
+// 1. TOKEN & SESSION PERSISTENCE HELPERS
 // -------------------------------------------------------------
-function initializeGoogleIdentity() {
-    // Retry briefly if Google SDK is still downloading
-    if (typeof window.google === 'undefined' || !window.google.accounts || !window.google.accounts.id) {
-        setTimeout(initializeGoogleIdentity, 300);
+function getStoredAuthToken() {
+    return sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || null;
+}
+
+function saveStoredAuthToken(token, rememberMe = true) {
+    if (!token) return;
+    if (rememberMe) {
+        localStorage.setItem('31_jwt', token);
+        sessionStorage.removeItem('31_jwt');
+    } else {
+        sessionStorage.setItem('31_jwt', token);
+        localStorage.removeItem('31_jwt');
+    }
+}
+
+function clearStoredAuthToken() {
+    localStorage.removeItem('31_jwt');
+    sessionStorage.removeItem('31_jwt');
+    localStorage.removeItem('blitz31_active_room');
+}
+
+// -------------------------------------------------------------
+// 2. AUTH UI FEEDBACK & TAB SWITCHING
+// -------------------------------------------------------------
+function showAuthError(msg) {
+    const errBox = document.getElementById('auth-error-msg');
+    if (!errBox) {
+        alert(msg);
         return;
     }
+    errBox.textContent = msg;
+    errBox.style.color = '#f87171';
+    errBox.style.display = 'block';
+}
 
-    const clientId = window.GOOGLE_CLIENT_ID || '420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com';
+function showAuthSuccess(msg) {
+    const errBox = document.getElementById('auth-error-msg');
+    if (!errBox) return;
+    errBox.textContent = msg;
+    errBox.style.color = '#34d399';
+    errBox.style.display = 'block';
+}
 
-    try {
-        window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: handleGoogleCredentialResponse,
-            auto_select: false,
-            cancel_on_tap_outside: true
-        });
-
-        const btnContainer = document.getElementById('google-signin-btn');
-        if (btnContainer) {
-            btnContainer.innerHTML = '';
-            window.google.accounts.id.renderButton(btnContainer, {
-                type: 'standard',
-                theme: 'filled_black',
-                size: 'large',
-                text: 'continue_with',
-                shape: 'rectangular',
-                width: 250
-            });
-        }
-
-        // Trigger Google One Tap floating dialog
-        window.google.accounts.id.prompt((notification) => {
-            if (notification.isNotDisplayed()) {
-                console.log('[Auth] One Tap prompt not displayed:', notification.getNotDisplayedReason());
-            } else if (notification.isSkippedMoment()) {
-                console.log('[Auth] One Tap prompt skipped:', notification.getSkippedReason());
-            }
-        });
-    } catch (e) {
-        console.warn('[Auth] GIS initialization notice:', e);
+function clearAuthError() {
+    const errBox = document.getElementById('auth-error-msg');
+    if (errBox) {
+        errBox.textContent = '';
+        errBox.style.display = 'none';
     }
 }
 
-async function handleGoogleCredentialResponse(response) {
-    if (!response || !response.credential) return;
-
-    try {
-        const res = await fetch('/auth/google', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ credential: response.credential })
-        });
-
-        const data = await res.json();
-        if (res.ok && data.token) {
-            localStorage.setItem('31_jwt', data.token);
-            window.userSession = data.user;
-
-            // 1. Establish the socket transport FIRST so refresh commands have an open link
-            if (typeof window.connectSocket === 'function') {
-                window.connectSocket();
-            }
-
-            // 2. Safely swap view from auth modal to main menu
-            updateViewForAuth(data.user);
-        } else {
-            showAuthError(data.error || 'Google login failed.');
-        }
-    } catch (err) {
-        console.error('[Auth] Network error during Google login:', err);
-        showAuthError('Unable to connect to login service.');
-    }
-}
-
-// -------------------------------------------------------------
-// 2. AUTH VIEW CONTROLS & TABS
-// -------------------------------------------------------------
 function switchAuthTab(tab) {
-    const tabLogin = document.getElementById('tab-login');
-    const tabReg = document.getElementById('tab-register');
-    const loginFields = document.getElementById('login-fields');
-    const regFields = document.getElementById('register-fields');
-    const errorEl = document.getElementById('auth-error-msg');
+    clearAuthError();
 
-    if (errorEl) errorEl.style.display = 'none';
+    const loginTab = document.getElementById('tab-login');
+    const registerTab = document.getElementById('tab-register');
+    const tabBar = document.getElementById('auth-tab-bar');
+
+    const loginFields = document.getElementById('login-fields');
+    const registerFields = document.getElementById('register-fields');
+    const forgotFields = document.getElementById('forgot-fields');
+
+    // Reset recovery step containers
+    const forgotStep1 = document.getElementById('forgot-step-1');
+    const forgotStep2 = document.getElementById('forgot-step-2');
+    if (forgotStep1) forgotStep1.style.display = 'block';
+    if (forgotStep2) forgotStep2.style.display = 'none';
 
     if (tab === 'login') {
-        if (tabLogin) tabLogin.classList.add('active');
-        if (tabReg) tabReg.classList.remove('active');
+        if (loginTab) loginTab.classList.add('active');
+        if (registerTab) registerTab.classList.remove('active');
+        if (tabBar) tabBar.style.display = 'flex';
+
         if (loginFields) loginFields.style.display = 'block';
-        if (regFields) regFields.style.display = 'none';
-    } else {
-        if (tabReg) tabReg.classList.add('active');
-        if (tabLogin) tabLogin.classList.remove('active');
+        if (registerFields) registerFields.style.display = 'none';
+        if (forgotFields) forgotFields.style.display = 'none';
+    } else if (tab === 'register') {
+        if (loginTab) loginTab.classList.remove('active');
+        if (registerTab) registerTab.classList.add('active');
+        if (tabBar) tabBar.style.display = 'flex';
+
         if (loginFields) loginFields.style.display = 'none';
-        if (regFields) regFields.style.display = 'block';
+        if (registerFields) registerFields.style.display = 'block';
+        if (forgotFields) forgotFields.style.display = 'none';
+    } else if (tab === 'forgot') {
+        if (tabBar) tabBar.style.display = 'none';
+
+        if (loginFields) loginFields.style.display = 'none';
+        if (registerFields) registerFields.style.display = 'none';
+        if (forgotFields) forgotFields.style.display = 'block';
     }
 }
-
-function showAuthError(message) {
-    const errorEl = document.getElementById('auth-error-msg');
-    if (!errorEl) return;
-    errorEl.innerText = message;
-    errorEl.style.display = 'block';
-}
-
-function updateViewForAuth(user) {
-    try {
-        const authOverlay = document.getElementById('auth-overlay') || document.getElementById('auth-screen');
-        const mainMenu = document.getElementById('main-menu');
-        const badge = document.getElementById('menu-user-badge');
-        const usernameInput = document.getElementById('username-input');
-
-        // Hide login modal
-        if (authOverlay) {
-            authOverlay.style.display = 'none';
-        }
-
-        // Display main menu view
-        if (mainMenu) {
-            mainMenu.style.display = 'flex';
-        }
-
-        if (user) {
-            if (badge) {
-                badge.innerText = user.isGuest ? `${user.username} (Guest)` : user.username;
-            }
-            if (usernameInput) {
-                usernameInput.value = user.username;
-                if (typeof window.saveInputs === 'function') {
-                    window.saveInputs();
-                }
-            }
-            if (window.clientState) {
-                window.clientState.username = user.username;
-            }
-        }
-
-        // Debounced public lobby fetch to allow socket to fully open
-        setTimeout(() => {
-            if (typeof window.refreshLobbies === 'function') {
-                window.refreshLobbies();
-            }
-        }, 150);
-    } catch (err) {
-        console.error('[Auth] Error transitioning from auth to main menu:', err);
-        const menu = document.getElementById('main-menu');
-        if (menu) menu.style.display = 'flex';
-    }
-}
-// public/js/app.js - PART 2 OF 2
 
 // -------------------------------------------------------------
-// 3. NATIVE FORM DISPATCHERS (PASSWORD & GUEST)
+// 3. MAIN MENU TRANSITION & PROFILE INITIALIZATION
+// -------------------------------------------------------------
+function updateViewForAuth(user) {
+    const authOverlay = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
+    const mainMenu = document.getElementById('main-menu');
+    const userBadge = document.getElementById('menu-user-badge');
+    const usernameInput = document.getElementById('username-input');
+
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (mainMenu) mainMenu.style.display = 'flex';
+
+    const displayName = user?.username || 'Player';
+    if (userBadge) userBadge.textContent = displayName;
+    if (usernameInput) usernameInput.value = displayName;
+
+    localStorage.setItem('saved_username', displayName);
+    localStorage.setItem('blitz31_username', displayName);
+
+    if (window.clientState) {
+        window.clientState.username = displayName;
+    }
+
+    // Refresh public lobbies upon transition
+    if (typeof window.refreshLobbies === 'function') {
+        window.refreshLobbies();
+    }
+}
+
+// -------------------------------------------------------------
+// 4. AUTH ACTION DISPATCHERS (LOGIN & REGISTRATION)
 // -------------------------------------------------------------
 async function submitAuthLogin() {
+    clearAuthError();
+
     const usernameInput = document.getElementById('login-username');
     const passwordInput = document.getElementById('login-password');
+    const rememberMeBox = document.getElementById('login-remember-me');
+
     const username = usernameInput ? usernameInput.value.trim() : '';
     const password = passwordInput ? passwordInput.value : '';
+    const rememberMe = rememberMeBox ? rememberMeBox.checked : true;
 
     if (!username || !password) {
-        return showAuthError('Please enter both username and password.');
+        return showAuthError('Please enter both username/email and password.');
     }
 
     try {
         const res = await fetch('/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, password, rememberMe })
         });
+
         const data = await res.json();
         if (res.ok && data.token) {
-            localStorage.setItem('31_jwt', data.token);
+            saveStoredAuthToken(data.token, rememberMe);
             window.userSession = data.user;
-            if (typeof window.connectSocket === 'function') window.connectSocket();
+
+            if (typeof window.connectSocket === 'function') {
+                window.connectSocket();
+            }
+
             updateViewForAuth(data.user);
         } else {
             showAuthError(data.error || 'Invalid credentials.');
         }
     } catch (err) {
-        showAuthError('Server connection error.');
+        showAuthError('Unable to connect to game authentication server.');
     }
 }
 
 async function submitAuthRegister() {
+    clearAuthError();
+
     const usernameInput = document.getElementById('reg-username');
+    const emailInput = document.getElementById('reg-email');
     const passwordInput = document.getElementById('reg-password');
+
     const username = usernameInput ? usernameInput.value.trim() : '';
+    const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
     const password = passwordInput ? passwordInput.value : '';
 
-    if (!username || password.length < 6) {
-        return showAuthError('Username required and password must be at least 6 characters.');
+    if (!username || !email || !password) {
+        return showAuthError('All fields (Username, Email, and Password) are required.');
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return showAuthError('Please provide a valid email format (e.g. name@example.com).');
+    }
+
+    if (password.length < 6) {
+        return showAuthError('Password must be at least 6 characters.');
     }
 
     try {
         const res = await fetch('/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, email, password })
         });
+
         const data = await res.json();
         if (res.ok && data.token) {
-            localStorage.setItem('31_jwt', data.token);
+            saveStoredAuthToken(data.token, true);
             window.userSession = data.user;
-            if (typeof window.connectSocket === 'function') window.connectSocket();
+
+            if (typeof window.connectSocket === 'function') {
+                window.connectSocket();
+            }
+
             updateViewForAuth(data.user);
         } else {
-            showAuthError(data.error || 'Registration failed.');
+            showAuthError(data.error || 'Account registration failed.');
         }
     } catch (err) {
-        showAuthError('Server connection error.');
+        showAuthError('Unable to connect to game authentication server.');
     }
 }
+// public/js/app.js - PART 2 OF 2
 
-async function submitAuthGuest() {
+// -------------------------------------------------------------
+// 5. PASSWORD RECOVERY DISPATCHERS
+// -------------------------------------------------------------
+async function submitForgotPasswordRequest() {
+    clearAuthError();
+
+    const identifierInput = document.getElementById('forgot-identifier');
+    const identifier = identifierInput ? identifierInput.value.trim() : '';
+
+    if (!identifier) {
+        return showAuthError('Please enter your account username or registered email.');
+    }
+
     try {
-        const res = await fetch('/auth/guest', {
+        const res = await fetch('/auth/forgot-password', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier })
         });
+
         const data = await res.json();
-        if (res.ok && data.token) {
-            localStorage.setItem('31_jwt', data.token);
-            window.userSession = data.user;
-            if (typeof window.connectSocket === 'function') window.connectSocket();
-            updateViewForAuth(data.user);
+        if (res.ok) {
+            showAuthSuccess(data.message || 'Recovery code generated. Check server logs.');
+
+            const step1 = document.getElementById('forgot-step-1');
+            const step2 = document.getElementById('forgot-step-2');
+            if (step1) step1.style.display = 'none';
+            if (step2) step2.style.display = 'block';
+
+            const codeInput = document.getElementById('reset-code');
+            if (codeInput) codeInput.focus();
         } else {
-            showAuthError(data.error || 'Could not start guest session.');
+            showAuthError(data.error || 'Failed to process recovery request.');
         }
     } catch (err) {
-        showAuthError('Server connection error.');
+        showAuthError('Unable to connect to recovery service.');
     }
 }
 
-function logoutSession() {
-    localStorage.removeItem('31_jwt');
-    window.userSession = null;
-    if (typeof window.disconnectLiveKit === 'function') window.disconnectLiveKit();
-    if (window.appGlobals && window.appGlobals.ws) {
-        window.appGlobals.ws.close();
+async function submitResetPassword() {
+    clearAuthError();
+
+    const identifierInput = document.getElementById('forgot-identifier');
+    const codeInput = document.getElementById('reset-code');
+    const newPasswordInput = document.getElementById('reset-new-password');
+
+    const identifier = identifierInput ? identifierInput.value.trim() : '';
+    const code = codeInput ? codeInput.value.trim() : '';
+    const newPassword = newPasswordInput ? newPasswordInput.value : '';
+
+    if (!identifier || !code || !newPassword) {
+        return showAuthError('All fields (Account, 6-digit code, new password) are required.');
     }
-    window.location.reload();
+
+    if (newPassword.length < 6) {
+        return showAuthError('New password must be at least 6 characters.');
+    }
+
+    try {
+        const res = await fetch('/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier, code, newPassword })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            alert(data.message || 'Password updated successfully! Please log in.');
+            switchAuthTab('login');
+
+            const loginUserInput = document.getElementById('login-username');
+            const loginPassInput = document.getElementById('login-password');
+            if (loginUserInput) loginUserInput.value = identifier;
+            if (loginPassInput) {
+                loginPassInput.value = '';
+                loginPassInput.focus();
+            }
+        } else {
+            showAuthError(data.error || 'Password reset failed.');
+        }
+    } catch (err) {
+        showAuthError('Unable to connect to recovery service.');
+    }
 }
 
 // -------------------------------------------------------------
-// 4. SESSION REHYDRATION & INITIALIZATION ON BOOT
+// 6. SESSION REHYDRATION ON BOOT
 // -------------------------------------------------------------
-async function checkExistingAuthToken() {
-    const token = localStorage.getItem('31_jwt');
+async function checkExistingSession() {
+    const token = getStoredAuthToken();
     if (!token) {
-        initializeGoogleIdentity();
+        const authScreen = document.getElementById('auth-screen');
+        if (authScreen) authScreen.style.display = 'flex';
         return;
     }
 
     try {
         const res = await fetch('/auth/me', {
-            headers: { 'Authorization': `Bearer ${token}` }
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
         });
+
         if (res.ok) {
             const data = await res.json();
             window.userSession = data.user;
+
             if (typeof window.connectSocket === 'function') {
                 window.connectSocket();
             }
+
             updateViewForAuth(data.user);
         } else {
-            localStorage.removeItem('31_jwt');
-            initializeGoogleIdentity();
+            clearStoredAuthToken();
+            const authScreen = document.getElementById('auth-screen');
+            if (authScreen) authScreen.style.display = 'flex';
         }
-    } catch (e) {
-        initializeGoogleIdentity();
+    } catch (err) {
+        // Fallback: keep auth modal visible if offline
+        const authScreen = document.getElementById('auth-screen');
+        if (authScreen) authScreen.style.display = 'flex';
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    checkExistingAuthToken();
-});
+// -------------------------------------------------------------
+// 7. LOGOUT SESSION
+// -------------------------------------------------------------
+function logoutSession() {
+    clearStoredAuthToken();
+    window.userSession = null;
 
-// Expose handlers globally for HTML inline events
+    const ws = window.gameSocket || window.ws || window.socket;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            ws.close();
+        } catch (e) {}
+    }
+
+    const mainMenu = document.getElementById('main-menu');
+    const gameView = document.getElementById('game-view');
+    const authScreen = document.getElementById('auth-screen');
+
+    if (mainMenu) mainMenu.style.display = 'none';
+    if (gameView) gameView.style.display = 'none';
+    if (authScreen) authScreen.style.display = 'flex';
+
+    switchAuthTab('login');
+
+    const loginPass = document.getElementById('login-password');
+    if (loginPass) loginPass.value = '';
+}
+
+// -------------------------------------------------------------
+// 8. GLOBAL EXPORTS & LIFECYCLE LISTENERS
+// -------------------------------------------------------------
+window.getStoredAuthToken = getStoredAuthToken;
+window.saveStoredAuthToken = saveStoredAuthToken;
+window.clearStoredAuthToken = clearStoredAuthToken;
+window.showAuthError = showAuthError;
+window.showAuthSuccess = showAuthSuccess;
+window.clearAuthError = clearAuthError;
 window.switchAuthTab = switchAuthTab;
+window.updateViewForAuth = updateViewForAuth;
 window.submitAuthLogin = submitAuthLogin;
 window.submitAuthRegister = submitAuthRegister;
-window.submitAuthGuest = submitAuthGuest;
+window.submitForgotPasswordRequest = submitForgotPasswordRequest;
+window.submitResetPassword = submitResetPassword;
 window.logoutSession = logoutSession;
-window.updateViewForAuth = updateViewForAuth;
+
+document.addEventListener('DOMContentLoaded', () => {
+    checkExistingSession();
+});
