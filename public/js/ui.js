@@ -36,6 +36,43 @@ window.appGlobals = window.appGlobals || {
     notificationTimer: null
 };
 
+// Resilient identity finder that never defaults to Player1 while seated
+window.getMyUsername = function(lobby) {
+    let name = (window.clientState?.username || '').trim();
+
+    if (!name || name === 'Player1') {
+        const inputVal = (document.getElementById('username-input')?.value || '').trim();
+        if (inputVal && inputVal !== 'Player1') name = inputVal;
+    }
+
+    if (!name || name === 'Player1') {
+        name = (window.userSession?.username || localStorage.getItem('p31_username') || localStorage.getItem('username') || '').trim();
+    }
+
+    if (lobby && Array.isArray(lobby.players) && lobby.players.length > 0) {
+        if (name) {
+            const match = lobby.players.find(p => p.username.toLowerCase() === name.toLowerCase());
+            if (match) return match.username;
+        }
+
+        // The server sorts seat 0 to be the requesting player
+        const seatZero = lobby.players.find(p => p.seat === 0 && !p.isBot);
+        if (seatZero) {
+            window.clientState.username = seatZero.username;
+            return seatZero.username;
+        }
+
+        // If only 1 human exists in the lobby, it is this client
+        const humans = lobby.players.filter(p => !p.isBot);
+        if (humans.length === 1) {
+            window.clientState.username = humans[0].username;
+            return humans[0].username;
+        }
+    }
+
+    return name || 'Player1';
+};
+
 function sendSocket(payload) {
     const sendFunc = window.initSocketAndSend || window.sendSocketMessage;
     if (typeof sendFunc === 'function') {
@@ -239,7 +276,7 @@ window.openSpectatorListModal = function() {
 };
 
 window.openActiveBetsModal = function() {
-    const myName = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+    const myName = window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
     const contentDiv = document.getElementById('active-bets-content');
     const active = window.clientState.activeBetsList || [];
     const pending = window.clientState.pendingBetsList || [];
@@ -408,16 +445,28 @@ window.choosePoolCard = function(cardIndex) {
     if (isNaN(resolvedIndex)) return;
     if (window.appGlobals.hasChosenPoolCard) return;
 
+    const activeUsername = window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
+
     window.appGlobals.hasChosenPoolCard = true;
     if (typeof playSound === 'function') playSound('card');
     triggerVibration(25);
 
-    // Send both keys (index and cardIndex) for compatibility with wsHandler
+    // Send all index variants and username for compatibility with server handlers
     sendSocket({
         type: 'CHOOSE_POOL_CARD',
         index: resolvedIndex,
-        cardIndex: resolvedIndex
+        cardIndex: resolvedIndex,
+        slotIndex: resolvedIndex,
+        username: activeUsername
     });
+
+    // Safety timeout: unlatch client lockout after 1.5s if server state has not updated
+    setTimeout(() => {
+        const snap = window.appGlobals?.latestLobbySnapshot;
+        if (snap && (snap.gameState === 'dealerDraw' || snap.gameState === 'tieBreaker') && !snap.drawResults?.[activeUsername]) {
+            window.appGlobals.hasChosenPoolCard = false;
+        }
+    }, 1500);
 };
 
 window.clickNextHand = function() {
@@ -526,7 +575,7 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
 }
 
 window.knockRound = function() {
-    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+    const activeUsername = window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
     const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
 
     if (!me || !me.cards || me.cards.length !== 3) {
@@ -558,7 +607,7 @@ window.knockRound = function() {
 // 7. SIDE BETS & PEEKING DIALOGS
 // -------------------------------------------------------------
 window.tapSeat = function(targetUsername) {
-    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+    const activeUsername = window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
     if (window.clientState.gameState === 'lobby') return;
 
     const isSpecOnly = window.clientState.isSpectator;
@@ -685,7 +734,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER, AUDIO CUES & NOTIFICATIONS
+// 8. MASTER TABLE RENDER, NOTIFICATIONS & AUDIO CUES
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -715,7 +764,7 @@ window.updateUIFromLobby = function(lobby) {
         window.syncChatHistory(lobby.chatHistory);
     }
 
-    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+    const activeUsername = window.getMyUsername(lobby);
 
     // 1. CELEBRATION TRIGGER: HIT 31
     if (lobby.hit31Player) {
@@ -753,7 +802,7 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.lastCelebratedWinner = null;
     }
 
-    // 3. STATE TRANSITION NOTIFICATIONS & SELECTION RESET
+    // 3. STATE TRANSITION NOTIFICATIONS & DRAW RESET
     if (lobby.gameState !== window.appGlobals.lastGameState) {
         window.appGlobals.hasChosenPoolCard = false;
         window.appGlobals.lastGameState = lobby.gameState;
@@ -765,7 +814,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // Allow re-picking if a previous click attempt did not register on the server
+    // Reset card lock if still unpicked in current draw phase
     if ((lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') && !lobby.drawResults?.[activeUsername]) {
         window.appGlobals.hasChosenPoolCard = false;
     }
@@ -892,7 +941,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 9. DYNAMIC ACTION BAR & "SIT DOWN" IN WAITING ROOM
+    // 9. DYNAMIC ACTION BAR & WAITING ROOM SEATS
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
     const readyBtn = document.getElementById('ready-btn');
@@ -928,7 +977,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 10. TURN ACTION & AUDIO CUE TRIGGER
+    // 10. TURN ACTION, AUDIO & HAPTICS
     const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
@@ -1059,7 +1108,7 @@ window.updateUIFromLobby = function(lobby) {
         nextHandOverlay.style.display = 'none';
     }
 
-    // 14. DEALER DRAW & TIE BREAKER MODALS (DOM IDs & CARD INDEX HANDLING)
+    // 14. DEALER DRAW & TIE BREAKER MODALS (MATCHING HTML IDs)
     const dealerDrawModal = document.getElementById('dealer-draw-modal');
     const revealModal = document.getElementById('tie-breaker-reveal-modal');
     const turnBanner = document.getElementById('turn-banner');
@@ -1095,15 +1144,16 @@ window.updateUIFromLobby = function(lobby) {
         });
         showcaseHtml += '</div>';
 
-        // Full 52-card pool mapped with fallback index to prevent undefined payload
+        // Full 52-card pool mapped to draw-pool-grid with safe index resolution
         let poolHtml = '';
         (lobby.drawPool || []).forEach((slot, idx) => {
             const slotIndex = (slot && slot.index !== undefined) ? slot.index : idx;
             if (slot && slot.chosenBy) {
                 poolHtml += `<div class="pool-card-item taken" title="Chosen by ${slot.chosenBy}">✓</div>`;
             } else {
-                const clickable = !isSpectatorOnly && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-                poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slotIndex})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
+                const alreadyPicked = !!lobby.drawResults?.[activeUsername];
+                const clickable = !isSpectatorOnly && !alreadyPicked && !window.appGlobals.hasChosenPoolCard;
+                poolHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slotIndex})" style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : 'cursor:pointer;'}">?</div>`;
             }
         });
 
@@ -1146,7 +1196,7 @@ window.updateUIFromLobby = function(lobby) {
         tieDeckPool.forEach((slot, idx) => {
             const slotIndex = (slot && slot.index !== undefined) ? slot.index : idx;
             const clickable = isTied && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-            poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slotIndex})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
+            poolHtml += `<div class="pool-card-item" onclick="choosePoolCard(${slotIndex})" style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : 'cursor:pointer;'}">?</div>`;
         });
 
         const tGrid = document.getElementById('tie-breaker-stream-grid');
