@@ -401,26 +401,29 @@
         </div>
 
         <!-- 8. SETTINGS MODAL -->
-        <div id="settings-modal" class="modal-overlay" style="display: none;">
+        <div id="settings-modal" class="modal-overlay modal-backdrop" style="display: none;">
             <div class="modal-box casino-panel settings-box">
                 <div class="modal-header">
                     <h3 class="gold-text">Settings</h3>
-                    <button class="close-btn" onclick="closeSettingsModal()">✕</button>
+                    <button type="button" class="close-btn close-x-btn" onclick="closeSettingsModal()" title="Close">✕</button>
                 </div>
                 <div class="settings-content">
-                    <div class="setting-row">
+                    <div class="setting-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <span>Sound Effects</span>
                         <label class="switch-toggle">
-                            <input type="checkbox" id="setting-sfx" checked onchange="toggleSoundSetting()">
+                            <input type="checkbox" id="setting-sfx" checked onchange="typeof toggleSoundSetting === 'function' ? toggleSoundSetting() : null">
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="setting-row">
-                        <span>Voice Audio Output</span>
-                        <select id="setting-audio-output" onchange="changeVoiceOutputDevice()">
+                    <div class="setting-row" style="display: flex; flex-direction: column; gap: 6px;">
+                        <label for="setting-audio-output" style="font-size: 0.8rem; color: #cbd5e1; text-transform: uppercase;">Voice Audio Output</label>
+                        <select id="setting-audio-output" onchange="typeof changeVoiceOutputDevice === 'function' ? changeVoiceOutputDevice() : null" style="background: #04160e; border: 1px solid rgba(212, 175, 55, 0.5); color: #fff; border-radius: 6px; padding: 8px; font-weight: 700;">
                             <option value="default">Default Speaker</option>
                         </select>
                     </div>
+                </div>
+                <div class="modal-actions" style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                    <button type="button" class="secondary-btn" onclick="closeSettingsModal()">Close</button>
                 </div>
             </div>
         </div>
