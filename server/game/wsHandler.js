@@ -110,25 +110,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-       case 'JOIN_LOBBY': {
-        const lobbies = lobbyManager.getLobbies();
-        const lobby = lobbies[data.code];
-        
-        if (lobby) {
-            // Check if player is just returning from a backgrounded app
-            const existingPlayer = lobby.players.find(p => p.username.toLowerCase() === (data.username || '').toLowerCase());
-            if (existingPlayer) {
-                existingPlayer.id = ws;
-                existingPlayer.disconnectedAt = null; // Clear the kick timer!
-                ws.currentLobbyCode = lobby.code;
-                ws.currentUsername = existingPlayer.username;
-                
-                ws.send(JSON.stringify({ type: 'LOBBY_JOINED', code: lobby.code, username: existingPlayer.username }));
-                lobbyManager.broadcastLobbyUpdate(lobby.code);
-                break; // Stop here, you have reclaimed your seat
-            }
-        }
-           
+      
         case 'JOIN_LOBBY': {
             const code = (data.code || '').trim().toUpperCase();
             const username = (data.username || 'Player').trim();
