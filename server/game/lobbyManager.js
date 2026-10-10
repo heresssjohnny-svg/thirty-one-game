@@ -248,28 +248,19 @@ function syncLifetimeLedgerBalances(lobby) {
     });
 }
 
+
+
 function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUsername, amount) {
+    // 1. Record the debt to the current in-game session ledger
     recordDebt(ledger, debtorUsername, creditorUsername, amount);
 
-    if (db && typeof db.recordLifetimeDebt === 'function') {
-        const debtorId = resolveUserId(lobby, debtorUsername);
-        const creditorId = resolveUserId(lobby, creditorUsername);
-
-        if (debtorId && creditorId && debtorId !== creditorId) {
-            db.recordLifetimeDebt(debtorId, creditorId, amount);
-
-            const participants = [...lobby.players.map(pl => pl.id), ...lobby.spectators.map(sp => sp.idSocket)];
-            participants.forEach(ws => {
-                const uid = ws?.user ? (ws.user.id || ws.user.userId) : (ws?.userId || null);
-                if (ws && ws.readyState === WebSocket.OPEN && uid && (uid === debtorId || uid === creditorId)) {
-                    try {
-                        sendLifetimeLedger(ws);
-                    } catch (e) {}
-                }
-            });
-        }
-    }
+    // 2. The duplicate database write and broadcast have been intentionally removed from here.
+    // syncLifetimeLedgerBalances() is called immediately after this in the game loop, 
+    // which safely calculates the exact database deltas and writes them to SQLite exactly once.
 }
+
+
+ 
 
 function getSanitizedLobby(lobby, wsId) {
     const activeParts = getActiveParticipants(lobby);
