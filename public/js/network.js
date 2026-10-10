@@ -250,13 +250,10 @@ function handleIncomingServerMessage(data) {
         case 'LEFT_LOBBY':
             window.appGlobals.currentJoinedCode = null;
             window.appGlobals.latestLobbySnapshot = null;
-            localStorage.removeItem('blitz31_active_room');
-
-            if (typeof window.disconnectLiveKit === 'function') {
-                window.disconnectLiveKit();
-            }
+            
+            // Explicit server kick authorizes room deletion
             if (typeof window.resetToMainMenu === 'function') {
-                window.resetToMainMenu();
+                window.resetToMainMenu(true);
             }
             break;
 
@@ -367,19 +364,58 @@ window.joinLobby = function(code) {
     });
 };
 
+// -------------------------------------------------------------
+// SECURE LEAVE & UI RESET LOGIC
+// -------------------------------------------------------------
 window.leaveLobby = function() {
     window.appGlobals.currentJoinedCode = null;
+    if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
+    
+    // Attempt to tell the server we are leaving
+    if (window.appGlobals.ws && window.appGlobals.ws.readyState === WebSocket.OPEN) {
+        window.appGlobals.ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
+    }
+    
+    // Pass 'true' to explicitly authorize deleting the room code
+    window.resetToMainMenu(true); 
+};
+
+window.resetToMainMenu = function(forceClearRoom = false) {
+    if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
+    window.appGlobals.currentJoinedCode = null;
     window.appGlobals.latestLobbySnapshot = null;
-    localStorage.removeItem('blitz31_active_room');
-
-    window.initSocketAndSend({ type: 'LEAVE_LOBBY' });
-
-    if (typeof window.disconnectLiveKit === 'function') {
-        window.disconnectLiveKit();
+    window.appGlobals.lastChatCount = 0;
+    
+    // STRICT SANDBOX: Only delete the active room if we explicitly clicked Leave or got kicked by the server
+    if (forceClearRoom === true) {
+        localStorage.removeItem('blitz31_active_room');
     }
-    if (typeof window.resetToMainMenu === 'function') {
-        window.resetToMainMenu();
-    }
+
+    const gameView = document.getElementById('game-view');
+    const mainMenu = document.getElementById('main-menu');
+    const topRowBtns = document.getElementById('in-game-top-row-btns');
+    const toolsRow = document.getElementById('in-game-tools-row');
+    const endBtn = document.getElementById('end-game-btn');
+    const leaveBtn = document.getElementById('leave-lobby-btn');
+
+    if (gameView) gameView.style.display = 'none';
+    if (mainMenu) mainMenu.style.display = 'flex';
+    if (topRowBtns) topRowBtns.style.display = 'none';
+    if (toolsRow) toolsRow.style.display = 'none';
+    if (endBtn) endBtn.style.display = 'none';
+    if (leaveBtn) leaveBtn.style.display = 'none';
+
+    const chatWin = document.getElementById('chat-window');
+    if (chatWin) chatWin.style.display = 'none';
+    const box = document.getElementById('chat-messages');
+    if (box) box.innerHTML = '';
+
+    window.clientState.isReady = false;
+    window.appGlobals.hasChosenPoolCard = false;
+    const readyBtn = document.getElementById('ready-btn');
+    if (readyBtn) readyBtn.innerText = 'Ready Up';
+    
+    if (typeof window.refreshLobbies === 'function') window.refreshLobbies();
 };
 
 // -------------------------------------------------------------
