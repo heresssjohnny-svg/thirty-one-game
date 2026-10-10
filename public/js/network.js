@@ -635,3 +635,40 @@ window.setReady = window.toggleReady;
 window.handleSitDown = window.sitDown;
 window.handleStandUp = window.standUp;
 window.handleLeaveLobby = window.leaveLobby;
+
+// -------------------------------------------------------------
+// MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
+// -------------------------------------------------------------
+function resyncActiveSession() {
+    const authScreen = document.getElementById('auth-screen');
+    if (authScreen && authScreen.style.display !== 'none') {
+        return; // Do not auto-join while user is logging in
+    }
+
+    const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    const myName = (document.getElementById('username-input')?.value || 
+                    window.clientState?.username || 
+                    localStorage.getItem('saved_username') || 
+                    'Player1').trim();
+    
+    const ws = window.appGlobals.ws;
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        window.connectSocket();
+    } else if (activeRoom) {
+        // Socket is open, instantly re-link to the preserved seat
+        ws.send(JSON.stringify({
+            type: 'JOIN_LOBBY',
+            code: activeRoom.toUpperCase(),
+            username: myName
+        }));
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) resyncActiveSession();
+});
+
+window.addEventListener('pageshow', () => {
+    resyncActiveSession();
+});
