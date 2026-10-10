@@ -417,11 +417,11 @@ html, body {
 #center-notification-banner,
 .notification-pill,
 .center-banner {
-    position: absolute !important;
-    top: calc(100% + 6px) !important;
+    position: fixed !important;
+    top: calc(68px + env(safe-area-inset-top)) !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
-    z-index: 250 !important;
+    z-index: 9999 !important;
     pointer-events: none !important;
     width: max-content !important;
     max-width: 86vw !important;
@@ -441,10 +441,10 @@ html, body {
 #discard-pickup-topleft-modal,
 .corner-modal.top-left-corner {
     position: absolute !important;
-    top: calc(100% + 6px) !important;
-    left: 8px !important;
+    top: calc(68px + env(safe-area-inset-top)) !important;
+    left: 10px !important;
     right: auto !important;
-    z-index: 240 !important;
+    z-index: 995 !important;
     pointer-events: none !important;
     background: rgba(4, 20, 13, 0.95) !important;
     border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
@@ -458,10 +458,10 @@ html, body {
 #fed-card-topright-modal,
 .corner-modal.top-right-corner {
     position: absolute !important;
-    top: calc(100% + 6px) !important;
-    right: 8px !important;
+    top: calc(68px + env(safe-area-inset-top)) !important;
+    right: 10px !important;
     left: auto !important;
-    z-index: 240 !important;
+    z-index: 995 !important;
     pointer-events: none !important;
     background: rgba(4, 20, 13, 0.95) !important;
     border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
