@@ -638,24 +638,32 @@ window.kickPeekerAction = function(spectatorUsername) {
 // -------------------------------------------------------------
 function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
-    if (!knockAlertModal) return;
 
+    // 1. Audio and Haptics Trigger on incoming opponent knock
     if (lobby.knockedBy && lobby.knockedBy !== window.appGlobals.lastKnownKnockedBy) {
         window.appGlobals.lastKnownKnockedBy = lobby.knockedBy;
         const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+        
         if (lobby.knockedBy.toLowerCase() !== activeUsername.toLowerCase()) {
-            window.safePlaySound('knock');
+            if (typeof window.safePlaySound === 'function') {
+                window.safePlaySound('knock');
+            } else if (typeof playSound === 'function') {
+                playSound('knock');
+            }
             window.safeVibrate([180, 110, 180, 110, 180]);
         }
     } else if (!lobby.knockedBy) {
         window.appGlobals.lastKnownKnockedBy = null;
     }
 
-    if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
-        knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
-        knockAlertModal.style.display = 'block';
-    } else {
-        knockAlertModal.style.display = 'none';
+    // 2. Banner Modal Display
+    if (knockAlertModal) {
+        if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
+            knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
+            knockAlertModal.style.display = 'block';
+        } else {
+            knockAlertModal.style.display = 'none';
+        }
     }
 }
 
@@ -705,11 +713,18 @@ window.knockRound = function() {
         if (!confirmKnock) return;
     }
 
-    if (typeof playSound === 'function') playSound('knock');
+    // Play cue when you initiate the knock
+    if (typeof window.safePlaySound === 'function') {
+        window.safePlaySound('knock');
+    } else if (typeof playSound === 'function') {
+        playSound('knock');
+    }
+
     if (typeof speakKnockedCue === 'function') speakKnockedCue();
     window.safeVibrate([180, 110, 180, 110, 180]);
     sendSocket({ type: 'KNOCK' });
 };
+
 
 // -------------------------------------------------------------
 // 7. SIDE BETS & PEEKING DIALOGS
