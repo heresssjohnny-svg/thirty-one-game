@@ -26,7 +26,7 @@ function findOpenSeat(lobby) {
     for (let i = 0; i < 6; i++) {
         if (!occ.includes(i)) return i;
     }
-    return 0;
+    return -1;
 }
 
 function touchLobbyActivity(lobby, broadcastLobbyList) {
