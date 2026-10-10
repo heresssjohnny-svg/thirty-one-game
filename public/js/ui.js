@@ -414,8 +414,8 @@ window.renderSessionLedger = function(lobby) {
     }
 };
 
-// -------------------------------------------------------------
-// 4. LOBBY BROWSING & NAVIGATION ACTIONS
+// // -------------------------------------------------------------
+// 4. LOBBY BROWSING RENDERING
 // -------------------------------------------------------------
 window.renderLobbyList = function(lobbies) {
     const container = document.getElementById('lobby-list');
@@ -441,45 +441,6 @@ window.renderLobbyList = function(lobbies) {
 };
 
 window.renderPublicLobbies = window.renderLobbyList;
-
-window.refreshLobbies = function() {
-    sendSocket({ type: 'GET_LOBBIES' });
-    sendSocket({ type: 'REFRESH_LOBBIES' });
-};
-
-window.createLobby = function() {
-    if (typeof window.saveInputs === 'function') window.saveInputs();
-    const userIn = document.getElementById('username-input');
-    const nameIn = document.getElementById('lobby-name-input');
-    const privIn = document.getElementById('private-lobby-checkbox');
-
-    const username = (userIn?.value || '').trim() || (window.userSession?.username || 'Player1');
-    const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
-    const isPrivate = privIn ? privIn.checked : false;
-
-    window.clientState.username = username;
-    sendSocket({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
-};
-
-window.joinLobby = function() {
-    if (typeof window.saveInputs === 'function') window.saveInputs();
-    const codeIn = document.getElementById('lobby-code-input');
-    const code = (codeIn?.value || '').trim().toUpperCase();
-    if (code) window.joinLobbyCode(code);
-};
-
-window.joinLobbyCode = function(code) {
-    if (!code) return;
-    if (typeof window.saveInputs === 'function') window.saveInputs();
-    const userIn = document.getElementById('username-input');
-    const username = (userIn?.value || '').trim() || (window.userSession?.username || 'Player1');
-
-    window.clientState.username = username;
-    window.appGlobals.currentJoinedCode = code.toUpperCase();
-    localStorage.setItem('blitz31_active_room', code.toUpperCase());
-    sendSocket({ type: 'JOIN_LOBBY', code: code.toUpperCase(), username });
-};
-
 
 
 
