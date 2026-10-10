@@ -115,6 +115,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             const code = (data.code || '').trim().toUpperCase();
             const username = (data.username || 'Player').trim();
             const lobby = lobbies[code];
+            
 
             if (!lobby) {
                 ws.send(JSON.stringify({ type: 'ERROR', message: 'Lobby not found.' }));
