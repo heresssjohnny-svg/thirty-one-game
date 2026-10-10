@@ -893,6 +893,7 @@ window.updateUIFromLobby = function(lobby) {
     const toolsRow = document.getElementById('in-game-tools-row');
     const endBtn = document.getElementById('end-game-btn');
     const leaveBtn = document.getElementById('leave-lobby-btn');
+    const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
     console.log(`[Turn Debug] Server Turn: ${lobby.currentTurnUser} | My Name: ${myName}`);
 
     if (authScreen) authScreen.style.display = 'none';
