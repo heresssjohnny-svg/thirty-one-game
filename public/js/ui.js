@@ -45,6 +45,57 @@ function sendSocket(payload) {
     } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
         window.ws.send(JSON.stringify(payload));
     }
+};
+// Safe Audio Player targets index.html <audio> tags directly
+window.safePlaySound = function(soundName) {
+    try {
+        const audioEl = document.getElementById(`sound-${soundName}`);
+        if (audioEl) {
+            audioEl.currentTime = 0; 
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => console.warn(`[Audio] Autoplay blocked for ${soundName}`, error));
+            }
+            return;
+        }
+        if (typeof window.playSound === 'function') {
+            window.playSound(soundName);
+        }
+    } catch (e) {
+        console.error(`[Audio] Failed to play ${soundName}`, e);
+    }
+};
+
+window.safeVibrate = function(pattern) {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
+};
+
+// Global one-tap unlock for mobile Chrome / Safari AudioContext
+function unlockAudioContextOnTap() {
+    if (window.audioCtx && window.audioCtx.state === 'suspended') {
+        window.audioCtx.resume();
+    }
+    if (typeof getAudioContext === 'function') {
+        const ctx = getAudioContext();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+    document.removeEventListener('touchstart', unlockAudioContextOnTap);
+    document.removeEventListener('click', unlockAudioContextOnTap);
+}
+document.addEventListener('touchstart', unlockAudioContextOnTap, { passive: true });
+document.addEventListener('click', unlockAudioContextOnTap);
+
+function sendSocket(payload) {
+    const sendFunc = window.initSocketAndSend || window.sendSocketMessage;
+    if (typeof sendFunc === 'function') {
+        sendFunc(payload);
+    } else if (window.appGlobals.ws && window.appGlobals.ws.readyState === WebSocket.OPEN) {
+        window.appGlobals.ws.send(JSON.stringify(payload));
+    } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+        window.ws.send(JSON.stringify(payload));
+    }
 }
 
 // -------------------------------------------------------------
