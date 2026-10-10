@@ -533,7 +533,6 @@ html, body {
 #next-hand-overlay {
     position: fixed !important;
     inset: 0 !important;
-    display: flex !important;
     z-index: 10000 !important;
     background: rgba(0, 0, 0, 0.78) !important;
     align-items: center !important;
