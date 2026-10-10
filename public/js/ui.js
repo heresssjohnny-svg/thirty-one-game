@@ -276,43 +276,19 @@ window.openSpectatorListModal = function() {
     window.toggleModal('spectators-modal');
 };
 
-window.openActiveBetsModal = function() {
-    const myName = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
-    const contentDiv = document.getElementById('active-bets-content');
-    const active = window.clientState.activeBetsList || [];
-    const pending = window.clientState.pendingBetsList || [];
+// Hide the redundant bets button; pending bets and active side pots display on the table
+function hideActiveBetsButton() {
+    ['active-bets-btn', 'view-bets-btn', 'bets-btn', 'side-bets-modal-btn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+}
+document.addEventListener('DOMContentLoaded', hideActiveBetsButton);
 
-    const myActive = active.filter(b => (b.proposer || b.bettor) === myName || b.target === myName || b.pickUser === myName);
-    const myPending = pending.filter(b => (b.proposer || b.creator) === myName || b.target === myName || b.pickUser === myName);
+// In window.updateUIFromLobby:
+// Make sure hideActiveBetsButton() is invoked:
+hideActiveBetsButton();
 
-    let html = `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Active Side Bets (${myActive.length})</div>`;
-    if (myActive.length === 0) {
-        html += `<div style="margin-left:8px; margin-bottom:8px; color:var(--text-muted);">None currently active.</div>`;
-    } else {
-        html += '<ul style="margin-left:14px; margin-bottom:8px;">';
-        myActive.forEach(b => {
-            const desc = (b.type === 'eliminate' || b.type === 'first_out')
-                ? `Bet with ${(b.proposer || b.bettor) === myName ? b.target : (b.proposer || b.bettor)}: $${b.wagerAmt} on ${b.pickUser} to lose first`
-                : `Global Bet: $${b.wagerAmt} on ${b.pickUser || b.condition}`;
-            html += `<li style="margin-bottom:3px;">${desc}</li>`;
-        });
-        html += '</ul>';
-    }
-
-    html += `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Pending Side Bets (${myPending.length})</div>`;
-    if (myPending.length === 0) {
-        html += `<div style="margin-left:8px; color:var(--text-muted);">None currently pending.</div>`;
-    } else {
-        html += '<ul style="margin-left:14px;">';
-        myPending.forEach(b => {
-            html += `<li style="margin-bottom:3px;">Proposal from ${b.proposer || b.creator}: $${b.wagerAmt}</li>`;
-        });
-        html += '</ul>';
-    }
-
-    if (contentDiv) contentDiv.innerHTML = html;
-    window.toggleModal('active-bets-modal');
-};
 
 // --- LOBBY SESSION LEDGER CONTROLS (BILATERAL NETTED ENGINE) ---
 window.toggleSessionLedger = function(show) {
