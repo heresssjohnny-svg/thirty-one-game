@@ -886,30 +886,30 @@ function setupWebSocket(wss, broadcastLobbyList) {
             handleWebSocketMessage(ws, message, broadcastLobbyList);
         });
 
-        ws.on('close', () => {
-    const lobbies = lobbyManager.getLobbies();
-    for (const code in lobbies) {
-        const lobby = lobbies[code];
-        
-        // 1. Mark player as temporarily disconnected (Starts the 90s grace period)
-        const player = lobby.players.find(p => p.id === ws);
-        if (player) {
-            player.id = null;
-            player.disconnectedAt = Date.now();
-            lobbyManager.broadcastLobbyUpdate(code);
+       ws.on('close', () => {
+        const lobbies = lobbyManager.getLobbies();
+        for (const code in lobbies) {
+            const lobby = lobbies[code];
+            
+            // Mark player as temporarily disconnected (Starts the 90s grace period)
+            const player = lobby.players.find(p => p.id === ws);
+            if (player) {
+                player.id = null;
+                player.disconnectedAt = Date.now();
+                lobbyManager.broadcastLobbyUpdate(code);
+            }
+            
+            // Mark spectator as temporarily disconnected
+            const spec = lobby.spectators.find(s => s.idSocket === ws);
+            if (spec) {
+                spec.idSocket = null;
+                spec.disconnectedAt = Date.now();
+            }
+            
+            // Trigger inactivity timer to clean up if the lobby stays empty
+            lobbyManager.touchLobbyActivity(lobby, null);
         }
-        
-        // 2. Mark spectator as temporarily disconnected
-        const spec = lobby.spectators.find(s => s.idSocket === ws);
-        if (spec) {
-            spec.idSocket = null;
-            spec.disconnectedAt = Date.now();
-        }
-        
-        // 3. Trigger inactivity timer (Will clean up if empty for too long)
-        lobbyManager.touchLobbyActivity(lobby, null);
-    }
-});
+    });
     });
 }
 
