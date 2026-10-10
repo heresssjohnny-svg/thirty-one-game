@@ -1,4 +1,4 @@
-// public/js/ledger.js - Session & Lifetime Ledger Management Engine
+// public/js/ledger.js - Session & Lifetime Ledger Management Engine (PART 1 OF 2)
 
 /**
  * Calculates bilateral/pairwise net balances from raw ledger debts.
@@ -227,6 +227,7 @@ async function shareLedgerSnapshot() {
         console.error('Snapshot export failed:', err);
     }
 }
+// public/js/ledger.js - PART 2 OF 2
 
 // -------------------------------------------------------------
 // IDENTITY & JWT HELPER
