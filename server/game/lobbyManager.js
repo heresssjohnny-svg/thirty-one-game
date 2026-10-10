@@ -399,6 +399,107 @@ function handleSetReady(lobby, username, isReady) {
     }
 }
 
+// -------------------------------------------------------------
+// SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
+// -------------------------------------------------------------
+function handleSitDown(lobby, ws, username) {
+    if (!lobby || lobby.gameState !== 'lobby') return false;
+
+    // 1. If player is already seated in players list, update socket and clear any spectator artifact
+    const existingPlayer = lobby.players.find(p => 
+        (p.id && p.id === ws) || 
+        (username && p.username && p.username.toLowerCase() === username.toLowerCase())
+    );
+    if (existingPlayer) {
+        if (ws) existingPlayer.id = ws;
+        lobby.spectators = lobby.spectators.filter(s => 
+            s.idSocket !== ws && 
+            (!username || !s.username || s.username.toLowerCase() !== username.toLowerCase())
+        );
+        broadcastLobbyUpdate(lobby.code);
+        return true;
+    }
+
+    if (lobby.players.length >= 6) return false;
+
+    // 2. Identify spectator from lobby.spectators
+    const specIndex = lobby.spectators.findIndex(s => 
+        (s.idSocket && s.idSocket === ws) || 
+        (username && s.username && s.username.toLowerCase() === username.toLowerCase())
+    );
+
+    const targetUsername = (specIndex !== -1 && lobby.spectators[specIndex].username) 
+        ? lobby.spectators[specIndex].username 
+        : username;
+
+    if (!targetUsername) return false;
+
+    const spec = specIndex !== -1 ? lobby.spectators[specIndex] : null;
+    const openSeat = findOpenSeat(lobby);
+    if (openSeat === -1) return false;
+
+    if (specIndex !== -1) {
+        lobby.spectators.splice(specIndex, 1);
+    }
+
+    // 3. Seat spectator as an active player
+    lobby.players.push({
+        id: ws || (spec ? spec.idSocket : null),
+        username: targetUsername,
+        lives: lobby.defaultLives || 2,
+        wager: 5,
+        cards: [],
+        ready: false,
+        seat: openSeat,
+        eliminated: false,
+        isBot: false,
+        inVC: spec ? spec.inVC : false,
+        isMuted: spec && spec.isMuted !== undefined ? spec.isMuted : true,
+        nextHandReady: false,
+        peekRequests: {},
+        peekAllowed: {},
+        disconnectedAt: null
+    });
+
+    syncBotReadiness(lobby);
+    broadcastLobbyUpdate(lobby.code);
+    return true;
+}
+
+function handleStandUp(lobby, ws, username) {
+    if (!lobby || lobby.gameState !== 'lobby') return false;
+
+    const playerIndex = lobby.players.findIndex(p => 
+        (p.id && p.id === ws) || 
+        (username && p.username && p.username.toLowerCase() === username.toLowerCase())
+    );
+    if (playerIndex === -1) return false;
+
+    const player = lobby.players[playerIndex];
+    lobby.players.splice(playerIndex, 1);
+
+    lobby.players.forEach((p, idx) => { p.seat = idx; });
+
+    const alreadySpec = lobby.spectators.some(s => 
+        (s.idSocket && s.idSocket === ws) || 
+        (s.username && player.username && s.username.toLowerCase() === player.username.toLowerCase())
+    );
+
+    if (!alreadySpec) {
+        lobby.spectators.push({
+            idSocket: ws || player.id,
+            username: player.username,
+            inVC: player.inVC || false,
+            isMuted: player.isMuted !== undefined ? player.isMuted : true
+        });
+    }
+
+    establishDealer(lobby);
+    syncBotReadiness(lobby);
+    broadcastLobbyUpdate(lobby.code);
+    return true;
+}
+
 function startDealerDrawPhase(lobby) {
     clearRoundOverTimer(lobby);
     const deck = createDeck();
@@ -953,7 +1054,6 @@ function awardTournamentWinner(lobby, winner) {
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
 
-    // 1. Settle main tournament wagers
     lobby.players.forEach(p => {
         if (p.username !== winner.username) {
             const amt = p.wager || 5;
@@ -964,7 +1064,6 @@ function awardTournamentWinner(lobby, winner) {
         }
     });
 
-    // 2. Settle tournament/match win side bets
     if (typeof resolveWinSideBets === 'function') {
         resolveWinSideBets(lobby, winner.username);
     }
@@ -1029,12 +1128,10 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.pendingBotDraw = {};
     lobby.livesVote = null;
 
-    // Remove eliminated players from spectators so they aren't duplicated
     lobby.spectators = lobby.spectators.filter(s => {
         return !lobby.players.some(p => p.username && s.username && p.username.toLowerCase() === s.username.toLowerCase());
     });
 
-    // Reclaim genuine spectators into unoccupied seats
     const spectatorsToReclaim = [...lobby.spectators];
     spectatorsToReclaim.forEach(spec => {
         const alreadyIn = lobby.players.some(p => p.username && spec.username && p.username.toLowerCase() === spec.username.toLowerCase());
@@ -1063,7 +1160,6 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
 
     establishDealer(lobby);
 
-    // Reset seated player states cleanly
     lobby.players.forEach((p, idx) => {
         p.lives = lobby.defaultLives || 2;
         p.eliminated = false;
@@ -1279,6 +1375,8 @@ module.exports = {
     getSanitizedLobby,
     broadcastLobbyUpdate,
     handleSetReady,
+    handleSitDown,
+    handleStandUp,
     startDealerDrawPhase,
     startRound,
     advanceDealerToNextActive,
