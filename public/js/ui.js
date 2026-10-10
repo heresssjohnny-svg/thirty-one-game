@@ -46,6 +46,28 @@ function sendSocket(payload) {
         window.ws.send(JSON.stringify(payload));
     }
 };
+window.triggerAudioCue = function(cueType) {
+    try {
+        // 1. Try to play the HTML audio tags you added to index.html
+        const audioEl = document.getElementById(`sound-${cueType}`);
+        if (audioEl) {
+            audioEl.currentTime = 0;
+            audioEl.play().catch(e => console.warn(`[Audio] Browser blocked tag for ${cueType}:`, e));
+            
+            if (navigator.vibrate) navigator.vibrate(cueType === 'knock' ? [150, 100, 200] : [80, 50, 80]);
+            return;
+        }
+
+        // 2. Fallback to generating the audio dynamically
+        const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
+        fallbackAudio.play().catch(e => console.warn(`[Audio] Browser blocked dynamic audio for ${cueType}:`, e));
+        
+        if (navigator.vibrate) navigator.vibrate(cueType === 'knock' ? [150, 100, 200] : [80, 50, 80]);
+
+    } catch (e) {
+        console.error(`[Audio] Trigger error:`, e);
+    }
+};
 // Safe Audio Player targets index.html <audio> tags directly
 window.safePlaySound = function(soundName) {
     try {
