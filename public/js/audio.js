@@ -205,3 +205,6 @@ function enableBackgroundAudioKeepAlive() {
         if (ctx && ctx.state === 'suspended') ctx.resume();
     } catch (e) {}
 }
+window.playSound = playSound;
+window.playYourTurnCue = typeof playYourTurnCue === 'function' ? playYourTurnCue : () => playSound('yourturn');
+window.speakKnockedCue = typeof speakKnockedCue === 'function' ? speakKnockedCue : () => playSound('knock');
