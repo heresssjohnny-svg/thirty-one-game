@@ -886,20 +886,29 @@ function setupWebSocket(wss, broadcastLobbyList) {
         });
 
         ws.on('close', () => {
-            if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
-                const lobby = lobbies[ws.currentLobbyCode];
-                const p = lobby.players.find(pl => pl.id === ws);
-                if (p) {
-                    p.id = null;
-                    p.disconnectedAt = Date.now();
-                }
-                const s = lobby.spectators.find(spec => spec.idSocket === ws);
-                if (s) {
-                    s.idSocket = null;
-                    s.disconnectedAt = Date.now();
-                }
-            }
-        });
+    const lobbies = lobbyManager.getLobbies();
+    for (const code in lobbies) {
+        const lobby = lobbies[code];
+        
+        // 1. Mark player as temporarily disconnected (Starts the 90s grace period)
+        const player = lobby.players.find(p => p.id === ws);
+        if (player) {
+            player.id = null;
+            player.disconnectedAt = Date.now();
+            lobbyManager.broadcastLobbyUpdate(code);
+        }
+        
+        // 2. Mark spectator as temporarily disconnected
+        const spec = lobby.spectators.find(s => s.idSocket === ws);
+        if (spec) {
+            spec.idSocket = null;
+            spec.disconnectedAt = Date.now();
+        }
+        
+        // 3. Trigger inactivity timer (Will clean up if empty for too long)
+        lobbyManager.touchLobbyActivity(lobby, null);
+    }
+});
     });
 }
 
