@@ -528,6 +528,16 @@ html, body {
     inset: 0 !important;
     z-index: 10000 !important; /* Forces it above everything */
 }
+#next-hand-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10000 !important;
+    background: rgba(0, 0, 0, 0.78) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
 
 
 
