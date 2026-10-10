@@ -1176,37 +1176,41 @@ window.updateUIFromLobby = function(lobby) {
 
     updateKnockButtonState(lobby, me, isMyTurnPlaying);
 
-    // 11. SIDE BET PROPOSALS (SIDEBAR & TOP DOCKED NOTIFICATIONS)
+        // 11. SIDE BET PROPOSALS (SIDEBAR & TARGET CHALLENGE MODALS)
     const sidebar = document.getElementById('global-side-bets-sidebar');
     const sidebarList = document.getElementById('global-side-bets-list');
     const globalProps = lobby.globalProposals || [];
+    const bModal = document.getElementById('bet-modal');
+    const mTitle = document.getElementById('bet-modal-title');
+    const mBody = document.getElementById('bet-modal-body');
 
+    // A. GLOBAL SIDE BET DRAWER (Pops open on the right during active game)
     if (globalProps.length > 0 && lobby.gameState !== 'lobby') {
         if (sidebar) sidebar.style.display = 'flex';
         let sidebarHtml = '';
         globalProps.forEach(gp => {
-            const proposerName = gp.proposer || gp.creator;
-            const isMyProp = (proposerName === activeUsername);
-            const alreadyAccepted = gp.acceptedBy && gp.acceptedBy.includes(activeUsername);
+            const proposerName = gp.proposer || gp.creator || 'Player';
+            const isMyProp = proposerName.toLowerCase() === activeUsername.toLowerCase();
+            const alreadyAccepted = gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === activeUsername.toLowerCase());
 
             let actionHtml = '';
             if (isMyProp) {
                 if (gp.acceptedBy && gp.acceptedBy.length > 0) {
-                    actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${proposerName}', '${gp.pickUser || gp.condition}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
+                    actionHtml = `<span style="color:#38bdf8; font-size:0.72rem; font-weight:bold;">Reviewing (${gp.acceptedBy[0]})...</span>`;
                 } else {
-                    actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
+                    actionHtml = `<span style="color:var(--text-muted); font-size:0.72rem;">Waiting for players...</span>`;
                 }
             } else {
                 if (!alreadyAccepted) {
-                    actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
+                    actionHtml = `<button style="font-size:0.75rem; padding:5px 10px; background:#10b981; color:#fff; font-weight:bold; border-radius:4px; border:none; cursor:pointer;" onclick="window.acceptGlobalProposal('${gp.id}')">You got it</button>`;
                 } else {
-                    actionHtml = `<span style="color:#34d399; font-size:0.65rem;">Accepted ("You got it")</span>`;
+                    actionHtml = `<span style="color:#34d399; font-size:0.72rem; font-weight:bold;">Accepted ("You got it")</span>`;
                 }
             }
 
             sidebarHtml += `
-                <div class="global-bet-item">
-                    <span>I like <b>${gp.pickUser || gp.condition}</b> for <b>$${gp.wagerAmt || 5}</b> (${proposerName})</span>
+                <div class="global-bet-item" style="padding:8px; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                    <span style="font-size:0.78rem;"><b>${proposerName}</b>: $${gp.wagerAmt || 5} on <b>${gp.pickUser || gp.condition || 'Win'}</b></span>
                     ${actionHtml}
                 </div>
             `;
@@ -1216,62 +1220,63 @@ window.updateUIFromLobby = function(lobby) {
         sidebar.style.display = 'none';
     }
 
+    // Hide redundant top docked banner so it does not conflict with the sidebar
     const globalProposalsContainer = document.getElementById('global-proposals-container') || document.getElementById('pending-bets-banner');
     if (globalProposalsContainer) {
-        const pendingForMe = (lobby.globalProposals || []).filter(p => {
-            const creator = p.proposer || p.creator;
-            return creator !== activeUsername &&
-                !(p.acceptedBy || []).includes(activeUsername) &&
-                !(p.deniedBy || []).includes(activeUsername);
-        });
+        globalProposalsContainer.innerHTML = '';
+        globalProposalsContainer.style.display = 'none';
+    }
 
-        if (pendingForMe.length > 0 && lobby.gameState !== 'lobby') {
-            globalProposalsContainer.style.display = 'flex';
-            globalProposalsContainer.innerHTML = pendingForMe.map(bet => {
-                const creator = bet.proposer || bet.creator;
-                const cond = bet.pickUser || bet.condition || 'Win the Match';
-                return `
-                    <div class="global-bet-toast" style="background: rgba(4,20,13,0.95); border: 1px solid #d4af37; border-radius: 6px; padding: 6px 10px; margin: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <div style="font-size: 0.8rem; color: #f8fafc;">
-                            <strong>${creator}</strong>: $${bet.wagerAmt || 5} on <em>${cond}</em>
-                        </div>
-                        <div style="display: flex; gap: 4px;">
-                            <button onclick="window.respondGlobalBet('${bet.id}', true)" style="background: #15803d; border: 1px solid #4ade80; color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.75rem;">Confirm</button>
-                            <button onclick="window.respondGlobalBet('${bet.id}', false)" style="background: #991b1b; border: 1px solid #f87171; color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.75rem;">Deny</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        } else {
-            globalProposalsContainer.innerHTML = '';
-            globalProposalsContainer.style.display = 'none';
+    // B. MODAL POPUPS: TARGET CHALLENGES & PROPOSER CONFIRMATIONS
+    const directBetForMe = (lobby.pendingBets || []).find(b => 
+        b.target && b.target.toLowerCase() === activeUsername.toLowerCase()
+    ) || (lobby.pendingBetsForMe && lobby.pendingBetsForMe[0]);
+
+    const myAcceptedProposal = globalProps.find(gp => {
+        const creator = (gp.proposer || gp.creator || '').toLowerCase();
+        return creator === activeUsername.toLowerCase() && gp.acceptedBy && gp.acceptedBy.length > 0;
+    });
+
+    if (directBetForMe && bModal) {
+        // 1. First-to-lose bet proposal modal targeting this player
+        bModal.dataset.mode = 'incoming-challenge';
+        if (mTitle) mTitle.innerText = `⚠️ Side Bet Challenge from ${directBetForMe.proposer}`;
+        if (mBody) {
+            mBody.innerHTML = `
+                <p style="font-size:0.9rem; text-align:center; color:#f8fafc; margin-bottom:14px;">
+                    <b>${directBetForMe.proposer}</b> wagered <b style="color:var(--accent-gold);">$${directBetForMe.wagerAmt || 5}</b> that you will be eliminated first!
+                </p>
+                <div style="display:flex; gap:10px; justify-content:center;">
+                    <button style="background:#10b981; padding:8px 18px; font-weight:bold; cursor:pointer;" onclick="window.respondToBet('${directBetForMe.id}', true)">Accept ($${directBetForMe.wagerAmt || 5})</button>
+                    <button class="danger" style="padding:8px 18px; font-weight:bold; cursor:pointer;" onclick="window.respondToBet('${directBetForMe.id}', false)">Decline</button>
+                </div>
+            `;
         }
-    }
-
-    const bModal = document.getElementById('bet-modal');
-    const isModalOpen = bModal && bModal.style.display === 'flex';
-    if (lobby.pendingBetsForMe && lobby.pendingBetsForMe.length > 0 && !isModalOpen) {
-        lobby.pendingBetsForMe.forEach(bet => {
-            const label = bet.type === 'win' 
-                ? `Side Bet: ${bet.proposer} bets $${bet.wagerAmt} that you win round.` 
-                : `First Out Bet: ${bet.proposer} bets $${bet.wagerAmt} that ${bet.pickUser} is eliminated before ${bet.targetSurvivor}.`;
-            const mTitle = document.getElementById('bet-modal-title');
-            const mBody = document.getElementById('bet-modal-body');
-
-            if (mTitle) mTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
-            if (mBody) {
-                mBody.innerHTML = `
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">${label}</p>
-                    <div style="display: flex; gap: 8px; justify-content: center;">
-                        <button onclick="respondToBet('${bet.id}', true)">Accept</button>
-                        <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
-                    </div>
-                `;
-            }
-            if (bModal) bModal.style.display = 'flex';
-        });
+        bModal.style.display = 'flex';
         lobby.pendingBetsForMe = [];
+    } else if (myAcceptedProposal && bModal) {
+        // 2. Proposer modal to Confirm or Deny after another player clicked "You got it"
+        const accUser = myAcceptedProposal.acceptedBy[0];
+        bModal.dataset.mode = 'confirm-proposal';
+        if (mTitle) mTitle.innerText = `🤝 Confirm Global Bet (${myAcceptedProposal.pickUser || 'Win'})`;
+        if (mBody) {
+            mBody.innerHTML = `
+                <p style="font-size:0.9rem; text-align:center; color:#f8fafc; margin-bottom:14px;">
+                    <b>${accUser}</b> accepted your <b style="color:var(--accent-gold);">$${myAcceptedProposal.wagerAmt || 5}</b> bet on <b>${myAcceptedProposal.pickUser || myAcceptedProposal.condition || 'Win'}</b>!
+                </p>
+                <div style="display:flex; gap:10px; justify-content:center;">
+                    <button style="background:#10b981; padding:8px 18px; font-weight:bold; cursor:pointer;" onclick="window.confirmGlobalBet('${myAcceptedProposal.id}', '${accUser}', true)">Confirm Bet</button>
+                    <button class="danger" style="padding:8px 18px; font-weight:bold; cursor:pointer;" onclick="window.confirmGlobalBet('${myAcceptedProposal.id}', '${accUser}', false)">Deny</button>
+                </div>
+            `;
+        }
+        bModal.style.display = 'flex';
+    } else if (bModal && (bModal.dataset.mode === 'incoming-challenge' || bModal.dataset.mode === 'confirm-proposal')) {
+        // Automatically close when challenge or proposal is no longer pending
+        bModal.style.display = 'none';
+        delete bModal.dataset.mode;
     }
+
 
     // 12. POTS & CONFIG
     const configBar = document.getElementById('lobby-config-bar');
