@@ -29,9 +29,26 @@ function findOpenSeat(lobby) {
     return -1;
 }
 
-function touchLobbyActivity(lobby, broadcastLobbyList) {
-    if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
-    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), config.INACTIVITY_TIMEOUT_MS);
+function touchLobbyActivity(lobby, broadcastCallback) {
+    if (!lobby) return;
+    
+    // Check for humans who are either actively connected OR within their 90-second grace period
+    const hasActiveHumans = lobby.players.some(p => {
+        if (p.isBot) return false;
+        if (p.id !== null) return true; // Actively connected
+        
+        // Still counts as a human if they disconnected less than 90 seconds ago
+        if (p.disconnectedAt && (Date.now() - p.disconnectedAt < 90000)) {
+            return true;
+        }
+        return false;
+    });
+
+    if (!hasActiveHumans) {
+        // Only destroy the lobby if there are zero active humans AND zero humans in a grace period
+        delete lobbies[lobby.code];
+        if (typeof broadcastCallback === 'function') broadcastCallback();
+    }
 }
 
 function closeInactiveLobby(code, broadcastLobbyList) {
