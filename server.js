@@ -84,9 +84,6 @@ const heartbeatInterval = setInterval(() => {
     });
 }, 30000);
 
-wss.on('close', () => {
-    clearInterval(heartbeatInterval);
-});
 
 wss.on('connection', (ws, req) => {
     ws.isAlive = true;
