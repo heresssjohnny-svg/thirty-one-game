@@ -519,3 +519,41 @@ html, body {
     gap: 8px;
     width: 100%;
 }
+/* FORCE MODALS TO THE VERY FRONT */
+.modal-backdrop,
+.modal-overlay,
+#dealer-draw-modal,
+#bet-modal,
+#session-ledger-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10000 !important; /* Forces it above everything */
+}
+
+/* FORCE CENTER NOTIFICATIONS TO THE FRONT */
+#center-notification-banner,
+.notification-pill,
+.center-banner {
+    position: fixed !important;
+    top: 15% !important; /* Adjust if it covers the top menu */
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 10001 !important; /* Sits above even the modals */
+}
+
+/* FORCE TOP CORNER FEEDS TO THE FRONT */
+#discard-pickup-topleft-modal,
+.top-left-corner {
+    position: fixed !important;
+    top: 60px !important;
+    left: 10px !important;
+    z-index: 10001 !important;
+}
+
+#fed-card-topright-modal,
+.top-right-corner {
+    position: fixed !important;
+    top: 60px !important;
+    right: 10px !important;
+    z-index: 10001 !important;
+}
