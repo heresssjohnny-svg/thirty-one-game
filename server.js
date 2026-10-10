@@ -94,6 +94,7 @@ wss.on('connection', (ws, req) => {
 
     ws.on('pong', () => {
         ws.isAlive = true;
+
     });
 
     // Provide initial available lobby list upon socket handshake
@@ -206,10 +207,7 @@ wss.on('connection', (ws, req) => {
         handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
     });
 
-    ws.on('close', () => {
-        if (ws.currentLobbyCode) {
-            leaveLobby(ws, ws.currentLobbyCode, broadcastLobbyList);
-        }
+    
     });
 });
 
