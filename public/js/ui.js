@@ -1189,6 +1189,7 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.wasMyTurn = false;
     }
 
+updateKnockButtonState(lobby, me, isMyTurnPlaying);
 
             // 11. SIDE BET PROPOSALS (SELF-HEALING RIGHT-SIDE DRAWER & CHALLENGE MODALS)
     function ensureGlobalSidebarDOM() {
