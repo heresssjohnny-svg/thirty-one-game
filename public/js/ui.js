@@ -76,6 +76,7 @@ window.safeVibrate = function(pattern) {
 
 // Global one-tap unlock for mobile Chrome / Safari AudioContext
 function unlockAudioContextOnTap() {
+    // 1. Resume Web Audio Context if present
     if (window.audioCtx && window.audioCtx.state === 'suspended') {
         window.audioCtx.resume();
     }
@@ -83,6 +84,18 @@ function unlockAudioContextOnTap() {
         const ctx = getAudioContext();
         if (ctx && ctx.state === 'suspended') ctx.resume();
     }
+
+    // 2. Prime HTML5 Audio Elements for Android Chrome
+    ['sound-knock', 'sound-yourturn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.play().then(() => {
+                el.pause();
+                el.currentTime = 0;
+            }).catch(() => {});
+        }
+    });
+
     document.removeEventListener('touchstart', unlockAudioContextOnTap);
     document.removeEventListener('click', unlockAudioContextOnTap);
 }
@@ -1156,7 +1169,7 @@ window.updateUIFromLobby = function(lobby) {
     }
 
 
-    // 10. TURN ACTION & AUDIO TRIGGER
+        // 10. TURN ACTION & AUDIO TRIGGER
     const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
@@ -1165,6 +1178,8 @@ window.updateUIFromLobby = function(lobby) {
             window.appGlobals.wasMyTurn = true;
             if (typeof playYourTurnCue === 'function') {
                 playYourTurnCue();
+            } else if (typeof window.safePlaySound === 'function') {
+                window.safePlaySound('yourturn');
             } else if (typeof playSound === 'function') {
                 playSound('yourturn');
             }
@@ -1174,7 +1189,6 @@ window.updateUIFromLobby = function(lobby) {
         window.appGlobals.wasMyTurn = false;
     }
 
-    updateKnockButtonState(lobby, me, isMyTurnPlaying);
 
             // 11. SIDE BET PROPOSALS (SELF-HEALING RIGHT-SIDE DRAWER & CHALLENGE MODALS)
     function ensureGlobalSidebarDOM() {
