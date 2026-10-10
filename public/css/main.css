@@ -522,6 +522,7 @@ html, body {
 /* FORCE MODALS TO THE VERY FRONT */
 .modal-backdrop,
 .modal-overlay,
+#next-hand-overlay,
 #dealer-draw-modal,
 #bet-modal,
 #session-ledger-modal {
