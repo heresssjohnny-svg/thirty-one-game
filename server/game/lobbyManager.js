@@ -30,17 +30,28 @@ function findOpenSeat(lobby) {
 }
 
 function touchLobbyActivity(lobby, broadcastLobbyList) {
+    if (!lobby) return;
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
     lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), 90000);
 
-    if (!lobby) return;
+    const now = Date.now();
 
-    const hasActiveHumans = lobby.players.some(p => {
+    // 1. Check seated human players
+    const hasSeatedHumans = lobby.players.some(p => {
         if (p.isBot) return false;
         if (p.id !== null) return true;
-        if (p.disconnectedAt && (Date.now() - p.disconnectedAt < 90000)) return true;
+        if (p.disconnectedAt && (now - p.disconnectedAt < 90000)) return true;
         return false;
     });
+
+    // 2. Also check human spectators so standing up doesn't delete the table
+    const hasSpectatorHumans = (lobby.spectators || []).some(s => {
+        if (s.idSocket !== null) return true;
+        if (s.disconnectedAt && (now - s.disconnectedAt < 90000)) return true;
+        return false;
+    });
+
+    const hasActiveHumans = hasSeatedHumans || hasSpectatorHumans;
 
     if (!hasActiveHumans) {
         delete lobbies[lobby.code];
@@ -53,14 +64,20 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     if (!lobby) return;
 
     const now = Date.now();
-    const hasActiveHuman = lobby.players.some(p => {
+    const hasSeated = lobby.players.some(p => {
         if (p.isBot) return false;
         if (p.id && p.id.readyState === WebSocket.OPEN) return true;
         if (p.disconnectedAt && (now - p.disconnectedAt < 90000)) return true;
         return false;
     });
 
-    if (hasActiveHuman) return;
+    const hasSpec = (lobby.spectators || []).some(s => {
+        if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) return true;
+        if (s.disconnectedAt && (now - s.disconnectedAt < 90000)) return true;
+        return false;
+    });
+
+    if (hasSeated || hasSpec) return;
 
     const closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to inactivity.' });
     lobby.players.forEach(p => {
