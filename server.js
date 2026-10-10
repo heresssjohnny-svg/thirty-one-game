@@ -207,8 +207,6 @@ wss.on('connection', (ws, req) => {
         handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
     });
 
-    
-    });
 });
 
 // -------------------------------------------------------------
