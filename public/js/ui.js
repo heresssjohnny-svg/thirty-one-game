@@ -49,18 +49,18 @@ function sendSocket(payload) {
 // Safe Audio Player targets index.html <audio> tags directly
 window.safePlaySound = function(soundName) {
     try {
+        // 1. Try to use HTML audio tags if they exist in index.html
         const audioEl = document.getElementById(`sound-${soundName}`);
         if (audioEl) {
-            audioEl.currentTime = 0; 
-            const playPromise = audioEl.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => console.warn(`[Audio] Autoplay blocked for ${soundName}`, error));
-            }
-            return;
+            audioEl.currentTime = 0;
+            audioEl.play().catch(() => {});
+            return; // Exit if successful
         }
-        if (typeof window.playSound === 'function') {
-            window.playSound(soundName);
-        }
+
+        // 2. Foolproof Fallback: Generate and play the audio dynamically if tags are missing
+        const dynamicAudio = new Audio(`/mp3s/${soundName}.mp3`);
+        dynamicAudio.play().catch(err => console.warn(`[Audio] Autoplay blocked for ${soundName}. Tap screen to unlock.`, err));
+        
     } catch (e) {
         console.error(`[Audio] Failed to play ${soundName}`, e);
     }
