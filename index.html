@@ -255,7 +255,7 @@
                     </div>
 
                     <!-- 6 PLAYER SEATS (Seats 0 to 5) -->
-                    <div id="seat-0" class="player-seat seat seat-0 seat-pos-0" data-seat="0" onclick="handleSeatClick(0)">
+                    <div id="seat-0" class="player-seat seat seat-0 seat-pos-0" data-seat="0" onclick="window.handleSeatClick(0)">
                         <div class="seat-avatar">👤</div>
                         <div class="seat-info">
                             <span class="seat-player-name">Empty</span>
@@ -264,7 +264,7 @@
                         <span class="seat-status-badge">Open</span>
                     </div>
 
-                    <div id="seat-1" class="player-seat seat seat-1 seat-pos-1" data-seat="1" onclick="handleSeatClick(1)">
+                    <div id="seat-1" class="player-seat seat seat-1 seat-pos-1" data-seat="1" onclick="window.handleSeatClick(1)">
                         <div class="seat-avatar">👤</div>
                         <div class="seat-info">
                             <span class="seat-player-name">Empty</span>
@@ -273,7 +273,7 @@
                         <span class="seat-status-badge">Open</span>
                     </div>
 
-                    <div id="seat-2" class="player-seat seat seat-2 seat-pos-2" data-seat="2" onclick="handleSeatClick(2)">
+                    <div id="seat-2" class="player-seat seat seat-2 seat-pos-2" data-seat="2" onclick="window.handleSeatClick(2)">
                         <div class="seat-avatar">👤</div>
                         <div class="seat-info">
                             <span class="seat-player-name">Empty</span>
@@ -282,7 +282,7 @@
                         <span class="seat-status-badge">Open</span>
                     </div>
 
-                    <div id="seat-3" class="player-seat seat seat-3 seat-pos-3" data-seat="3" onclick="handleSeatClick(3)">
+                    <div id="seat-3" class="player-seat seat seat-3 seat-pos-3" data-seat="3" onclick="window.handleSeatClick(3)">
                         <div class="seat-avatar">👤</div>
                         <div class="seat-info">
                             <span class="seat-player-name">Empty</span>
@@ -291,7 +291,7 @@
                         <span class="seat-status-badge">Open</span>
                     </div>
 
-                    <div id="seat-4" class="player-seat seat seat-4 seat-pos-4" data-seat="4" onclick="handleSeatClick(4)">
+                    <div id="seat-4" class="player-seat seat seat-4 seat-pos-4" data-seat="4" onclick="window.handleSeatClick(4)">
                         <div class="seat-avatar">👤</div>
                         <div class="seat-info">
                             <span class="seat-player-name">Empty</span>
@@ -300,7 +300,7 @@
                         <span class="seat-status-badge">Open</span>
                     </div>
 
-                    <div id="seat-5" class="player-seat seat seat-5 seat-pos-5" data-seat="5" onclick="handleSeatClick(5)">
+                    <div id="seat-5" class="player-seat seat seat-5 seat-pos-5" data-seat="5" onclick="window.handleSeatClick(5)">
                         <div class="seat-avatar">👤</div>
                         <div class="seat-info">
                             <span class="seat-player-name">Empty</span>
@@ -350,42 +350,37 @@
             </div>
         </div>
 
-        <!-- 6. SIDE BETS MODAL -->
-        <div id="active-bets-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-box casino-panel bets-modal-box">
-                <div class="modal-header">
-                    <h3 class="gold-text">Side Bets & Wagers</h3>
-                    <button class="close-btn" onclick="closeActiveBetsModal()">✕</button>
-                </div>
-                <div class="bets-tabs-bar">
-                    <button id="bets-tab-active" class="tab-btn active" onclick="switchBetsTab('active')">Active</button>
-                    <button id="bets-tab-propose" class="tab-btn" onclick="switchBetsTab('propose')">Propose Bet</button>
-                </div>
-                <div id="active-bets-content" class="bets-content-container">
-                    <div id="active-bets-list" class="bets-list">
-                        <div class="empty-list-notice">No active side bets.</div>
-                    </div>
-                    <div id="propose-bet-fields" style="display: none;">
-                        <div class="form-group">
-                            <label for="bet-target-player">Target Player</label>
-                            <select id="bet-target-player"></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="bet-wager-amount">Wager Amount ($)</label>
-                            <input type="number" id="bet-wager-amount" value="5" min="1" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="bet-type-select">Bet Type</label>
-                            <select id="bet-type-select">
-                                <option value="first_to_lose">First to Lose a Life</option>
-                                <option value="win_round">Wins Next Round</option>
-                            </select>
-                        </div>
-                        <button class="primary-btn gold-btn full-width" onclick="submitSideBetProposal()">Send Proposal</button>
-                    </div>
+            <!-- Spectator Action Modal -->
+    <div id="seat-action-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="seat-action-title">Player Actions</h3>
+                <button class="close-btn" onclick="window.toggleModal('seat-action-modal')">✕</button>
+            </div>
+            <div id="seat-action-body" class="bet-form"></div>
+        </div>
+    </div>
+
+    <!-- Side Bets Modal -->
+    <div id="bet-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card bet-modal-card">
+            <div class="modal-header">
+                <h3 id="bet-modal-title">Side Wagers</h3>
+                <button class="close-btn" onclick="window.toggleModal('bet-modal', false)">✕</button>
+            </div>
+            <!-- ID RESTORED HERE -->
+            <div id="bet-modal-body" class="bet-form">
+                <label>Bet on Winner</label>
+                <div class="form-row">
+                    <input type="text" id="bet-pick-user" placeholder="Target Username">
+                    <input type="number" id="bet-wager-amount" placeholder="$ Amount" value="5" min="1" max="100">
+                    <button class="primary-btn" onclick="window.submitGlobalProposal(document.getElementById('bet-pick-user').value, document.getElementById('bet-wager-amount').value)">Propose</button>
                 </div>
             </div>
+            <div id="global-proposals-container" class="proposals-feed"></div>
         </div>
+    </div>
+
 
         <!-- 7. SPECTATOR LIST MODAL -->
         <div id="spectator-list-modal" class="modal-overlay" style="display: none;">
