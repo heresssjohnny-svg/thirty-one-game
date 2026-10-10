@@ -205,6 +205,13 @@ function enableBackgroundAudioKeepAlive() {
         if (ctx && ctx.state === 'suspended') ctx.resume();
     } catch (e) {}
 }
-window.playSound = playSound;
-window.playYourTurnCue = typeof playYourTurnCue === 'function' ? playYourTurnCue : () => playSound('yourturn');
-window.speakKnockedCue = typeof speakKnockedCue === 'function' ? speakKnockedCue : () => playSound('knock');
+// Global Window Bindings for ui.js triggers
+window.playSound = typeof playSound === 'function' ? playSound : function(soundName) {
+    console.warn(`[Audio] playSound called for ${soundName} but no function exists.`);
+};
+window.playYourTurnCue = typeof playYourTurnCue === 'function' ? playYourTurnCue : function() { 
+    window.playSound('yourturn'); 
+};
+window.speakKnockedCue = typeof speakKnockedCue === 'function' ? speakKnockedCue : function() { 
+    window.playSound('knock'); 
+};
