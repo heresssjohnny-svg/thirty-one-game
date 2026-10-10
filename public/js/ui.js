@@ -46,16 +46,14 @@ function sendSocket(payload) {
         window.ws.send(JSON.stringify(payload));
     }
 };
+
 window.triggerAudioCue = function(cueType) {
     try {
-        // 1. MUST use the HTML tags to bypass background WebSocket autoplay blocks
         const audioEl = document.getElementById(`sound-${cueType}`);
-        
         if (audioEl) {
             audioEl.currentTime = 0;
             audioEl.play().catch(e => console.warn(`[Audio] Blocked HTML tag for ${cueType}:`, e));
         } else {
-            // 2. Fallback only if tags are missing (will likely get blocked by browser)
             console.warn(`[Audio] HTML tag sound-${cueType} missing. Trying dynamic fallback.`);
             const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
             fallbackAudio.play().catch(e => console.warn(`[Audio] Blocked dynamic audio for ${cueType}:`, e));
@@ -66,21 +64,6 @@ window.triggerAudioCue = function(cueType) {
         }
     } catch (e) {
         console.error('[Audio] Trigger error:', e);
-    }
-};
-
-        // 2. Foolproof Fallback: Generate and play the audio dynamically if tags are missing
-        const dynamicAudio = new Audio(`/mp3s/${soundName}.mp3`);
-        dynamicAudio.play().catch(err => console.warn(`[Audio] Autoplay blocked for ${soundName}. Tap screen to unlock.`, err));
-        
-    } catch (e) {
-        console.error(`[Audio] Failed to play ${soundName}`, e);
-    }
-};
-
-window.safeVibrate = function(pattern) {
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-        try { navigator.vibrate(pattern); } catch (e) {}
     }
 };
 
