@@ -480,47 +480,8 @@ window.joinLobbyCode = function(code) {
     sendSocket({ type: 'JOIN_LOBBY', code: code.toUpperCase(), username });
 };
 
-window.leaveLobby = function() {
-    window.appGlobals.currentJoinedCode = null;
-    localStorage.removeItem('blitz31_active_room');
-    if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
-    sendSocket({ type: 'LEAVE_LOBBY' });
-    window.resetToMainMenu();
-};
 
-window.resetToMainMenu = function() {
-    if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
-    window.appGlobals.currentJoinedCode = null;
-    window.appGlobals.latestLobbySnapshot = null;
-    window.appGlobals.lastChatCount = 0;
-    localStorage.removeItem('blitz31_active_room');
 
-    const gameView = document.getElementById('game-view');
-    const mainMenu = document.getElementById('main-menu');
-    const topRowBtns = document.getElementById('in-game-top-row-btns');
-    const toolsRow = document.getElementById('in-game-tools-row');
-    const endBtn = document.getElementById('end-game-btn');
-    const leaveBtn = document.getElementById('leave-lobby-btn');
-
-    if (gameView) gameView.style.display = 'none';
-    if (mainMenu) mainMenu.style.display = 'flex';
-    if (topRowBtns) topRowBtns.style.display = 'none';
-    if (toolsRow) toolsRow.style.display = 'none';
-    if (endBtn) endBtn.style.display = 'none';
-    if (leaveBtn) leaveBtn.style.display = 'none';
-
-    const chatWin = document.getElementById('chat-window');
-    if (chatWin) chatWin.style.display = 'none';
-
-    const box = document.getElementById('chat-messages');
-    if (box) box.innerHTML = '';
-
-    window.clientState.isReady = false;
-    window.appGlobals.hasChosenPoolCard = false;
-    const readyBtn = document.getElementById('ready-btn');
-    if (readyBtn) readyBtn.innerText = 'Ready Up';
-    window.refreshLobbies();
-};
 
 // -------------------------------------------------------------
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
