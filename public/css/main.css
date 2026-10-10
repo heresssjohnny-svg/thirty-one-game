@@ -525,6 +525,8 @@ html, body {
 #next-hand-overlay,
 #dealer-draw-modal,
 #bet-modal,
+#winner-celebration-overlay,
+#celebration-canvas,
 #session-ledger-modal {
     position: fixed !important;
     inset: 0 !important;
