@@ -644,6 +644,18 @@ function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
     if (!knockAlertModal) return;
 
+    // B.2. OPPONENT KNOCK ALERTS & AUDIO
+    if (lobby.knockedBy && lobby.knockedBy !== window.appGlobals.lastKnownKnockedBy) {
+        window.appGlobals.lastKnownKnockedBy = lobby.knockedBy;
+        // Only play the incoming sound if someone ELSE knocked
+        if (lobby.knockedBy.toLowerCase() !== activeUsername.toLowerCase()) {
+            window.safePlaySound('knock');
+            window.safeVibrate([180, 110, 180, 110, 180]);
+        }
+    } else if (!lobby.knockedBy) {
+        window.appGlobals.lastKnownKnockedBy = null;
+    }
+
     if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
         knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
         knockAlertModal.style.display = 'block';
