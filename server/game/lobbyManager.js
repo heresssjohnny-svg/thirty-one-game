@@ -29,7 +29,7 @@ function findOpenSeat(lobby) {
     return -1;
 }
 
-function touchLobbyActivity(lobby, broadcastCallback) {
+function touchLobbyActivity(lobby, broadcastLobbyList) {
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
     
     // Hardcoded 90-second timeout (90000ms) to guarantee the grace period is honored
