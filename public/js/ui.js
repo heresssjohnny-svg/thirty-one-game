@@ -1243,13 +1243,13 @@ window.updateUIFromLobby = function(lobby) {
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
         if (lobby.activeParticipantsCount <= 1) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
             if (nextBtn) {
                 nextBtn.innerText = 'Returning to Ready Room...';
                 nextBtn.disabled = true;
             }
         } else if (myPlayer && !isPermanentlyOut) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
                     nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
