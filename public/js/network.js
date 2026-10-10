@@ -167,6 +167,7 @@ window.connectSocket = function() {
             }, 1500);
         }
     };
+}
 
 /**
  * Routes incoming server payloads directly to client UI and audio modules
