@@ -2,7 +2,7 @@
 
 let celebrationAnimationId = null;
 
-function triggerWinnerCelebration(winnerName, customSubtitle = "TOURNAMENT CHAMPION!") {
+window.triggerWinnerCelebration = function(winnerName, customSubtitle = "TOURNAMENT CHAMPION!") {
     const overlay = document.getElementById('winner-celebration-overlay');
     const titleEl = document.getElementById('celebration-winner-title');
     const subtitleEl = document.getElementById('celebration-subtitle');
@@ -76,8 +76,11 @@ function triggerWinnerCelebration(winnerName, customSubtitle = "TOURNAMENT CHAMP
         if (overlay) overlay.style.display = 'none';
         if (celebrationAnimationId) cancelAnimationFrame(celebrationAnimationId);
     }, 4500);
-}
+};
 
-function trigger31Celebration(winnerName) {
-    triggerWinnerCelebration(winnerName, "HIT 31!");
-}
+window.trigger31Celebration = function(winnerName) {
+    window.triggerWinnerCelebration(winnerName, "HIT 31!");
+};
+
+// Fallback alias to catch hooks from your most recent ui.js version
+window.launchConfetti = window.triggerWinnerCelebration;
