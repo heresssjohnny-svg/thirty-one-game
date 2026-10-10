@@ -570,8 +570,18 @@ window.toggleReady = function() {
     sendSocket({ type: 'SET_READY', ready: window.clientState.isReady });
 };
 
-window.standUp = function() { sendSocket({ type: 'STAND_UP' }); };
-window.sitDown = function() { sendSocket({ type: 'SIT_DOWN' }); };
+window.standUp = function() { 
+    const username = (document.getElementById('username-input')?.value || window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    sendSocket({ type: 'STAND_UP', username, code }); 
+};
+
+window.sitDown = function() { 
+    const username = (document.getElementById('username-input')?.value || window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    sendSocket({ type: 'SIT_DOWN', username, code }); 
+};
+
 
 window.updateWager = function() {
     const sel = document.getElementById('config-wager');
