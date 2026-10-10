@@ -619,7 +619,7 @@ window.knockRound = function() {
     sendSocket({ type: 'KNOCK' });
 };
 
-// // // -------------------------------------------------------------
+// // -------------------------------------------------------------
 // 7. SIDE BETS & PEEKING DIALOGS
 // -------------------------------------------------------------
 
@@ -636,7 +636,7 @@ window.handleSeatClick = function(seatIndex) {
 };
 
 window.tapSeat = function(targetUsername) {
-    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
     if (window.clientState.gameState === 'lobby') return;
 
     const isSpecOnly = window.clientState.isSpectator;
@@ -660,14 +660,14 @@ window.tapSeat = function(targetUsername) {
         return;
     }
 
+    // ACTIVE PLAYER CLICKS (Cannot bet on yourself)
+    if (targetUsername.toLowerCase() === activeUsername.toLowerCase()) return;
+
     const modalTitle = document.getElementById('bet-modal-title');
     const modalBody = document.getElementById('bet-modal-body');
 
     // 3+ PLAYERS: FIRST TO LOSE BET
     if (activeCount >= 3) {
-        // ACTIVE PLAYER CLICKS (Cannot bet on yourself to lose)
-        if (targetUsername.toLowerCase() === activeUsername.toLowerCase()) return; 
-
         if (modalTitle) modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
         if (modalBody) {
             modalBody.innerHTML = `
@@ -684,7 +684,6 @@ window.tapSeat = function(targetUsername) {
         
     // HEADS UP (2 PLAYERS): GLOBAL MATCH WINNER BET
     } else if (activeCount === 2) {
-        // Self-bet lock removed here: You CAN bet on yourself to win!
         if (modalTitle) modalTitle.innerText = `Global Side Bet: ${targetUsername} to win!`;
         if (modalBody) {
             modalBody.innerHTML = `
