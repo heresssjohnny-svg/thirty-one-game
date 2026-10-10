@@ -619,22 +619,9 @@ window.knockRound = function() {
     sendSocket({ type: 'KNOCK' });
 };
 
-// // -------------------------------------------------------------
+// -------------------------------------------------------------
 // 7. SIDE BETS & PEEKING DIALOGS
 // -------------------------------------------------------------
-
-// Bridge function: Converts the static seat click into the targeted username
-window.handleSeatClick = function(seatIndex) {
-    if (window.clientState.gameState === 'lobby') return;
-    const lobby = window.appGlobals.latestLobbySnapshot;
-    if (!lobby || !lobby.players) return;
-
-    const targetPlayer = lobby.players.find(p => String(p.seat) === String(seatIndex));
-    if (targetPlayer && targetPlayer.username) {
-        window.tapSeat(targetPlayer.username);
-    }
-};
-
 window.tapSeat = function(targetUsername) {
     const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
     if (window.clientState.gameState === 'lobby') return;
@@ -642,64 +629,161 @@ window.tapSeat = function(targetUsername) {
     const isSpecOnly = window.clientState.isSpectator;
     const activeCount = window.clientState.activeParticipantsCount;
 
-    // SPECTATOR CLICKS
     if (isSpecOnly) {
         const modalTitle = document.getElementById('seat-action-title');
         const modalBody = document.getElementById('seat-action-body');
         if (modalTitle) modalTitle.innerText = `Actions for ${targetUsername}`;
         if (modalBody) {
-            let actionsHtml = `<button class="primary-btn" style="width:100%; margin-bottom:6px; background:#2563eb;" onclick="window.requestPeekAction('${targetUsername}'); window.toggleModal('seat-action-modal');">🔍 Peek Hand</button>`;
-            
+            let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${targetUsername}')">🔍 Peek Hand</button>`;
             if (activeCount === 2) {
-                actionsHtml += `<button class="primary-btn" style="width:100%; margin-bottom:6px; background:#d97706;" onclick="window.toggleModal('seat-action-modal'); window.tapSeat('${targetUsername}');">🤝 Bet on ${targetUsername}</button>`;
+                actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on ${targetUsername}</button>`;
             }
-            actionsHtml += `<button class="secondary-btn" style="width:100%;" onclick="window.toggleModal('seat-action-modal')">Cancel</button>`;
+            actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
             modalBody.innerHTML = actionsHtml;
         }
         window.toggleModal('seat-action-modal');
         return;
     }
 
-    // ACTIVE PLAYER CLICKS (Cannot bet on yourself)
-    if (targetUsername.toLowerCase() === activeUsername.toLowerCase()) return;
-
-    const modalTitle = document.getElementById('bet-modal-title');
-    const modalBody = document.getElementById('bet-modal-body');
-
-    // 3+ PLAYERS: FIRST TO LOSE BET
     if (activeCount >= 3) {
+        if (targetUsername.toLowerCase() === activeUsername.toLowerCase()) return;
+        const modalTitle = document.getElementById('bet-modal-title');
+        const modalBody = document.getElementById('bet-modal-body');
         if (modalTitle) modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
         if (modalBody) {
             modalBody.innerHTML = `
-                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px; text-align:center;">Select wager that ${targetUsername} is eliminated before you:</p>
-                <div class="form-row" style="display:flex; gap:6px; justify-content:center;">
-                    <button class="primary-btn" onclick="window.submitEliminationProposal('${targetUsername}', 5)">$5</button>
-                    <button class="primary-btn" onclick="window.submitEliminationProposal('${targetUsername}', 10)">$10</button>
-                    <button class="primary-btn" onclick="window.submitEliminationProposal('${targetUsername}', 20)">$20</button>
-                </div>
-                <button class="secondary-btn" onclick="window.toggleModal('bet-modal')" style="width:100%; margin-top:8px;">Cancel</button>
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager that ${targetUsername} is eliminated before you:</p>
+                <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
+                <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
+                <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
             `;
         }
         window.toggleModal('bet-modal');
-        
-    // HEADS UP (2 PLAYERS): GLOBAL MATCH WINNER BET
     } else if (activeCount === 2) {
-        if (modalTitle) modalTitle.innerText = `Global Side Bet: ${targetUsername} to win!`;
+        const modalTitle = document.getElementById('bet-modal-title');
+        const modalBody = document.getElementById('bet-modal-body');
+        if (modalTitle) modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
         if (modalBody) {
             modalBody.innerHTML = `
-                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px; text-align:center;">Select wager amount:</p>
-                <div class="form-row" style="display:flex; gap:6px; justify-content:center;">
-                    <button class="primary-btn" onclick="window.submitGlobalProposal('${targetUsername}', 5)">$5</button>
-                    <button class="primary-btn" onclick="window.submitGlobalProposal('${targetUsername}', 10)">$10</button>
-                    <button class="primary-btn" onclick="window.submitGlobalProposal('${targetUsername}', 20)">$20</button>
-                </div>
-                <button class="secondary-btn" onclick="window.toggleModal('bet-modal')" style="width:100%; margin-top:8px;">Cancel</button>
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+                <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+                <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
             `;
         }
         window.toggleModal('bet-modal');
     }
 };
 
+window.requestPeekFromModal = function(targetUsername) {
+    window.toggleModal('seat-action-modal');
+    sendSocket({ type: 'REQUEST_PEEK', targetUsername });
+    window.showCenterNotification(`Peek request sent to ${targetUsername}!`);
+};
+
+window.betOnHimFromModal = function(targetUsername) {
+    window.toggleModal('seat-action-modal');
+    const modalTitle = document.getElementById('bet-modal-title');
+    const modalBody = document.getElementById('bet-modal-body');
+    if (modalTitle) modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount:</p>
+            <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
+            <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
+            <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
+            <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+        `;
+    }
+    window.toggleModal('bet-modal');
+};
+
+window.submitEliminationProposal = function(target, wagerAmt) {
+    sendSocket({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt });
+    window.toggleModal('bet-modal');
+    window.showCenterNotification(`First to lose bet proposed to ${target}!`);
+};
+
+window.submitGlobalProposal = function(pickUser, wagerAmt) {
+    sendSocket({ type: 'PROPOSE_GLOBAL_SIDE_BET', pickUser, wagerAmt });
+    window.toggleModal('bet-modal');
+    window.showCenterNotification(`Global bet offered on ${pickUser}!`);
+};
+
+window.acceptGlobalProposal = function(proposalId) {
+    sendSocket({
+        type: 'ACCEPT_GLOBAL_PROPOSAL',
+        proposalId: proposalId,
+        betId: proposalId,
+        id: proposalId
+    });
+};
+
+window.respondGlobalBet = function(proposalId, accept) {
+    sendSocket({
+        type: 'RESPOND_GLOBAL_BET',
+        proposalId: proposalId,
+        betId: proposalId,
+        id: proposalId,
+        accept: !!accept,
+        confirm: !!accept
+    });
+};
+
+window.confirmGlobalBet = function(proposalId, acceptedUser, confirmChoice) {
+    sendSocket({
+        type: 'CONFIRM_GLOBAL_BET',
+        proposalId: proposalId,
+        betId: proposalId,
+        id: proposalId,
+        acceptedUser: acceptedUser,
+        confirm: !!confirmChoice,
+        accept: !!confirmChoice
+    });
+    const modal = document.getElementById('bet-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers) {
+    const modal = document.getElementById('bet-modal');
+    const modalTitle = document.getElementById('bet-modal-title');
+    const modalBody = document.getElementById('bet-modal-body');
+    if (modalTitle) modalTitle.innerText = `Confirm Global Side Bet (${pickUser})`;
+
+    const listHtml = (acceptedUsers || []).map(acc => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
+            <span><b>${acc}</b> accepted</span>
+            <div style="display:flex; gap:4px;">
+                <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
+                <button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="confirmGlobalBet('${proposalId}', '${acc}', false)">Decline</button>
+            </div>
+        </div>
+    `).join('');
+
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <p style="font-size:0.80rem; color:var(--text-muted); margin-bottom:6px;">Players who accepted your proposal:</p>
+            ${listHtml}
+            <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:8px;">Close</button>
+        `;
+    }
+    if (modal) modal.style.display = 'flex';
+};
+
+window.respondToBet = function(betId, accept) {
+    sendSocket({
+        type: 'RESPOND_BET',
+        betId: betId,
+        proposalId: betId,
+        id: betId,
+        accept: !!accept,
+        confirm: !!accept
+    });
+    const modal = document.getElementById('bet-modal');
+    if (modal) modal.style.display = 'none';
+};
 
 // -------------------------------------------------------------
 // 8. MASTER TABLE RENDER & SPECTATOR LOGIC
