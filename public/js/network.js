@@ -156,22 +156,17 @@ window.connectSocket = function() {
         window.ws = null;
         window.appGlobals.ws = null;
 
-        // Auto-reconnect if user has an active session or is in an active room
+        // Do NOT reset the UI here. Allow the 90-second server grace period to hold the seat.
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => {
                 reconnectTimer = null;
-                const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+                const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
                 if (window.userSession || activeRoom) {
                     window.connectSocket();
                 }
-            }, 1000);
+            }, 1500);
         }
     };
-
-    ws.onerror = (err) => {
-        console.warn('[WS] Socket error event:', err);
-    };
-};
 
 /**
  * Routes incoming server payloads directly to client UI and audio modules
