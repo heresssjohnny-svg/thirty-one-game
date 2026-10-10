@@ -208,23 +208,42 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        case 'STAND_UP': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                const lobby = lobbies[currentLobbyCode];
+                case 'STAND_UP': {
+            const code = ws.currentLobbyCode || data.code;
+            if (code && lobbies[code]) {
+                const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (lobby.gameState === 'lobby') {
-                    const pIdx = lobby.players.findIndex(p => p.id === ws);
+                    const uName = (data.username || currentUsername || ws.currentUsername || '').toLowerCase();
+                    const pIdx = lobby.players.findIndex(p => 
+                        p.id === ws || 
+                        (uName && p.username && p.username.toLowerCase() === uName)
+                    );
+
                     if (pIdx !== -1) {
                         const removed = lobby.players.splice(pIdx, 1)[0];
-                        lobby.spectators.push({
-                            idSocket: ws,
-                            username: removed.username,
-                            inVC: removed.inVC,
-                            isMuted: removed.isMuted,
-                            disconnectedAt: null
-                        });
+                        
+                        // Prevent duplicate spectator entries
+                        const alreadySpec = lobby.spectators.some(s => 
+                            s.idSocket === ws || 
+                            (removed.username && s.username && s.username.toLowerCase() === removed.username.toLowerCase())
+                        );
+
+                        if (!alreadySpec) {
+                            lobby.spectators.push({
+                                idSocket: ws,
+                                username: removed.username,
+                                inVC: removed.inVC || false,
+                                isMuted: removed.isMuted !== undefined ? removed.isMuted : true,
+                                disconnectedAt: null
+                            });
+                        }
+
+                        // Re-index remaining seated players
+                        lobby.players.forEach((p, idx) => { p.seat = idx; });
+
                         syncBotReadiness(lobby);
-                        broadcastLobbyUpdate(currentLobbyCode);
+                        broadcastLobbyUpdate(code);
                         if (broadcastLobbyList) broadcastLobbyList();
                     }
                 }
@@ -233,37 +252,58 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'SIT_DOWN': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                const lobby = lobbies[currentLobbyCode];
+            const code = ws.currentLobbyCode || data.code;
+            if (code && lobbies[code]) {
+                const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                    const sIdx = lobby.spectators.findIndex(s => s.idSocket === ws);
-                    if (sIdx !== -1) {
-                        const spec = lobby.spectators.splice(sIdx, 1)[0];
-                        lobby.players.push({
-                            id: ws,
-                            username: spec.username,
-                            lives: lobby.defaultLives || 2,
-                            wager: 5,
-                            cards: [],
-                            ready: false,
-                            seat: findOpenSeat(lobby),
-                            eliminated: false,
-                            isBot: false,
-                            inVC: spec.inVC,
-                            isMuted: spec.isMuted,
-                            nextHandReady: false,
-                            peekRequests: {},
-                            peekAllowed: {},
-                            disconnectedAt: null
-                        });
+                    const uName = (data.username || currentUsername || ws.currentUsername || '').toLowerCase();
+                    
+                    // Match spectator by socket connection OR username
+                    const sIdx = lobby.spectators.findIndex(s => 
+                        s.idSocket === ws || 
+                        (uName && s.username && s.username.toLowerCase() === uName)
+                    );
+
+                    const spec = (sIdx !== -1) ? lobby.spectators.splice(sIdx, 1)[0] : null;
+                    const targetUsername = spec?.username || data.username || currentUsername || ws.currentUsername;
+
+                    if (targetUsername) {
+                        // Check if player is already seated (update socket reference if so)
+                        const existingP = lobby.players.find(p => p.username.toLowerCase() === targetUsername.toLowerCase());
+                        if (existingP) {
+                            existingP.id = ws;
+                            existingP.disconnectedAt = null;
+                        } else {
+                            const openSeat = findOpenSeat(lobby);
+                            lobby.players.push({
+                                id: ws,
+                                username: targetUsername,
+                                lives: lobby.defaultLives || 2,
+                                wager: 5,
+                                cards: [],
+                                ready: false,
+                                seat: openSeat !== -1 ? openSeat : lobby.players.length,
+                                eliminated: false,
+                                isBot: false,
+                                inVC: spec ? spec.inVC : true,
+                                isMuted: spec && spec.isMuted !== undefined ? spec.isMuted : true,
+                                nextHandReady: false,
+                                peekRequests: {},
+                                peekAllowed: {},
+                                disconnectedAt: null
+                            });
+                        }
+
                         syncBotReadiness(lobby);
-                        broadcastLobbyUpdate(currentLobbyCode);
+                        broadcastLobbyUpdate(code);
                         if (broadcastLobbyList) broadcastLobbyList();
                     }
                 }
             }
             break;
+        }
+
         }
 
         case 'CHOOSE_POOL_CARD': {
