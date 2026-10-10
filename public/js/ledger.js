@@ -39,15 +39,40 @@ function closeSessionLedgerModal() {
 }
 
 function renderSessionLedger() {
-    const container = document.getElementById('session-ledger-content') 
-        || document.getElementById('ledger-content')
-        || document.getElementById('session-ledger-list');
-    if (!container) return;
+    const activeBetsEl = document.getElementById('active-session-bets-list');
+    const container = document.getElementById('session-settled-ledger-list')
+        || document.getElementById('session-ledger-display')
+        || document.getElementById('session-ledger-content') 
+        || document.getElementById('ledger-content');
 
     const state = window.clientState || {};
-    const mainLedger = state.mainGameLedger || {};
-    const sideLedger = state.sideBetLedger || {};
+    const snapshot = window.appGlobals?.latestLobbySnapshot || {};
+    const mainLedger = snapshot.mainGameLedger || state.mainGameLedger || {};
+    const sideLedger = snapshot.sideBetLedger || state.sideBetLedger || {};
 
+    // 1. Render Active Unresolved Bets
+    if (activeBetsEl) {
+        const activeList = snapshot.activeBets || state.activeBetsList || [];
+        if (activeList.length === 0) {
+            activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
+        } else {
+            activeBetsEl.innerHTML = activeList.map(b => {
+                const desc = (b.type === 'eliminate' || b.type === 'first_out')
+                    ? `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.pickUser} out first)`
+                    : `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.condition || 'Win'})`;
+                return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
+                        <span style="font-size:0.8rem;">${desc}</span>
+                        <span style="color:var(--accent-gold); font-weight:bold; font-size:0.85rem;">$${b.wagerAmt || 5}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    if (!container) return;
+
+    // 2. Net settlement ledger
     const combined = {};
     const mergeLedger = (src) => {
         for (const debtor in src) {
