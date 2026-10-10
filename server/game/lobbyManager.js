@@ -554,717 +554,418 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
         }
     }
 }
-// server/game/lobbyManager.js - PART 2 OF 2
+// public/js/ui.js - PART 2 OF 2
 
-function handleTurnAction(lobby, wsId, actionType) {
-    if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
-    const currentPlayer = lobby.players[lobby.turnIndex];
-    if (!currentPlayer || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
+// -------------------------------------------------------------
+// 8. MASTER TABLE RENDER & SPECTATOR LOGIC
+// -------------------------------------------------------------
+window.updateUIFromLobby = window.renderLobbyState = function(lobby) {
+    if (!lobby || !lobby.players) return;
+    window.appGlobals = window.appGlobals || {};
+    window.appGlobals.latestLobbySnapshot = lobby;
 
-    if (currentPlayer.id !== wsId && (!currentPlayer.idSocket || currentPlayer.idSocket !== wsId)) return;
+    const authScreen = document.getElementById('auth-screen');
+    const mainMenu = document.getElementById('main-menu');
+    const gameView = document.getElementById('game-view');
+    const topRowBtns = document.getElementById('in-game-top-row-btns');
+    const toolsRow = document.getElementById('in-game-tools-row');
+    const endBtn = document.getElementById('end-game-btn');
+    const leaveBtn = document.getElementById('leave-lobby-btn');
 
-    if (lobby.gameState === 'finalTurn' && lobby.knockedBy === currentPlayer.username) {
-        return;
+    if (authScreen) authScreen.style.display = 'none';
+    if (mainMenu) mainMenu.style.display = 'none';
+    if (gameView) gameView.style.display = 'flex';
+    if (topRowBtns) topRowBtns.style.display = 'inline-flex';
+    if (toolsRow) toolsRow.style.display = 'flex';
+    if (endBtn) endBtn.style.display = 'inline-block';
+    if (leaveBtn) leaveBtn.style.display = 'inline-block';
+
+    const roomTitle = document.getElementById('room-title-display');
+    if (roomTitle) roomTitle.innerText = `${lobby.name || 'Table'} [${lobby.code || '----'}]`;
+
+    if (lobby.chatHistory) {
+        window.syncChatHistory(lobby.chatHistory);
     }
 
-    if (actionType === 'DRAW_DECK') {
-        if (lobby.deck.length === 0) lobby.deck = createDeck();
-        currentPlayer.cards.push(lobby.deck.pop());
-        currentPlayer.pickedUpDiscardCard = null;
-        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the deck.`;
-    } else if (actionType === 'DRAW_DISCARD' && lobby.discardPile.length > 0) {
-        const card = lobby.discardPile.pop();
-        currentPlayer.cards.push(card);
-        currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
-        lobby.phaseMessage = `📢 ${currentPlayer.username} picked up ${card.val}${card.suit} from the discard pile!`;
+    const activeUsername = (document.getElementById('username-input')?.value || window.clientState?.username || 'Player1').trim();
+    const me = lobby.players.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+    const isSpectatorOnly = !me || me.eliminated;
+    window.clientState.isSpectator = isSpectatorOnly;
 
-        if (lobby.initialDealCard && card.val === lobby.initialDealCard.val && card.suit === lobby.initialDealCard.suit) {
-            lobby.lastDiscardPickup = { username: currentPlayer.username, card: { val: card.val, suit: card.suit } };
+    // A. NOTIFICATIONS BANNER
+    if (lobby.phaseMessage && lobby.phaseMessage !== window.appGlobals.lastPhaseMessage) {
+        window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
+        if (typeof window.showCenterNotification === 'function') {
+            window.showCenterNotification(lobby.phaseMessage);
         }
+    }
 
-        if (lobby.lastDiscardDonor && lobby.lastDiscardDonor !== currentPlayer.username) {
-            if (!lobby.fedCardsHistory) lobby.fedCardsHistory = {};
-            if (!lobby.fedCardsHistory[currentPlayer.username]) lobby.fedCardsHistory[currentPlayer.username] = {};
-            if (!lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor]) {
-                lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor] = [];
+    // B. TURN AUDIO CUE & VIBRATION
+    const isMyTurnPlaying = !isSpectatorOnly && 
+        ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
+        (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+
+    if (isMyTurnPlaying) {
+        if (!window.appGlobals.wasMyTurn) {
+            window.appGlobals.wasMyTurn = true;
+            if (typeof window.playYourTurnCue === 'function') {
+                window.playYourTurnCue();
+            } else {
+                window.safePlaySound('yourturn');
             }
-            lobby.fedCardsHistory[currentPlayer.username][lobby.lastDiscardDonor].push({
-                val: card.val,
-                suit: card.suit
-            });
-
-            if (!lobby.fedCardReminders) lobby.fedCardReminders = {};
-            lobby.fedCardReminders[lobby.lastDiscardDonor] = {
-                target: currentPlayer.username,
-                card: { val: card.val, suit: card.suit }
-            };
-        }
-    }
-
-    if (calculateBestFourCardScore(currentPlayer.cards) === 31 || calculateScore(currentPlayer.cards) === 31) {
-        lobby.hit31Player = currentPlayer.username;
-
-        if (currentPlayer.cards.length === 4) {
-            let bestCards = currentPlayer.cards.slice(0, 3);
-            let maxSc = calculateScore(bestCards);
-            for (let i = 0; i < 4; i++) {
-                const testHand = currentPlayer.cards.filter((_, idx) => idx !== i);
-                const sc = calculateScore(testHand);
-                if (sc >= maxSc) {
-                    maxSc = sc;
-                    bestCards = testHand;
-                }
-            }
-            currentPlayer.cards = bestCards;
-        }
-
-        const winningSuit = getWinningSuitFor31(currentPlayer.cards);
-        const feeder = getFeeder21OutOf31(lobby, currentPlayer, winningSuit);
-
-        if (feeder) {
-            feeder.lives = 0;
-            feeder.eliminated = true;
-            resolveFirstToLoseBets(lobby, feeder.username);
-            if (feeder.id && typeof feeder.id === 'object') {
-                lobby.spectators.push({ idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
-            }
-            lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
-        } else {
-            lobby.players.forEach(p => {
-                if (p.username !== currentPlayer.username && !p.eliminated) {
-                    p.lives = Math.max(0, p.lives - 1);
-                    if (p.lives <= 0) {
-                        p.eliminated = true;
-                        resolveFirstToLoseBets(lobby, p.username);
-                        if (p.id && typeof p.id === 'object') {
-                            lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
-                        }
-                    }
-                }
-            });
-            lobby.phaseMessage = `⚡ 31! ${currentPlayer.username} hit 31 points! All other players lose a life.`;
-        }
-
-        resolveWinSideBets(lobby, currentPlayer.username);
-        syncLifetimeLedgerBalances(lobby);
-
-        const remaining = getActiveParticipants(lobby);
-        if (remaining.length <= 1) {
-            awardTournamentWinner(lobby, remaining[0] || currentPlayer);
-            return;
-        }
-
-        advanceDealerToNextActive(lobby);
-        triggerRoundOver(lobby, lobby.phaseMessage);
-        return;
-    }
-
-    broadcastLobbyUpdate(lobby.code);
-    scheduleBotActions(lobby);
-}
-
-function handleDiscardAction(lobby, wsId, cardIndex) {
-    if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
-    const currentPlayer = lobby.players[lobby.turnIndex];
-    if (!currentPlayer || currentPlayer.cards.length !== 4) return;
-
-    if (currentPlayer.id !== wsId && (!currentPlayer.idSocket || currentPlayer.idSocket !== wsId)) return;
-
-    if (typeof cardIndex !== 'number' || cardIndex < 0 || cardIndex >= currentPlayer.cards.length) {
-        cardIndex = 0;
-    }
-
-    const discarded = currentPlayer.cards[cardIndex];
-
-    if (currentPlayer.pickedUpDiscardCard && discarded.val === currentPlayer.pickedUpDiscardCard.val && discarded.suit === currentPlayer.pickedUpDiscardCard.suit) {
-        currentPlayer.cards.splice(cardIndex, 1);
-        lobby.discardPile.push(discarded);
-        currentPlayer.pickedUpDiscardCard = null;
-        if (lobby.lastDiscardPickup?.username === currentPlayer.username && lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
-            lobby.lastDiscardPickup = null;
-        }
-        lobby.phaseMessage = `📢 ${currentPlayer.username} put the discard back. Must draw from deck!`;
-        broadcastLobbyUpdate(lobby.code);
-        scheduleBotActions(lobby);
-        return;
-    }
-
-    currentPlayer.cards.splice(cardIndex, 1);
-    currentPlayer.pickedUpDiscardCard = null;
-    lobby.discardPile.push(discarded);
-
-    if (lobby.fedCardReminders) {
-        for (const donor in lobby.fedCardReminders) {
-            if (lobby.fedCardReminders[donor].target === currentPlayer.username) {
-                const remCard = lobby.fedCardReminders[donor].card;
-                if (remCard.val === discarded.val && remCard.suit === discarded.suit) {
-                    delete lobby.fedCardReminders[donor];
-                }
-            }
-        }
-    }
-
-    lobby.lastDiscardDonor = currentPlayer.username;
-    if (lobby.lastDiscardPickup?.username === currentPlayer.username && lobby.lastDiscardPickup.card.val === discarded.val && lobby.lastDiscardPickup.card.suit === discarded.suit) {
-        lobby.lastDiscardPickup = null;
-    }
-
-    lobby.turnsTakenThisRound++;
-
-    if (lobby.gameState === 'finalTurn') {
-        if (!lobby.finalTurnsTaken) lobby.finalTurnsTaken = {};
-        lobby.finalTurnsTaken[currentPlayer.username] = true;
-    }
-
-    const score = calculateScore(currentPlayer.cards);
-    if (score === 31) {
-        lobby.hit31Player = currentPlayer.username;
-        const winningSuit = getWinningSuitFor31(currentPlayer.cards);
-        const feeder = getFeeder21OutOf31(lobby, currentPlayer, winningSuit);
-
-        if (feeder) {
-            feeder.lives = 0;
-            feeder.eliminated = true;
-            resolveFirstToLoseBets(lobby, feeder.username);
-            if (feeder.id && typeof feeder.id === 'object') {
-                lobby.spectators.push({ idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
-            }
-            lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
-        } else {
-            lobby.players.forEach(p => {
-                if (p.username !== currentPlayer.username && !p.eliminated) {
-                    p.lives = Math.max(0, p.lives - 1);
-                    if (p.lives <= 0) {
-                        p.eliminated = true;
-                        resolveFirstToLoseBets(lobby, p.username);
-                        if (p.id && typeof p.id === 'object') {
-                            lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
-                        }
-                    }
-                }
-            });
-            lobby.phaseMessage = `⚡ 31! ${currentPlayer.username} hit 31 points! All other players lose a life.`;
-        }
-
-        resolveWinSideBets(lobby, currentPlayer.username);
-        syncLifetimeLedgerBalances(lobby);
-
-        const remaining = getActiveParticipants(lobby);
-        if (remaining.length <= 1) {
-            awardTournamentWinner(lobby, remaining[0] || currentPlayer);
-            return;
-        }
-
-        advanceDealerToNextActive(lobby);
-        triggerRoundOver(lobby, lobby.phaseMessage);
-    } else {
-        advanceTurnOrResolve(lobby);
-    }
-}
-
-function handleKnock(lobby, wsId) {
-    if (lobby.gameState !== 'playing') return;
-    const p = lobby.players[lobby.turnIndex];
-    if (!p || p.eliminated || lobby.knockedBy) return;
-
-    if (p.id !== wsId && (!p.idSocket || p.idSocket !== wsId)) return;
-
-    if (p.cards.length !== 3) {
-        return;
-    }
-
-    const active = getActiveParticipants(lobby);
-    if (lobby.turnsTakenThisRound < active.length) return;
-    if (calculateScore(p.cards) < (active.length > 2 ? 21 : 25)) return;
-
-    lobby.gameState = 'finalTurn';
-    lobby.knockedBy = p.username;
-    lobby.finalTurnsTaken = {};
-    lobby.phaseMessage = `🔔 KNOCK! ${p.username} knocked! 1 final turn each.`;
-
-    let next = (lobby.turnIndex + 1) % lobby.players.length;
-    let attempts = 0;
-    while ((lobby.players[next].eliminated || lobby.players[next].username === lobby.knockedBy) && attempts < lobby.players.length) {
-        next = (next + 1) % lobby.players.length;
-        attempts++;
-    }
-
-    lobby.turnIndex = next;
-    broadcastLobbyUpdate(lobby.code);
-    scheduleBotActions(lobby);
-}
-
-function advanceTurnOrResolve(lobby) {
-    if (lobby.gameState === 'finalTurn') {
-        const activeOpponents = getActiveParticipants(lobby).filter(p => p.username !== lobby.knockedBy);
-        const allOpponentsFinished = activeOpponents.every(p => lobby.finalTurnsTaken && lobby.finalTurnsTaken[p.username]);
-
-        if (allOpponentsFinished) {
-            resolveRoundEnd(lobby);
-            return;
-        }
-
-        let next = (lobby.turnIndex + 1) % lobby.players.length;
-        let found = false;
-        for (let i = 0; i < lobby.players.length; i++) {
-            const candidate = lobby.players[next];
-            if (!candidate.eliminated && candidate.username !== lobby.knockedBy && (!lobby.finalTurnsTaken || !lobby.finalTurnsTaken[candidate.username])) {
-                lobby.turnIndex = next;
-                found = true;
-                break;
-            }
-            next = (next + 1) % lobby.players.length;
-        }
-
-        if (!found) {
-            resolveRoundEnd(lobby);
-            return;
-        }
-
-        broadcastLobbyUpdate(lobby.code);
-        scheduleBotActions(lobby);
-        return;
-    }
-
-    let next = (lobby.turnIndex + 1) % lobby.players.length;
-    let safety = 0;
-    while (lobby.players[next].eliminated && safety < lobby.players.length) {
-        next = (next + 1) % lobby.players.length;
-        safety++;
-    }
-
-    lobby.turnIndex = next;
-    broadcastLobbyUpdate(lobby.code);
-    scheduleBotActions(lobby);
-}
-
-function resolveRoundEnd(lobby) {
-    lobby.players.forEach(p => {
-        if (p.cards && p.cards.length === 4) {
-            let bestCards = p.cards.slice(0, 3);
-            let maxSc = calculateScore(bestCards);
-            for (let i = 0; i < 4; i++) {
-                const testHand = p.cards.filter((_, idx) => idx !== i);
-                const sc = calculateScore(testHand);
-                if (sc >= maxSc) {
-                    maxSc = sc;
-                    bestCards = testHand;
-                }
-            }
-            p.cards = bestCards;
-        }
-    });
-
-    const active = getActiveParticipants(lobby);
-    const scores = active.map(p => ({ p, s: calculateScore(p.cards) })).sort((a, b) => a.s - b.s);
-    const lowest = scores[0].s;
-    const tied = scores.filter(s => s.s === lowest);
-
-    if (tied.length > 1) {
-        if (active.length === 2) {
-            triggerRoundOver(lobby, `Round tied at ${lowest} pts. No one loses a life!`);
-        } else {
-            lobby.tiedParticipantsList = tied.map(t => t.p.username);
-            const tieDeck = (lobby.deck && lobby.deck.length >= tied.length) ? lobby.deck : createDeck();
-            lobby.drawPool = tieDeck.map(c => ({ card: c, chosenBy: null }));
-            lobby.drawResults = {};
-            lobby.drawOrderSequence = [];
-            lobby.pendingBotDraw = {};
-            lobby.gameState = 'tieBreaker';
-            lobby.phaseMessage = `Tie for lowest score (${lowest} pts)! Draw to resolve.`;
-            broadcastLobbyUpdate(lobby.code);
-            scheduleBotActions(lobby);
+            window.safeVibrate([60, 40, 60]);
         }
     } else {
-        const loser = scores[0].p;
-        const winner = scores[scores.length - 1].p;
-        loser.lives = Math.max(0, loser.lives - 1);
-
-        if (loser.lives <= 0 && !loser.eliminated) {
-            loser.eliminated = true;
-            resolveFirstToLoseBets(lobby, loser.username);
-            syncLifetimeLedgerBalances(lobby);
-            if (loser.id && typeof loser.id === 'object') {
-                lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
-            }
-        }
-
-        resolveWinSideBets(lobby, winner.username);
-        syncLifetimeLedgerBalances(lobby);
-
-        if (getActiveParticipants(lobby).length <= 1) {
-            awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
-        } else {
-            advanceDealerToNextActive(lobby);
-            triggerRoundOver(lobby, `Round Over! ${loser.username} had lowest score (${lowest}) and lost a life.`);
-        }
-    }
-}
-
-function triggerRoundOver(lobby, msg) {
-    clearRoundOverTimer(lobby);
-    lobby.fedCardReminders = {};
-    lobby.gameState = 'roundOver';
-    lobby.phaseMessage = msg;
-    lobby.players.forEach(p => { 
-        p.peekAllowed = {};
-        p.peekRequests = {};
-        p.nextHandReady = p.isBot; 
-    });
-    broadcastLobbyUpdate(lobby.code);
-
-    const active = getActiveParticipants(lobby);
-    if (active.length > 1) {
-        lobby.roundOverAutoTimer = setTimeout(() => {
-            const cur = lobbies[lobby.code];
-            if (!cur || cur.gameState !== 'roundOver') return;
-
-            const remainingActive = getActiveParticipants(cur);
-            if (remainingActive.length > 1) {
-                cur.players.forEach(p => { p.nextHandReady = true; });
-                cur.hit31Player = null;
-                broadcastLobbyUpdate(cur.code);
-                startRound(cur);
-            } else if (remainingActive.length === 1) {
-                awardTournamentWinner(cur, remainingActive[0]);
-            }
-        }, 8000);
-    } else if (active.length === 1) {
-        awardTournamentWinner(lobby, active[0]);
-    }
-}
-
-function awardTournamentWinner(lobby, winner) {
-    clearRoundOverTimer(lobby);
-    if (!winner) return;
-    if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
-    if (!lobby.botBetLedger) lobby.botBetLedger = {};
-
-    lobby.players.forEach(p => {
-        if (p.username !== winner.username) {
-            const amt = p.wager || 5;
-            const isBotInvolved = p.isBot || winner.isBot;
-            const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
-
-            recordSessionAndLifetimeDebt(lobby, targetLedger, p.username, winner.username, amt);
-        }
-    });
-
-    lobby.lastGameWinner = winner.username;
-    lobby.tournamentWinner = winner.username;
-    const winIdx = lobby.players.findIndex(p => p.username === winner.username);
-    if (winIdx !== -1) lobby.dealerIndex = winIdx;
-
-    syncLifetimeLedgerBalances(lobby);
-
-    lobby.gameState = 'tournamentEnd';
-    lobby.phaseMessage = `🏆 TOURNAMENT WINNER! ${winner.username} wins the match! Ready up in 6s...`;
-    broadcastLobbyUpdate(lobby.code);
-
-    setTimeout(() => {
-        if (!lobbies[lobby.code]) return;
-        resetLobbyToReadyRoom(lobbies[lobby.code], `🏆 ${winner.username} won the match! Ready up for the next game.`);
-    }, 6000);
-}
-
-function checkNextHandReady(lobby) {
-    const active = getActiveParticipants(lobby);
-    if (active.length <= 1) {
-        clearRoundOverTimer(lobby);
-        if (active.length === 1) {
-            awardTournamentWinner(lobby, active[0]);
-        } else {
-            resetLobbyToReadyRoom(lobby, "All players eliminated. Returning to ready room.");
-        }
-        return;
+        window.appGlobals.wasMyTurn = false;
     }
 
-    if (active.every(p => p.nextHandReady)) {
-        clearRoundOverTimer(lobby);
-        lobby.hit31Player = null;
-        startRound(lobby);
-    }
-}
-
-function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
-    clearRoundOverTimer(lobby);
-    lobby.gameState = 'lobby';
-    lobby.phaseMessage = msg || "Returned to waiting room.";
-    lobby.endGameVotes = {};
-    lobby.activeBets = [];
-    lobby.pendingBets = [];
-    lobby.globalProposals = [];
-    lobby.knockedBy = null;
-    lobby.finalTurnsTaken = {};
-    lobby.tournamentWinner = null;
-    lobby.hit31Player = null;
-    lobby.lastDiscardPickup = null;
-    lobby.lastDiscardDonor = null;
-    lobby.fedCardReminders = {};
-    lobby.fedCardsHistory = {};
-    lobby.initialDealCard = null;
-    lobby.drawPool = [];
-    lobby.drawResults = {};
-    lobby.drawOrderSequence = [];
-    lobby.tiedParticipantsList = [];
-    lobby.pendingBotDraw = {};
-    lobby.livesVote = null;
-
-    const spectatorsToReclaim = [...lobby.spectators];
-    spectatorsToReclaim.forEach(spec => {
-        if (lobby.players.length < 6) {
-            const openSeat = findOpenSeat(lobby);
-            lobby.players.push({
-                id: spec.idSocket,
-                username: spec.username,
-                lives: lobby.defaultLives || 2,
-                wager: 5,
-                cards: [],
-                ready: false,
-                seat: openSeat,
-                eliminated: false,
-                isBot: false,
-                inVC: spec.inVC,
-                isMuted: spec.isMuted,
-                nextHandReady: false,
-                peekRequests: {},
-                peekAllowed: {},
-                disconnectedAt: null
-            });
-            lobby.spectators = lobby.spectators.filter(s => s !== spec);
+    // C. 31 BLITZ & TOURNAMENT CELEBRATIONS
+    if (lobby.hit31Player && lobby.hit31Player !== window.previous31Player) {
+        window.previous31Player = lobby.hit31Player;
+        if (typeof window.launchConfetti === 'function') window.launchConfetti();
+        if (typeof window.showCenterNotification === 'function') {
+            window.showCenterNotification(`⚡ ${lobby.hit31Player} hit 31!`);
         }
-    });
+    } else if (!lobby.hit31Player) {
+        window.previous31Player = null;
+    }
 
-    establishDealer(lobby);
+    const isTournamentOver = (lobby.gameState === 'tournamentEnd') || (lobby.phaseMessage && lobby.phaseMessage.includes('TOURNAMENT WINNER'));
+    if (isTournamentOver) {
+        let winnerName = lobby.tournamentWinner || lobby.lastGameWinner;
+        if (winnerName && window.appGlobals.lastCelebratedWinner !== winnerName) {
+            window.appGlobals.lastCelebratedWinner = winnerName;
+            if (typeof window.launchConfetti === 'function') window.launchConfetti();
+        }
+    } else if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
+        window.appGlobals.lastCelebratedWinner = null;
+    }
 
-    lobby.players.forEach((p, idx) => {
-        p.lives = lobby.defaultLives || 2;
-        p.eliminated = false;
-        p.cards = [];
-        p.ready = false;
-        p.seat = idx;
-        p.nextHandReady = false;
-        p.peekRequests = {};
-        p.peekAllowed = {};
-    });
+    // D. STATE TRANSITIONS
+    if (lobby.gameState !== window.appGlobals.lastGameState) {
+        window.appGlobals.hasChosenPoolCard = false;
+        window.appGlobals.lastGameState = lobby.gameState;
+        if (lobby.gameState === 'roundOver' || lobby.gameState === 'lobby') {
+            const topleft = document.getElementById('discard-pickup-topleft-modal');
+            const fedModal = document.getElementById('fed-card-topright-modal');
+            if (topleft) topleft.style.display = 'none';
+            if (fedModal) fedModal.style.display = 'none';
+        }
+    }
 
-    lobby.spectators = lobby.spectators.filter(s => {
-        return s.idSocket && s.idSocket.readyState === WebSocket.OPEN;
-    });
-
-    syncBotReadiness(lobby);
-    broadcastLobbyUpdate(lobby.code);
-    if (broadcastLobbyList) broadcastLobbyList();
-}
-
-function scheduleBotActions(lobby) {
-    if (!lobby) return;
-    if (!lobby.pendingBotDraw) lobby.pendingBotDraw = {};
+    // E. DEALER DRAW & TIE BREAKER MODALS (FIXED IDS)
+    const dealerDrawModal = document.getElementById('dealer-draw-modal');
+    const turnBanner = document.getElementById('turn-banner');
 
     if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-        lobby.players.forEach(p => {
-            if (p.isBot && !p.eliminated) {
-                let needsPick = false;
-                if (lobby.gameState === 'dealerDraw' && !lobby.drawResults[p.username]) needsPick = true;
-                if (lobby.gameState === 'tieBreaker' && lobby.tiedParticipantsList.includes(p.username) && !lobby.drawResults[p.username]) needsPick = true;
+        if (dealerDrawModal) dealerDrawModal.style.display = 'flex';
 
-                if (needsPick && !lobby.pendingBotDraw[p.username]) {
-                    lobby.pendingBotDraw[p.username] = true;
-                    setTimeout(() => {
-                        const cur = lobbies[lobby.code];
-                        if (!cur) return;
-                        delete cur.pendingBotDraw[p.username];
+        const pTitle = document.getElementById('dealer-draw-title');
+        const pInstr = document.getElementById('dealer-draw-status');
+        
+        if (lobby.gameState === 'dealerDraw') {
+            if (pTitle) pTitle.innerText = 'Picking for Dealer';
+            if (turnBanner) turnBanner.innerText = 'Dealer Draw Phase';
+        } else {
+            if (pTitle) pTitle.innerText = 'Tie-Breaker Draw';
+            if (turnBanner) turnBanner.innerText = 'Tie-Breaker Draw';
+        }
 
-                        if (cur.gameState !== 'dealerDraw' && cur.gameState !== 'tieBreaker') return;
-                        if (cur.drawResults && cur.drawResults[p.username]) return;
-                        if (cur.gameState === 'tieBreaker' && !cur.tiedParticipantsList.includes(p.username)) return;
+        if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
 
-                        const unchosen = cur.drawPool.map((c, i) => ({ i, chosen: c.chosenBy })).filter(c => c.chosen === null);
-                        if (unchosen.length > 0) {
-                            const chosenIndex = unchosen[Math.floor(Math.random() * unchosen.length)].i;
-                            handlePoolCardSelection(cur, p.username, chosenIndex);
-                        }
-                    }, 500 + Math.random() * 600);
-                }
+        const activeParts = lobby.gameState === 'dealerDraw'
+            ? (lobby.players || []).filter(p => !p.eliminated)
+            : (lobby.players || []).filter(p => (lobby.tiedParticipantsList || []).includes(p.username));
+
+        let showcaseHtml = '';
+        activeParts.forEach(p => {
+            const card = lobby.drawResults?.[p.username];
+            const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
+            showcaseHtml += `
+                <div class="result-item" style="display:flex; flex-direction:column; align-items:center; background:rgba(4,20,13,0.95); border:1.5px solid ${isMe ? '#38bdf8' : 'rgba(212,175,55,0.55)'}; border-radius:6px; padding:4px 8px; margin: 4px;">
+                    <span style="font-size:0.74rem; font-weight:800; color:${isMe ? '#38bdf8' : '#f6e05e'};">${p.username}${p.isBot ? ' 🤖' : ''}</span>
+                    ${card ? window.formatCardHtml(card, false) : '<div style="width:38px; height:52px; border:1.5px dashed #64748b; display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#94a3b8; margin-top:2px;">Wait</div>'}
+                </div>
+            `;
+        });
+
+        const orderSequence = document.getElementById('draw-order-sequence');
+        if (orderSequence) {
+            orderSequence.innerHTML = `<div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">${showcaseHtml}</div>`;
+        }
+
+        let poolHtml = '';
+        const drawPool = lobby.drawPool || [];
+        drawPool.forEach((slot) => {
+            if (slot.chosenBy) {
+                poolHtml += `<div class="card-pool-item taken" style="opacity:0.22; background:#04140b; border:1px solid #143521; color:#10b981; width:100%; aspect-ratio:2/2.7; display:flex; align-items:center; justify-content:center; border-radius:3px; font-size:0.72rem; margin:1px;">✓</div>`;
+            } else {
+                const isTied = lobby.gameState === 'tieBreaker' ? (lobby.tiedParticipantsList || []).includes(activeUsername) : true;
+                const clickable = !isSpectatorOnly && isTied && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
+                poolHtml += `<div class="card-pool-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : 'cursor:pointer;'} background:linear-gradient(135deg, #1d4ed8 0%, #0f172a 100%); border:1.5px solid #93c5fd; color:#fff; width:100%; aspect-ratio:2/2.7; display:flex; align-items:center; justify-content:center; border-radius:3px; font-weight:900; font-size:0.72rem; margin:1px;">?</div>`;
             }
         });
-        return;
-    }
 
-    if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-        const cur = lobby.players[lobby.turnIndex];
-        if (!cur || !cur.isBot || cur.eliminated) return;
-
-        setTimeout(() => {
-            const curLobby = lobbies[lobby.code];
-            if (!curLobby || (curLobby.gameState !== 'playing' && curLobby.gameState !== 'finalTurn')) return;
-            const bot = curLobby.players[curLobby.turnIndex];
-            if (!bot || bot.id !== cur.id) return;
-
-            executeBotTurn(curLobby, bot, {
-                handleKnock,
-                handleTurnAction,
-                handleDiscardAction
-            });
-        }, 700 + Math.random() * 500);
-    }
-}
-
-// Table / Lobby Creation & Player Seating Hooks
-function createLobby(code, name, hostUsername, isPrivate = false, defaultLives = 2) {
-    lobbies[code] = {
-        code,
-        name: name || `${hostUsername}'s Room`,
-        host: hostUsername,
-        isPrivate: !!isPrivate,
-        defaultLives: defaultLives || 2,
-        gameState: 'lobby',
-        players: [],
-        spectators: [],
-        deck: [],
-        discardPile: [],
-        drawPool: [],
-        drawResults: {},
-        drawOrderSequence: [],
-        turnIndex: 0,
-        dealerIndex: 0,
-        turnsTakenThisRound: 0,
-        finalTurnsRemaining: 0,
-        mainGameLedger: {},
-        sideBetLedger: {},
-        botBetLedger: {},
-        activeBets: [],
-        pendingBets: [],
-        globalProposals: [],
-        chatHistory: [],
-        playlist: [],
-        currentSongIndex: 0,
-        isPlaying: false,
-        songStartedAt: null,
-        songPausedAtOffset: 0,
-        inactivityTimer: null,
-        roundOverAutoTimer: null
-    };
-    return lobbies[code];
-}
-
-function joinLobby(ws, code, username) {
-    const lobby = lobbies[code];
-    if (!lobby) return { success: false, message: 'Lobby does not exist.' };
-
-    const existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
-    if (existingPlayer) {
-        existingPlayer.id = ws;
-        existingPlayer.disconnectedAt = null;
-        return { success: true, lobby, isSpectator: false };
-    }
-
-    const existingSpectator = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
-    if (existingSpectator) {
-        existingSpectator.idSocket = ws;
-        return { success: true, lobby, isSpectator: true };
-    }
-
-    if (lobby.players.length < 6 && lobby.gameState === 'lobby') {
-        const seat = findOpenSeat(lobby);
-        lobby.players.push({
-            id: ws,
-            username,
-            lives: lobby.defaultLives || 2,
-            wager: 5,
-            cards: [],
-            ready: false,
-            seat,
-            eliminated: false,
-            isBot: false,
-            inVC: false,
-            isMuted: true,
-            nextHandReady: false,
-            peekRequests: {},
-            peekAllowed: {},
-            disconnectedAt: null
-        });
-        return { success: true, lobby, isSpectator: false };
-    }
-
-    lobby.spectators.push({
-        idSocket: ws,
-        username,
-        inVC: false,
-        isMuted: true
-    });
-    return { success: true, lobby, isSpectator: true };
-}
-
-function leaveLobby(ws, code, broadcastLobbyList) {
-    if (!lobbies[code]) return;
-    const lobby = lobbies[code];
-
-    const leavingPlayerIndex = lobby.players.findIndex(p => p.id === ws);
-    const leavingUsername = leavingPlayerIndex !== -1 ? lobby.players[leavingPlayerIndex].username : null;
-
-    lobby.players = lobby.players.filter(p => p.id !== ws);
-    lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
-
-    const remainingHumans = lobby.players.filter(p => !p.isBot);
-    if (remainingHumans.length === 0) {
-        clearRoundOverTimer(lobby);
-        if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
-        delete lobbies[code];
-        if (broadcastLobbyList) broadcastLobbyList();
-        return;
-    }
-
-    lobby.players.forEach((p, idx) => { p.seat = idx; });
-
-    if (lobby.gameState === 'roundOver') {
-        lobby.phaseMessage = `${leavingUsername || 'A player'} left the game.`;
-        checkNextHandReady(lobby);
-        broadcastLobbyUpdate(code);
-        if (broadcastLobbyList) broadcastLobbyList();
-        return;
-    }
-
-    const activeParts = getActiveParticipants(lobby);
-    if (activeParts.length <= 1 && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn' || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker')) {
-        awardTournamentWinner(lobby, activeParts[0]);
-    } else {
-        if (lobby.turnIndex >= lobby.players.length) {
-            lobby.turnIndex = 0;
+        const poolGrid = document.getElementById('draw-pool-grid');
+        if (poolGrid) {
+            poolGrid.innerHTML = `<div style="display:grid; grid-template-columns:repeat(11, 1fr); gap:2px; width:100%; max-width:460px; margin:0 auto;">${poolHtml}</div>`;
         }
-        establishDealer(lobby);
-        syncBotReadiness(lobby);
-        broadcastLobbyUpdate(code);
+    } else {
+        if (dealerDrawModal) dealerDrawModal.style.display = 'none';
+        if (turnBanner) {
+            if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
+                turnBanner.innerText = isMyTurnPlaying ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
+            } else if (lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd') {
+                turnBanner.innerText = lobby.phaseMessage || 'Round Over';
+            }
+        }
     }
 
-    if (broadcastLobbyList) broadcastLobbyList();
-}
+    // F. TOP IN-GAME FEEDS
+    const topleftModal = document.getElementById('discard-pickup-topleft-modal');
+    const topleftCardContent = document.getElementById('discard-pickup-card-content');
+    if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
+        if (topleftCardContent) {
+            topleftCardContent.innerHTML = `<span><b>${lobby.lastDiscardPickup.username}</b>:</span> ${window.formatCardHtml(lobby.lastDiscardPickup.card, true)}`;
+        }
+        if (topleftModal) topleftModal.style.display = 'flex';
+    } else if (topleftModal) {
+        topleftModal.style.display = 'none';
+    }
 
-module.exports = {
-    lobbies,
-    getLobbies,
-    createLobby,
-    joinLobby,
-    getActiveParticipants,
-    findOpenSeat,
-    touchLobbyActivity,
-    closeInactiveLobby,
-    getPublicLobbiesList,
-    getSanitizedLobby,
-    broadcastLobbyUpdate,
-    startDealerDrawPhase,
-    startRound,
-    advanceDealerToNextActive,
-    handlePoolCardSelection,
-    handleTurnAction,
-    handleDiscardAction,
-    handleKnock,
-    checkNextHandReady,
-    resetLobbyToReadyRoom,
-    scheduleBotActions,
-    leaveLobby,
-    resolveUserId,
-    recordSessionAndLifetimeDebt,
-    syncLifetimeLedgerBalances,
-    sendLifetimeLedger
+    const fedModal = document.getElementById('fed-card-topright-modal');
+    const fedContent = document.getElementById('fed-card-content');
+    const fedLabel = document.getElementById('fed-card-label');
+    if (lobby.myFedCardReminder && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
+        if (fedLabel) fedLabel.innerText = `${lobby.myFedCardReminder.target} took your:`;
+        if (fedContent) fedContent.innerHTML = window.formatCardHtml(lobby.myFedCardReminder.card, true);
+        if (fedModal) fedModal.style.display = 'flex';
+    } else if (fedModal) {
+        fedModal.style.display = 'none';
+    }
+
+    // G. CENTER TABLE & DIAMOND-LATTICE DECK RENDER
+    const tableContainer = document.getElementById('table-oval-container');
+    if (tableContainer) {
+        let discardSlotHtml = '';
+        if (lobby.discardTop) {
+            const dVal = lobby.discardTop.val || '';
+            const dSuit = normalizeSuit(lobby.discardTop.suit);
+            const dIsRed = (dSuit === '♥' || dSuit === '♦');
+            const dClass = dIsRed ? 'red-suit' : 'black-suit';
+
+            discardSlotHtml = `
+                <div class="card-slot playing-card ${dClass}" onclick="drawCard('discard')">
+                    <div class="card-corner top-left">
+                        <span class="corner-val">${dVal}</span>
+                        <span class="corner-suit">${dSuit}</span>
+                    </div>
+                    <div class="card-center-pip">${dSuit}</div>
+                    <div class="card-corner bottom-right">
+                        <span class="corner-val">${dVal}</span>
+                        <span class="corner-suit">${dSuit}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            discardSlotHtml = `<div class="card-slot empty-slot" onclick="drawCard('discard')"><span>DISCARD</span></div>`;
+        }
+
+        let html = `
+            <div class="pots-container">
+                <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
+                <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
+            </div>
+            <div class="deck-center" id="deck-center">
+                <div class="card-slot back" id="deck-pile" onclick="drawCard('deck')">
+                    <div class="card-back-inner"></div>
+                    <span class="deck-counter-badge" id="deck-count-display">${lobby.deckCount || 0} left</span>
+                </div>
+                ${discardSlotHtml}
+            </div>
+        `;
+
+        (lobby.players || []).forEach((p, idx) => {
+            const revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">${p.cards.map(c => window.formatCardHtml(c, true)).join('')}</div>` : '';
+            const statusBadge = p.eliminated ? ' [OUT]' : '';
+            const readyStatusIcon = p.ready ? '✅' : '❌';
+            const botBadge = p.isBot ? ' 🤖' : '';
+            const isCurrent = (p.username.toLowerCase() === (lobby.currentTurnUser || '').toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
+            const isDealer = (idx === lobby.dealerIndex) || (lobby.dealerName === p.username);
+            const dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
+            const micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+
+            html += `
+                <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}">
+                    <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                        <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                    </div>
+                    ${revealedCardsHtml}
+                </div>
+            `;
+        });
+
+        tableContainer.innerHTML = html;
+        const nextHandOverlay = document.getElementById('next-hand-overlay');
+        if (nextHandOverlay) tableContainer.appendChild(nextHandOverlay);
+    }
+
+    // H. LOCAL HAND RENDERING WITH AUTHENTIC PLAYING CARDS
+    const handContainer = document.getElementById('my-cards-container');
+    const scoreDisplay = document.getElementById('my-score-display');
+    const myHandTitle = document.getElementById('my-hand-title');
+    const knockBtn = document.getElementById('knock-btn');
+
+    if (isSpectatorOnly) {
+        if (handContainer) handContainer.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:12px;">👀 Spectator Mode</div>';
+        if (scoreDisplay) scoreDisplay.innerText = '-';
+        if (myHandTitle) myHandTitle.innerHTML = 'Spectating Table';
+        if (knockBtn) knockBtn.style.display = 'none';
+    } else if (me && me.cards && handContainer) {
+        const currentScore = window.calculateLocalScore(me.cards);
+        if (myHandTitle) myHandTitle.innerHTML = `My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">${currentScore}</strong>)`;
+        handContainer.innerHTML = me.cards.map((c, i) => {
+            const val = c.val || '';
+            const suit = normalizeSuit(c.suit);
+            const isRed = (suit === '♥' || suit === '♦');
+            const suitClass = isRed ? 'red-suit' : 'black-suit';
+
+            return `
+                <div class="my-card playing-card ${suitClass}" onclick="discardCard(${i})">
+                    <div class="card-corner top-left">
+                        <span class="corner-val">${val}</span>
+                        <span class="corner-suit">${suit}</span>
+                    </div>
+                    <div class="card-center-pip">${suit}</div>
+                    <div class="card-corner bottom-right">
+                        <span class="corner-val">${val}</span>
+                        <span class="corner-suit">${suit}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        if (scoreDisplay) scoreDisplay.innerText = currentScore;
+        
+        if (knockBtn) {
+            knockBtn.style.display = 'inline-block';
+            const activeCount = lobby.activeParticipantsCount || 3;
+            const threshold = activeCount > 2 ? 21 : 25;
+            const turnsConditionMet = !!lobby.canKnock;
+            const scoreConditionMet = currentScore >= threshold;
+            const hasNotDrawn = me.cards.length === 3;
+
+            if (lobby.knockedBy) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `${lobby.knockedBy} knocked!`;
+            } else if (!turnsConditionMet || !scoreConditionMet || !isMyTurnPlaying || !hasNotDrawn) {
+                knockBtn.disabled = true;
+                knockBtn.innerText = `Knock (${threshold}+)`;
+            } else {
+                knockBtn.disabled = false;
+                knockBtn.innerText = 'Knock!';
+            }
+        }
+    } else if (handContainer) {
+        handContainer.innerHTML = '';
+        if (scoreDisplay) scoreDisplay.innerText = '0';
+        if (knockBtn) knockBtn.style.display = 'none';
+    }
+};
+
+// -------------------------------------------------------------
+// 9. GLOBAL WINDOW BINDINGS
+// -------------------------------------------------------------
+window.drawCard = function(source) {
+    if (window.clientState.isSpectator) return;
+    window.safePlaySound('card');
+    window.safeVibrate(40);
+    sendSocket({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
+};
+
+window.drawFromDeck = () => window.drawCard('deck');
+window.drawFromDiscard = () => window.drawCard('discard');
+
+window.discardCard = function(cardIndex) {
+    if (window.clientState.isSpectator) return;
+    window.safePlaySound('card');
+    window.safeVibrate(30);
+    sendSocket({ type: 'DISCARD_CARD', index: cardIndex, cardIndex: cardIndex });
+};
+
+window.choosePoolCard = function(cardIndex) {
+    if (window.appGlobals.hasChosenPoolCard) return;
+    window.appGlobals.hasChosenPoolCard = true;
+    sendSocket({ type: 'CHOOSE_POOL_CARD', cardIndex: cardIndex });
+    setTimeout(() => { window.appGlobals.hasChosenPoolCard = false; }, 1500); // Safety unlock
+};
+
+window.knockGame = window.knockRound = function() {
+    const activeUsername = (document.getElementById('username-input')?.value || window.clientState?.username || 'Player1').trim();
+    const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+
+    if (!me || !me.cards || me.cards.length !== 3) {
+        window.showCenterNotification("You cannot knock after picking up a card!");
+        return;
+    }
+
+    const currentScore = window.calculateLocalScore(me.cards);
+    const activeCount = window.appGlobals.latestLobbySnapshot?.activeParticipantsCount || 3;
+    const threshold = activeCount > 2 ? 21 : 25;
+
+    if (currentScore < threshold) {
+        window.showCenterNotification(`Need at least ${threshold} points to knock!`);
+        return;
+    }
+
+    window.safePlaySound('knock');
+    window.safeVibrate([180, 110, 180, 110, 180]);
+    sendSocket({ type: 'KNOCK' });
+};
+
+window.clickNextHand = function() {
+    const btn = document.getElementById('next-hand-btn');
+    if (btn) {
+        btn.innerText = 'Waiting...';
+        btn.disabled = true;
+    }
+    sendSocket({ type: 'NEXT_HAND_READY' });
+    sendSocket({ type: 'NEXT_HAND' });
+};
+
+window.toggleReady = function() {
+    window.clientState.isReady = !window.clientState.isReady;
+    const btn = document.getElementById('ready-btn');
+    if (btn) btn.innerText = window.clientState.isReady ? 'Unready' : 'Ready Up';
+    window.appGlobals.hasChosenPoolCard = false;
+    sendSocket({ type: 'SET_READY', ready: window.clientState.isReady });
+};
+
+window.standUp = function() { sendSocket({ type: 'STAND_UP' }); };
+window.sitDown = function() { sendSocket({ type: 'SIT_DOWN' }); };
+window.addBot = function() { sendSocket({ type: 'ADD_BOT' }); };
+window.removeBot = function() { sendSocket({ type: 'REMOVE_BOT' }); };
+
+window.updateWager = function() {
+    const sel = document.getElementById('config-wager');
+    if (sel) sendSocket({ type: 'UPDATE_WAGER', wager: parseInt(sel.value, 10) || 5 });
+};
+
+window.updateSettings = function() {
+    const sel = document.getElementById('config-lives');
+    if (sel) sendSocket({ type: 'UPDATE_SETTINGS', lives: parseInt(sel.value, 10) || 3 });
+};
+
+window.proposeEndGame = function() {
+    if (confirm("Propose ending the game and returning to the lobby?")) {
+        sendSocket({ type: 'END_GAME_PROPOSAL' });
+    }
+};
+
+window.leaveLobby = function() {
+    window.appGlobals.currentJoinedCode = null;
+    localStorage.removeItem('blitz31_active_room');
+    sendSocket({ type: 'LEAVE_LOBBY' });
+    window.location.reload();
+};
 };
