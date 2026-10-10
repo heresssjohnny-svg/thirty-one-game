@@ -820,14 +820,14 @@ window.updateUIFromLobby = function(lobby) {
 
     const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
 
-    // 1. CELEBRATION TRIGGER: HIT 31
+        // 1. CELEBRATION TRIGGER: HIT 31
     if (lobby.hit31Player) {
         if (window.appGlobals.lastCelebrated31 !== lobby.hit31Player) {
             window.appGlobals.lastCelebrated31 = lobby.hit31Player;
-            if (typeof trigger31Celebration === 'function') {
-                trigger31Celebration(lobby.hit31Player);
-            } else if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(lobby.hit31Player, "HIT 31!");
+            if (typeof window.trigger31Celebration === 'function') {
+                window.trigger31Celebration(lobby.hit31Player);
+            } else if (typeof window.triggerWinnerCelebration === 'function') {
+                window.triggerWinnerCelebration(lobby.hit31Player, "HIT 31!");
             }
         }
     } else {
@@ -844,13 +844,14 @@ window.updateUIFromLobby = function(lobby) {
         }
         if (winnerName && window.appGlobals.lastCelebratedWinner !== winnerName) {
             window.appGlobals.lastCelebratedWinner = winnerName;
-            if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(winnerName, "TOURNAMENT CHAMPION!");
+            if (typeof window.triggerWinnerCelebration === 'function') {
+                window.triggerWinnerCelebration(winnerName, "TOURNAMENT CHAMPION!");
             }
         }
     } else if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
         window.appGlobals.lastCelebratedWinner = null;
     }
+
 
     // 3. STATE TRANSITION NOTIFICATIONS
     if (lobby.gameState !== window.appGlobals.lastGameState) {
