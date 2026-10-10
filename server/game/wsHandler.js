@@ -912,7 +912,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
             }
         });
 
-            
+      });      
              
 }
 
