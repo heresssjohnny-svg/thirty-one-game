@@ -1098,12 +1098,33 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 9. DYNAMIC ACTION BAR
+        // 9. DYNAMIC ACTION BAR
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
     const readyBtn = document.getElementById('ready-btn');
     const knockBtn = document.getElementById('knock-btn');
     const playerCount = (lobby.players || []).length;
+
+    if (standUpBtn) {
+        standUpBtn.onclick = function(e) {
+            if (e) e.preventDefault();
+            window.standUp();
+        };
+    }
+
+    if (sitBtn) {
+        sitBtn.onclick = function(e) {
+            if (e) e.preventDefault();
+            window.sitDown();
+        };
+    }
+
+    if (readyBtn) {
+        readyBtn.onclick = function(e) {
+            if (e) e.preventDefault();
+            window.toggleReady();
+        };
+    }
 
     if (lobby.gameState === 'lobby') {
         if (me) {
@@ -1133,6 +1154,7 @@ window.updateUIFromLobby = function(lobby) {
             if (knockBtn) knockBtn.style.display = 'inline-block';
         }
     }
+
 
     // 10. TURN ACTION & AUDIO TRIGGER
     const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
