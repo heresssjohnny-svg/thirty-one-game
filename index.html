@@ -186,11 +186,11 @@
 
                 <div class="header-right">
                     <div id="in-game-top-row-btns" class="button-strip">
-                        <button id="ready-btn" class="action-btn ready-btn" onclick="toggleReady()">Ready Up</button>
-                        <button id="sit-btn" class="action-btn sit-btn" style="display: none;" onclick="sitDown()">Sit Down</button>
-                        <button id="stand-up-btn" class="action-btn stand-btn" onclick="standUp()">Stand Up</button>
-                        <button id="end-game-btn" class="action-btn end-btn" onclick="proposeEndGame()">End Match</button>
-                        <button id="leave-lobby-btn" class="action-btn leave-btn" onclick="leaveLobby()">Leave</button>
+                        <button id="ready-btn" class="action-btn ready-btn" onclick="window.toggleReady()">Ready Up</button>
+                        <button id="sit-btn" class="action-btn sit-btn" style="display: none;" onclick="window.sitDown()">Sit Down</button>
+                        <button id="stand-up-btn" class="action-btn stand-btn" onclick="window.standUp()">Stand Up</button>
+                        <button id="end-game-btn" class="action-btn end-btn" onclick="window.proposeEndGame()">End Match</button>
+                        <button id="leave-lobby-btn" class="action-btn leave-btn" onclick="window.leaveLobby()">Leave</button>
                     </div>
                 </div>
             </header>
@@ -199,8 +199,7 @@
             <div id="in-game-tools-row" class="tools-bar">
                 <button id="vc-main-btn" class="tool-btn" onclick="toggleVoiceOnOff()">🎙️ Voice: Off</button>
                 <button id="chat-toggle-btn" class="tool-btn" onclick="toggleChatWindow()">💬 Chat</button>
-                <button class="tool-btn" onclick="openActiveBetsModal()">🤝 Bets</button>
-                <button class="tool-btn" onclick="toggleGlobalSidebar()">📋 Board</button>
+                <button id="board-btn" class="tool-btn" onclick="window.toggleSessionLedger(true)">📋 Board</button>
                 <button class="tool-btn" onclick="openSettingsModal()">⚙️</button>
             </div>
 
@@ -325,7 +324,8 @@
                 <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
             </div>
         </div>
-        <!-- 4. CHAT DRAWER (Form-free to prevent accidental mobile reloads) -->
+
+        <!-- 4. CHAT DRAWER -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
             <div class="chat-header">
                 <span class="gold-text">Table Chat</span>
@@ -350,39 +350,37 @@
             </div>
         </div>
 
-            <!-- Spectator Action Modal -->
-    <div id="seat-action-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3 id="seat-action-title">Player Actions</h3>
-                <button class="close-btn" onclick="window.toggleModal('seat-action-modal')">✕</button>
-            </div>
-            <div id="seat-action-body" class="bet-form"></div>
-        </div>
-    </div>
-
-    <!-- Side Bets Modal -->
-    <div id="bet-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-card bet-modal-card">
-            <div class="modal-header">
-                <h3 id="bet-modal-title">Side Wagers</h3>
-                <button class="close-btn" onclick="window.toggleModal('bet-modal', false)">✕</button>
-            </div>
-            <!-- ID RESTORED HERE -->
-            <div id="bet-modal-body" class="bet-form">
-                <label>Bet on Winner</label>
-                <div class="form-row">
-                    <input type="text" id="bet-pick-user" placeholder="Target Username">
-                    <input type="number" id="bet-wager-amount" placeholder="$ Amount" value="5" min="1" max="100">
-                    <button class="primary-btn" onclick="window.submitGlobalProposal(document.getElementById('bet-pick-user').value, document.getElementById('bet-wager-amount').value)">Propose</button>
+        <!-- 6. SPECTATOR ACTION MODAL -->
+        <div id="seat-action-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="seat-action-title">Player Actions</h3>
+                    <button class="close-btn" onclick="window.toggleModal('seat-action-modal')">✕</button>
                 </div>
+                <div id="seat-action-body" class="bet-form"></div>
             </div>
-            <div id="global-proposals-container" class="proposals-feed"></div>
         </div>
-    </div>
 
+        <!-- 7. SIDE BETS MODAL -->
+        <div id="bet-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-card bet-modal-card">
+                <div class="modal-header">
+                    <h3 id="bet-modal-title">Side Wagers</h3>
+                    <button class="close-btn" onclick="window.toggleModal('bet-modal', false)">✕</button>
+                </div>
+                <div id="bet-modal-body" class="bet-form">
+                    <label>Bet on Winner</label>
+                    <div class="form-row">
+                        <input type="text" id="bet-pick-user" placeholder="Target Username">
+                        <input type="number" id="bet-wager-amount" placeholder="$ Amount" value="5" min="1" max="100">
+                        <button class="primary-btn" onclick="window.submitGlobalProposal(document.getElementById('bet-pick-user').value, document.getElementById('bet-wager-amount').value)">Propose</button>
+                    </div>
+                </div>
+                <div id="global-proposals-container" class="proposals-feed"></div>
+            </div>
+        </div>
 
-        <!-- 7. SPECTATOR LIST MODAL -->
+        <!-- 8. SPECTATOR LIST MODAL -->
         <div id="spectator-list-modal" class="modal-overlay" style="display: none;">
             <div class="modal-box casino-panel spec-modal-box">
                 <div class="modal-header">
@@ -395,7 +393,7 @@
             </div>
         </div>
 
-        <!-- 8. SETTINGS MODAL -->
+        <!-- 9. SETTINGS MODAL -->
         <div id="settings-modal" class="modal-overlay modal-backdrop" style="display: none;">
             <div class="modal-box casino-panel settings-box">
                 <div class="modal-header">
@@ -423,7 +421,7 @@
             </div>
         </div>
 
-        <!-- 9. SESSION LEDGER MODAL -->
+        <!-- 10. SESSION LEDGER MODAL -->
         <div id="session-ledger-modal" class="modal-overlay" style="display: none;">
             <div class="modal-box casino-panel ledger-modal-box">
                 <div class="modal-header">
@@ -440,7 +438,7 @@
             </div>
         </div>
 
-        <!-- 10. LIFETIME LEDGER MODAL -->
+        <!-- 11. LIFETIME LEDGER MODAL -->
         <div id="lifetime-ledger-modal" class="modal-overlay" style="display: none;">
             <div class="modal-box casino-panel ledger-modal-box">
                 <div class="modal-header">
@@ -457,6 +455,9 @@
         </div>
     </div>
 
+    <!-- KNOCK ALERT OVERLAY BANNER -->
+    <div id="knock-alert-modal" style="display: none; position: fixed; top: 18%; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 12px 26px; font-weight: 800; border-radius: 8px; z-index: 9999; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6);"></div>
+
     <!-- SOUND ENGINE AUDIO TAGS -->
     <audio id="sound-knock" src="/mp3s/knock.mp3" preload="auto"></audio>
     <audio id="sound-yourturn" src="/mp3s/yourturn.mp3" preload="auto"></audio>
@@ -465,19 +466,11 @@
     <canvas id="celebration-canvas" style="display: none;"></canvas>
 
     <!-- CLIENT SCRIPT PIPELINE -->
-<script src="/js/celebration.js?v=41"></script>
+    <script src="/js/celebration.js?v=41"></script>
     <script src="/js/network.js?v=41"></script>
     <script src="/js/ledger.js?v=41"></script>
     <script src="/js/voice.js?v=41"></script>
     <script src="/js/ui.js?v=41"></script>
     <script src="/js/app.js?v=41"></script>
-    <!-- Required for Knock Audio to trigger -->
-<div id="knock-alert-modal" style="display: none;"></div>
-<div id="knock-banner" style="display: none;"></div>
-
-<!-- Required for Turn tracking UI to avoid silent errors -->
-<div id="turn-banner" style="display: none; text-align: center; color: #f59e0b; font-weight: bold; margin-top: 10px;"></div>
-<div id="knock-alert-modal" style="display: none; position: absolute; top: 20%; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 15px 30px; font-weight: bold; border-radius: 8px; z-index: 9999; text-align: center;"></div>    
-
 </body>
 </html>
