@@ -110,20 +110,19 @@ window.connectSocket = function() {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
         }
 
-        // 2. Reclaim seat if returning to an active game from background or network blip
-        const activeRoom = localStorage.getItem('blitz31_active_room') || window.appGlobals.currentJoinedCode;
+       // 2. Auto-reclaim seat directly from localStorage
+        const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+
         if (activeRoom) {
             window.appGlobals.currentJoinedCode = activeRoom;
-            const usernameInput = document.getElementById('username-input');
-            const activeUsername = usernameInput?.value.trim() 
-                || localStorage.getItem('saved_username') 
-                || window.clientState.username 
-                || 'Player1';
-
+            const myName = (document.getElementById('username-input')?.value || 
+                            window.clientState?.username || 
+                            localStorage.getItem('saved_username') || 
+                            'Player1').trim();
             ws.send(JSON.stringify({
                 type: 'JOIN_LOBBY',
-                code: activeRoom,
-                username: activeUsername
+                code: activeRoom.toUpperCase(),
+                username: myName
             }));
         }
 
@@ -636,23 +635,17 @@ window.handleLeaveLobby = window.leaveLobby;
 // MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
 // -------------------------------------------------------------
 function resyncActiveSession() {
-    const authScreen = document.getElementById('auth-screen');
-    if (authScreen && authScreen.style.display !== 'none') {
-        return; // Do not auto-join while user is logging in
-    }
-
+    // Check local storage for an abandoned session
     const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
     const myName = (document.getElementById('username-input')?.value || 
                     window.clientState?.username || 
                     localStorage.getItem('saved_username') || 
                     'Player1').trim();
-    
     const ws = window.appGlobals.ws;
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         window.connectSocket();
     } else if (activeRoom) {
-        // Socket is open, instantly re-link to the preserved seat
         ws.send(JSON.stringify({
             type: 'JOIN_LOBBY',
             code: activeRoom.toUpperCase(),
