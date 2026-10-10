@@ -735,7 +735,7 @@ window.submitGlobalProposal = function(pickUser, wagerAmt) {
 window.acceptGlobalProposal = function(proposalId) {
     sendSocket({
         type: 'ACCEPT_GLOBAL_PROPOSAL',
-        proposalId,
+        proposalId: proposalId,
         betId: proposalId,
         id: proposalId
     });
@@ -804,11 +804,8 @@ window.respondToBet = function(betId, accept) {
     const modal = document.getElementById('bet-modal');
     if (modal) modal.style.display = 'none';
 };
-// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals (PART 2 OF 2)
 
-// -------------------------------------------------------------
 // 8. MASTER TABLE RENDER & SPECTATOR LOGIC
-// -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
 
@@ -1207,281 +1204,166 @@ window.updateUIFromLobby = function(lobby) {
     } else if (nextHandOverlay) {
         nextHandOverlay.style.display = 'none';
     }
-
-    // 14. DEALER DRAW & TIE BREAKER MODALS
-    const poolModal = document.getElementById('pool-draw-modal');
-    const revealModal = document.getElementById('tie-breaker-reveal-modal');
-    const turnBanner = document.getElementById('turn-banner');
-
-    if (lobby.phaseMessage && lobby.phaseMessage !== window.appGlobals.lastPhaseMessage) {
-        window.showCenterNotification(lobby.phaseMessage);
-        window.appGlobals.lastPhaseMessage = lobby.phaseMessage;
-    }
-
-    // --- A. DEALER DRAW SHOWCASE ---
-    if (lobby.gameState === 'dealerDraw') {
-        if (poolModal) poolModal.style.display = 'flex';
-        if (revealModal) revealModal.style.display = 'none';
-
-        const pTitle = document.getElementById('pool-modal-title');
-        const pInstr = document.getElementById('pool-modal-instruction');
-        if (pTitle) pTitle.innerText = 'Picking for Dealer';
-        if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
-
-        const activeParts = (lobby.players || []).filter(p => !p.eliminated);
-
-        let showcaseHtml = '<div class="draw-showcase-sidebar">';
-        showcaseHtml += '<div style="font-size:0.65rem; font-weight:800; color:var(--accent-gold); margin-bottom:2px; text-transform:uppercase;">Players</div>';
-        activeParts.forEach(p => {
-            const card = lobby.drawResults?.[p.username];
-            const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
-            showcaseHtml += `
-                <div class="draw-showcase-item">
-                    <span class="draw-picker-badge" style="${isMe ? 'border-color:#38bdf8; color:#38bdf8;' : ''}">${p.username}${p.isBot ? ' 🤖' : ''}</span>
-                    ${card ? window.formatCardHtml(card, false) : '<div class="draw-card-waiting"><span>Waiting...</span></div>'}
-                </div>
-            `;
-        });
-        showcaseHtml += '</div>';
-
-        let poolHtml = '';
-        (lobby.drawPool || []).forEach((slot) => {
-            if (slot.chosenBy) {
-                poolHtml += `<div class="pool-card-item taken" title="Chosen by ${slot.chosenBy}">✓</div>`;
-            } else {
-                const clickable = !isSpectatorOnly && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-                poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
-            }
-        });
-
-        const poolContainer = document.getElementById('pool-cards-container');
-        if (poolContainer) {
-            poolContainer.className = 'draw-modal-split-layout';
-            poolContainer.innerHTML = `
-                ${showcaseHtml}
-                <div class="draw-pool-panel">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
-                        <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">Available Deck Pool</span>
-                        <span style="font-size:0.65rem; color:var(--accent-cyan);">Tap a card</span>
-                    </div>
-                    <div class="pool-52-grid">${poolHtml}</div>
-                </div>
-            `;
-        }
-        if (turnBanner) turnBanner.innerText = 'Dealer Draw Phase';
-    } 
-    // --- B. TIE BREAKER SHOWCASE ---
-    else if (lobby.gameState === 'tieBreaker') {
-        if (poolModal) poolModal.style.display = 'none';
-        if (revealModal) revealModal.style.display = 'flex';
-
-        const isTied = (lobby.tiedParticipantsList || []).includes(activeUsername);
-        const tMsg = document.getElementById('tie-breaker-stream-msg');
-        if (tMsg) tMsg.innerText = isTied ? 'You are tied for lowest score! Pick your tie-breaker card:' : 'Watching tied players draw for elimination...';
-
-        let streamHtml = '<div class="draw-showcase-sidebar">';
-        streamHtml += '<div style="font-size:0.65rem; font-weight:800; color:var(--accent-gold); margin-bottom:2px; text-transform:uppercase;">Tied Players</div>';
-        (lobby.tiedParticipantsList || []).forEach(uname => {
-            const card = lobby.drawResults?.[uname];
-            const isMe = (uname.toLowerCase() === activeUsername.toLowerCase());
-            streamHtml += `
-                <div class="draw-showcase-item">
-                    <span class="draw-picker-badge" style="${isMe ? 'border-color:#38bdf8; color:#38bdf8;' : ''}">${uname}</span>
-                    ${card ? window.formatCardHtml(card, false) : '<div class="draw-card-waiting"><span>Drawing...</span></div>'}
-                </div>
-            `;
-        });
-        streamHtml += '</div>';
-
-        let tieDeckPool = (lobby.drawPool || []).filter(slot => !slot.chosenBy);
-        const countRemaining = lobby.deckCount !== undefined ? lobby.deckCount : tieDeckPool.length;
-        if (tieDeckPool.length > countRemaining) {
-            tieDeckPool = tieDeckPool.slice(0, countRemaining);
-        }
-
-        let poolHtml = '';
-        tieDeckPool.forEach((slot) => {
-            const clickable = isTied && !lobby.drawResults?.[activeUsername] && !window.appGlobals.hasChosenPoolCard;
-            poolHtml += `<div class="pool-card-item" ${clickable ? `onclick="choosePoolCard(${slot.index})"` : ''} style="${!clickable ? 'opacity:0.4; cursor:not-allowed;' : ''}">?</div>`;
-        });
-
-        const tGrid = document.getElementById('tie-breaker-stream-grid');
-        if (tGrid) {
-            tGrid.className = 'draw-modal-split-layout';
-            tGrid.innerHTML = `
-                ${streamHtml}
-                <div class="draw-pool-panel">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
-                        <span style="font-size:0.72rem; color:var(--text-muted); font-weight:bold;">Cards Left in Deck (${countRemaining})</span>
-                        <span style="font-size:0.65rem; color:var(--accent-gold);">${isTied ? 'Tap your card' : 'Watching'}</span>
-                    </div>
-                    <div class="pool-52-grid">${poolHtml}</div>
-                </div>
-            `;
-        }
-        if (turnBanner) turnBanner.innerText = 'Tie-Breaker Draw';
-    } else {
-        if (poolModal) poolModal.style.display = 'none';
-        if (revealModal) revealModal.style.display = 'none';
-        if (turnBanner) {
-            if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-                turnBanner.innerText = isMyTurnPlaying ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
-            } else if (lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd') {
-                turnBanner.innerText = lobby.phaseMessage || 'Round Over';
-            }
-        }
-    }
-
-    // 15. CENTER TABLE & DIAMOND-LATTICE DECK RENDER
-    const tableContainer = document.getElementById('table-oval-container');
-    if (tableContainer) {
-        let discardSlotHtml = '';
-        if (lobby.discardTop) {
-            const dVal = lobby.discardTop.val || '';
-            const dSuit = normalizeSuit(lobby.discardTop.suit);
-            const dIsRed = (dSuit === '♥' || dSuit === '♦');
-            const dClass = dIsRed ? 'red-suit' : 'black-suit';
-
-            discardSlotHtml = `
-                <div class="card-slot playing-card ${dClass}" onclick="drawCard('discard')">
-                    <div class="card-corner top-left">
-                        <span class="corner-val">${dVal}</span>
-                        <span class="corner-suit">${dSuit}</span>
-                    </div>
-                    <div class="card-center-pip">${dSuit}</div>
-                    <div class="card-corner bottom-right">
-                        <span class="corner-val">${dVal}</span>
-                        <span class="corner-suit">${dSuit}</span>
-                    </div>
-                </div>
-            `;
-        } else {
-            discardSlotHtml = `<div class="card-slot empty-slot" onclick="drawCard('discard')"><span>DISCARD</span></div>`;
-        }
-
-        let html = `
-            <div class="pots-container">
-                <div class="pot-total-display" id="pot-total-banner">Pot: $${lobby.potTotal || 0}</div>
-                <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
-            </div>
-            <div class="deck-center" id="deck-center">
-                <div class="card-slot back" id="deck-pile" onclick="drawCard('deck')">
-                    <div class="card-back-inner"></div>
-                    <span class="deck-counter-badge" id="deck-count-display">${lobby.deckCount || 0} left</span>
-                </div>
-                ${discardSlotHtml}
-            </div>
-        `;
-
-        (lobby.players || []).forEach((p, idx) => {
-            const revealedCardsHtml = p.cards && p.cards.length > 0 ? `<div class="seat-cards">${p.cards.map(c => window.formatCardHtml(c, true)).join('')}</div>` : '';
-            const statusBadge = p.eliminated ? ' [OUT]' : '';
-            const readyStatusIcon = p.ready ? '✅' : '❌';
-            const botBadge = p.isBot ? ' 🤖' : '';
-            const isCurrent = (p.username.toLowerCase() === (lobby.currentTurnUser || '').toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
-            const isDealer = (idx === lobby.dealerIndex) || (lobby.dealerName === p.username);
-            const dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
-            const micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
-
-            let peekerBadgesHtml = '';
-            if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
-                const peekers = Object.keys(p.peekAllowed);
-                if (peekers.length > 0) {
-                    peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">${peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('')}</div>`;
-                }
-            }
-
-            html += `
-                <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}">
-                    <div class="seat-name-area" onclick="tapSeat('${p.username}')">
-                        <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
-                    </div>
-                    ${revealedCardsHtml}
-                    ${peekerBadgesHtml}
-                </div>
-            `;
-        });
-
-        tableContainer.innerHTML = html;
-        if (nextHandOverlay) tableContainer.appendChild(nextHandOverlay);
-    }
-
-    // 16. LOCAL HAND RENDERING WITH AUTHENTIC PLAYING CARDS
-    const handContainer = document.getElementById('my-cards-container');
-    const scoreDisplay = document.getElementById('my-score-display');
-    const myHandTitle = document.getElementById('my-hand-title');
-
-    if (isSpectatorOnly) {
-        if (handContainer) handContainer.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:12px;">👀 Spectator Mode</div>';
-        if (scoreDisplay) scoreDisplay.innerText = '-';
-        if (myHandTitle) myHandTitle.innerHTML = 'Spectating Table';
-    } else if (me && me.cards && handContainer) {
-        if (myHandTitle) myHandTitle.innerHTML = 'My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">' + window.calculateLocalScore(me.cards) + '</strong>)';
-        handContainer.innerHTML = me.cards.map((c, i) => {
-            const val = c.val || '';
-            const suit = normalizeSuit(c.suit);
-            const isRed = (suit === '♥' || suit === '♦');
-            const suitClass = isRed ? 'red-suit' : 'black-suit';
-
-            return `
-                <div class="my-card playing-card ${suitClass}" onclick="discardCard(${i})">
-                    <div class="card-corner top-left">
-                        <span class="corner-val">${val}</span>
-                        <span class="corner-suit">${suit}</span>
-                    </div>
-                    <div class="card-center-pip">${suit}</div>
-                    <div class="card-corner bottom-right">
-                        <span class="corner-val">${val}</span>
-                        <span class="corner-suit">${suit}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        if (scoreDisplay) scoreDisplay.innerText = window.calculateLocalScore(me.cards);
-    } else if (handContainer) {
-        handContainer.innerHTML = '';
-        if (scoreDisplay) scoreDisplay.innerText = '0';
-    }
-
-    // 17. SESSION LEDGER AUTO-SYNC (Calls Part 1 renderSessionLedger)
-    const sessionLedgerModal = document.getElementById('session-ledger-modal');
-    if (sessionLedgerModal && sessionLedgerModal.style.display === 'flex') {
-        window.renderSessionLedger(lobby);
+    // --- LOBBY SESSION LEDGER CONTROLS (BILATERAL NETTED ENGINE) ---
+window.toggleSessionLedger = function(show) {
+    const modal = document.getElementById('session-ledger-modal');
+    if (!modal) return;
+    const shouldShow = (show !== undefined) ? !!show : (modal.style.display !== 'flex');
+    modal.style.display = shouldShow ? 'flex' : 'none';
+    if (shouldShow && window.appGlobals?.latestLobbySnapshot) {
+        window.renderSessionLedger(window.appGlobals.latestLobbySnapshot);
     }
 };
 
-window.renderLobbyState = window.updateUIFromLobby;
+window.openSessionLedgerModal = function() {
+    window.toggleSessionLedger(true);
+};
+
+window.renderSessionLedger = function(lobby) {
+    if (!lobby) lobby = window.appGlobals?.latestLobbySnapshot || {};
+    const activeBetsEl = document.getElementById('active-session-bets-list');
+    const settledLedgerEl = document.getElementById('session-settled-ledger-list') || document.getElementById('session-ledger-display');
+
+    // 1. Render Active Unresolved Bets (Exact 1x wager amount)
+    if (activeBetsEl) {
+        const activeList = lobby.activeBets || [];
+        if (activeList.length === 0) {
+            activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
+        } else {
+            activeBetsEl.innerHTML = activeList.map(b => {
+                const desc = (b.type === 'eliminate' || b.type === 'first_out')
+                    ? `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.pickUser} out first)`
+                    : `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.condition || 'Win'})`;
+                return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
+                        <span style="font-size:0.8rem;">${desc}</span>
+                        <span style="color:var(--accent-gold); font-weight:bold; font-size:0.85rem;">$${b.wagerAmt || 5}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // 2. Pairwise Netting Across Main Game & Side Bet Ledgers
+    if (settledLedgerEl) {
+        const gross = {};
+        const addGross = (debtor, creditor, amt) => {
+            if (!debtor || !creditor || debtor === creditor || amt <= 0) return;
+            if (!gross[debtor]) gross[debtor] = {};
+            gross[debtor][creditor] = (gross[debtor][creditor] || 0) + amt;
+        };
+
+        const tally = (ledger) => {
+            if (!ledger) return;
+            for (const debtor in ledger) {
+                for (const creditor in ledger[debtor]) {
+                    const amt = Number(ledger[debtor][creditor]) || 0;
+                    if (amt > 0) addGross(debtor, creditor, amt);
+                }
+            }
+        };
+
+        tally(lobby.mainGameLedger);
+        tally(lobby.sideBetLedger);
+
+        const allUsers = new Set();
+        Object.keys(gross).forEach(u => allUsers.add(u));
+        Object.values(gross).forEach(map => Object.keys(map).forEach(u => allUsers.add(u)));
+
+        const usersArr = Array.from(allUsers);
+        const netList = [];
+
+        // Check each pair once to calculate pure net balance
+        for (let i = 0; i < usersArr.length; i++) {
+            for (let j = i + 1; j < usersArr.length; j++) {
+                const u1 = usersArr[i];
+                const u2 = usersArr[j];
+
+                const u1OwesU2 = (gross[u1] && gross[u1][u2]) || 0;
+                const u2OwesU1 = (gross[u2] && gross[u2][u1]) || 0;
+                const diff = u1OwesU2 - u2OwesU1;
+
+                if (diff > 0) {
+                    netList.push({ debtor: u1, creditor: u2, amount: diff });
+                } else if (diff < 0) {
+                    netList.push({ debtor: u2, creditor: u1, amount: -diff });
+                }
+            }
+        }
+
+        if (netList.length === 0) {
+            settledLedgerEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No debts settled this session.</div>';
+        } else {
+            settledLedgerEl.innerHTML = netList.map(({ debtor, creditor, amount }) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
+                    <span style="font-size:0.8rem;"><span style="color:#f87171; font-weight:bold;">${debtor}</span> owes <span style="color:#4ade80; font-weight:bold;">${creditor}</span></span>
+                    <span style="color:#fde047; font-weight:bold; font-size:0.85rem;">$${amount}</span>
+                </div>
+            `).join('');
+        }
+    }
+};
 
 // -------------------------------------------------------------
-// 9. GLOBAL WINDOW BINDINGS
+// 4. LOBBY BROWSING & NAVIGATION ACTIONS
 // -------------------------------------------------------------
-window.drawCard = drawCard;
-window.drawFromDeck = drawFromDeck;
-window.drawFromDiscard = drawFromDiscard;
-window.discardCard = discardCard;
-window.choosePoolCard = choosePoolCard;
-window.clickNextHand = clickNextHand;
-window.toggleReady = toggleReady;
-window.standUp = standUp;
-window.sitDown = sitDown;
-window.updateWager = updateWager;
-window.updateSettings = updateSettings;
-window.submitLivesVote = submitLivesVote;
-window.addBot = addBot;
-window.removeBot = removeBot;
-window.proposeEndGame = proposeEndGame;
-window.leaveLobby = leaveLobby;
-window.resetToMainMenu = resetToMainMenu;
-window.tapSeat = tapSeat;
-window.requestPeekFromModal = requestPeekFromModal;
-window.betOnHimFromModal = betOnHimFromModal;
-window.submitEliminationProposal = submitEliminationProposal;
-window.submitGlobalProposal = submitGlobalProposal;
-window.acceptGlobalProposal = acceptGlobalProposal;
-window.respondGlobalBet = respondGlobalBet;
-window.confirmGlobalBet = confirmGlobalBet;
-window.openConfirmModal = openConfirmModal;
-window.respondToBet = respondToBet;
-window.stopPeekingAction = stopPeekingAction;
-window.kickPeekerAction = kickPeekerAction;
+window.renderLobbyList = function(lobbies) {
+    const container = document.getElementById('lobby-list');
+    if (!container) return;
+
+    if (!lobbies || lobbies.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:#64748b; padding:10px; font-size:0.75rem;">No active tables found.</div>';
+        return;
+    }
+
+    container.innerHTML = lobbies.map(l => {
+        const count = l.count !== undefined ? l.count : (l.players ? l.players.length : 0);
+        const isOpen = (l.state === 'lobby' || l.gameState === 'lobby');
+        return `
+            <div class="lobby-item" onclick="joinLobbyCode('${l.code}')">
+                <span style="font-size:0.78rem;">
+                    <b>${l.name}</b> (${count}/6) — <i style="color:${isOpen ? '#34d399' : '#fbbf24'};">${isOpen ? 'Open' : 'In-Progress'}</i>
+                </span>
+                <span style="color:var(--accent-gold); font-size:0.75rem; font-weight:bold;">Enter →</span>
+            </div>
+        `;
+    }).join('');
+};
+
+window.renderPublicLobbies = window.renderLobbyList;
+
+window.refreshLobbies = function() {
+    sendSocket({ type: 'GET_LOBBIES' });
+    sendSocket({ type: 'REFRESH_LOBBIES' });
+};
+
+window.createLobby = function() {
+    if (typeof window.saveInputs === 'function') window.saveInputs();
+    const userIn = document.getElementById('username-input');
+    const nameIn = document.getElementById('lobby-name-input');
+    const privIn = document.getElementById('private-lobby-checkbox');
+
+    const username = (userIn?.value || '').trim() || (window.userSession?.username || 'Player1');
+    const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
+    const isPrivate = privIn ? privIn.checked : false;
+
+    window.clientState.username = username;
+    sendSocket({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
+};
+
+window.joinLobby = function() {
+    if (typeof window.saveInputs === 'function') window.saveInputs();
+    const codeIn = document.getElementById('lobby-code-input');
+    const code = (codeIn?.value || '').trim().toUpperCase();
+    if (code) window.joinLobbyCode(code);
+};
+
+window.joinLobbyCode = function(code) {
+    if (!code) return;
+    if (typeof window.saveInputs === 'function') window.saveInputs();
+    const userIn = document.getElementById('username-input');
+    const username = (userIn?.value || '').trim() || (window.userSession?.username || 'Player1');
+
+    window.clientState.username = username;
+    window.appGlobals.currentJoinedCode = code.toUpperCase();
+    localStorage.setItem('blitz31_active_
