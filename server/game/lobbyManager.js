@@ -34,7 +34,7 @@ function touchLobbyActivity(lobby, broadcastCallback) {
     
     // Hardcoded 90-second timeout (90000ms) to guarantee the grace period is honored
     lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), 90000);
-}
+
     if (!lobby) return;
     
     // Check for humans who are either actively connected OR within their 90-second grace period
