@@ -45,26 +45,33 @@ function sendSocket(payload) {
     } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
         window.ws.send(JSON.stringify(payload));
     }
-};
+}
 
-window.triggerAudioCue = function(cueType) {
+window.safePlaySound = function(cueType) {
     try {
+        if (typeof window.playSound === 'function') {
+            window.playSound(cueType);
+            return;
+        }
         const audioEl = document.getElementById(`sound-${cueType}`);
         if (audioEl) {
             audioEl.currentTime = 0;
             audioEl.play().catch(e => console.warn(`[Audio] Blocked HTML tag for ${cueType}:`, e));
         } else {
-            console.warn(`[Audio] HTML tag sound-${cueType} missing. Trying dynamic fallback.`);
             const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
             fallbackAudio.play().catch(e => console.warn(`[Audio] Blocked dynamic audio for ${cueType}:`, e));
-        }
-
-        if (navigator.vibrate) {
-            navigator.vibrate(cueType === 'knock' ? [150, 100, 200] : [80, 50, 80]);
         }
     } catch (e) {
         console.error('[Audio] Trigger error:', e);
     }
+};
+
+window.safeVibrate = function(pattern) {
+    try {
+        if (navigator.vibrate) {
+            navigator.vibrate(pattern);
+        }
+    } catch (e) {}
 };
 
 // Global one-tap unlock for mobile Chrome / Safari AudioContext
@@ -81,17 +88,6 @@ function unlockAudioContextOnTap() {
 }
 document.addEventListener('touchstart', unlockAudioContextOnTap, { passive: true });
 document.addEventListener('click', unlockAudioContextOnTap);
-
-function sendSocket(payload) {
-    const sendFunc = window.initSocketAndSend || window.sendSocketMessage;
-    if (typeof sendFunc === 'function') {
-        sendFunc(payload);
-    } else if (window.appGlobals.ws && window.appGlobals.ws.readyState === WebSocket.OPEN) {
-        window.appGlobals.ws.send(JSON.stringify(payload));
-    } else if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-        window.ws.send(JSON.stringify(payload));
-    }
-}
 
 // -------------------------------------------------------------
 // 2. CASINO PLAYING CARD RENDERER & HAND SCORING
@@ -276,28 +272,40 @@ window.openSpectatorListModal = function() {
     window.toggleModal('spectators-modal');
 };
 
-// Hide the redundant bets button; pending bets and active side pots display on the table
-function hideActiveBetsButton() {
-    ['active-bets-btn', 'view-bets-btn', 'bets-btn', 'side-bets-modal-btn'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
+// Permanently hide redundant Bets buttons because active bets/side pots are shown on board
+window.hideAllBetsButtons = function() {
+    const selectors = [
+        '#active-bets-btn', '#view-bets-btn', '#side-bets-btn', 
+        '#bets-btn', '#bets-toggle-btn', '#side-bets-modal-btn', 
+        '#bets-modal-btn', '.bets-btn', '.side-bets-btn'
+    ];
+    selectors.forEach(sel => {
+        document.querySelectorAll(sel).forEach(el => {
+            el.style.setProperty('display', 'none', 'important');
+        });
     });
-}
-document.addEventListener('DOMContentLoaded', hideActiveBetsButton);
 
-// In window.updateUIFromLobby:
-// Make sure hideActiveBetsButton() is invoked:
-hideActiveBetsButton();
-
+    const containers = document.querySelectorAll('#in-game-top-row-btns, #in-game-tools-row, .tools-row');
+    containers.forEach(container => {
+        container.querySelectorAll('button').forEach(btn => {
+            const txt = (btn.textContent || '').trim().toLowerCase();
+            if (txt === 'bets' || txt === 'side bets' || txt === 'active bets') {
+                btn.style.setProperty('display', 'none', 'important');
+            }
+        });
+    });
+};
+window.openActiveBetsModal = window.hideAllBetsButtons;
+document.addEventListener('DOMContentLoaded', window.hideAllBetsButtons);
 
 // --- LOBBY SESSION LEDGER CONTROLS (BILATERAL NETTED ENGINE) ---
 window.toggleSessionLedger = function(show) {
-    const modal = document.getElementById('session-ledger-modal');
+    const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
     const shouldShow = (show !== undefined) ? !!show : (modal.style.display !== 'flex');
     modal.style.display = shouldShow ? 'flex' : 'none';
-    if (shouldShow && window.appGlobals?.latestLobbySnapshot) {
-        window.renderSessionLedger(window.appGlobals.latestLobbySnapshot);
+    if (shouldShow) {
+        window.renderSessionLedger(window.appGlobals?.latestLobbySnapshot);
     }
 };
 
@@ -307,12 +315,19 @@ window.openSessionLedgerModal = function() {
 
 window.renderSessionLedger = function(lobby) {
     if (!lobby) lobby = window.appGlobals?.latestLobbySnapshot || {};
-    const activeBetsEl = document.getElementById('active-session-bets-list');
-    const settledLedgerEl = document.getElementById('session-settled-ledger-list') || document.getElementById('session-ledger-display');
+    
+    // Support all known ID variations across blitz templates
+    const settledLedgerEl = document.getElementById('session-settled-ledger-list')
+        || document.getElementById('session-ledger-content')
+        || document.getElementById('ledger-content')
+        || document.getElementById('session-ledger-list')
+        || document.getElementById('session-ledger-display');
 
-    // 1. Render Active Unresolved Bets (Exact 1x wager amount)
+    const activeBetsEl = document.getElementById('active-session-bets-list');
+
+    // 1. Render Active Unresolved Bets if sub-container exists
     if (activeBetsEl) {
-        const activeList = lobby.activeBets || [];
+        const activeList = lobby.activeBets || window.clientState?.activeBetsList || [];
         if (activeList.length === 0) {
             activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
         } else {
@@ -330,68 +345,67 @@ window.renderSessionLedger = function(lobby) {
         }
     }
 
-    // 2. Pairwise Netting Across Main Game & Side Bet Ledgers
-    if (settledLedgerEl) {
-        const gross = {};
-        const addGross = (debtor, creditor, amt) => {
-            if (!debtor || !creditor || debtor === creditor || amt <= 0) return;
-            if (!gross[debtor]) gross[debtor] = {};
-            gross[debtor][creditor] = (gross[debtor][creditor] || 0) + amt;
-        };
+    if (!settledLedgerEl) return;
 
-        const tally = (ledger) => {
-            if (!ledger) return;
-            for (const debtor in ledger) {
-                for (const creditor in ledger[debtor]) {
-                    const amt = Number(ledger[debtor][creditor]) || 0;
-                    if (amt > 0) addGross(debtor, creditor, amt);
-                }
-            }
-        };
+    // 2. Net settlement ledger calculation
+    const gross = {};
+    const addGross = (debtor, creditor, amt) => {
+        if (!debtor || !creditor || debtor === creditor || amt <= 0) return;
+        if (!gross[debtor]) gross[debtor] = {};
+        gross[debtor][creditor] = (gross[debtor][creditor] || 0) + amt;
+    };
 
-        tally(lobby.mainGameLedger);
-        tally(lobby.sideBetLedger);
-
-        const allUsers = new Set();
-        Object.keys(gross).forEach(u => allUsers.add(u));
-        Object.values(gross).forEach(map => Object.keys(map).forEach(u => allUsers.add(u)));
-
-        const usersArr = Array.from(allUsers);
-        const netList = [];
-
-        // Check each pair once to calculate pure net balance
-        for (let i = 0; i < usersArr.length; i++) {
-            for (let j = i + 1; j < usersArr.length; j++) {
-                const u1 = usersArr[i];
-                const u2 = usersArr[j];
-
-                const u1OwesU2 = (gross[u1] && gross[u1][u2]) || 0;
-                const u2OwesU1 = (gross[u2] && gross[u2][u1]) || 0;
-                const diff = u1OwesU2 - u2OwesU1;
-
-                if (diff > 0) {
-                    netList.push({ debtor: u1, creditor: u2, amount: diff });
-                } else if (diff < 0) {
-                    netList.push({ debtor: u2, creditor: u1, amount: -diff });
-                }
+    const tally = (ledger) => {
+        if (!ledger) return;
+        for (const debtor in ledger) {
+            for (const creditor in ledger[debtor]) {
+                const amt = Number(ledger[debtor][creditor]) || 0;
+                if (amt > 0) addGross(debtor, creditor, amt);
             }
         }
+    };
 
-        if (netList.length === 0) {
-            settledLedgerEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No debts settled this session.</div>';
-        } else {
-            settledLedgerEl.innerHTML = netList.map(({ debtor, creditor, amount }) => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                    <span style="font-size:0.8rem;"><span style="color:#f87171; font-weight:bold;">${debtor}</span> owes <span style="color:#4ade80; font-weight:bold;">${creditor}</span></span>
-                    <span style="color:#fde047; font-weight:bold; font-size:0.85rem;">$${amount}</span>
-                </div>
-            `).join('');
+    tally(lobby.mainGameLedger || window.clientState?.mainGameLedger);
+    tally(lobby.sideBetLedger || window.clientState?.sideBetLedger);
+
+    const allUsers = new Set();
+    Object.keys(gross).forEach(u => allUsers.add(u));
+    Object.values(gross).forEach(map => Object.keys(map).forEach(u => allUsers.add(u)));
+
+    const usersArr = Array.from(allUsers);
+    const netList = [];
+
+    for (let i = 0; i < usersArr.length; i++) {
+        for (let j = i + 1; j < usersArr.length; j++) {
+            const u1 = usersArr[i];
+            const u2 = usersArr[j];
+
+            const u1OwesU2 = (gross[u1] && gross[u1][u2]) || 0;
+            const u2OwesU1 = (gross[u2] && gross[u2][u1]) || 0;
+            const diff = u1OwesU2 - u2OwesU1;
+
+            if (diff > 0) {
+                netList.push({ debtor: u1, creditor: u2, amount: diff });
+            } else if (diff < 0) {
+                netList.push({ debtor: u2, creditor: u1, amount: -diff });
+            }
         }
+    }
+
+    if (netList.length === 0) {
+        settledLedgerEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:8px; text-align:center;">No debts settled this session. All square!</div>';
+    } else {
+        settledLedgerEl.innerHTML = netList.map(({ debtor, creditor, amount }) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
+                <span style="font-size:0.85rem;"><span style="color:#f87171; font-weight:bold;">${debtor}</span> owes <span style="color:#4ade80; font-weight:bold;">${creditor}</span></span>
+                <span style="color:#fde047; font-weight:bold; font-size:0.9rem;">$${amount}</span>
+            </div>
+        `).join('');
     }
 };
 
-// // -------------------------------------------------------------
-// 4. LOBBY BROWSING RENDERING
+// -------------------------------------------------------------
+// 4. LOBBY BROWSING & NAVIGATION ACTIONS
 // -------------------------------------------------------------
 window.renderLobbyList = function(lobbies) {
     const container = document.getElementById('lobby-list');
@@ -418,7 +432,95 @@ window.renderLobbyList = function(lobbies) {
 
 window.renderPublicLobbies = window.renderLobbyList;
 
+window.refreshLobbies = function() {
+    sendSocket({ type: 'GET_LOBBIES' });
+    sendSocket({ type: 'REFRESH_LOBBIES' });
+};
 
+window.createLobby = function() {
+    if (typeof window.saveInputs === 'function') window.saveInputs();
+    const userIn = document.getElementById('username-input');
+    const nameIn = document.getElementById('lobby-name-input');
+    const privIn = document.getElementById('private-lobby-checkbox');
+
+    const username = (userIn?.value || '').trim() || (window.userSession?.username || 'Player1');
+    const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
+    const isPrivate = privIn ? privIn.checked : false;
+
+    window.clientState.username = username;
+    sendSocket({ type: 'CREATE_LOBBY', username, lobbyName, isPrivate });
+};
+
+window.joinLobby = function() {
+    if (typeof window.saveInputs === 'function') window.saveInputs();
+    const codeIn = document.getElementById('lobby-code-input');
+    const code = (codeIn?.value || '').trim().toUpperCase();
+    if (code) window.joinLobbyCode(code);
+};
+
+window.joinLobbyCode = function(code) {
+    if (!code) return;
+    if (typeof window.saveInputs === 'function') window.saveInputs();
+    const userIn = document.getElementById('username-input');
+    const username = (userIn?.value || '').trim() || (window.userSession?.username || 'Player1');
+
+    window.clientState.username = username;
+    window.appGlobals.currentJoinedCode = code.toUpperCase();
+    localStorage.setItem('blitz31_active_room', code.toUpperCase());
+    sendSocket({ type: 'JOIN_LOBBY', code: code.toUpperCase(), username });
+};
+
+window.leaveLobby = function() {
+    window.appGlobals.currentJoinedCode = null;
+    localStorage.removeItem('blitz31_active_room');
+    try {
+        if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
+    } catch (err) {
+        console.warn('[LiveKit] Cleanup warning:', err);
+    }
+    sendSocket({ type: 'LEAVE_LOBBY' });
+    window.resetToMainMenu();
+};
+
+window.resetToMainMenu = function() {
+    try {
+        if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
+    } catch (e) {}
+
+    window.appGlobals.currentJoinedCode = null;
+    window.appGlobals.latestLobbySnapshot = null;
+    window.appGlobals.lastChatCount = 0;
+    localStorage.removeItem('blitz31_active_room');
+
+    const gameView = document.getElementById('game-view');
+    const mainMenu = document.getElementById('main-menu');
+    const topRowBtns = document.getElementById('in-game-top-row-btns');
+    const toolsRow = document.getElementById('in-game-tools-row');
+    const endBtn = document.getElementById('end-game-btn');
+    const leaveBtn = document.getElementById('leave-lobby-btn');
+
+    if (gameView) gameView.style.display = 'none';
+    if (mainMenu) mainMenu.style.display = 'flex';
+    if (topRowBtns) topRowBtns.style.display = 'none';
+    if (toolsRow) toolsRow.style.display = 'none';
+    if (endBtn) endBtn.style.display = 'none';
+    if (leaveBtn) leaveBtn.style.display = 'none';
+
+    const chatWin = document.getElementById('chat-window');
+    if (chatWin) chatWin.style.display = 'none';
+
+    const box = document.getElementById('chat-messages');
+    if (box) box.innerHTML = '';
+
+    window.clientState.isReady = false;
+    window.appGlobals.hasChosenPoolCard = false;
+    const readyBtn = document.getElementById('ready-btn');
+    if (readyBtn) readyBtn.innerText = 'Ready Up';
+
+    if (typeof window.refreshLobbies === 'function') {
+        window.refreshLobbies();
+    }
+};
 
 // -------------------------------------------------------------
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
@@ -426,7 +528,7 @@ window.renderPublicLobbies = window.renderLobbyList;
 window.drawCard = function(source) {
     if (window.clientState.isSpectator) return;
     if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(40);
+    window.safeVibrate(40);
     sendSocket({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
 };
 
@@ -436,7 +538,7 @@ window.drawFromDiscard = function() { window.drawCard('discard'); };
 window.discardCard = function(cardIndex) {
     if (window.clientState.isSpectator) return;
     if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(30);
+    window.safeVibrate(30);
     sendSocket({
         type: 'DISCARD_CARD',
         index: cardIndex,
@@ -515,10 +617,9 @@ function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
     if (!knockAlertModal) return;
 
-    // B.2. OPPONENT KNOCK ALERTS & AUDIO
     if (lobby.knockedBy && lobby.knockedBy !== window.appGlobals.lastKnownKnockedBy) {
         window.appGlobals.lastKnownKnockedBy = lobby.knockedBy;
-        // Only play the incoming sound if someone ELSE knocked
+        const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
         if (lobby.knockedBy.toLowerCase() !== activeUsername.toLowerCase()) {
             window.safePlaySound('knock');
             window.safeVibrate([180, 110, 180, 110, 180]);
@@ -530,16 +631,8 @@ function updateKnockAlertAndAudio(lobby) {
     if (lobby.knockedBy && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn')) {
         knockAlertModal.innerText = `🔔 ${lobby.knockedBy.toUpperCase()} HAS KNOCKED!`;
         knockAlertModal.style.display = 'block';
-
-        if (window.appGlobals.lastKnownKnockedBy !== lobby.knockedBy) {
-            window.appGlobals.lastKnownKnockedBy = lobby.knockedBy;
-            if (typeof playSound === 'function') playSound('knock');
-            if (typeof speakKnockedCue === 'function') speakKnockedCue();
-            if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
-        }
     } else {
         knockAlertModal.style.display = 'none';
-        window.appGlobals.lastKnownKnockedBy = null;
     }
 }
 
@@ -591,7 +684,7 @@ window.knockRound = function() {
 
     if (typeof playSound === 'function') playSound('knock');
     if (typeof speakKnockedCue === 'function') speakKnockedCue();
-    if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
+    window.safeVibrate([180, 110, 180, 110, 180]);
     sendSocket({ type: 'KNOCK' });
 };
 
@@ -776,16 +869,35 @@ window.updateUIFromLobby = function(lobby) {
     const toolsRow = document.getElementById('in-game-tools-row');
     const endBtn = document.getElementById('end-game-btn');
     const leaveBtn = document.getElementById('leave-lobby-btn');
-    const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').toLowerCase();
-    console.log(`[Turn Debug] Server Turn: ${lobby.currentTurnUser} | My Name: ${myName}`);
+    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
 
     if (authScreen) authScreen.style.display = 'none';
     if (mainMenu) mainMenu.style.display = 'none';
     if (gameView) gameView.style.display = 'flex';
     if (topRowBtns) topRowBtns.style.display = 'inline-flex';
     if (toolsRow) toolsRow.style.display = 'flex';
-    if (endBtn) endBtn.style.display = 'inline-block';
-    if (leaveBtn) leaveBtn.style.display = 'inline-block';
+    if (endBtn) {
+        endBtn.style.display = 'inline-block';
+        endBtn.onclick = function() { window.proposeEndGame(); };
+    }
+    if (leaveBtn) {
+        leaveBtn.style.display = 'inline-block';
+        leaveBtn.onclick = function(e) {
+            if (e) e.preventDefault();
+            window.leaveLobby();
+        };
+    }
+
+    // Connect any Board/Ledger buttons in the UI
+    const ledgerBtn = document.getElementById('ledger-btn') 
+        || document.getElementById('session-ledger-btn')
+        || document.getElementById('board-btn');
+    if (ledgerBtn) {
+        ledgerBtn.onclick = function() { window.toggleSessionLedger(true); };
+    }
+
+    // Permanently remove all redundant Bets buttons on each render
+    window.hideAllBetsButtons();
 
     const roomTitle = document.getElementById('room-title-display');
     if (roomTitle) roomTitle.innerText = `${lobby.name || 'Table'} [${lobby.code || '----'}]`;
@@ -793,8 +905,6 @@ window.updateUIFromLobby = function(lobby) {
     if (lobby.chatHistory) {
         window.syncChatHistory(lobby.chatHistory);
     }
-
-    const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
 
     // 1. CELEBRATION TRIGGER: HIT 31
     if (lobby.hit31Player) {
@@ -1010,7 +1120,7 @@ window.updateUIFromLobby = function(lobby) {
             } else if (typeof playSound === 'function') {
                 playSound('yourturn');
             }
-            if (typeof triggerVibration === 'function') triggerVibration([60, 40, 60]);
+            window.safeVibrate([60, 40, 60]);
         }
     } else {
         window.appGlobals.wasMyTurn = false;
@@ -1141,13 +1251,13 @@ window.updateUIFromLobby = function(lobby) {
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
         if (lobby.activeParticipantsCount <= 1) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
             if (nextBtn) {
                 nextBtn.innerText = 'Returning to Ready Room...';
                 nextBtn.disabled = true;
             }
         } else if (myPlayer && !isPermanentlyOut) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
                     nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
@@ -1244,8 +1354,8 @@ window.updateUIFromLobby = function(lobby) {
         if (dealerDrawModal) dealerDrawModal.style.display = 'none';
         if (turnBanner) {
             if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
-                const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase());
-                turnBanner.innerText = isMyTurnPlaying ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
+                const isMyTurn = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase());
+                turnBanner.innerText = isMyTurn ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
             } else if (lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd') {
                 turnBanner.innerText = lobby.phaseMessage || 'Round Over';
             }
