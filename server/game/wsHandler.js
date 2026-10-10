@@ -304,7 +304,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        }
 
         case 'CHOOSE_POOL_CARD': {
             if (currentLobbyCode && lobbies[currentLobbyCode] && typeof data.cardIndex === 'number') {
