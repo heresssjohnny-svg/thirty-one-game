@@ -272,7 +272,7 @@ window.openSpectatorListModal = function() {
     window.toggleModal('spectators-modal');
 };
 
-// Permanently hide redundant Bets buttons because active bets/side pots are shown on board
+// Permanently hide redundant Bets buttons because active bets and side pots are shown on board
 window.hideAllBetsButtons = function() {
     const selectors = [
         '#active-bets-btn', '#view-bets-btn', '#side-bets-btn', 
@@ -285,11 +285,11 @@ window.hideAllBetsButtons = function() {
         });
     });
 
-    const containers = document.querySelectorAll('#in-game-top-row-btns, #in-game-tools-row, .tools-row');
+    const containers = document.querySelectorAll('#in-game-top-row-btns, #in-game-tools-row, .tools-row, #table-actions');
     containers.forEach(container => {
         container.querySelectorAll('button').forEach(btn => {
             const txt = (btn.textContent || '').trim().toLowerCase();
-            if (txt === 'bets' || txt === 'side bets' || txt === 'active bets') {
+            if (txt === 'bets' || txt === 'side bets' || txt === 'active bets' || txt.includes('active bets')) {
                 btn.style.setProperty('display', 'none', 'important');
             }
         });
@@ -316,7 +316,7 @@ window.openSessionLedgerModal = function() {
 window.renderSessionLedger = function(lobby) {
     if (!lobby) lobby = window.appGlobals?.latestLobbySnapshot || {};
     
-    // Support all known ID variations across blitz templates
+    // Support all known ID variations across templates
     const settledLedgerEl = document.getElementById('session-settled-ledger-list')
         || document.getElementById('session-ledger-content')
         || document.getElementById('ledger-content')
@@ -347,7 +347,7 @@ window.renderSessionLedger = function(lobby) {
 
     if (!settledLedgerEl) return;
 
-    // 2. Net settlement ledger calculation
+    // 2. Pairwise Netting Across Main Game & Side Bet Ledgers
     const gross = {};
     const addGross = (debtor, creditor, amt) => {
         if (!debtor || !creditor || debtor === creditor || amt <= 0) return;
@@ -691,9 +691,25 @@ window.knockRound = function() {
 // -------------------------------------------------------------
 // 7. SIDE BETS & PEEKING DIALOGS
 // -------------------------------------------------------------
+window.handleSeatClick = function(seatIndex) {
+    if (window.clientState.gameState === 'lobby') {
+        window.showCenterNotification("Game hasn't started yet! Ready up to play.");
+        return;
+    }
+    const lobby = window.appGlobals.latestLobbySnapshot;
+    if (!lobby || !lobby.players) return;
+    const targetPlayer = lobby.players.find(p => String(p.seat) === String(seatIndex));
+    if (targetPlayer?.username) {
+        window.tapSeat(targetPlayer.username);
+    }
+};
+
 window.tapSeat = function(targetUsername) {
     const activeUsername = (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
-    if (window.clientState.gameState === 'lobby') return;
+    if (window.clientState.gameState === 'lobby') {
+        window.showCenterNotification("Game hasn't started yet! Ready up to play.");
+        return;
+    }
 
     const isSpecOnly = window.clientState.isSpectator;
     const activeCount = window.clientState.activeParticipantsCount;
@@ -1251,13 +1267,13 @@ window.updateUIFromLobby = function(lobby) {
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
         if (lobby.activeParticipantsCount <= 1) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
             if (nextBtn) {
                 nextBtn.innerText = 'Returning to Ready Room...';
                 nextBtn.disabled = true;
             }
         } else if (myPlayer && !isPermanentlyOut) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
                     nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
@@ -1417,13 +1433,13 @@ window.updateUIFromLobby = function(lobby) {
             if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
                 const peekers = Object.keys(p.peekAllowed);
                 if (peekers.length > 0) {
-                    peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">${peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('')}</div>`;
+                    peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">${peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="event.stopPropagation(); kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('')}</div>`;
                 }
             }
 
             html += `
-                <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}">
-                    <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}" onclick="window.tapSeat('${p.username}')" style="cursor:pointer;">
+                    <div class="seat-name-area">
                         <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                     </div>
                     ${revealedCardsHtml}
