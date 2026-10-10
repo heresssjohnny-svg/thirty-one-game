@@ -463,8 +463,8 @@
     </div>
 
     <!-- SOUND ENGINE AUDIO TAGS -->
-    <audio id="sound-knock" src="/audio/knock.mp3" preload="auto"></audio>
-    <audio id="sound-yourturn" src="/audio/yourturn.mp3" preload="auto"></audio>
+    <audio id="sound-knock" src="/mp3s/knock.mp3" preload="auto"></audio>
+    <audio id="sound-yourturn" src="/mp3s/yourturn.mp3" preload="auto"></audio>
 
     <!-- CELEBRATION EFFECT CANVAS -->
     <canvas id="celebration-canvas" style="display: none;"></canvas>
@@ -481,6 +481,7 @@
 <div id="knock-banner" style="display: none;"></div>
 
 <!-- Required for Turn tracking UI to avoid silent errors -->
-<div id="turn-banner" style="display: none;"></div>
+<div id="turn-banner" style="display: none; text-align: center; color: #f59e0b; font-weight: bold; margin-top: 10px;"></div>
+<div id="knock-alert-modal" style="display: none; position: absolute; top: 20%; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 15px 30px; font-weight: bold; border-radius: 8px; z-index: 9999; text-align: center;"></div>    
 </body>
 </html>
