@@ -339,6 +339,7 @@ window.createLobby = function() {
 
         const username = (userIn?.value || '').trim() ||
                          (window.clientState && window.clientState.username) ||
+                         (window.userSession && window.userSession.username) ||
                          localStorage.getItem('saved_username') ||
                          'Player1';
         const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
@@ -361,17 +362,27 @@ window.createLobby = function() {
     }
 };
 
-window.joinLobby = function() {
+window.joinLobby = function(targetCode) {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
+
         const userIn = document.getElementById('username-input');
-        const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
+        const codeIn = document.getElementById('lobby-code-input') || 
+                       document.getElementById('join-code-input') ||
+                       document.getElementById('table-code-input');
 
         const username = (userIn?.value || '').trim() ||
                          (window.clientState && window.clientState.username) ||
+                         (window.userSession && window.userSession.username) ||
                          localStorage.getItem('saved_username') ||
                          'Player1';
-        const code = (codeIn?.value || '').trim().toUpperCase();
+
+        // Read code from argument (when clicking a list row) or fall back to input box
+        const rawCode = (typeof targetCode === 'string' && targetCode.trim())
+            ? targetCode.trim()
+            : (codeIn?.value || '').trim();
+
+        const code = rawCode.toUpperCase();
 
         if (!code) {
             if (typeof window.showCenterNotification === 'function') {
@@ -398,32 +409,9 @@ window.joinLobby = function() {
     }
 };
 
-window.joinLobbyCode = function(code) {
-    if (!code) return;
-    try {
-        if (typeof window.saveInputs === 'function') window.saveInputs();
-        const userIn = document.getElementById('username-input');
-        const username = (userIn?.value || '').trim() ||
-                         (window.clientState && window.clientState.username) ||
-                         localStorage.getItem('saved_username') ||
-                         'Player1';
-
-        const normalizedCode = code.trim().toUpperCase();
-        window.clientState = window.clientState || {};
-        window.clientState.username = username;
-        localStorage.setItem('saved_username', username);
-        if (window.appGlobals) window.appGlobals.currentJoinedCode = normalizedCode;
-        localStorage.setItem('blitz31_active_room', normalizedCode);
-
-        window.initSocketAndSend({
-            type: 'JOIN_LOBBY',
-            code: normalizedCode,
-            username: username
-        });
-    } catch (err) {
-        alert("Join Table Error: " + err.message);
-    }
-};
+window.joinLobbyCode = window.joinLobby;
+window.joinLobbyDirect = window.joinLobby;
+window.handleJoinLobby = window.joinLobby;
 
 // -------------------------------------------------------------
 // SECURE LEAVE & UI RESET LOGIC (WITH MIC STATE CLEANUP)
@@ -483,6 +471,7 @@ window.resetToMainMenu = function(forceClearRoom = false) {
 
     if (typeof window.refreshLobbies === 'function') window.refreshLobbies();
 };
+
 
 // -------------------------------------------------------------
 // 5. TABLE SEATING & PRE-GAME CONTROLS
@@ -623,3 +612,44 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', () => {
     resyncActiveSession();
 });
+
+//===============Additional coding
+
+function bindMenuButtons() {
+    const joinBtns = [
+        document.getElementById('join-lobby-btn'),
+        document.getElementById('join-table-btn'),
+        document.getElementById('join-btn'),
+        document.getElementById('btn-join')
+    ];
+    joinBtns.forEach(btn => {
+        if (btn) {
+            btn.onclick = (e) => {
+                if (e) e.preventDefault();
+                window.joinLobby();
+            };
+        }
+    });
+
+    const createBtns = [
+        document.getElementById('create-lobby-btn'),
+        document.getElementById('create-table-btn'),
+        document.getElementById('create-btn'),
+        document.getElementById('btn-create')
+    ];
+    createBtns.forEach(btn => {
+        if (btn) {
+            btn.onclick = (e) => {
+                if (e) e.preventDefault();
+                window.createLobby();
+            };
+        }
+    });
+}
+
+// Bind immediately if DOM is ready, and on DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindMenuButtons);
+} else {
+    bindMenuButtons();
+}
