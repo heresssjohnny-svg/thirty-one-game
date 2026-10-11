@@ -549,6 +549,10 @@ window.submitLivesVote = function(lives) {
 };
 
 window.leaveLobby = function() {
+    if (!confirm("Are you sure you want to leave the table?")) {
+        return;
+    }
+
     const code = getActiveRoomCode();
     dispatchGameAction({ type: 'LEAVE_LOBBY', code });
 
@@ -557,7 +561,7 @@ window.leaveLobby = function() {
     }
 
     if (typeof window.resetToMainMenu === 'function') {
-        window.resetToMainMenu();
+        window.resetToMainMenu(true);
     } else {
         const gameView = document.getElementById('game-view');
         const mainMenu = document.getElementById('main-menu');
