@@ -291,6 +291,27 @@ function handleIncomingServerMessage(data) {
             }
             break;
 
+        case 'UPDATE_VC_STATUS':
+        case 'VC_STATUS_UPDATE':
+            if (data.username && window.appGlobals && window.appGlobals.latestLobbySnapshot) {
+                const snap = window.appGlobals.latestLobbySnapshot;
+                const player = (snap.players || []).find(p => p.username.toLowerCase() === data.username.toLowerCase());
+                if (player) {
+                    player.inVC = Boolean(data.inVC !== undefined ? data.inVC : true);
+                    player.isMuted = Boolean(data.isMuted);
+                }
+                const spectator = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === data.username.toLowerCase());
+                if (spectator) {
+                    spectator.inVC = Boolean(data.inVC !== undefined ? data.inVC : true);
+                    spectator.isMuted = Boolean(data.isMuted);
+                }
+                if (typeof window.updateUIFromLobby === 'function') {
+                    window.updateUIFromLobby(snap);
+                }
+            }
+            break;
+
+
         case 'CHAT_MESSAGE':
             if (typeof window.appendChatMessage === 'function') {
                 window.appendChatMessage(data);
