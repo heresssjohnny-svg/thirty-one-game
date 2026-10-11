@@ -1,4 +1,4 @@
-// public/js/voice.js - Persistent LiveKit Voice Engine, Bluetooth Routing & Background Keep-Alive
+// public/js/voice.js - Persistent LiveKit Voice Engine, Real-time Mute Sync & Background Resilience
 
 let livekitRoom = null;
 let isLiveKitConnected = false;
@@ -6,54 +6,24 @@ let isMicActive = false; // Controls local microphone transmission state
 let isConnectingVoice = false;
 let latestLiveKitHost = null;
 let latestLiveKitToken = null;
+let latestLiveKitRoom = null;
 let currentVoiceVolume = 1.0;
 let selectedAudioOutputId = 'default';
 
-// Background audio keep-alive: HTML5 Audio loop + AudioContext to bypass mobile 5-second sleep
-let silentAudioElement = null;
-let keepAliveOscillator = null;
-let keepAliveGainNode = null;
+// Background audio keep-alive nodes attached to the DOM to hold mobile OS media priority
+let keepAliveAudioElement = null;
 let keepAliveAudioContext = null;
-
-// 1-second inaudible WAV base64 payload to hold mobile OS background media priority
-const SILENT_WAV_BASE64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+let keepAliveMediaStream = null;
 
 function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
 }
 
 /**
- * Bypasses mobile OS 5-second background sleep by combining a looped HTML5 Audio element,
- * system MediaSession registration, and a fallback Web Audio oscillator.
+ * Initializes a DOM-attached MediaStream keep-alive to hold the mobile OS audio session
+ * active in the background.
  */
 function startBackgroundKeepAliveOscillator() {
-    // 1. HTML5 Background Media Loop (Prevents iOS Safari & Android from killing the tab)
-    try {
-        if (!silentAudioElement) {
-            silentAudioElement = new Audio(SILENT_WAV_BASE64);
-            silentAudioElement.loop = true;
-            silentAudioElement.volume = 0.01;
-            silentAudioElement.setAttribute('playsinline', '');
-            silentAudioElement.setAttribute('webkit-playsinline', '');
-        }
-
-        silentAudioElement.play().then(() => {
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'playing';
-                navigator.mediaSession.metadata = new MediaMetadata({
-                    title: "Voice Chat Active",
-                    artist: "Blitz 31",
-                    album: "Live Game Voice"
-                });
-            }
-        }).catch(err => {
-            console.warn("[LiveKit] Background audio autoplay waiting for touch unlock:", err);
-        });
-    } catch (err) {
-        console.warn("[LiveKit] Could not initialize HTML5 silent keep-alive:", err);
-    }
-
-    // 2. Web Audio Context keep-alive
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
@@ -66,53 +36,65 @@ function startBackgroundKeepAliveOscillator() {
             keepAliveAudioContext.resume().catch(() => {});
         }
 
-        if (!keepAliveOscillator) {
-            keepAliveOscillator = keepAliveAudioContext.createOscillator();
-            keepAliveGainNode = keepAliveAudioContext.createGain();
+        if (!keepAliveAudioElement) {
+            keepAliveAudioElement = document.createElement('audio');
+            keepAliveAudioElement.id = 'lk-keepalive-media';
+            keepAliveAudioElement.loop = true;
+            keepAliveAudioElement.volume = 0.01;
+            keepAliveAudioElement.setAttribute('playsinline', '');
+            keepAliveAudioElement.setAttribute('webkit-playsinline', '');
+            keepAliveAudioElement.style.display = 'none';
 
-            keepAliveGainNode.gain.setValueAtTime(0.00001, keepAliveAudioContext.currentTime);
-            keepAliveOscillator.frequency.setValueAtTime(440, keepAliveAudioContext.currentTime);
+            // Connect a continuous inaudible low-frequency oscillator stream
+            const dest = keepAliveAudioContext.createMediaStreamDestination();
+            const osc = keepAliveAudioContext.createOscillator();
+            const gain = keepAliveAudioContext.createGain();
 
-            keepAliveOscillator.connect(keepAliveGainNode);
-            keepAliveGainNode.connect(keepAliveAudioContext.destination);
+            gain.gain.setValueAtTime(0.0001, keepAliveAudioContext.currentTime);
+            osc.frequency.setValueAtTime(55, keepAliveAudioContext.currentTime);
 
-            keepAliveOscillator.start();
+            osc.connect(gain);
+            gain.connect(dest);
+            osc.start();
+
+            keepAliveMediaStream = dest.stream;
+            keepAliveAudioElement.srcObject = dest.stream;
+            document.body.appendChild(keepAliveAudioElement);
         }
+
+        keepAliveAudioElement.play().then(() => {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'playing';
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: "Voice Chat Active",
+                    artist: "Blitz 31",
+                    album: "Live Game Voice"
+                });
+            }
+        }).catch(() => {
+            // Unlocks on next screen tap
+        });
     } catch (e) {
-        console.warn("[LiveKit] Could not initialize keep-alive oscillator:", e);
+        console.warn("[LiveKit] Could not initialize keep-alive:", e);
     }
 }
 
 function stopBackgroundKeepAliveOscillator() {
-    // Teardown HTML5 audio keep-alive
     try {
-        if (silentAudioElement) {
-            silentAudioElement.pause();
-            silentAudioElement.currentTime = 0;
-            silentAudioElement = null;
+        if (keepAliveAudioElement) {
+            keepAliveAudioElement.pause();
+            keepAliveAudioElement.srcObject = null;
+            keepAliveAudioElement.remove();
+            keepAliveAudioElement = null;
         }
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'none';
-        }
-    } catch (e) {}
-
-    // Teardown Web Audio oscillator
-    try {
-        if (keepAliveOscillator) {
-            keepAliveOscillator.stop();
-            keepAliveOscillator.disconnect();
-            keepAliveOscillator = null;
-        }
-        if (keepAliveGainNode) {
-            keepAliveGainNode.disconnect();
-            keepAliveGainNode = null;
         }
     } catch (e) {}
 }
 
 /**
  * Universal token fetcher and connector.
- * Accepts either (token, host, roomCode) or (host, token, roomCode).
  */
 async function connectLiveKit(arg1, arg2, roomCode) {
     let host = arg1;
@@ -127,11 +109,10 @@ async function connectLiveKit(arg1, arg2, roomCode) {
 }
 
 /**
- * Connects to the LiveKit voice room and stays connected at all times.
- * Disconnects any prior room to guarantee strict lobby isolation.
+ * Connects to the LiveKit voice room and binds real-time mute listeners for all players.
  */
 async function connectToLiveKit(host, token, roomCode) {
-    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || 'lobby';
+    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || 'lobby';
 
     if (!host || !token) {
         await requestVoiceToken(targetRoom);
@@ -143,12 +124,10 @@ async function connectToLiveKit(host, token, roomCode) {
         cleanHost = 'wss://' + cleanHost;
     }
 
-    // If already connected to this exact lobby room, do not reconnect
     if (livekitRoom && isLiveKitConnected) {
         if (livekitRoom.name === targetRoom && latestLiveKitToken === token) {
             return;
         }
-        console.log(`[LiveKit] Switching from room ${livekitRoom.name} to ${targetRoom}...`);
         try {
             await livekitRoom.disconnect();
         } catch (e) {}
@@ -158,6 +137,7 @@ async function connectToLiveKit(host, token, roomCode) {
 
     latestLiveKitHost = cleanHost;
     latestLiveKitToken = token;
+    latestLiveKitRoom = targetRoom;
 
     const LK = getLiveKitSDK();
     if (!LK) {
@@ -172,11 +152,11 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
-            stopLocalTrackOnUnpublish: false, // Prevents track destruction on mobile background sleep
+            stopLocalTrackOnUnpublish: false,
             reconnectPolicy: {
                 maxAttempts: 15,
-                initialDelay: 200,
-                maxDelay: 2000
+                initialDelay: 300,
+                maxDelay: 2500
             },
             audioCaptureDefaults: {
                 autoGainControl: true,
@@ -196,7 +176,6 @@ async function connectToLiveKit(host, token, roomCode) {
                 audioElem.setAttribute('webkit-playsinline', '');
                 audioElem.classList.add('lk-remote-audio');
 
-                // Route audio through selected output (Bluetooth speaker / phone speaker)
                 if (selectedAudioOutputId && typeof audioElem.setSinkId === 'function') {
                     audioElem.setSinkId(selectedAudioOutputId).catch(() => {
                         selectedAudioOutputId = 'default';
@@ -205,32 +184,52 @@ async function connectToLiveKit(host, token, roomCode) {
                 }
 
                 document.body.appendChild(audioElem);
+                syncRemoteParticipantMuteState(participant, publication.isMuted);
                 refreshVoiceParticipantsList();
             }
         });
 
-        livekitRoom.on(LK.RoomEvent.TrackUnsubscribed, (track) => {
+        livekitRoom.on(LK.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
             track.detach().forEach(el => el.remove());
+            if (participant) {
+                syncRemoteParticipantMuteState(participant, true);
+            }
             refreshVoiceParticipantsList();
         });
 
-        livekitRoom.on(LK.RoomEvent.ParticipantConnected, () => {
+        // Real-time track mute/unmute events from other players over WebRTC
+        livekitRoom.on(LK.RoomEvent.TrackMuted, (publication, participant) => {
+            if (publication.kind === 'audio' || publication.source === LK.Track.Source.Microphone) {
+                syncRemoteParticipantMuteState(participant, true);
+            }
+        });
+
+        livekitRoom.on(LK.RoomEvent.TrackUnmuted, (publication, participant) => {
+            if (publication.kind === 'audio' || publication.source === LK.Track.Source.Microphone) {
+                syncRemoteParticipantMuteState(participant, false);
+            }
+        });
+
+        livekitRoom.on(LK.RoomEvent.ParticipantConnected, (participant) => {
+            syncRemoteParticipantMuteState(participant, true);
             refreshVoiceParticipantsList();
         });
 
-        livekitRoom.on(LK.RoomEvent.ParticipantDisconnected, () => {
+        livekitRoom.on(LK.RoomEvent.ParticipantDisconnected, (participant) => {
+            refreshVoiceParticipantsList();
+        });
+
+        livekitRoom.on(LK.RoomEvent.ActiveSpeakersChanged, () => {
             refreshVoiceParticipantsList();
         });
 
         livekitRoom.on(LK.RoomEvent.Disconnected, () => {
             isLiveKitConnected = false;
-            isMicActive = false;
             stopBackgroundKeepAliveOscillator();
             updateVoiceUI();
-            sendVCStatusInternal(false, true);
             refreshVoiceParticipantsList();
 
-            // Auto-reconnect if dropped unexpectedly during an active match
+            // Background recovery: if dropped unexpectedly while an active match is running, auto-reconnect
             if (window.clientState && window.clientState.gameState !== 'mainMenu') {
                 setTimeout(triggerVoiceReconnect, 1500);
             }
@@ -239,11 +238,10 @@ async function connectToLiveKit(host, token, roomCode) {
         await livekitRoom.connect(cleanHost, token);
         isLiveKitConnected = true;
 
-        // Check whether this is a mid-game window reopen/reconnect or an initial connection
+        // Check if mid-game window reopen/reconnect or an initial connection
         const savedMicState = localStorage.getItem('blitz31_mic_state');
 
         if (savedMicState === 'true') {
-            // Mid-game window reopen/reconnection: restore active microphone
             try {
                 if (livekitRoom.startAudio) {
                     await livekitRoom.startAudio();
@@ -252,7 +250,7 @@ async function connectToLiveKit(host, token, roomCode) {
                 isMicActive = true;
                 sendVCStatusInternal(true, false);
             } catch (micErr) {
-                console.warn("[LiveKit] Reopening window mic restore blocked:", micErr);
+                console.warn("[LiveKit] Reopen mic restore blocked:", micErr);
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
                 isMicActive = false;
                 localStorage.setItem('blitz31_mic_state', 'false');
@@ -270,8 +268,6 @@ async function connectToLiveKit(host, token, roomCode) {
         updateVoiceUI();
         refreshAudioOutputDevices();
         refreshVoiceParticipantsList();
-
-        console.log(`[LiveKit] Connected to isolated lobby room: ${targetRoom}`);
     } catch (error) {
         console.error("[LiveKit] Connection failed:", error);
         isLiveKitConnected = false;
@@ -283,12 +279,38 @@ async function connectToLiveKit(host, token, roomCode) {
 }
 
 /**
- * Toggles local microphone state only. The room connection remains active at all times.
+ * Synchronizes remote participant mute/unmute state directly into seat visuals.
+ */
+function syncRemoteParticipantMuteState(participant, isMuted) {
+    if (!participant) return;
+    const participantName = (participant.identity || participant.name || '').trim();
+    if (!participantName) return;
+
+    if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
+        const snap = window.appGlobals.latestLobbySnapshot;
+        const player = (snap.players || []).find(p => p.username.toLowerCase() === participantName.toLowerCase());
+        if (player) {
+            player.inVC = true;
+            player.isMuted = Boolean(isMuted);
+            if (typeof window.updateUIFromLobby === 'function') {
+                window.updateUIFromLobby(snap);
+            }
+        }
+        const spectator = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === participantName.toLowerCase());
+        if (spectator) {
+            spectator.inVC = true;
+            spectator.isMuted = Boolean(isMuted);
+        }
+    }
+    refreshVoiceParticipantsList();
+}
+
+/**
+ * Toggles local microphone state.
  */
 async function toggleVoiceOnOff() {
     startBackgroundKeepAliveOscillator();
 
-    // If room is not yet connected, establish persistent connection first
     if (!livekitRoom || !isLiveKitConnected) {
         updateVoiceButtonState('Connecting...');
         if (latestLiveKitHost && latestLiveKitToken) {
@@ -303,7 +325,7 @@ async function toggleVoiceOnOff() {
 
     try {
         if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-            await keepAliveAudioContext.resume();
+            await keepAliveAudioContext.resume().catch(() => {});
         }
 
         if (isMicActive) {
@@ -336,9 +358,6 @@ async function toggleVoiceOnOff() {
 
 const toggleLiveKitVoice = toggleVoiceOnOff;
 
-/**
- * Updates Voice Button and LED Indicators
- */
 function updateVoiceUI() {
     const btnMain = document.getElementById('vc-main-btn');
     const btnHud = document.getElementById('voice-btn') || document.getElementById('voice-toggle-btn');
@@ -368,11 +387,17 @@ function updateVoiceButtonState(text) {
 }
 
 /**
- * Broadcasts mic state to the server and optimistically updates seat visuals.
+ * Broadcasts mute status to the server with room and username attached.
  */
 function sendVCStatusInternal(inVC, isMuted) {
+    const targetRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || latestLiveKitRoom || '';
+    const myName = (window.clientState && window.clientState.username) || (document.getElementById('username-input')?.value || '').trim() || localStorage.getItem('saved_username') || '';
+
     const payload = {
         type: 'UPDATE_VC_STATUS',
+        room: targetRoom,
+        code: targetRoom,
+        username: myName,
         inVC: Boolean(inVC),
         isMuted: Boolean(isMuted)
     };
@@ -396,7 +421,6 @@ function sendVCStatusInternal(inVC, isMuted) {
 
     if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
         const snap = window.appGlobals.latestLobbySnapshot;
-        const myName = (window.clientState && window.clientState.username) || '';
         const myPlayer = (snap.players || []).find(p => p.username.toLowerCase() === myName.toLowerCase());
         if (myPlayer) {
             myPlayer.inVC = Boolean(inVC);
@@ -408,12 +432,9 @@ function sendVCStatusInternal(inVC, isMuted) {
     }
 }
 
-/**
- * Requests a token from backend HTTP route or WebSocket fallback
- */
 async function requestVoiceToken(roomCode) {
-    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || 'lobby';
-    const myUsername = (window.clientState && window.clientState.username) || 'Player';
+    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || 'lobby';
+    const myUsername = (window.clientState && window.clientState.username) || localStorage.getItem('saved_username') || 'Player';
 
     try {
         const res = await fetch('/token', {
@@ -432,7 +453,7 @@ async function requestVoiceToken(roomCode) {
         console.warn("[LiveKit] HTTP token fetch failed, attempting WebSocket fallback:", e.message);
     }
 
-    const wsPayload = { type: 'REQUEST_LIVEKIT_TOKEN', room: targetRoom };
+    const wsPayload = { type: 'REQUEST_LIVEKIT_TOKEN', room: targetRoom, code: targetRoom };
     if (typeof sendSocket === 'function') {
         sendSocket(wsPayload);
     } else if (typeof window.initSocketAndSend === 'function') {
@@ -442,15 +463,12 @@ async function requestVoiceToken(roomCode) {
 
 function triggerVoiceReconnect() {
     if (latestLiveKitHost && latestLiveKitToken) {
-        connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
+        connectToLiveKit(latestLiveKitHost, latestLiveKitToken, latestLiveKitRoom);
     } else {
         requestVoiceToken();
     }
 }
 
-/**
- * Exits voice chat only when explicitly leaving the table/lobby.
- */
 async function disconnectLiveKit() {
     stopBackgroundKeepAliveOscillator();
     if (livekitRoom) {
@@ -459,10 +477,10 @@ async function disconnectLiveKit() {
     }
     latestLiveKitHost = null;
     latestLiveKitToken = null;
+    latestLiveKitRoom = null;
     isLiveKitConnected = false;
     isMicActive = false;
 
-    // Reset saved mic state so subsequent table joins start muted
     localStorage.removeItem('blitz31_mic_state');
 
     updateVoiceUI();
@@ -480,9 +498,6 @@ function setVoiceChatVolume(val) {
     });
 }
 
-/**
- * Bluetooth & Speaker Route Switching
- */
 async function setAudioOutputDevice(deviceId) {
     selectedAudioOutputId = deviceId || 'default';
     const remoteAudios = document.querySelectorAll('.lk-remote-audio');
@@ -492,7 +507,6 @@ async function setAudioOutputDevice(deviceId) {
             try {
                 await audioEl.setSinkId(selectedAudioOutputId);
             } catch (err) {
-                console.warn("[LiveKit] Failed to set sink ID:", err);
                 try { await audioEl.setSinkId('default'); } catch (e) {}
             }
         }
@@ -504,10 +518,6 @@ async function setAudioOutputDevice(deviceId) {
     }
 }
 
-/**
- * Enumerates audio devices, identifies Bluetooth accessories,
- * and automatically falls back to phone speaker if Bluetooth disconnects.
- */
 async function refreshAudioOutputDevices() {
     const select = document.getElementById('audio-output-select') || document.getElementById('setting-audio-output');
     if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
@@ -542,9 +552,7 @@ async function refreshAudioOutputDevices() {
 
         select.innerHTML = optionsHtml;
 
-        // Automatically fallback to phone speaker if active Bluetooth device drops
         if (selectedAudioOutputId !== 'default' && !isSelectedDeviceStillConnected) {
-            console.log("[LiveKit] Bluetooth audio disconnected. Reverting to Phone Speaker.");
             await setAudioOutputDevice('default');
             if (typeof showCenterNotification === 'function') {
                 showCenterNotification("Audio route switched to Phone Speaker");
@@ -574,9 +582,19 @@ function refreshVoiceParticipantsList() {
 
     if (livekitRoom.remoteParticipants) {
         livekitRoom.remoteParticipants.forEach(rp => {
-            const hasAudio = rp.audioTrackPublications && rp.audioTrackPublications.size > 0;
+            let isMuted = true;
+            if (rp.audioTrackPublications) {
+                for (const pub of rp.audioTrackPublications.values()) {
+                    if (pub.track && !pub.isMuted) {
+                        isMuted = false;
+                        break;
+                    }
+                }
+            } else if (rp.isMicrophoneEnabled) {
+                isMuted = false;
+            }
             const rName = rp.identity || rp.name || 'Player';
-            participants.push({ name: rName, isMuted: !hasAudio || !rp.isSpeaking });
+            participants.push({ name: rName, isMuted: isMuted });
         });
     }
 
@@ -585,46 +603,64 @@ function refreshVoiceParticipantsList() {
     `).join('') + '</ul>';
 }
 
-// Hardware device listener for instant Bluetooth connect/disconnect detection
 if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
     navigator.mediaDevices.ondevicechange = () => {
         refreshAudioOutputDevices();
     };
 }
 
-// Background resilience: keep audio awake and recover if the OS pauses Web Audio or local mic
-document.addEventListener('visibilitychange', async () => {
-    if (!document.hidden && isLiveKitConnected && livekitRoom) {
-        if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-            keepAliveAudioContext.resume().catch(() => {});
-        }
-        startBackgroundKeepAliveOscillator();
+// Background Resilience: Instant Reconnect on Screen Wake / Tab Focus
+async function handleScreenResumeVoice() {
+    if (document.hidden) return;
 
-        // If the mic was on before switching apps/tabs, re-assert the track
-        if (isMicActive && livekitRoom.localParticipant) {
-            try {
-                if (livekitRoom.startAudio) {
-                    await livekitRoom.startAudio();
-                }
-                await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-            } catch (err) {
-                console.warn("[LiveKit] Background recovery failed to unmute:", err);
-            }
-        }
-    }
-});
-
-// Auto-activate audio context and silent loop on first screen tap anywhere
-window.addEventListener('click', () => {
     if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
         keepAliveAudioContext.resume().catch(() => {});
     }
-    if (silentAudioElement && silentAudioElement.paused && isLiveKitConnected) {
-        silentAudioElement.play().catch(() => {});
-    }
-}, { once: true });
 
-// Export global handlers
+    startBackgroundKeepAliveOscillator();
+
+    // If the connection dropped in the background, reconnect immediately
+    if (!isLiveKitConnected || !livekitRoom || livekitRoom.state !== 'connected') {
+        console.log("[LiveKit] Screen woke up — re-establishing voice connection...");
+        triggerVoiceReconnect();
+        return;
+    }
+
+    // If the mic was previously on, re-assert audio capture
+    if (isMicActive && livekitRoom.localParticipant) {
+        try {
+            if (livekitRoom.startAudio) {
+                await livekitRoom.startAudio();
+            }
+            await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+        } catch (err) {
+            console.warn("[LiveKit] Screen resume failed to unmute:", err);
+        }
+    }
+}
+
+document.addEventListener('visibilitychange', handleScreenResumeVoice);
+window.addEventListener('pageshow', handleScreenResumeVoice);
+window.addEventListener('focus', handleScreenResumeVoice);
+
+// Universal initial user-gesture audio unlock
+function unlockAudioOnFirstTouch() {
+    if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
+        keepAliveAudioContext.resume().catch(() => {});
+    }
+    if (keepAliveAudioElement && keepAliveAudioElement.paused) {
+        keepAliveAudioElement.play().catch(() => {});
+    }
+    if (livekitRoom && livekitRoom.startAudio) {
+        livekitRoom.startAudio().catch(() => {});
+    }
+}
+
+window.addEventListener('touchstart', unlockAudioOnFirstTouch, { passive: true });
+window.addEventListener('pointerdown', unlockAudioOnFirstTouch, { passive: true });
+window.addEventListener('click', unlockAudioOnFirstTouch);
+
+// Global Exports
 window.connectLiveKit = connectLiveKit;
 window.connectToLiveKit = connectToLiveKit;
 window.toggleVoiceOnOff = toggleVoiceOnOff;
