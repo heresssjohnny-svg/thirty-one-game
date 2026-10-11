@@ -535,6 +535,10 @@
     <!-- KNOCK ALERT OVERLAY BANNER -->
     <div id="knock-alert-modal" style="display: none; position: fixed; top: 18%; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 12px 26px; font-weight: 800; border-radius: 8px; z-index: 9999; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6);"></div>
 
+<!-- Background Keep-Alive Audio Anchor (Prevents 5s mobile tab freeze) -->
+<audio id="mobile-voice-keepalive" loop playsinline webkit-playsinline preload="auto" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"></audio>
+
+
     <!-- SOUND ENGINE AUDIO TAGS -->
     <audio id="sound-knock" src="/mp3s/knock.mp3" preload="auto"></audio>
     <audio id="sound-yourturn" src="/mp3s/yourturn.mp3" preload="auto"></audio>
