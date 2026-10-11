@@ -26,15 +26,19 @@ app.use(express.urlencoded({ extended: true }));
 // Mount Authentication Router (/auth/register, /auth/login, /auth/guest, /auth/google, /auth/me)
 app.use('/auth', authRouter);
 
-// Serve static frontend assets from /public, root directory, and /mp3s
+// Serve static frontend assets from /public and root directory
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
+
+// Multi-path static mounts for sound effects (checks root and /public folders)
 app.use('/mp3s', express.static(path.join(__dirname, 'mp3s')));
+app.use('/mp3s', express.static(path.join(__dirname, 'public', 'mp3s')));
+app.use('/audio', express.static(path.join(__dirname, 'audio')));
+app.use('/audio', express.static(path.join(__dirname, 'public', 'audio')));
 
 // LiveKit WebRTC Token Generator Endpoint with Anti-Cache & Null-Check
 app.post('/token', async (req, res) => {
     try {
-        // Prevent mobile Safari/Chrome from serving stale tokens on screen wake
         res.set({
             'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
             'Pragma': 'no-cache',
@@ -51,7 +55,6 @@ app.post('/token', async (req, res) => {
 
         const token = await generateLiveKitToken(cleanRoom, cleanName);
 
-        // Guard against null token returns from livekit.js
         if (!token) {
             return res.status(500).json({ error: 'LiveKit service failed to generate token.' });
         }
@@ -68,7 +71,11 @@ app.post('/token', async (req, res) => {
 });
 
 // Single Page Application Fallback (loads root index.html)
+// Guard ensures media files never return index.html when missing
 app.get('*', (req, res) => {
+    if (req.path.match(/\.(mp3|wav|ogg|m4a|aac|js|css|png|jpg|jpeg|gif|ico|svg)$/i)) {
+        return res.status(404).send('Asset not found');
+    }
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
@@ -118,7 +125,6 @@ wss.on('connection', (ws, req) => {
         ws.isAlive = true;
     });
 
-    // Provide initial available lobby list upon socket handshake
     try {
         ws.send(JSON.stringify({
             type: 'LOBBY_LIST',
@@ -150,7 +156,7 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-                // 2. Direct Lifetime Ledger query with resilient fallback
+        // 2. Direct Lifetime Ledger query with synchronized property fallbacks
         if (parsed.type === 'GET_LIFETIME_LEDGER') {
             let uid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || null);
 
@@ -194,7 +200,6 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-
         // 3. Bilateral debt clearance & credit settlement
         if (parsed.type === 'APPLY_CREDIT') {
             if (!ws.user && parsed.token) {
@@ -215,14 +220,24 @@ wss.on('connection', (ws, req) => {
 
                 const uid = (ws.user && (ws.user.id || ws.user.userId)) || ws.userId || debtorId;
                 const balances = db.getLifetimeBalances(uid);
-                ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+                ws.send(JSON.stringify({ 
+                    type: 'LIFETIME_LEDGER_DATA', 
+                    balances: balances,
+                    ledger: balances,
+                    debts: balances 
+                }));
 
                 wss.clients.forEach(client => {
                     const cUid = (client.user && (client.user.id || client.user.userId)) || client.userId;
                     if (client !== ws && client.readyState === WebSocket.OPEN && cUid && (cUid === debtorId || cUid === creditorId)) {
                         try {
                             const cBalances = db.getLifetimeBalances(cUid);
-                            client.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances: cBalances }));
+                            client.send(JSON.stringify({ 
+                                type: 'LIFETIME_LEDGER_DATA', 
+                                balances: cBalances,
+                                ledger: cBalances,
+                                debts: cBalances 
+                            }));
                         } catch (e) {}
                     }
                 });
@@ -230,7 +245,7 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // 4. Fast WebSocket token request (fallback if HTTP /token stalls on wake)
+        // 4. Fast WebSocket token request fallback
         if (parsed.type === 'REQUEST_LIVEKIT_TOKEN') {
             const targetRoom = parsed.room || parsed.code || ws.currentLobbyCode;
             const targetUser = parsed.username || ws.currentUsername || (ws.user && ws.user.username) || 'Player';
