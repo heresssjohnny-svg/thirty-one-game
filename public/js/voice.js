@@ -1,4 +1,4 @@
-// public/js/voice.js - Persistent LiveKit Voice Engine, Bluetooth Routing & Seat Status
+// public/js/voice.js - Persistent LiveKit Voice Engine, Bluetooth Routing & Background Keep-Alive
 
 let livekitRoom = null;
 let isLiveKitConnected = false;
@@ -9,20 +9,51 @@ let latestLiveKitToken = null;
 let currentVoiceVolume = 1.0;
 let selectedAudioOutputId = 'default';
 
-// Background audio keep-alive node to prevent mobile OS tab suspension
+// Background audio keep-alive: HTML5 Audio loop + AudioContext to bypass mobile 5-second sleep
+let silentAudioElement = null;
 let keepAliveOscillator = null;
 let keepAliveGainNode = null;
 let keepAliveAudioContext = null;
+
+// 1-second inaudible WAV base64 payload to hold mobile OS background media priority
+const SILENT_WAV_BASE64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
 }
 
 /**
- * Creates an inaudible background audio loop to keep the mobile audio session
- * active even when the browser or app window is sent to the background.
+ * Bypasses mobile OS 5-second background sleep by combining a looped HTML5 Audio element,
+ * system MediaSession registration, and a fallback Web Audio oscillator.
  */
 function startBackgroundKeepAliveOscillator() {
+    // 1. HTML5 Background Media Loop (Prevents iOS Safari & Android from killing the tab)
+    try {
+        if (!silentAudioElement) {
+            silentAudioElement = new Audio(SILENT_WAV_BASE64);
+            silentAudioElement.loop = true;
+            silentAudioElement.volume = 0.01;
+            silentAudioElement.setAttribute('playsinline', '');
+            silentAudioElement.setAttribute('webkit-playsinline', '');
+        }
+
+        silentAudioElement.play().then(() => {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'playing';
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: "Voice Chat Active",
+                    artist: "Blitz 31",
+                    album: "Live Game Voice"
+                });
+            }
+        }).catch(err => {
+            console.warn("[LiveKit] Background audio autoplay waiting for touch unlock:", err);
+        });
+    } catch (err) {
+        console.warn("[LiveKit] Could not initialize HTML5 silent keep-alive:", err);
+    }
+
+    // 2. Web Audio Context keep-alive
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
@@ -32,14 +63,13 @@ function startBackgroundKeepAliveOscillator() {
         }
 
         if (keepAliveAudioContext.state === 'suspended') {
-            keepAliveAudioContext.resume();
+            keepAliveAudioContext.resume().catch(() => {});
         }
 
         if (!keepAliveOscillator) {
             keepAliveOscillator = keepAliveAudioContext.createOscillator();
             keepAliveGainNode = keepAliveAudioContext.createGain();
 
-            // Near-zero gain maintains the OS hardware audio route alive without audible noise
             keepAliveGainNode.gain.setValueAtTime(0.00001, keepAliveAudioContext.currentTime);
             keepAliveOscillator.frequency.setValueAtTime(440, keepAliveAudioContext.currentTime);
 
@@ -54,6 +84,19 @@ function startBackgroundKeepAliveOscillator() {
 }
 
 function stopBackgroundKeepAliveOscillator() {
+    // Teardown HTML5 audio keep-alive
+    try {
+        if (silentAudioElement) {
+            silentAudioElement.pause();
+            silentAudioElement.currentTime = 0;
+            silentAudioElement = null;
+        }
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'none';
+        }
+    } catch (e) {}
+
+    // Teardown Web Audio oscillator
     try {
         if (keepAliveOscillator) {
             keepAliveOscillator.stop();
@@ -129,6 +172,12 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
+            stopLocalTrackOnUnpublish: false, // Prevents track destruction on mobile background sleep
+            reconnectPolicy: {
+                maxAttempts: 15,
+                initialDelay: 200,
+                maxDelay: 2000
+            },
             audioCaptureDefaults: {
                 autoGainControl: true,
                 echoCancellation: true,
@@ -183,7 +232,7 @@ async function connectToLiveKit(host, token, roomCode) {
 
             // Auto-reconnect if dropped unexpectedly during an active match
             if (window.clientState && window.clientState.gameState !== 'mainMenu') {
-                setTimeout(triggerVoiceReconnect, 2000);
+                setTimeout(triggerVoiceReconnect, 1500);
             }
         });
 
@@ -328,7 +377,6 @@ function sendVCStatusInternal(inVC, isMuted) {
         isMuted: Boolean(isMuted)
     };
 
-    // 1. Dispatch over socket via available handlers
     if (typeof sendSocket === 'function') {
         sendSocket(payload);
     } else if (typeof window.sendSocket === 'function') {
@@ -341,13 +389,11 @@ function sendVCStatusInternal(inVC, isMuted) {
         window.appGlobals.ws.send(JSON.stringify(payload));
     }
 
-    // 2. Optimistically update local client state
     if (window.clientState) {
         window.clientState.inVC = Boolean(inVC);
         window.clientState.isMuted = Boolean(isMuted);
     }
 
-    // 3. Immediately re-render seat podiums so local microphone changes reflect instantaneously
     if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
         const snap = window.appGlobals.latestLobbySnapshot;
         const myName = (window.clientState && window.clientState.username) || '';
@@ -386,7 +432,6 @@ async function requestVoiceToken(roomCode) {
         console.warn("[LiveKit] HTTP token fetch failed, attempting WebSocket fallback:", e.message);
     }
 
-    // WebSocket fallback
     const wsPayload = { type: 'REQUEST_LIVEKIT_TOKEN', room: targetRoom };
     if (typeof sendSocket === 'function') {
         sendSocket(wsPayload);
@@ -551,7 +596,7 @@ if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefine
 document.addEventListener('visibilitychange', async () => {
     if (!document.hidden && isLiveKitConnected && livekitRoom) {
         if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-            keepAliveAudioContext.resume();
+            keepAliveAudioContext.resume().catch(() => {});
         }
         startBackgroundKeepAliveOscillator();
 
@@ -569,10 +614,13 @@ document.addEventListener('visibilitychange', async () => {
     }
 });
 
-// Auto-activate audio context on first screen tap anywhere
+// Auto-activate audio context and silent loop on first screen tap anywhere
 window.addEventListener('click', () => {
     if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-        keepAliveAudioContext.resume();
+        keepAliveAudioContext.resume().catch(() => {});
+    }
+    if (silentAudioElement && silentAudioElement.paused && isLiveKitConnected) {
+        silentAudioElement.play().catch(() => {});
     }
 }, { once: true });
 
