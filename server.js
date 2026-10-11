@@ -150,7 +150,7 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // 2. Direct Lifetime Ledger query with resilient fallback
+                // 2. Direct Lifetime Ledger query with resilient fallback
         if (parsed.type === 'GET_LIFETIME_LEDGER') {
             let uid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || null);
 
@@ -177,12 +177,23 @@ wss.on('connection', (ws, req) => {
 
             if (uid && db && typeof db.getLifetimeBalances === 'function') {
                 const balances = db.getLifetimeBalances(uid);
-                ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+                ws.send(JSON.stringify({ 
+                    type: 'LIFETIME_LEDGER_DATA', 
+                    balances: balances,
+                    ledger: balances,
+                    debts: balances 
+                }));
             } else {
-                ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances: [] }));
+                ws.send(JSON.stringify({ 
+                    type: 'LIFETIME_LEDGER_DATA', 
+                    balances: [],
+                    ledger: [],
+                    debts: [] 
+                }));
             }
             return;
         }
+
 
         // 3. Bilateral debt clearance & credit settlement
         if (parsed.type === 'APPLY_CREDIT') {
