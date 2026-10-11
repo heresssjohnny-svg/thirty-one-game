@@ -529,92 +529,81 @@
 }
 
 /* ============================================================
-   REPOSITIONED & ENLARGED REVEAL MODALS (BOTTOM LEFT & RIGHT)
+   BOTTOM DOCKED REVEAL MODALS (STRICT 50/50 SPLIT — NO OVERLAP)
    ============================================================ */
 
-/* 1. Base Container: Docked to Bottom Corners */
+/* 1. Base Container: Capped to Half Screen Width */
 #discard-pickup-topleft-modal,
 #fed-card-topright-modal,
 .corner-modal {
     position: fixed !important;
     top: auto !important;
-    bottom: 14px !important;
+    bottom: 8px !important;
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    gap: 10px !important;
-    padding: 8px 14px !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    padding: 6px 8px !important;
     background: rgba(4, 20, 13, 0.96) !important;
     border: 1.5px solid #d4af37 !important;
     border-radius: 8px !important;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.75) !important;
     z-index: 500 !important;
-    pointer-events: none !important; /* Prevents blocking taps on cards */
+    pointer-events: none !important;
+    box-sizing: border-box !important;
+    max-width: calc(50vw - 12px) !important; /* Prevents crossing screen center */
 }
 
-/* 2. Bottom-Left: Initial Discard Pickup */
+/* 2. Bottom-Left Anchor */
 #discard-pickup-topleft-modal,
 .top-left-corner {
-    left: 12px !important;
+    left: 6px !important;
     right: auto !important;
 }
 
-/* 3. Bottom-Right: Fed Card Reminder */
+/* 3. Bottom-Right Anchor */
 #fed-card-topright-modal,
 .top-right-corner {
-    right: 12px !important;
+    right: 6px !important;
     left: auto !important;
 }
 
-/* 4. Enlarged Text & Headers */
+/* 4. Text Wraps to 2 Lines Instead of Expanding Horizontally */
 .corner-modal .modal-label,
 #discard-pickup-topleft-modal span,
 #fed-card-label {
-    font-size: 0.88rem !important;
-    font-weight: 800 !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
     color: #fbbf24 !important;
-    white-space: nowrap !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    flex: 1 1 auto !important;
 }
 
 #discard-pickup-card-content,
 #fed-card-content {
     display: flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
 }
 
-/* 5. Enlarged Mini Cards inside the Modals */
+/* 5. Compact Mini Card (Never Shrinks) */
 .corner-modal .mini-card {
-    width: 36px !important;
-    height: 52px !important;
-    border-radius: 5px !important;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+    width: 28px !important;
+    height: 40px !important;
+    border-radius: 4px !important;
+    flex-shrink: 0 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
 }
 
 .corner-modal .mini-card .mini-val {
-    font-size: 0.95rem !important;
+    font-size: 0.82rem !important;
     font-weight: 900 !important;
 }
 
 .corner-modal .mini-card .mini-suit {
-    font-size: 0.95rem !important;
-}
-
-/* Mobile Screens (Adjusts spacing so cards fit cleanly) */
-@media (max-width: 410px) {
-    #discard-pickup-topleft-modal,
-    #fed-card-topright-modal {
-        bottom: 8px !important;
-        padding: 6px 10px !important;
-    }
-
-    .corner-modal .modal-label,
-    #fed-card-label {
-        font-size: 0.78rem !important;
-    }
-
-    .corner-modal .mini-card {
-        width: 32px !important;
-        height: 46px !important;
-    }
+    font-size: 0.82rem !important;
 }
