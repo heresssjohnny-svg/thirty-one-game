@@ -213,15 +213,26 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     syncBotReadiness(lobby);
                     broadcastLobbyUpdate(currentLobbyCode);
 
-                    const activePlayers = lobby.players.filter(p => !p.eliminated);
-                    if (activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
-                        startDealerDrawPhase(lobby);
-                    }
-                }
-            }
-            break;
-        }
+                    // AFTER:
+const activePlayers = lobby.players.filter(p => !p.eliminated);
+if (activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
+    lobby.players.forEach(p => { p.ready = false; });
 
+    const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
+        p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
+    );
+
+    if (winnerStillSeated || lobby.hasEstablishedInitialDealer) {
+        establishDealer(lobby);
+        startRound(lobby);
+    } else {
+        startDealerDrawPhase(lobby);
+    }
+}
+}
+}
+break;
+}
                 case 'STAND_UP': {
             const code = ws.currentLobbyCode || data.code;
             if (code && lobbies[code]) {
