@@ -629,8 +629,16 @@ window.submitLivesVote = function(agree) {
     if (modal) modal.style.display = 'none';
 };
 
-window.addBot = function() { sendSocket({ type: 'ADD_BOT' }); };
-window.removeBot = function() { sendSocket({ type: 'REMOVE_BOT' }); };
+window.addBot = function() { 
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    sendSocket({ type: 'ADD_BOT', code }); 
+};
+
+window.removeBot = function() { 
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    sendSocket({ type: 'REMOVE_BOT', code }); 
+};
+
 
 window.proposeEndGame = function() {
     if (confirm("Propose ending the game and returning to the lobby?")) {
