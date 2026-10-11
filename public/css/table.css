@@ -376,3 +376,154 @@
     }
 }
 
+/* ============================================================
+   ENLARGED HAND CARDS, DISCARD PILE & PLAYER SEAT STATUS BARS
+   ============================================================ */
+
+/* 1. CARDS IN HAND (Drawn Hand Container) */
+.player-hand-container {
+    min-height: 180px !important;
+    padding-top: 8px !important;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+#my-cards-container {
+    gap: 12px !important;
+    padding: 4px 10px !important;
+}
+
+#my-cards-container .my-card,
+#my-cards-container .playing-card,
+.player-hand-container .card {
+    width: 96px !important;
+    height: 140px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Enlarge Corner Values & Center Pip on Hand Cards */
+#my-cards-container .my-card .corner-val {
+    font-size: 1.25rem !important;
+    font-weight: 900 !important;
+}
+
+#my-cards-container .my-card .corner-suit {
+    font-size: 1.15rem !important;
+}
+
+#my-cards-container .my-card .card-center-pip {
+    font-size: 2.4rem !important;
+}
+
+
+/* 2. DISCARD PILE (Center Table) */
+.deck-center,
+.table-center-area {
+    gap: 22px !important;
+}
+
+/* Targets both the dynamic render and the initial HTML shell */
+#discard-pile,
+#deck-pile,
+.deck-center .card-slot,
+.table-center-area .card-slot,
+.card-slot.playing-card,
+.card-slot.empty-slot {
+    width: 92px !important;
+    height: 134px !important;
+    border-radius: 9px !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* Enlarge details inside the discard pile top card */
+.deck-center .card-slot.playing-card .corner-val,
+#discard-pile .corner-val {
+    font-size: 1.2rem !important;
+    font-weight: 900 !important;
+}
+
+.deck-center .card-slot.playing-card .corner-suit,
+#discard-pile .corner-suit {
+    font-size: 1.1rem !important;
+}
+
+.deck-center .card-slot.playing-card .card-center-pip {
+    font-size: 2.2rem !important;
+}
+
+#deck-pile .card-back-pattern,
+#deck-pile .card-back-inner {
+    font-size: 2.6rem !important;
+}
+
+.deck-counter-badge {
+    font-size: 0.72rem !important;
+    padding: 3px 6px !important;
+    bottom: -10px !important;
+}
+
+
+/* 3. PLAYER SEAT STATUS BARS (Expanded to fit names, icons, & lives/wager) */
+.seat,
+.player-seat {
+    min-width: 130px !important;
+    max-width: 175px !important;
+    z-index: 100 !important;
+}
+
+.seat-name-area,
+.seat-info {
+    min-width: 120px !important;
+    padding: 7px 10px !important;
+    font-size: 0.84rem !important;
+    line-height: 1.4 !important;
+    border-radius: 8px !important;
+    background: rgba(4, 18, 12, 0.92) !important;
+    border: 1.5px solid rgba(212, 175, 55, 0.6) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65) !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+}
+
+/* Dealer Badge & Status Icons spacing */
+.dealer-badge {
+    font-size: 0.7rem !important;
+    padding: 1px 5px !important;
+    margin-left: 4px !important;
+    vertical-align: middle !important;
+}
+
+.seat-name-area b {
+    font-size: 0.88rem !important;
+    letter-spacing: 0.3px !important;
+}
+
+/* Small mobile responsiveness (keeps 4-card hands and seats on-screen) */
+@media (max-width: 410px) {
+    #my-cards-container .my-card,
+    #my-cards-container .playing-card {
+        width: 82px !important;
+        height: 120px !important;
+    }
+
+    #my-cards-container .my-card .card-center-pip {
+        font-size: 1.9rem !important;
+    }
+
+    #discard-pile,
+    #deck-pile,
+    .deck-center .card-slot {
+        width: 80px !important;
+        height: 116px !important;
+    }
+
+    .seat,
+    .player-seat {
+        min-width: 110px !important;
+    }
+
+    .seat-name-area {
+        font-size: 0.78rem !important;
+        padding: 5px 8px !important;
+    }
+}
