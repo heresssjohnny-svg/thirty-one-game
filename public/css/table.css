@@ -315,8 +315,8 @@
 #discard-pile,
 .deck-pile,
 .discard-pile {
-    width: 82px !important;
-    height: 118px !important;
+    width: 90px !important;
+    height: 126px !important;
     border-radius: 8px !important;
     box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45) !important;
 }
@@ -350,8 +350,8 @@
 #my-cards-container .card,
 #my-cards-container .player-card,
 .player-hand-container .card {
-    width: 84px !important;
-    height: 122px !important;
+    width: 95px !important;
+    height: 133px !important;
     border-radius: 9px !important;
     font-size: 1.25rem !important;
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5) !important;
@@ -370,8 +370,8 @@
     #my-cards-container .card,
     #my-cards-container .player-card,
     .player-hand-container .card {
-        width: 76px !important;
-        height: 110px !important;
+        width: 80px !important;
+        height: 114px !important;
         font-size: 1.1rem !important;
     }
 }
