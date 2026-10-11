@@ -26,8 +26,9 @@ app.use(express.urlencoded({ extended: true }));
 // Mount Authentication Router (/auth/register, /auth/login, /auth/guest, /auth/google, /auth/me)
 app.use('/auth', authRouter);
 
-// Serve ONLY frontend static assets (do NOT expose __dirname)
+// Serve static frontend assets from /public, root directory, and /mp3s
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 app.use('/mp3s', express.static(path.join(__dirname, 'mp3s')));
 
 // LiveKit WebRTC Token Generator Endpoint with Anti-Cache & Null-Check
@@ -66,9 +67,9 @@ app.post('/token', async (req, res) => {
     }
 });
 
-// Single Page Application Fallback
+// Single Page Application Fallback (loads root index.html)
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // -------------------------------------------------------------
@@ -153,7 +154,6 @@ wss.on('connection', (ws, req) => {
         if (parsed.type === 'GET_LIFETIME_LEDGER') {
             let uid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || null);
 
-            // Fallback A: decode token if passed directly in payload
             if (!uid && parsed.token) {
                 try {
                     const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
@@ -164,7 +164,6 @@ wss.on('connection', (ws, req) => {
                 } catch (e) {}
             }
 
-            // Fallback B: match by username in SQLite
             if (!uid) {
                 const targetUsername = parsed.username || ws.currentUsername;
                 if (targetUsername && db && typeof db.findUserByUsername === 'function') {
