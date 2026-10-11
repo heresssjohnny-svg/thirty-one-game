@@ -466,16 +466,12 @@ window.renderPublicLobbies = window.renderLobbyList;
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
 // -------------------------------------------------------------
 
-// Helper to reliably dispatch socket messages across legacy and modular network setups
+// Helper to reliably dispatch socket messages
 function dispatchGameAction(payload) {
     if (typeof window.sendSocket === 'function') {
         window.sendSocket(payload);
     } else if (typeof window.initSocketAndSend === 'function') {
         window.initSocketAndSend(payload);
-    } else if (typeof sendSocket === 'function') {
-        sendSocket(payload);
-    } else if (typeof initSocketAndSend === 'function') {
-        initSocketAndSend(payload);
     } else if (window.appGlobals?.ws && window.appGlobals.ws.readyState === 1) {
         window.appGlobals.ws.send(JSON.stringify(payload));
     }
@@ -519,10 +515,41 @@ window.standUp = function() {
 };
 
 window.toggleReady = function() {
-    dispatchGameAction({ type: 'TOGGLE_READY' });
+    const myName = getActiveUsername().toLowerCase();
+    const snap = window.appGlobals?.latestLobbySnapshot;
+    const me = snap?.players?.find(p => p.username?.toLowerCase() === myName);
+    
+    // Toggle current ready status
+    const current = me ? Boolean(me.ready) : Boolean(window.clientState?.isReady);
+    const nextState = !current;
+
+    if (window.clientState) {
+        window.clientState.isReady = nextState;
+    }
+
+    // Immediate optimistic UI feedback for mobile touch response
+    const btn = document.getElementById('ready-btn') || document.getElementById('btn-ready');
+    if (btn) {
+        btn.innerText = nextState ? 'Unready' : 'Ready Up';
+        btn.style.background = nextState ? '#eab308' : '#15803d';
+    }
+
+    // Send the exact payload expected by wsHandler & lobbyManager
+    dispatchGameAction({
+        type: 'SET_READY',
+        ready: nextState,
+        username: getActiveUsername()
+    });
 };
 
 window.clickNextHand = function() {
+    const overlay = document.getElementById('next-hand-overlay');
+    if (overlay) overlay.style.display = 'none';
+    const btn = document.getElementById('next-hand-btn');
+    if (btn) {
+        btn.innerText = 'Waiting...';
+        btn.disabled = true;
+    }
     dispatchGameAction({ type: 'NEXT_HAND_READY' });
 };
 
@@ -535,16 +562,18 @@ window.removeBot = function() {
 };
 
 window.updateWager = function(wagerAmount) {
-    const amount = Number(wagerAmount);
+    const sel = document.getElementById('config-wager') || document.getElementById('lobby-wager-select');
+    const amount = Number(wagerAmount) || (sel ? parseInt(sel.value, 10) : 5);
     if (!isNaN(amount) && amount > 0) {
-        dispatchGameAction({ type: 'SET_WAGER', wager: amount });
+        dispatchGameAction({ type: 'UPDATE_WAGER', wager: amount });
     }
 };
 
 window.submitLivesVote = function(lives) {
-    const count = Number(lives);
+    const sel = document.getElementById('config-lives') || document.getElementById('lobby-lives-select');
+    const count = Number(lives) || (sel ? parseInt(sel.value, 10) : 2);
     if (!isNaN(count) && count > 0) {
-        dispatchGameAction({ type: 'VOTE_LIVES', lives: count });
+        dispatchGameAction({ type: 'UPDATE_SETTINGS', lives: count });
     }
 };
 
@@ -552,7 +581,6 @@ window.leaveLobby = function() {
     if (!confirm("Are you sure you want to leave the table?")) {
         return;
     }
-
     const code = getActiveRoomCode();
     dispatchGameAction({ type: 'LEAVE_LOBBY', code });
 
@@ -574,34 +602,48 @@ window.leaveLobby = function() {
 // --- CARD INTERACTIONS & TURN ACTIONS ---
 
 window.drawFromDeck = function() {
-    dispatchGameAction({ type: 'DRAW_CARD', source: 'deck' });
+    dispatchGameAction({ type: 'DRAW_DECK' });
 };
 
 window.drawFromDiscard = function() {
-    dispatchGameAction({ type: 'DRAW_CARD', source: 'discard' });
+    dispatchGameAction({ type: 'DRAW_DISCARD' });
 };
 
 window.discardCard = function(cardIndex) {
     const idx = Number(cardIndex);
     if (!isNaN(idx)) {
-        dispatchGameAction({ type: 'DISCARD_CARD', cardIndex: idx });
+        dispatchGameAction({ type: 'DISCARD_CARD', cardIndex: idx, index: idx });
     }
 };
 
 window.knock = function() {
-    dispatchGameAction({ type: 'KNOCK' });
+    if (typeof window.knockRound === 'function') {
+        window.knockRound();
+    } else {
+        dispatchGameAction({ type: 'KNOCK' });
+    }
 };
 
 window.choosePoolCard = function(poolIndex) {
     const idx = Number(poolIndex);
     if (!isNaN(idx)) {
         dispatchGameAction({ 
-            type: 'PICK_POOL_CARD', 
+            type: 'CHOOSE_POOL_CARD', 
             index: idx, 
-            cardIndex: idx 
+            cardIndex: idx,
+            poolIndex: idx 
         });
     }
 };
+
+// Compatibility aliases
+window.setReady = window.toggleReady;
+window.handleSitDown = window.sitDown;
+window.handleStandUp = window.standUp;
+window.readyNextHand = window.clickNextHand;
+window.knockGame = window.knock;
+window.selectPoolCard = window.choosePoolCard;
+
 
 
 // -------------------------------------------------------------
