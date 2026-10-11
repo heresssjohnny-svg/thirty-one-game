@@ -328,6 +328,7 @@
         <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="window.clickNextHand ? window.clickNextHand() : sendSocket({ type: 'NEXT_HAND_READY' })">Next Hand</button>
     </div>
 </div>
+</div>
 
         <!-- 4. CHAT DRAWER -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
@@ -539,7 +540,8 @@
     <audio id="sound-yourturn" src="/mp3s/yourturn.mp3" preload="auto"></audio>
 
     <!-- CELEBRATION EFFECT CANVAS -->
-    <canvas id="celebration-canvas" style="display: none;"></canvas>
+<canvas id="celebration-canvas" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 99999;"></canvas>
+
 
     <!-- CLIENT SCRIPT PIPELINE -->
     <script src="/js/celebration.js?v=41"></script>
