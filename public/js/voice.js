@@ -105,9 +105,10 @@ async function connectToLiveKit(host, token, roomCode) {
         if (livekitRoom.name === targetRoom && latestLiveKitToken === token) {
             return;
         }
-        // If switching from a previous lobby room, cleanly disconnect first
         console.log(`[LiveKit] Switching from room ${livekitRoom.name} to ${targetRoom}...`);
-        try { await livekitRoom.disconnect(); } catch (e) {}
+        try {
+            await livekitRoom.disconnect();
+        } catch (e) {}
         livekitRoom = null;
         isLiveKitConnected = false;
     }
@@ -189,13 +190,35 @@ async function connectToLiveKit(host, token, roomCode) {
         await livekitRoom.connect(cleanHost, token);
         isLiveKitConnected = true;
 
-        // Enter room connected in muted listen mode by default
-        await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-        isMicActive = false;
+        // Check whether this is a mid-game window reopen/reconnect or an initial connection
+        const savedMicState = localStorage.getItem('blitz31_mic_state');
+
+        if (savedMicState === 'true') {
+            // Mid-game window reopen/reconnection: restore active microphone
+            try {
+                if (livekitRoom.startAudio) {
+                    await livekitRoom.startAudio();
+                }
+                await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+                isMicActive = true;
+                sendVCStatusInternal(true, false);
+            } catch (micErr) {
+                console.warn("[LiveKit] Reopening window mic restore blocked:", micErr);
+                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                isMicActive = false;
+                localStorage.setItem('blitz31_mic_state', 'false');
+                sendVCStatusInternal(true, true);
+            }
+        } else {
+            // Initial connection: always connect muted by default
+            await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+            isMicActive = false;
+            localStorage.setItem('blitz31_mic_state', 'false');
+            sendVCStatusInternal(true, true);
+        }
 
         startBackgroundKeepAliveOscillator();
         updateVoiceUI();
-        sendVCStatusInternal(true, true);
         refreshAudioOutputDevices();
         refreshVoiceParticipantsList();
 
@@ -238,6 +261,7 @@ async function toggleVoiceOnOff() {
             // Mute Microphone
             await livekitRoom.localParticipant.setMicrophoneEnabled(false);
             isMicActive = false;
+            localStorage.setItem('blitz31_mic_state', 'false');
             updateVoiceUI();
             sendVCStatusInternal(true, true);
         } else {
@@ -247,12 +271,14 @@ async function toggleVoiceOnOff() {
             }
             await livekitRoom.localParticipant.setMicrophoneEnabled(true);
             isMicActive = true;
+            localStorage.setItem('blitz31_mic_state', 'true');
             updateVoiceUI();
             sendVCStatusInternal(true, false);
         }
     } catch (err) {
         console.error("[LiveKit] Mic toggle error:", err);
         isMicActive = false;
+        localStorage.setItem('blitz31_mic_state', 'false');
         updateVoiceUI();
         sendVCStatusInternal(isLiveKitConnected, true);
         alert("Microphone permission denied or audio input device unavailable.");
@@ -296,10 +322,10 @@ function updateVoiceButtonState(text) {
  * Broadcasts mic state to the server and optimistically updates seat visuals.
  */
 function sendVCStatusInternal(inVC, isMuted) {
-    const payload = { 
-        type: 'UPDATE_VC_STATUS', 
-        inVC: Boolean(inVC), 
-        isMuted: Boolean(isMuted) 
+    const payload = {
+        type: 'UPDATE_VC_STATUS',
+        inVC: Boolean(inVC),
+        isMuted: Boolean(isMuted)
     };
 
     // 1. Dispatch over socket via available handlers
@@ -390,6 +416,10 @@ async function disconnectLiveKit() {
     latestLiveKitToken = null;
     isLiveKitConnected = false;
     isMicActive = false;
+
+    // Reset saved mic state so subsequent table joins start muted
+    localStorage.removeItem('blitz31_mic_state');
+
     updateVoiceUI();
     sendVCStatusInternal(false, true);
     refreshVoiceParticipantsList();
@@ -517,13 +547,25 @@ if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefine
     };
 }
 
-// Background resilience: keep audio awake and recover if the OS pauses Web Audio
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && isLiveKitConnected) {
+// Background resilience: keep audio awake and recover if the OS pauses Web Audio or local mic
+document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden && isLiveKitConnected && livekitRoom) {
         if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
             keepAliveAudioContext.resume();
         }
         startBackgroundKeepAliveOscillator();
+
+        // If the mic was on before switching apps/tabs, re-assert the track
+        if (isMicActive && livekitRoom.localParticipant) {
+            try {
+                if (livekitRoom.startAudio) {
+                    await livekitRoom.startAudio();
+                }
+                await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+            } catch (err) {
+                console.warn("[LiveKit] Background recovery failed to unmute:", err);
+            }
+        }
     }
 });
 
