@@ -465,109 +465,140 @@ window.renderPublicLobbies = window.renderLobbyList;
 // -------------------------------------------------------------
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
 // -------------------------------------------------------------
-window.drawCard = function(source) {
-    if (window.clientState && window.clientState.isSpectator) return;
-    window.safePlaySound('card');
-    window.safeVibrate(40);
-    sendSocket({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
-};
 
-window.drawFromDeck = function() { window.drawCard('deck'); };
-window.drawFromDiscard = function() { window.drawCard('discard'); };
+// Helper to reliably dispatch socket messages across legacy and modular network setups
+function dispatchGameAction(payload) {
+    if (typeof window.sendSocket === 'function') {
+        window.sendSocket(payload);
+    } else if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend(payload);
+    } else if (typeof sendSocket === 'function') {
+        sendSocket(payload);
+    } else if (typeof initSocketAndSend === 'function') {
+        initSocketAndSend(payload);
+    } else if (window.appGlobals?.ws && window.appGlobals.ws.readyState === 1) {
+        window.appGlobals.ws.send(JSON.stringify(payload));
+    }
+}
 
-window.discardCard = function(cardIndex) {
-    if (window.clientState && window.clientState.isSpectator) return;
-    window.safePlaySound('card');
-    window.safeVibrate(30);
-    sendSocket({
-        type: 'DISCARD_CARD',
-        index: parseInt(cardIndex, 10),
-        cardIndex: parseInt(cardIndex, 10)
+// Helper to resolve the active player username without reverting to 'Player1'
+function getActiveUsername() {
+    return (window.clientState?.username || 
+            localStorage.getItem('saved_username') || 
+            document.getElementById('username-input')?.value || 
+            'Player1').trim();
+}
+
+// Helper to resolve the active table/room code
+function getActiveRoomCode() {
+    return (window.appGlobals?.currentJoinedCode || 
+            localStorage.getItem('blitz31_active_room') || 
+            '').toUpperCase();
+}
+
+// --- TABLE SEATING & PRE-GAME CONTROLS ---
+
+window.sitDown = function() {
+    const username = getActiveUsername();
+    const code = getActiveRoomCode();
+    dispatchGameAction({ 
+        type: 'SIT_DOWN', 
+        username, 
+        code 
     });
 };
 
-window.choosePoolCard = function(cardIndex) {
-    if (window.appGlobals && window.appGlobals.hasChosenPoolCard) return;
-    if (window.appGlobals) window.appGlobals.hasChosenPoolCard = true;
-    sendSocket({ type: 'CHOOSE_POOL_CARD', cardIndex: parseInt(cardIndex, 10) });
-};
-
-window.clickNextHand = function() {
-    const btn = document.getElementById('next-hand-btn');
-    if (btn) {
-        btn.innerText = 'Waiting...';
-        btn.disabled = true;
-    }
-    sendSocket({ type: 'NEXT_HAND_READY' });
-    sendSocket({ type: 'NEXT_HAND' });
+window.standUp = function() {
+    const username = getActiveUsername();
+    const code = getActiveRoomCode();
+    dispatchGameAction({ 
+        type: 'STAND_UP', 
+        username, 
+        code 
+    });
 };
 
 window.toggleReady = function() {
-    const nextState = !Boolean(window.clientState && window.clientState.isReady);
-    if (window.clientState) window.clientState.isReady = nextState;
-
-    const btn = document.getElementById('ready-btn');
-    if (btn) btn.innerText = nextState ? 'Unready' : 'Ready Up';
-    if (window.appGlobals) window.appGlobals.hasChosenPoolCard = false;
-
-    sendSocket({ type: 'SET_READY', ready: nextState });
+    dispatchGameAction({ type: 'TOGGLE_READY' });
 };
 
-window.standUp = function() {
-    const uName = (document.getElementById('username-input')?.value || window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    sendSocket({ type: 'STAND_UP', username: uName, code: code });
+window.clickNextHand = function() {
+    dispatchGameAction({ type: 'NEXT_HAND_READY' });
 };
 
-window.sitDown = function() {
-    const uName = (document.getElementById('username-input')?.value || window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    sendSocket({ type: 'SIT_DOWN', username: uName, code: code });
+window.addBot = function() {
+    dispatchGameAction({ type: 'ADD_BOT' });
 };
 
-window.handleSitDown = window.sitDown;
-window.handleStandUp = window.standUp;
-
-window.updateWager = function() {
-    const sel = document.getElementById('config-wager') || document.getElementById('lobby-wager-select');
-    if (sel) sendSocket({ type: 'UPDATE_WAGER', wager: parseInt(sel.value, 10) || 5 });
+window.removeBot = function() {
+    dispatchGameAction({ type: 'REMOVE_BOT' });
 };
 
-window.updateSettings = function() {
-    const sel = document.getElementById('config-lives') || document.getElementById('lobby-lives-select');
-    if (sel) sendSocket({ type: 'UPDATE_SETTINGS', lives: parseInt(sel.value, 10) || 2 });
-};
-
-window.submitLivesVote = function(agree) {
-    sendSocket({ type: 'VOTE_LIVES', agree: Boolean(agree) });
-    const modal = document.getElementById('lives-vote-modal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.addBot = function() { sendSocket({ type: 'ADD_BOT' }); };
-window.removeBot = function() { sendSocket({ type: 'REMOVE_BOT' }); };
-
-window.proposeEndGame = function() {
-    if (confirm("Propose ending the game and returning to the lobby?")) {
-        sendSocket({ type: 'END_GAME_PROPOSAL' });
+window.updateWager = function(wagerAmount) {
+    const amount = Number(wagerAmount);
+    if (!isNaN(amount) && amount > 0) {
+        dispatchGameAction({ type: 'SET_WAGER', wager: amount });
     }
 };
 
-window.stopPeekingAction = function() {
-    sendSocket({ type: 'STOP_PEEK' });
-    const banner = document.getElementById('active-peeking-banner');
-    if (banner) banner.style.display = 'none';
-    if (typeof window.showCenterNotification === 'function') {
-        window.showCenterNotification("Stopped peeking.");
+window.submitLivesVote = function(lives) {
+    const count = Number(lives);
+    if (!isNaN(count) && count > 0) {
+        dispatchGameAction({ type: 'VOTE_LIVES', lives: count });
     }
 };
 
-window.kickPeekerAction = function(spectatorUsername) {
-    sendSocket({ type: 'KICK_PEEKER', spectatorUsername: spectatorUsername });
-    if (typeof window.showCenterNotification === 'function') {
-        window.showCenterNotification(`Removed ${spectatorUsername} from peeking your hand.`);
+window.leaveLobby = function() {
+    const code = getActiveRoomCode();
+    dispatchGameAction({ type: 'LEAVE_LOBBY', code });
+
+    if (typeof window.disconnectLiveKit === 'function') {
+        try { window.disconnectLiveKit(); } catch (e) {}
+    }
+
+    if (typeof window.resetToMainMenu === 'function') {
+        window.resetToMainMenu();
+    } else {
+        const gameView = document.getElementById('game-view');
+        const mainMenu = document.getElementById('main-menu');
+        if (gameView) gameView.style.display = 'none';
+        if (mainMenu) mainMenu.style.display = 'flex';
+        localStorage.removeItem('blitz31_active_room');
     }
 };
+
+// --- CARD INTERACTIONS & TURN ACTIONS ---
+
+window.drawFromDeck = function() {
+    dispatchGameAction({ type: 'DRAW_CARD', source: 'deck' });
+};
+
+window.drawFromDiscard = function() {
+    dispatchGameAction({ type: 'DRAW_CARD', source: 'discard' });
+};
+
+window.discardCard = function(cardIndex) {
+    const idx = Number(cardIndex);
+    if (!isNaN(idx)) {
+        dispatchGameAction({ type: 'DISCARD_CARD', cardIndex: idx });
+    }
+};
+
+window.knock = function() {
+    dispatchGameAction({ type: 'KNOCK' });
+};
+
+window.choosePoolCard = function(poolIndex) {
+    const idx = Number(poolIndex);
+    if (!isNaN(idx)) {
+        dispatchGameAction({ 
+            type: 'PICK_POOL_CARD', 
+            index: idx, 
+            cardIndex: idx 
+        });
+    }
+};
+
 
 // -------------------------------------------------------------
 // 6. KNOCK VALIDATION & EXECUTION
