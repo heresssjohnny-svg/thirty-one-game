@@ -466,17 +466,6 @@ window.renderPublicLobbies = window.renderLobbyList;
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
 // -------------------------------------------------------------
 
-// Helper to reliably dispatch socket messages
-function dispatchGameAction(payload) {
-    if (typeof window.sendSocket === 'function') {
-        window.sendSocket(payload);
-    } else if (typeof window.initSocketAndSend === 'function') {
-        window.initSocketAndSend(payload);
-    } else if (window.appGlobals?.ws && window.appGlobals.ws.readyState === 1) {
-        window.appGlobals.ws.send(JSON.stringify(payload));
-    }
-}
-
 // Helper to resolve the active player username without reverting to 'Player1'
 function getActiveUsername() {
     return (window.clientState?.username || 
@@ -492,26 +481,32 @@ function getActiveRoomCode() {
             '').toUpperCase();
 }
 
+// Helper to reliably dispatch socket messages with room code and username context
+function dispatchGameAction(payload) {
+    if (!payload.code) {
+        payload.code = getActiveRoomCode();
+    }
+    if (!payload.username) {
+        payload.username = getActiveUsername();
+    }
+
+    if (typeof window.sendSocket === 'function') {
+        window.sendSocket(payload);
+    } else if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend(payload);
+    } else if (window.appGlobals?.ws && window.appGlobals.ws.readyState === 1) {
+        window.appGlobals.ws.send(JSON.stringify(payload));
+    }
+}
+
 // --- TABLE SEATING & PRE-GAME CONTROLS ---
 
 window.sitDown = function() {
-    const username = getActiveUsername();
-    const code = getActiveRoomCode();
-    dispatchGameAction({ 
-        type: 'SIT_DOWN', 
-        username, 
-        code 
-    });
+    dispatchGameAction({ type: 'SIT_DOWN' });
 };
 
 window.standUp = function() {
-    const username = getActiveUsername();
-    const code = getActiveRoomCode();
-    dispatchGameAction({ 
-        type: 'STAND_UP', 
-        username, 
-        code 
-    });
+    dispatchGameAction({ type: 'STAND_UP' });
 };
 
 window.toggleReady = function() {
@@ -519,7 +514,6 @@ window.toggleReady = function() {
     const snap = window.appGlobals?.latestLobbySnapshot;
     const me = snap?.players?.find(p => p.username?.toLowerCase() === myName);
     
-    // Toggle current ready status
     const current = me ? Boolean(me.ready) : Boolean(window.clientState?.isReady);
     const nextState = !current;
 
@@ -527,18 +521,15 @@ window.toggleReady = function() {
         window.clientState.isReady = nextState;
     }
 
-    // Immediate optimistic UI feedback for mobile touch response
     const btn = document.getElementById('ready-btn') || document.getElementById('btn-ready');
     if (btn) {
         btn.innerText = nextState ? 'Unready' : 'Ready Up';
         btn.style.background = nextState ? '#eab308' : '#15803d';
     }
 
-    // Send the exact payload expected by wsHandler & lobbyManager
     dispatchGameAction({
         type: 'SET_READY',
-        ready: nextState,
-        username: getActiveUsername()
+        ready: nextState
     });
 };
 
@@ -581,8 +572,7 @@ window.leaveLobby = function() {
     if (!confirm("Are you sure you want to leave the table?")) {
         return;
     }
-    const code = getActiveRoomCode();
-    dispatchGameAction({ type: 'LEAVE_LOBBY', code });
+    dispatchGameAction({ type: 'LEAVE_LOBBY' });
 
     if (typeof window.disconnectLiveKit === 'function') {
         try { window.disconnectLiveKit(); } catch (e) {}
@@ -602,17 +592,38 @@ window.leaveLobby = function() {
 // --- CARD INTERACTIONS & TURN ACTIONS ---
 
 window.drawFromDeck = function() {
-    dispatchGameAction({ type: 'DRAW_DECK' });
+    dispatchGameAction({ 
+        type: 'DRAW_CARD', 
+        source: 'deck',
+        action: 'DRAW_DECK' 
+    });
 };
 
 window.drawFromDiscard = function() {
-    dispatchGameAction({ type: 'DRAW_DISCARD' });
+    dispatchGameAction({ 
+        type: 'DRAW_CARD', 
+        source: 'discard',
+        action: 'DRAW_DISCARD' 
+    });
+};
+
+// Bridge function for any felt onclick="drawCard('deck')" handlers
+window.drawCard = function(source) {
+    if (source === 'discard') {
+        window.drawFromDiscard();
+    } else {
+        window.drawFromDeck();
+    }
 };
 
 window.discardCard = function(cardIndex) {
     const idx = Number(cardIndex);
     if (!isNaN(idx)) {
-        dispatchGameAction({ type: 'DISCARD_CARD', cardIndex: idx, index: idx });
+        dispatchGameAction({ 
+            type: 'DISCARD_CARD', 
+            cardIndex: idx, 
+            index: idx 
+        });
     }
 };
 
@@ -643,7 +654,6 @@ window.handleStandUp = window.standUp;
 window.readyNextHand = window.clickNextHand;
 window.knockGame = window.knock;
 window.selectPoolCard = window.choosePoolCard;
-
 
 
 // -------------------------------------------------------------
