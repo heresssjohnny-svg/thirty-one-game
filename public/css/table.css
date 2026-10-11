@@ -301,3 +301,78 @@
         height: 66px;
     }
 }
+
+/* ============================================================
+   ENLARGED DECK, DISCARD, AND PLAYER HAND CARDS
+   ============================================================ */
+
+/* 1. Center Area: Deck & Discard Piles */
+.table-center-area {
+    gap: 18px !important;
+}
+
+#deck-pile,
+#discard-pile,
+.deck-pile,
+.discard-pile {
+    width: 82px !important;
+    height: 118px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+#deck-pile .card-back-pattern {
+    font-size: 2.2rem !important;
+}
+
+#discard-pile .card-placeholder,
+#discard-top-card {
+    font-size: 1.1rem !important;
+}
+
+.pile-label {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* 2. Docked Bottom Container & Player Cards */
+.player-hand-container {
+    min-height: 155px !important;
+    padding-top: 6px !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+#my-cards-container {
+    gap: 10px !important;
+}
+
+#my-cards-container .card,
+#my-cards-container .player-card,
+.player-hand-container .card {
+    width: 84px !important;
+    height: 122px !important;
+    border-radius: 9px !important;
+    font-size: 1.25rem !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 3. Small Mobile Devices (Maintains fit when holding 4 cards) */
+@media (max-width: 390px) {
+    #deck-pile,
+    #discard-pile,
+    .deck-pile,
+    .discard-pile {
+        width: 74px !important;
+        height: 106px !important;
+    }
+
+    #my-cards-container .card,
+    #my-cards-container .player-card,
+    .player-hand-container .card {
+        width: 76px !important;
+        height: 110px !important;
+        font-size: 1.1rem !important;
+    }
+}
+
