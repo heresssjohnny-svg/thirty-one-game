@@ -31,8 +31,12 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         return;
     }
 
-    let currentLobbyCode = ws.currentLobbyCode || null;
-    let currentUsername = ws.currentUsername || null;
+        let currentLobbyCode = (ws.currentLobbyCode || data.code || '').trim().toUpperCase() || null;
+    let currentUsername = (ws.currentUsername || data.username || '').trim() || null;
+
+    if (currentLobbyCode && !ws.currentLobbyCode) ws.currentLobbyCode = currentLobbyCode;
+    if (currentUsername && !ws.currentUsername) ws.currentUsername = currentUsername;
+
 
     switch (data.type) {
         case 'GET_LOBBIES': {
@@ -352,30 +356,31 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        case 'DRAW_DECK': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                const lobby = lobbies[currentLobbyCode];
-                touchLobbyActivity(lobby, broadcastLobbyList);
-                handleTurnAction(lobby, ws, 'DRAW_DECK');
-            }
-            break;
-        }
-
+                case 'DRAW_CARD':
+        case 'DRAW_DECK':
         case 'DRAW_DISCARD': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                const lobby = lobbies[currentLobbyCode];
+            const code = currentLobbyCode || ws.currentLobbyCode || data.code;
+            if (code && lobbies[code]) {
+                const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                handleTurnAction(lobby, ws, 'DRAW_DISCARD');
+
+                // Determine whether drawing from discard pile or center deck
+                const isDiscard = (data.type === 'DRAW_DISCARD' || data.source === 'discard' || data.action === 'DRAW_DISCARD');
+                const actionType = isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK';
+
+                handleTurnAction(lobby, ws, actionType);
             }
             break;
         }
 
         case 'DISCARD_CARD': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                const lobby = lobbies[currentLobbyCode];
+            const code = currentLobbyCode || ws.currentLobbyCode || data.code;
+            if (code && lobbies[code]) {
+                const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const cardIdx = (data.index !== undefined) ? data.index : data.cardIndex;
-                if (typeof cardIdx === 'number') {
+                const rawIdx = (data.index !== undefined) ? data.index : data.cardIndex;
+                const cardIdx = Number(rawIdx);
+                if (!isNaN(cardIdx)) {
                     handleDiscardAction(lobby, ws, cardIdx);
                 }
             }
@@ -383,13 +388,15 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'KNOCK': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
-                const lobby = lobbies[currentLobbyCode];
+            const code = currentLobbyCode || ws.currentLobbyCode || data.code;
+            if (code && lobbies[code]) {
+                const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 handleKnock(lobby, ws);
             }
             break;
         }
+
 
         case 'NEXT_HAND_READY':
         case 'NEXT_HAND': {
