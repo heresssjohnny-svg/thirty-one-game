@@ -1504,7 +1504,10 @@ window.updateUIFromLobby = function(lobby) {
             ? (lobby.players || []).filter(p => !p.eliminated)
             : (lobby.players || []).filter(p => (lobby.tiedParticipantsList || []).includes(p.username));
 
-        let showcaseHtml = '<div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">';
+
+
+let showcaseHtml = '<div class="dealer-draw-grid-results" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; max-width: 380px; margin: 0 auto 10px;">';
+
         activeParts.forEach(p => {
             const card = lobby.drawResults?.[p.username];
             const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
