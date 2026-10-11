@@ -99,7 +99,24 @@ window.connectSocket = function() {
                 reconnectTimer = null;
             }
 
-            // Flush pending message queue
+            // Start 20s heartbeat to prevent NAT / carrier disconnects
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN && !document.hidden) {
+                    ws.send(JSON.stringify({ type: 'PING' }));
+                }
+            }, 20000);
+
+            // 1. Authenticate with stored session token if present
+            const jwtToken = localStorage.getItem('auth_token') || 
+                             localStorage.getItem('token') || 
+                             localStorage.getItem('jwt') || 
+                             localStorage.getItem('31_jwt');
+            if (jwtToken) {
+                ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
+            }
+
+            // 2. Flush pending message queue
             if (window.appGlobals.pendingQueue && window.appGlobals.pendingQueue.length > 0) {
                 while (window.appGlobals.pendingQueue.length > 0) {
                     const msg = window.appGlobals.pendingQueue.shift();
@@ -107,28 +124,24 @@ window.connectSocket = function() {
                 }
             }
 
-            // Heartbeat to prevent silent carrier/NAT disconnects
-            if (heartbeatTimer) clearInterval(heartbeatTimer);
-            heartbeatTimer = setInterval(() => {
-                if (ws.readyState === WebSocket.OPEN && !document.hidden) {
-                    ws.send(JSON.stringify({ type: 'PING' }));
-                }
-            }, 20000);
-
-            // Reclaim seat if table session is preserved in storage
-            const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-            const myName = (document.getElementById('username-input')?.value ||
-                            window.clientState?.username ||
-                            localStorage.getItem('saved_username') ||
+            // 3. Username fallback priority: persistent state first to avoid reverting to 'Player1'
+            const myName = (window.clientState?.username || 
+                            localStorage.getItem('saved_username') || 
+                            document.getElementById('username-input')?.value || 
                             'Player1').trim();
 
-            if (activeRoom) {
+            const authScreen = document.getElementById('auth-screen');
+            const isAuthScreenVisible = authScreen && authScreen.style.display !== 'none';
+            const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+
+            // 4. Reclaim seat only if not actively on the login/register screen
+            if (activeRoom && !isAuthScreenVisible) {
                 ws.send(JSON.stringify({
                     type: 'JOIN_LOBBY',
                     code: activeRoom.toUpperCase(),
                     username: myName
                 }));
-            } else {
+            } else if (!isAuthScreenVisible) {
                 window.refreshLobbies();
             }
         };
@@ -156,7 +169,7 @@ window.connectSocket = function() {
                 heartbeatTimer = null;
             }
 
-            // Do NOT reset UI here. Allow the 90-second server grace period to hold the seat.
+            // Do not reset UI here; allow the server grace period to preserve the table seat
             if (!reconnectTimer) {
                 reconnectTimer = setTimeout(() => {
                     reconnectTimer = null;
@@ -177,7 +190,7 @@ function handleIncomingServerMessage(data) {
 
     switch (data.type) {
         case 'PONG':
-            // Heartbeat reply; no action needed
+            // Heartbeat reply; keep-alive confirmed
             break;
 
         case 'AUTH_SUCCESS':
@@ -216,7 +229,7 @@ function handleIncomingServerMessage(data) {
             }
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
-            // Viewport transition
+            // Viewport transition from menu/auth to active table felt
             const mainMenu = document.getElementById('main-menu');
             const authScreen = document.getElementById('auth-screen');
             const gameView = document.getElementById('game-view');
@@ -269,7 +282,7 @@ function handleIncomingServerMessage(data) {
             if (data.message && data.message.includes('Table does not exist')) {
                 window.appGlobals.currentJoinedCode = null;
                 localStorage.removeItem('blitz31_active_room');
-                localStorage.removeItem('blitz31_mic_state'); // Clear mic preference on dead table
+                localStorage.removeItem('blitz31_mic_state');
                 if (typeof window.resetToMainMenu === 'function') {
                     window.resetToMainMenu(true);
                 }
@@ -287,7 +300,7 @@ function handleIncomingServerMessage(data) {
 
         case 'LIFETIME_LEDGER_DATA':
             if (typeof window.renderLifetimeLedger === 'function') {
-                window.renderLifetimeLedger(data.ledger || data.debts || []);
+                window.renderLifetimeLedger(data.balances || data.ledger || data.debts || []);
             }
             break;
 
@@ -310,7 +323,6 @@ function handleIncomingServerMessage(data) {
                 }
             }
             break;
-
 
         case 'CHAT_MESSAGE':
             if (typeof window.appendChatMessage === 'function') {
@@ -603,21 +615,32 @@ window.handleLeaveLobby = window.leaveLobby;
 // MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
 // -------------------------------------------------------------
 function resyncActiveSession() {
+    // 1. Guard against auto-rejoining while user is on the login/register screen
     const authScreen = document.getElementById('auth-screen');
     if (authScreen && authScreen.style.display !== 'none') {
-        return; // Do not auto-join while user is logging in
+        return;
     }
 
-    const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    const myName = (document.getElementById('username-input')?.value ||
-                    window.clientState?.username ||
-                    localStorage.getItem('saved_username') ||
-                    'Player1').trim();
-    const ws = window.appGlobals.ws;
+    const activeRoom = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    if (!activeRoom) return;
 
+    // 2. Prioritize persistent active session over the hidden main-menu DOM input
+    //    so background drops never accidentally revert you to 'Player1'
+    const myName = (window.clientState?.username || 
+                    localStorage.getItem('saved_username') || 
+                    document.getElementById('username-input')?.value || 
+                    '').trim();
+
+    if (!myName) return;
+
+    const ws = window.appGlobals?.ws;
+
+    // 3. Re-link active socket or reconnect
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-        window.connectSocket();
-    } else if (activeRoom) {
+        if (typeof window.connectSocket === 'function') {
+            window.connectSocket();
+        }
+    } else {
         ws.send(JSON.stringify({
             type: 'JOIN_LOBBY',
             code: activeRoom.toUpperCase(),
@@ -634,7 +657,7 @@ window.addEventListener('pageshow', () => {
     resyncActiveSession();
 });
 
-//===============Additional coding
+//=============== Additional coding
 
 function bindMenuButtons() {
     const joinBtns = [
