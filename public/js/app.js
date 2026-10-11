@@ -554,3 +554,26 @@ document.addEventListener('DOMContentLoaded', () => {
     checkExistingSession();
     initializeGoogleIdentity();
 });
+
+//=======screen wake addition
+
+let screenWakeLock = null;
+
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            screenWakeLock = await navigator.wakeLock.request('screen');
+        }
+    } catch (err) {
+        // Ignored if battery saver or OS denies wake locks
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        requestWakeLock();
+    }
+});
+
+// Unlock upon first tap
+window.addEventListener('click', requestWakeLock, { once: true });
