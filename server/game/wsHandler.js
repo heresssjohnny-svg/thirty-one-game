@@ -8,6 +8,7 @@ const {
     findOpenSeat,
     startDealerDrawPhase,
     startRound,
+    establishDealer,
     handlePoolCardSelection,
     handleTurnAction,
     handleDiscardAction,
@@ -203,7 +204,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        case 'SET_READY': {
+                case 'SET_READY': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
@@ -213,26 +214,38 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     syncBotReadiness(lobby);
                     broadcastLobbyUpdate(currentLobbyCode);
 
-                    // AFTER:
-const activePlayers = lobby.players.filter(p => !p.eliminated);
-if (activePlayers.length >= 2 && activePlayers.every(p => p.ready)) {
-    lobby.players.forEach(p => { p.ready = false; });
+                    // In the lobby, all seated players are eligible to participate
+                    const seatedPlayers = lobby.players;
+                    if (seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready)) {
+                        // Reset player states for the new game
+                        lobby.players.forEach(p => { 
+                            p.ready = false; 
+                            p.eliminated = false;
+                            p.lives = lobby.defaultLives || 2;
+                        });
 
-    const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
-        p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
-    );
+                        const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
+                            p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase()
+                        );
 
-    if (winnerStillSeated || lobby.hasEstablishedInitialDealer) {
-        establishDealer(lobby);
-        startRound(lobby);
-    } else {
-        startDealerDrawPhase(lobby);
-    }
-}
-}
-}
-break;
-}
+                        if (winnerStillSeated || lobby.hasEstablishedInitialDealer) {
+                            // Safe dealer rotation (uses establishDealer if exported, otherwise rotates index)
+                            if (typeof establishDealer === 'function') {
+                                establishDealer(lobby);
+                            } else if (lobby.players.length > 0) {
+                                lobby.dealerIndex = ((lobby.dealerIndex ?? -1) + 1) % lobby.players.length;
+                                lobby.dealerName = lobby.players[lobby.dealerIndex]?.username || null;
+                            }
+                            startRound(lobby);
+                        } else {
+                            startDealerDrawPhase(lobby);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+
                 case 'STAND_UP': {
             const code = ws.currentLobbyCode || data.code;
             if (code && lobbies[code]) {
