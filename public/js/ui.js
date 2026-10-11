@@ -200,6 +200,23 @@ window.openSettingsModal = function() {
     window.toggleModal('settings-modal');
 };
 
+window.openRulesModal = function() {
+    const modal = document.getElementById('rules-modal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.closeRulesModal = function() {
+    const modal = document.getElementById('rules-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.toggleRulesModal = function() {
+    const modal = document.getElementById('rules-modal');
+    if (!modal) return;
+    modal.style.display = (modal.style.display === 'flex') ? 'none' : 'flex';
+};
+
+
 window.toggleChatWindow = function() {
     const win = document.getElementById('chat-window');
     if (!win) return;
