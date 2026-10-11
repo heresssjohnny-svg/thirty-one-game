@@ -1381,8 +1381,16 @@ window.updateUIFromLobby = function(lobby) {
     }
 
     // 12. POTS & CONFIG
-    const configBar = document.getElementById('lobby-config-bar');
-    if (configBar) configBar.style.display = (lobby.gameState === 'lobby') ? 'flex' : 'none';
+     const configBar = document.getElementById('lobby-config-bar');
+    if (configBar) {
+        configBar.style.display = (lobby.gameState === 'lobby') ? 'flex' : 'none';
+
+        // Direct button binding safeguards
+        const addBtn = configBar.querySelector('.bot-actions button:not(.danger)');
+        const removeBtn = configBar.querySelector('.bot-actions button.danger');
+        if (addBtn) addBtn.onclick = function(e) { if (e) e.preventDefault(); window.addBot(); };
+        if (removeBtn) removeBtn.onclick = function(e) { if (e) e.preventDefault(); window.removeBot(); };
+    }
 
     const potBanner = document.getElementById('pot-total-banner');
     if (potBanner) potBanner.innerText = `Pot: $${lobby.potTotal || 0}`;
