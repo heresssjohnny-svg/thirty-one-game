@@ -1,4 +1,4 @@
-// server.js - Express Server, LiveKit Voice & WebSocket Dispatcher (PART 1 OF 2)
+// server.js - Express Server, LiveKit Voice & WebSocket Dispatcher
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -26,32 +26,50 @@ app.use(express.urlencoded({ extended: true }));
 // Mount Authentication Router (/auth/register, /auth/login, /auth/guest, /auth/google, /auth/me)
 app.use('/auth', authRouter);
 
-// Serve static frontend assets from /public and project root
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(__dirname));
+// Serve ONLY frontend static assets (do NOT expose __dirname)
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/mp3s', express.static(path.join(__dirname, 'mp3s')));
 
-// LiveKit WebRTC Token Generator Endpoint
+// LiveKit WebRTC Token Generator Endpoint with Anti-Cache & Null-Check
 app.post('/token', async (req, res) => {
     try {
+        // Prevent mobile Safari/Chrome from serving stale tokens on screen wake
+        res.set({
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        });
+
         const { roomName, participantName } = req.body;
         if (!roomName || !participantName) {
             return res.status(400).json({ error: 'roomName and participantName are required.' });
         }
-        const token = await generateLiveKitToken(roomName, participantName);
-        res.json({ token, host: config.LIVEKIT_HOST });
+
+        const cleanRoom = String(roomName).trim().toUpperCase();
+        const cleanName = String(participantName).trim();
+
+        const token = await generateLiveKitToken(cleanRoom, cleanName);
+
+        // Guard against null token returns from livekit.js
+        if (!token) {
+            return res.status(500).json({ error: 'LiveKit service failed to generate token.' });
+        }
+
+        res.json({
+            token,
+            host: config.LIVEKIT_HOST,
+            room: cleanRoom
+        });
     } catch (err) {
-        console.error('[LiveKit] Token Generation Error:', err.message);
+        console.error('[LiveKit] Token Generation Error on wake:', err.message);
         res.status(500).json({ error: 'Failed to generate voice token.' });
     }
 });
 
 // Single Page Application Fallback
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-// server.js - PART 2 OF 2
 
 // -------------------------------------------------------------
 // 2. WEBSOCKET SERVER & REAL-TIME DISPATCH
@@ -84,6 +102,9 @@ const heartbeatInterval = setInterval(() => {
     });
 }, 30000);
 
+wss.on('close', () => {
+    clearInterval(heartbeatInterval);
+});
 
 wss.on('connection', (ws, req) => {
     ws.isAlive = true;
@@ -94,7 +115,6 @@ wss.on('connection', (ws, req) => {
 
     ws.on('pong', () => {
         ws.isAlive = true;
-
     });
 
     // Provide initial available lobby list upon socket handshake
@@ -105,7 +125,7 @@ wss.on('connection', (ws, req) => {
         }));
     } catch (e) {}
 
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
         let parsed;
         try {
             parsed = JSON.parse(message);
@@ -167,7 +187,6 @@ wss.on('connection', (ws, req) => {
 
         // 3. Bilateral debt clearance & credit settlement
         if (parsed.type === 'APPLY_CREDIT') {
-            // Re-authenticate from token if session is unset
             if (!ws.user && parsed.token) {
                 try {
                     const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
@@ -182,14 +201,12 @@ wss.on('connection', (ws, req) => {
             const amount = Number(parsed.amount);
 
             if (debtorId && creditorId && amount > 0 && db && typeof db.recordLifetimeDebt === 'function') {
-                // In pairwise netting, creditor writes offsetting balance against debtor
                 db.recordLifetimeDebt(debtorId, creditorId, amount);
 
                 const uid = (ws.user && (ws.user.id || ws.user.userId)) || ws.userId || debtorId;
                 const balances = db.getLifetimeBalances(uid);
                 ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
 
-                // Broadcast live balance update to the credited player if online
                 wss.clients.forEach(client => {
                     const cUid = (client.user && (client.user.id || client.user.userId)) || client.userId;
                     if (client !== ws && client.readyState === WebSocket.OPEN && cUid && (cUid === debtorId || cUid === creditorId)) {
@@ -203,10 +220,35 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
+        // 4. Fast WebSocket token request (fallback if HTTP /token stalls on wake)
+        if (parsed.type === 'REQUEST_LIVEKIT_TOKEN') {
+            const targetRoom = parsed.room || parsed.code || ws.currentLobbyCode;
+            const targetUser = parsed.username || ws.currentUsername || (ws.user && ws.user.username) || 'Player';
+
+            if (targetRoom) {
+                try {
+                    const cleanRoom = String(targetRoom).trim().toUpperCase();
+                    const cleanName = String(targetUser).trim();
+                    const token = await generateLiveKitToken(cleanRoom, cleanName);
+
+                    if (token) {
+                        ws.send(JSON.stringify({
+                            type: 'LIVEKIT_TOKEN',
+                            token,
+                            host: config.LIVEKIT_HOST,
+                            room: cleanRoom
+                        }));
+                    }
+                } catch (err) {
+                    console.error('[WS LiveKit] Fast token fallback error:', err.message);
+                }
+            }
+            return;
+        }
+
         // Forward gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
     });
-
 });
 
 // -------------------------------------------------------------
