@@ -39,11 +39,25 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        case 'CREATE_LOBBY': {
-            const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+         case 'CREATE_LOBBY': {
             const username = (data.username || 'Player1').trim();
             const lobbyName = (data.lobbyName || `${username}'s Room`).trim();
             const isPrivate = !!data.isPrivate;
+
+            // Check if another active lobby is already using this name
+            const isDuplicateName = Object.values(lobbies).some(
+                l => l.name && l.name.trim().toLowerCase() === lobbyName.toLowerCase()
+            );
+
+            if (isDuplicateName) {
+                ws.send(JSON.stringify({
+                    type: 'ERROR',
+                    message: `A table named "${lobbyName}" already exists. Please choose a different name.`
+                }));
+                return;
+            }
+
+            const code = Math.random().toString(36).substring(2, 7).toUpperCase();
 
             const newLobby = {
                 code,
