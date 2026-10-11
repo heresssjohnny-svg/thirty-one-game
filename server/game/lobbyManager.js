@@ -12,6 +12,7 @@ for (const p of ['../db', '../../db', './db', './server/db']) {
 }
 
 const lobbies = {};
+const INACTIVITY_TIMEOUT_MS = 300000; // 300 seconds (5 minutes)
 
 function getLobbies() {
     return lobbies;
@@ -32,7 +33,7 @@ function findOpenSeat(lobby) {
 function touchLobbyActivity(lobby, broadcastLobbyList) {
     if (!lobby) return;
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
-    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), 90000);
+    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), 300000);
 
     const now = Date.now();
 
