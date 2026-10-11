@@ -322,9 +322,12 @@
 
             <!-- ROUND OVERLAY -->
             <div id="next-hand-overlay" class="next-hand-banner" style="display: none;">
-                <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="clickNextHand()">Next Hand</button>
-            </div>
-        </div>
+    <div class="showdown-modal-box casino-panel">
+        <h3 class="gold-text showdown-title">🃏 Round Over — Showdown</h3>
+        <div id="showdown-hands-container" class="showdown-hands-grid"></div>
+        <button id="next-hand-btn" class="primary-btn large gold-btn" onclick="window.clickNextHand ? window.clickNextHand() : sendSocket({ type: 'NEXT_HAND_READY' })">Next Hand</button>
+    </div>
+</div>
 
         <!-- 4. CHAT DRAWER -->
         <div id="chat-window" class="chat-drawer" style="display: none;">
