@@ -413,10 +413,21 @@ function handleSetReady(lobby, username, isReady) {
     const active = getActiveParticipants(lobby);
     if (active.length >= 2 && active.every(p => p.ready)) {
         lobby.players.forEach(p => { p.ready = false; });
-        startDealerDrawPhase(lobby);
+
+        // If a winner exists and is still seated at the table, skip the draw and start directly
+        const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
+            p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
+        );
+
+        if (winnerStillSeated) {
+            establishDealer(lobby);
+            startRound(lobby);
+        } else {
+            // First game of the room (or previous winner left the table)
+            startDealerDrawPhase(lobby);
+        }
     }
 }
-
 // -------------------------------------------------------------
 // SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
 // -------------------------------------------------------------
