@@ -552,19 +552,3 @@ html, body {
     z-index: 10001 !important; /* Sits above even the modals */
 }
 
-/* FORCE TOP CORNER FEEDS TO THE FRONT */
-#discard-pickup-topleft-modal,
-.top-left-corner {
-    position: fixed !important;
-    top: 60px !important;
-    left: 10px !important;
-    z-index: 10001 !important;
-}
-
-#fed-card-topright-modal,
-.top-right-corner {
-    position: fixed !important;
-    top: 60px !important;
-    right: 10px !important;
-    z-index: 10001 !important;
-}
