@@ -527,3 +527,94 @@
         padding: 5px 8px !important;
     }
 }
+
+/* ============================================================
+   REPOSITIONED & ENLARGED REVEAL MODALS (BOTTOM LEFT & RIGHT)
+   ============================================================ */
+
+/* 1. Base Container: Docked to Bottom Corners */
+#discard-pickup-topleft-modal,
+#fed-card-topright-modal,
+.corner-modal {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 14px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 8px 14px !important;
+    background: rgba(4, 20, 13, 0.96) !important;
+    border: 1.5px solid #d4af37 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75) !important;
+    z-index: 500 !important;
+    pointer-events: none !important; /* Prevents blocking taps on cards */
+}
+
+/* 2. Bottom-Left: Initial Discard Pickup */
+#discard-pickup-topleft-modal,
+.top-left-corner {
+    left: 12px !important;
+    right: auto !important;
+}
+
+/* 3. Bottom-Right: Fed Card Reminder */
+#fed-card-topright-modal,
+.top-right-corner {
+    right: 12px !important;
+    left: auto !important;
+}
+
+/* 4. Enlarged Text & Headers */
+.corner-modal .modal-label,
+#discard-pickup-topleft-modal span,
+#fed-card-label {
+    font-size: 0.88rem !important;
+    font-weight: 800 !important;
+    color: #fbbf24 !important;
+    white-space: nowrap !important;
+}
+
+#discard-pickup-card-content,
+#fed-card-content {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+/* 5. Enlarged Mini Cards inside the Modals */
+.corner-modal .mini-card {
+    width: 36px !important;
+    height: 52px !important;
+    border-radius: 5px !important;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.corner-modal .mini-card .mini-val {
+    font-size: 0.95rem !important;
+    font-weight: 900 !important;
+}
+
+.corner-modal .mini-card .mini-suit {
+    font-size: 0.95rem !important;
+}
+
+/* Mobile Screens (Adjusts spacing so cards fit cleanly) */
+@media (max-width: 410px) {
+    #discard-pickup-topleft-modal,
+    #fed-card-topright-modal {
+        bottom: 8px !important;
+        padding: 6px 10px !important;
+    }
+
+    .corner-modal .modal-label,
+    #fed-card-label {
+        font-size: 0.78rem !important;
+    }
+
+    .corner-modal .mini-card {
+        width: 32px !important;
+        height: 46px !important;
+    }
+}
