@@ -259,6 +259,7 @@ function handleIncomingServerMessage(data) {
             }
             break;
 
+        case 'GAME_STATE_UPDATE':
         case 'LOBBY_UPDATE':
             if (data.lobby) {
                 window.appGlobals.latestLobbySnapshot = data.lobby;
@@ -269,6 +270,8 @@ function handleIncomingServerMessage(data) {
                 }
             }
             break;
+
+
 
         case 'LEFT_LOBBY':
             window.appGlobals.currentJoinedCode = null;
@@ -570,21 +573,62 @@ window.proposeEndGame = function() {
 // -------------------------------------------------------------
 // 6. IN-GAME TURN & CARD ACTIONS
 // -------------------------------------------------------------
-window.drawFromDeck = function() { window.initSocketAndSend({ type: 'DRAW_DECK' }); };
-window.drawFromDiscard = function() { window.initSocketAndSend({ type: 'DRAW_DISCARD' }); };
+window.drawCard = function(source) {
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
+    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    const isDiscard = source === 'discard';
+
+    window.initSocketAndSend({
+        type: 'DRAW_CARD',
+        source: isDiscard ? 'discard' : 'deck',
+        action: isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK',
+        code: code.toUpperCase(),
+        username: username
+    });
+};
+
+window.drawFromDeck = function() { window.drawCard('deck'); };
+window.drawFromDiscard = function() { window.drawCard('discard'); };
 
 window.discardCard = function(cardIndex) {
     const idx = parseInt(cardIndex, 10) || 0;
-    window.initSocketAndSend({ type: 'DISCARD_CARD', cardIndex: idx, index: idx });
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
+    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+
+    window.initSocketAndSend({
+        type: 'DISCARD_CARD',
+        cardIndex: idx,
+        index: idx,
+        code: code.toUpperCase(),
+        username: username
+    });
 };
 
-window.knockGame = function() { window.initSocketAndSend({ type: 'KNOCK' }); };
+window.knockGame = function() {
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
+    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    window.initSocketAndSend({ 
+        type: 'KNOCK',
+        code: code.toUpperCase(),
+        username: username
+    });
+};
 
 window.selectPoolCard = function(poolIndex) {
     if (window.appGlobals.hasChosenPoolCard) return;
     window.appGlobals.hasChosenPoolCard = true;
     const idx = parseInt(poolIndex, 10);
-    window.initSocketAndSend({ type: 'CHOOSE_POOL_CARD', poolIndex: idx, cardIndex: idx });
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
+    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+
+    window.initSocketAndSend({ 
+        type: 'CHOOSE_POOL_CARD', 
+        poolIndex: idx, 
+        cardIndex: idx,
+        index: idx,
+        code: code.toUpperCase(),
+        username: username
+    });
 };
 window.choosePoolCard = window.selectPoolCard;
 
@@ -596,9 +640,14 @@ window.readyNextHand = function() {
         btn.innerText = 'Waiting...';
         btn.disabled = true;
     }
-    window.initSocketAndSend({ type: 'NEXT_HAND_READY' });
-    window.initSocketAndSend({ type: 'READY_NEXT_HAND' });
-    window.initSocketAndSend({ type: 'NEXT_HAND' });
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
+    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+
+    window.initSocketAndSend({ 
+        type: 'NEXT_HAND_READY',
+        code: code.toUpperCase(),
+        username: username
+    });
 };
 window.clickNextHand = window.readyNextHand;
 
@@ -615,6 +664,7 @@ window.setReady = window.toggleReady;
 window.handleSitDown = window.sitDown;
 window.handleStandUp = window.standUp;
 window.handleLeaveLobby = window.leaveLobby;
+
 
 // -------------------------------------------------------------
 // MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
