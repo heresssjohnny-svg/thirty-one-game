@@ -1,4 +1,4 @@
-// server/game/lobbyManager.js
+// server/game/lobbyManager.js - Lobby Lifecycle, Dealer Draw, Game Engine & Seat Management
 const WebSocket = require('ws');
 const { createDeck, calculateScore, calculateBestFourCardScore } = require('./deck');
 const { recordDebt, resolveFirstToLoseBets, resolveWinSideBets } = require('./ledger');
@@ -12,7 +12,7 @@ for (const p of ['../db', '../../db', './db', './server/db']) {
 }
 
 const lobbies = {};
-const INACTIVITY_TIMEOUT_MS = 300000; // 300 seconds (5 minutes)
+const INACTIVITY_TIMEOUT_MS = 300000; // 5-minute inactivity protection
 
 function getLobbies() {
     return lobbies;
@@ -33,7 +33,7 @@ function findOpenSeat(lobby) {
 function touchLobbyActivity(lobby, broadcastLobbyList) {
     if (!lobby) return;
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
-    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), 300000);
+    lobby.inactivityTimer = setTimeout(() => closeInactiveLobby(lobby.code, broadcastLobbyList), INACTIVITY_TIMEOUT_MS);
 
     const now = Date.now();
 
@@ -41,14 +41,14 @@ function touchLobbyActivity(lobby, broadcastLobbyList) {
     const hasSeatedHumans = lobby.players.some(p => {
         if (p.isBot) return false;
         if (p.id !== null) return true;
-        if (p.disconnectedAt && (now - p.disconnectedAt < 90000)) return true;
+        if (p.disconnectedAt && (now - p.disconnectedAt < INACTIVITY_TIMEOUT_MS)) return true;
         return false;
     });
 
     // 2. Also check human spectators so standing up doesn't delete the table
     const hasSpectatorHumans = (lobby.spectators || []).some(s => {
         if (s.idSocket !== null) return true;
-        if (s.disconnectedAt && (now - s.disconnectedAt < 90000)) return true;
+        if (s.disconnectedAt && (now - s.disconnectedAt < INACTIVITY_TIMEOUT_MS)) return true;
         return false;
     });
 
@@ -68,13 +68,13 @@ function closeInactiveLobby(code, broadcastLobbyList) {
     const hasSeated = lobby.players.some(p => {
         if (p.isBot) return false;
         if (p.id && p.id.readyState === WebSocket.OPEN) return true;
-        if (p.disconnectedAt && (now - p.disconnectedAt < 90000)) return true;
+        if (p.disconnectedAt && (now - p.disconnectedAt < INACTIVITY_TIMEOUT_MS)) return true;
         return false;
     });
 
     const hasSpec = (lobby.spectators || []).some(s => {
         if (s.idSocket && s.idSocket.readyState === WebSocket.OPEN) return true;
-        if (s.disconnectedAt && (now - s.disconnectedAt < 90000)) return true;
+        if (s.disconnectedAt && (now - s.disconnectedAt < INACTIVITY_TIMEOUT_MS)) return true;
         return false;
     });
 
@@ -192,7 +192,12 @@ function sendLifetimeLedger(ws) {
 
     if (uid && !uid.startsWith('gst_') && db && typeof db.getLifetimeBalances === 'function') {
         const balances = db.getLifetimeBalances(uid);
-        ws.send(JSON.stringify({ type: 'LIFETIME_LEDGER_DATA', balances }));
+        ws.send(JSON.stringify({ 
+            type: 'LIFETIME_LEDGER_DATA', 
+            balances: balances,
+            ledger: balances,
+            debts: balances 
+        }));
     }
 }
 
@@ -414,7 +419,6 @@ function handleSetReady(lobby, username, isReady) {
     if (active.length >= 2 && active.every(p => p.ready)) {
         lobby.players.forEach(p => { p.ready = false; });
 
-        // If a winner exists and is still seated at the table, skip the draw and start directly
         const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
             p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
         );
@@ -423,27 +427,31 @@ function handleSetReady(lobby, username, isReady) {
             establishDealer(lobby);
             startRound(lobby);
         } else {
-            // First game of the room (or previous winner left the table)
             startDealerDrawPhase(lobby);
         }
     }
 }
+
 // -------------------------------------------------------------
 // SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
 // -------------------------------------------------------------
 function handleSitDown(lobby, ws, username) {
     if (!lobby || lobby.gameState !== 'lobby') return false;
 
-    // 1. If player is already seated in players list, update socket and clear any spectator artifact
+    const cleanName = (username || '').trim().toLowerCase();
+
+    // 1. Check if this socket or username is already an active seated player
     const existingPlayer = lobby.players.find(p => 
         (p.id && p.id === ws) || 
-        (username && p.username && p.username.toLowerCase() === username.toLowerCase())
+        (cleanName && p.username && p.username.toLowerCase() === cleanName)
     );
+
     if (existingPlayer) {
-        if (ws) existingPlayer.id = ws;
+        existingPlayer.id = ws;
+        existingPlayer.disconnectedAt = null;
         lobby.spectators = lobby.spectators.filter(s => 
             s.idSocket !== ws && 
-            (!username || !s.username || s.username.toLowerCase() !== username.toLowerCase())
+            (!cleanName || !s.username || s.username.toLowerCase() !== cleanName)
         );
         broadcastLobbyUpdate(lobby.code);
         return true;
@@ -451,29 +459,28 @@ function handleSitDown(lobby, ws, username) {
 
     if (lobby.players.length >= 6) return false;
 
-    // 2. Identify spectator from lobby.spectators
+    // 2. Locate spectator entry by socket OR username
     const specIndex = lobby.spectators.findIndex(s => 
         (s.idSocket && s.idSocket === ws) || 
-        (username && s.username && s.username.toLowerCase() === username.toLowerCase())
+        (cleanName && s.username && s.username.toLowerCase() === cleanName)
     );
 
-    const targetUsername = (specIndex !== -1 && lobby.spectators[specIndex].username) 
-        ? lobby.spectators[specIndex].username 
-        : username;
-
+    const spec = specIndex !== -1 ? lobby.spectators.splice(specIndex, 1)[0] : null;
+    const targetUsername = spec?.username || username;
     if (!targetUsername) return false;
 
-    const spec = specIndex !== -1 ? lobby.spectators[specIndex] : null;
     const openSeat = findOpenSeat(lobby);
     if (openSeat === -1) return false;
 
-    if (specIndex !== -1) {
-        lobby.spectators.splice(specIndex, 1);
-    }
+    // 3. Remove any remaining duplicate spectator entries
+    lobby.spectators = lobby.spectators.filter(s => 
+        s.idSocket !== ws && 
+        s.username.toLowerCase() !== targetUsername.toLowerCase()
+    );
 
-    // 3. Seat spectator as an active player
+    // 4. Seat the player cleanly
     lobby.players.push({
-        id: ws || (spec ? spec.idSocket : null),
+        id: ws,
         username: targetUsername,
         lives: lobby.defaultLives || 2,
         wager: 5,
@@ -498,9 +505,10 @@ function handleSitDown(lobby, ws, username) {
 function handleStandUp(lobby, ws, username) {
     if (!lobby || lobby.gameState !== 'lobby') return false;
 
+    const cleanName = (username || '').trim().toLowerCase();
     const playerIndex = lobby.players.findIndex(p => 
         (p.id && p.id === ws) || 
-        (username && p.username && p.username.toLowerCase() === username.toLowerCase())
+        (cleanName && p.username && p.username.toLowerCase() === cleanName)
     );
     if (playerIndex === -1) return false;
 
@@ -511,7 +519,7 @@ function handleStandUp(lobby, ws, username) {
 
     const alreadySpec = lobby.spectators.some(s => 
         (s.idSocket && s.idSocket === ws) || 
-        (s.username && player.username && s.username.toLowerCase() === player.username.toLowerCase())
+        (s.username && cleanName && s.username.toLowerCase() === cleanName)
     );
 
     if (!alreadySpec) {
@@ -1303,19 +1311,32 @@ function joinLobby(ws, code, username) {
     const lobby = lobbies[code];
     if (!lobby) return { success: false, message: 'Lobby does not exist.' };
 
-    const existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
+    const cleanName = (username || '').trim().toLowerCase();
+
+    // 1. Re-attach to existing seated player
+    const existingPlayer = lobby.players.find(p => 
+        p.username.toLowerCase() === cleanName || (p.id && p.id === ws)
+    );
     if (existingPlayer) {
         existingPlayer.id = ws;
         existingPlayer.disconnectedAt = null;
+        lobby.spectators = lobby.spectators.filter(s => 
+            s.idSocket !== ws && s.username.toLowerCase() !== cleanName
+        );
         return { success: true, lobby, isSpectator: false };
     }
 
-    const existingSpectator = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
+    // 2. Re-attach to existing spectator
+    const existingSpectator = lobby.spectators.find(s => 
+        s.username.toLowerCase() === cleanName || (s.idSocket && s.idSocket === ws)
+    );
     if (existingSpectator) {
         existingSpectator.idSocket = ws;
+        existingSpectator.username = username;
         return { success: true, lobby, isSpectator: true };
     }
 
+    // 3. Fresh join into waiting room lobby
     if (lobby.players.length < 6 && lobby.gameState === 'lobby') {
         const seat = findOpenSeat(lobby);
         lobby.players.push({
@@ -1338,6 +1359,7 @@ function joinLobby(ws, code, username) {
         return { success: true, lobby, isSpectator: false };
     }
 
+    // 4. Fresh spectator join
     lobby.spectators.push({
         idSocket: ws,
         username,
