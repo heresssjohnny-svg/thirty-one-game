@@ -450,6 +450,10 @@ window.handleJoinLobby = window.joinLobby;
 // SECURE LEAVE & UI RESET LOGIC (WITH MIC STATE CLEANUP)
 // -------------------------------------------------------------
 window.leaveLobby = function() {
+    if (!confirm("Are you sure you want to leave the table?")) {
+        return;
+    }
+
     window.appGlobals.currentJoinedCode = null;
 
     // Clear saved mic preference so subsequent room joins start muted
@@ -465,6 +469,7 @@ window.leaveLobby = function() {
     // Authorize deletion of active room
     window.resetToMainMenu(true);
 };
+
 
 window.resetToMainMenu = function(forceClearRoom = false) {
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
