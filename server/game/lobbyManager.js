@@ -37,7 +37,6 @@ function touchLobbyActivity(lobby, broadcastLobbyList) {
 
     const now = Date.now();
 
-    // 1. Check seated human players
     const hasSeatedHumans = lobby.players.some(p => {
         if (p.isBot) return false;
         if (p.id !== null) return true;
@@ -45,16 +44,13 @@ function touchLobbyActivity(lobby, broadcastLobbyList) {
         return false;
     });
 
-    // 2. Also check human spectators so standing up doesn't delete the table
     const hasSpectatorHumans = (lobby.spectators || []).some(s => {
         if (s.idSocket !== null) return true;
         if (s.disconnectedAt && (now - s.disconnectedAt < INACTIVITY_TIMEOUT_MS)) return true;
         return false;
     });
 
-    const hasActiveHumans = hasSeatedHumans || hasSpectatorHumans;
-
-    if (!hasActiveHumans) {
+    if (!hasSeatedHumans && !hasSpectatorHumans) {
         delete lobbies[lobby.code];
         if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
     }
@@ -285,12 +281,14 @@ function getSanitizedLobby(lobby, wsId) {
     const requestingSpectator = lobby.spectators.find(s => s.idSocket === wsId);
     const myUsername = requestingPlayer ? requestingPlayer.username : (requestingSpectator?.username || null);
 
+    // Calculate rotation without mutating the original player objects in memory
     let sortedParticipants = [...allParticipants];
     if (myUsername) {
         const idx = sortedParticipants.findIndex(p => p.username === myUsername);
         if (idx !== -1) sortedParticipants = sortedParticipants.slice(idx).concat(sortedParticipants.slice(0, idx));
     }
-    sortedParticipants.forEach((p, i) => { p.seat = i; });
+    const seatMap = {};
+    sortedParticipants.forEach((p, i) => { seatMap[p.username] = i; });
 
     const myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.delivered?.[myUsername]);
     myUnrespondedBets.forEach(b => {
@@ -316,6 +314,8 @@ function getSanitizedLobby(lobby, wsId) {
         elapsedSeconds = lobby.songPausedAtOffset || 0;
     }
 
+    const currentTurnUser = allParticipants[lobby.turnIndex]?.username || '';
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -325,7 +325,7 @@ function getSanitizedLobby(lobby, wsId) {
         deckCount: lobby.deck ? lobby.deck.length : 0,
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
-        currentTurnUser: allParticipants[lobby.turnIndex]?.username || '',
+        currentTurnUser: currentTurnUser,
         phaseMessage: lobby.phaseMessage,
         canKnock: lobby.turnsTakenThisRound >= activeParts.length,
         potTotal: allParticipants.reduce((sum, p) => sum + (p.wager || 5), 0),
@@ -360,14 +360,13 @@ function getSanitizedLobby(lobby, wsId) {
             const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
                 k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
             );
-            const sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
                 username: p.username,
                 lives: Math.max(0, p.lives),
                 wager: p.wager || 5,
                 cardCount: p.cards ? p.cards.length : 0,
                 ready: p.ready,
-                seat: sortedRef ? sortedRef.seat : p.seat,
+                seat: seatMap[p.username] !== undefined ? seatMap[p.username] : p.seat,
                 nextHandReady: p.nextHandReady,
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
@@ -432,15 +431,11 @@ function handleSetReady(lobby, username, isReady) {
     }
 }
 
-// -------------------------------------------------------------
-// SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
-// -------------------------------------------------------------
 function handleSitDown(lobby, ws, username) {
     if (!lobby || lobby.gameState !== 'lobby') return false;
 
     const cleanName = (username || '').trim().toLowerCase();
 
-    // 1. Check if this socket or username is already an active seated player
     const existingPlayer = lobby.players.find(p => 
         (p.id && p.id === ws) || 
         (cleanName && p.username && p.username.toLowerCase() === cleanName)
@@ -459,7 +454,6 @@ function handleSitDown(lobby, ws, username) {
 
     if (lobby.players.length >= 6) return false;
 
-    // 2. Locate spectator entry by socket OR username
     const specIndex = lobby.spectators.findIndex(s => 
         (s.idSocket && s.idSocket === ws) || 
         (cleanName && s.username && s.username.toLowerCase() === cleanName)
@@ -472,13 +466,11 @@ function handleSitDown(lobby, ws, username) {
     const openSeat = findOpenSeat(lobby);
     if (openSeat === -1) return false;
 
-    // 3. Remove any remaining duplicate spectator entries
     lobby.spectators = lobby.spectators.filter(s => 
         s.idSocket !== ws && 
         s.username.toLowerCase() !== targetUsername.toLowerCase()
     );
 
-    // 4. Seat the player cleanly
     lobby.players.push({
         id: ws,
         username: targetUsername,
@@ -715,20 +707,42 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
     }
 }
 
+// -------------------------------------------------------------
+// TURN ACTION & DISCARD LOGIC WITH RESILIENT IDENTIFICATION
+// -------------------------------------------------------------
 function handleTurnAction(lobby, wsId, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
-    if (currentPlayer.id !== wsId && (!currentPlayer.idSocket || currentPlayer.idSocket !== wsId)) return;
+
+    // Resilient socket & username fallback so mobile re-sync doesn't block turns
+    const isSocketMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId);
+    const isNameMatch = wsId && (
+        (wsId.currentUsername && currentPlayer.username && wsId.currentUsername.toLowerCase() === currentPlayer.username.toLowerCase()) ||
+        (wsId.user?.username && currentPlayer.username && wsId.user.username.toLowerCase() === currentPlayer.username.toLowerCase())
+    );
+
+    if (!isSocketMatch && !isNameMatch) return;
+    if (isNameMatch && !isSocketMatch) {
+        currentPlayer.id = wsId;
+        currentPlayer.disconnectedAt = null;
+    }
 
     if (lobby.gameState === 'finalTurn' && lobby.knockedBy === currentPlayer.username) return;
 
-    if (actionType === 'DRAW_DECK') {
+    // Normalize action across string and object formats ('DRAW_DECK', 'deck', 'DRAW_CARD', 'discard')
+    let act = typeof actionType === 'object' ? (actionType.source || actionType.action || actionType.type) : actionType;
+    act = String(act || '').toUpperCase();
+
+    const isDiscard = (act === 'DRAW_DISCARD' || act === 'DISCARD' || (typeof actionType === 'object' && actionType.source === 'discard'));
+    const isDeck = !isDiscard && (act === 'DRAW_DECK' || act === 'DECK' || act === 'DRAW_CARD' || act === '');
+
+    if (isDeck) {
         if (lobby.deck.length === 0) lobby.deck = createDeck();
         currentPlayer.cards.push(lobby.deck.pop());
         currentPlayer.pickedUpDiscardCard = null;
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the deck.`;
-    } else if (actionType === 'DRAW_DISCARD' && lobby.discardPile.length > 0) {
+    } else if (isDiscard && lobby.discardPile.length > 0) {
         const card = lobby.discardPile.pop();
         currentPlayer.cards.push(card);
         currentPlayer.pickedUpDiscardCard = { val: card.val, suit: card.suit };
@@ -755,6 +769,8 @@ function handleTurnAction(lobby, wsId, actionType) {
                 card: { val: card.val, suit: card.suit }
             };
         }
+    } else {
+        return;
     }
 
     if (calculateBestFourCardScore(currentPlayer.cards) === 31 || calculateScore(currentPlayer.cards) === 31) {
@@ -823,10 +839,24 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.cards.length !== 4) return;
-    if (currentPlayer.id !== wsId && (!currentPlayer.idSocket || currentPlayer.idSocket !== wsId)) return;
 
-    if (typeof cardIndex !== 'number' || cardIndex < 0 || cardIndex >= currentPlayer.cards.length) {
+    const isSocketMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId);
+    const isNameMatch = wsId && (
+        (wsId.currentUsername && currentPlayer.username && wsId.currentUsername.toLowerCase() === currentPlayer.username.toLowerCase()) ||
+        (wsId.user?.username && currentPlayer.username && wsId.user.username.toLowerCase() === currentPlayer.username.toLowerCase())
+    );
+
+    if (!isSocketMatch && !isNameMatch) return;
+    if (isNameMatch && !isSocketMatch) {
+        currentPlayer.id = wsId;
+        currentPlayer.disconnectedAt = null;
+    }
+
+    const idx = Number(cardIndex);
+    if (isNaN(idx) || idx < 0 || idx >= currentPlayer.cards.length) {
         cardIndex = 0;
+    } else {
+        cardIndex = idx;
     }
 
     const discarded = currentPlayer.cards[cardIndex];
@@ -921,7 +951,19 @@ function handleKnock(lobby, wsId) {
     if (lobby.gameState !== 'playing') return;
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.eliminated || lobby.knockedBy) return;
-    if (p.id !== wsId && (!p.idSocket || p.idSocket !== wsId)) return;
+
+    const isSocketMatch = (p.id === wsId) || (p.idSocket === wsId);
+    const isNameMatch = wsId && (
+        (wsId.currentUsername && p.username && wsId.currentUsername.toLowerCase() === p.username.toLowerCase()) ||
+        (wsId.user?.username && p.username && wsId.user.username.toLowerCase() === p.username.toLowerCase())
+    );
+
+    if (!isSocketMatch && !isNameMatch) return;
+    if (isNameMatch && !isSocketMatch) {
+        p.id = wsId;
+        p.disconnectedAt = null;
+    }
+
     if (p.cards.length !== 3) return;
 
     const active = getActiveParticipants(lobby);
@@ -1313,9 +1355,8 @@ function joinLobby(ws, code, username) {
 
     const cleanName = (username || '').trim().toLowerCase();
 
-    // 1. Re-attach to existing seated player
     const existingPlayer = lobby.players.find(p => 
-        p.username.toLowerCase() === cleanName || (p.id && p.id === ws)
+        (cleanName && p.username.toLowerCase() === cleanName) || (p.id && p.id === ws)
     );
     if (existingPlayer) {
         existingPlayer.id = ws;
@@ -1326,9 +1367,8 @@ function joinLobby(ws, code, username) {
         return { success: true, lobby, isSpectator: false };
     }
 
-    // 2. Re-attach to existing spectator
     const existingSpectator = lobby.spectators.find(s => 
-        s.username.toLowerCase() === cleanName || (s.idSocket && s.idSocket === ws)
+        (cleanName && s.username.toLowerCase() === cleanName) || (s.idSocket && s.idSocket === ws)
     );
     if (existingSpectator) {
         existingSpectator.idSocket = ws;
@@ -1336,7 +1376,6 @@ function joinLobby(ws, code, username) {
         return { success: true, lobby, isSpectator: true };
     }
 
-    // 3. Fresh join into waiting room lobby
     if (lobby.players.length < 6 && lobby.gameState === 'lobby') {
         const seat = findOpenSeat(lobby);
         lobby.players.push({
@@ -1359,7 +1398,6 @@ function joinLobby(ws, code, username) {
         return { success: true, lobby, isSpectator: false };
     }
 
-    // 4. Fresh spectator join
     lobby.spectators.push({
         idSocket: ws,
         username,
@@ -1402,7 +1440,7 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     if (activeParts.length <= 1 && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn' || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker')) {
         awardTournamentWinner(lobby, activeParts[0]);
     } else {
-        if (lobby.turnIndex >= lobby.players.length) {
+        if (lobby.turnIndex >= lobby.players.length || lobby.turnIndex < 0) {
             lobby.turnIndex = 0;
         }
         establishDealer(lobby);
