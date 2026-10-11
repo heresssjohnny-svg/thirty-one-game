@@ -10,70 +10,51 @@ let latestLiveKitRoom = null;
 let currentVoiceVolume = 1.0;
 let selectedAudioOutputId = 'default';
 
-// Background audio keep-alive nodes attached to the DOM to hold mobile OS media priority
+// Background audio keep-alive: Decoded audio element to bypass mobile 5-second sleep
 let keepAliveAudioElement = null;
 let keepAliveAudioContext = null;
-let keepAliveMediaStream = null;
+
+// Clean, inaudible 1-second WAV audio loop
+const SILENT_WAV_BASE64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
 }
 
 /**
- * Initializes a DOM-attached MediaStream keep-alive to hold the mobile OS audio session
- * active in the background.
+ * Initializes a decoded HTML5 Audio element loop and MediaSession.
+ * This tells the mobile OS that active media playback is in progress,
+ * preventing tab suspension and WebRTC disconnections after 5 seconds.
  */
 function startBackgroundKeepAliveOscillator() {
     try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-
-        if (!keepAliveAudioContext) {
-            keepAliveAudioContext = new AudioCtx();
-        }
-
-        if (keepAliveAudioContext.state === 'suspended') {
-            keepAliveAudioContext.resume().catch(() => {});
-        }
-
         if (!keepAliveAudioElement) {
             keepAliveAudioElement = document.createElement('audio');
             keepAliveAudioElement.id = 'lk-keepalive-media';
+            keepAliveAudioElement.src = SILENT_WAV_BASE64;
             keepAliveAudioElement.loop = true;
-            keepAliveAudioElement.volume = 0.01;
+            keepAliveAudioElement.volume = 0.01; // Non-zero volume prevents iOS from flagging it as idle
             keepAliveAudioElement.setAttribute('playsinline', '');
             keepAliveAudioElement.setAttribute('webkit-playsinline', '');
             keepAliveAudioElement.style.display = 'none';
-
-            // Connect a continuous inaudible low-frequency oscillator stream
-            const dest = keepAliveAudioContext.createMediaStreamDestination();
-            const osc = keepAliveAudioContext.createOscillator();
-            const gain = keepAliveAudioContext.createGain();
-
-            gain.gain.setValueAtTime(0.0001, keepAliveAudioContext.currentTime);
-            osc.frequency.setValueAtTime(55, keepAliveAudioContext.currentTime);
-
-            osc.connect(gain);
-            gain.connect(dest);
-            osc.start();
-
-            keepAliveMediaStream = dest.stream;
-            keepAliveAudioElement.srcObject = dest.stream;
             document.body.appendChild(keepAliveAudioElement);
         }
 
-        keepAliveAudioElement.play().then(() => {
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'playing';
-                navigator.mediaSession.metadata = new MediaMetadata({
-                    title: "Voice Chat Active",
-                    artist: "Blitz 31",
-                    album: "Live Game Voice"
-                });
-            }
-        }).catch(() => {
-            // Unlocks on next screen tap
-        });
+        const playPromise = keepAliveAudioElement.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
+                    navigator.mediaSession.metadata = new MediaMetadata({
+                        title: "Voice Chat Active",
+                        artist: "Blitz 31",
+                        album: "Live Game Voice"
+                    });
+                }
+            }).catch(() => {
+                // Autoplay policy: will unlock on the first screen tap
+            });
+        }
     } catch (e) {
         console.warn("[LiveKit] Could not initialize keep-alive:", e);
     }
@@ -83,7 +64,7 @@ function stopBackgroundKeepAliveOscillator() {
     try {
         if (keepAliveAudioElement) {
             keepAliveAudioElement.pause();
-            keepAliveAudioElement.srcObject = null;
+            keepAliveAudioElement.currentTime = 0;
             keepAliveAudioElement.remove();
             keepAliveAudioElement = null;
         }
@@ -152,7 +133,7 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
-            stopLocalTrackOnUnpublish: false,
+            stopLocalTrackOnUnpublish: false, // Prevents media stream destruction during network route hops
             reconnectPolicy: {
                 maxAttempts: 15,
                 initialDelay: 300,
@@ -229,7 +210,7 @@ async function connectToLiveKit(host, token, roomCode) {
             updateVoiceUI();
             refreshVoiceParticipantsList();
 
-            // Background recovery: if dropped unexpectedly while an active match is running, auto-reconnect
+            // Auto-reconnect if dropped unexpectedly during an active match
             if (window.clientState && window.clientState.gameState !== 'mainMenu') {
                 setTimeout(triggerVoiceReconnect, 1500);
             }
@@ -324,23 +305,30 @@ async function toggleVoiceOnOff() {
     if (!livekitRoom || !isLiveKitConnected) return;
 
     try {
-        if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-            await keepAliveAudioContext.resume().catch(() => {});
-        }
-
         if (isMicActive) {
-            // Mute Microphone
+            // Soft mute: disable the media stream track before calling setMicrophoneEnabled
+            const micPub = livekitRoom.localParticipant.getTrackPublication(getLiveKitSDK().Track.Source.Microphone);
+            if (micPub && micPub.track) {
+                micPub.track.mediaStreamTrack.enabled = false;
+            }
             await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+
             isMicActive = false;
             localStorage.setItem('blitz31_mic_state', 'false');
             updateVoiceUI();
             sendVCStatusInternal(true, true);
         } else {
-            // Unmute Microphone
+            // Unmute
             if (livekitRoom.startAudio) {
                 await livekitRoom.startAudio();
             }
             await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+
+            const micPub = livekitRoom.localParticipant.getTrackPublication(getLiveKitSDK().Track.Source.Microphone);
+            if (micPub && micPub.track) {
+                micPub.track.mediaStreamTrack.enabled = true;
+            }
+
             isMicActive = true;
             localStorage.setItem('blitz31_mic_state', 'true');
             updateVoiceUI();
@@ -613,20 +601,15 @@ if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefine
 async function handleScreenResumeVoice() {
     if (document.hidden) return;
 
-    if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-        keepAliveAudioContext.resume().catch(() => {});
-    }
-
     startBackgroundKeepAliveOscillator();
 
     // If the connection dropped in the background, reconnect immediately
     if (!isLiveKitConnected || !livekitRoom || livekitRoom.state !== 'connected') {
-        console.log("[LiveKit] Screen woke up — re-establishing voice connection...");
         triggerVoiceReconnect();
         return;
     }
 
-    // If the mic was previously on, re-assert audio capture
+    // If the mic was active before backgrounding, re-assert capture
     if (isMicActive && livekitRoom.localParticipant) {
         try {
             if (livekitRoom.startAudio) {
@@ -643,11 +626,9 @@ document.addEventListener('visibilitychange', handleScreenResumeVoice);
 window.addEventListener('pageshow', handleScreenResumeVoice);
 window.addEventListener('focus', handleScreenResumeVoice);
 
-// Universal initial user-gesture audio unlock
+// Universal audio unlock on user gesture
 function unlockAudioOnFirstTouch() {
-    if (keepAliveAudioContext && keepAliveAudioContext.state === 'suspended') {
-        keepAliveAudioContext.resume().catch(() => {});
-    }
+    startBackgroundKeepAliveOscillator();
     if (keepAliveAudioElement && keepAliveAudioElement.paused) {
         keepAliveAudioElement.play().catch(() => {});
     }
