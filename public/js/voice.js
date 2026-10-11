@@ -1,4 +1,4 @@
-// public/js/voice.js - Persistent LiveKit Voice Engine, Real-time Mute Sync & Background Resilience
+// public/js/voice.js - Persistent LiveKit Voice Engine, Wake Lock, Real-time Mute Sync & Background Resilience
 
 let livekitRoom = null;
 let isLiveKitConnected = false;
@@ -12,7 +12,9 @@ let selectedAudioOutputId = 'default';
 
 // Background audio keep-alive: Decoded audio element to bypass mobile 5-second sleep
 let keepAliveAudioElement = null;
-let keepAliveAudioContext = null;
+
+// Screen Wake Lock Sentinel to prevent mobile screens from sleeping during active gameplay
+let wakeLockSentinel = null;
 
 // Clean, inaudible 1-second WAV audio loop
 const SILENT_WAV_BASE64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
@@ -21,11 +23,32 @@ function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
 }
 
-/**
- * Initializes a decoded HTML5 Audio element loop and MediaSession.
- * This tells the mobile OS that active media playback is in progress,
- * preventing tab suspension and WebRTC disconnections after 5 seconds.
- */
+// -------------------------------------------------------------
+// 1. SCREEN WAKE LOCK ENGINE
+// -------------------------------------------------------------
+async function requestScreenWakeLock() {
+    try {
+        if ('wakeLock' in navigator && !wakeLockSentinel) {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', () => {
+                wakeLockSentinel = null;
+            });
+        }
+    } catch (err) {
+        // Ignored if battery saver or OS denies screen wake locks
+    }
+}
+
+function releaseScreenWakeLock() {
+    if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch(() => {});
+        wakeLockSentinel = null;
+    }
+}
+
+// -------------------------------------------------------------
+// 2. BACKGROUND AUDIO KEEP-ALIVE ENGINE
+// -------------------------------------------------------------
 function startBackgroundKeepAliveOscillator() {
     try {
         if (!keepAliveAudioElement) {
@@ -74,9 +97,9 @@ function stopBackgroundKeepAliveOscillator() {
     } catch (e) {}
 }
 
-/**
- * Universal token fetcher and connector.
- */
+// -------------------------------------------------------------
+// 3. LIVEKIT CONNECTION & EVENT LIFECYCLE
+// -------------------------------------------------------------
 async function connectLiveKit(arg1, arg2, roomCode) {
     let host = arg1;
     let token = arg2;
@@ -89,9 +112,6 @@ async function connectLiveKit(arg1, arg2, roomCode) {
     return connectToLiveKit(host, token, roomCode);
 }
 
-/**
- * Connects to the LiveKit voice room and binds real-time mute listeners for all players.
- */
 async function connectToLiveKit(host, token, roomCode) {
     const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || 'lobby';
 
@@ -133,7 +153,7 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
-            stopLocalTrackOnUnpublish: false, // Prevents media stream destruction during network route hops
+            stopLocalTrackOnUnpublish: false, // Prevents track destruction on mobile background sleep
             reconnectPolicy: {
                 maxAttempts: 15,
                 initialDelay: 300,
@@ -219,6 +239,9 @@ async function connectToLiveKit(host, token, roomCode) {
         await livekitRoom.connect(cleanHost, token);
         isLiveKitConnected = true;
 
+        // Prevent display sleeping while voice chat is connected
+        requestScreenWakeLock();
+
         // Check if mid-game window reopen/reconnect or an initial connection
         const savedMicState = localStorage.getItem('blitz31_mic_state');
 
@@ -259,36 +282,9 @@ async function connectToLiveKit(host, token, roomCode) {
     }
 }
 
-/**
- * Synchronizes remote participant mute/unmute state directly into seat visuals.
- */
-function syncRemoteParticipantMuteState(participant, isMuted) {
-    if (!participant) return;
-    const participantName = (participant.identity || participant.name || '').trim();
-    if (!participantName) return;
-
-    if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
-        const snap = window.appGlobals.latestLobbySnapshot;
-        const player = (snap.players || []).find(p => p.username.toLowerCase() === participantName.toLowerCase());
-        if (player) {
-            player.inVC = true;
-            player.isMuted = Boolean(isMuted);
-            if (typeof window.updateUIFromLobby === 'function') {
-                window.updateUIFromLobby(snap);
-            }
-        }
-        const spectator = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === participantName.toLowerCase());
-        if (spectator) {
-            spectator.inVC = true;
-            spectator.isMuted = Boolean(isMuted);
-        }
-    }
-    refreshVoiceParticipantsList();
-}
-
-/**
- * Toggles local microphone state.
- */
+// -------------------------------------------------------------
+// 4. MICROPHONE TRANSMISSION & SOFT-MUTE CONTROLS
+// -------------------------------------------------------------
 async function toggleVoiceOnOff() {
     startBackgroundKeepAliveOscillator();
 
@@ -374,9 +370,30 @@ function updateVoiceButtonState(text) {
     if (btnHud) btnHud.innerText = text;
 }
 
-/**
- * Broadcasts mute status to the server with room and username attached.
- */
+function syncRemoteParticipantMuteState(participant, isMuted) {
+    if (!participant) return;
+    const participantName = (participant.identity || participant.name || '').trim();
+    if (!participantName) return;
+
+    if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
+        const snap = window.appGlobals.latestLobbySnapshot;
+        const player = (snap.players || []).find(p => p.username.toLowerCase() === participantName.toLowerCase());
+        if (player) {
+            player.inVC = true;
+            player.isMuted = Boolean(isMuted);
+            if (typeof window.updateUIFromLobby === 'function') {
+                window.updateUIFromLobby(snap);
+            }
+        }
+        const spectator = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === participantName.toLowerCase());
+        if (spectator) {
+            spectator.inVC = true;
+            spectator.isMuted = Boolean(isMuted);
+        }
+    }
+    refreshVoiceParticipantsList();
+}
+
 function sendVCStatusInternal(inVC, isMuted) {
     const targetRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || latestLiveKitRoom || '';
     const myName = (window.clientState && window.clientState.username) || (document.getElementById('username-input')?.value || '').trim() || localStorage.getItem('saved_username') || '';
@@ -420,6 +437,9 @@ function sendVCStatusInternal(inVC, isMuted) {
     }
 }
 
+// -------------------------------------------------------------
+// 5. FRESH TOKEN FETCH & EXPLICIT DISCONNECT
+// -------------------------------------------------------------
 async function requestVoiceToken(roomCode) {
     const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || 'lobby';
     const myUsername = (window.clientState && window.clientState.username) || localStorage.getItem('saved_username') || 'Player';
@@ -450,14 +470,16 @@ async function requestVoiceToken(roomCode) {
 }
 
 function triggerVoiceReconnect() {
-    if (latestLiveKitHost && latestLiveKitToken) {
-        connectToLiveKit(latestLiveKitHost, latestLiveKitToken, latestLiveKitRoom);
-    } else {
-        requestVoiceToken();
-    }
+    const targetRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || 
+                       localStorage.getItem('blitz31_active_room') || 
+                       latestLiveKitRoom || 
+                       'lobby';
+    // Always request a fresh token rather than reusing an expired session token
+    requestVoiceToken(targetRoom);
 }
 
 async function disconnectLiveKit() {
+    releaseScreenWakeLock();
     stopBackgroundKeepAliveOscillator();
     if (livekitRoom) {
         try { await livekitRoom.disconnect(); } catch (e) {}
@@ -476,6 +498,9 @@ async function disconnectLiveKit() {
     refreshVoiceParticipantsList();
 }
 
+// -------------------------------------------------------------
+// 6. AUDIO ROUTING & DEVICE MANAGEMENT
+// -------------------------------------------------------------
 function setVoiceChatVolume(val) {
     currentVoiceVolume = parseFloat(val);
     const disp = document.getElementById('lk-vol-display');
@@ -597,19 +622,26 @@ if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefine
     };
 }
 
-// Background Resilience: Instant Reconnect on Screen Wake / Tab Focus
+// -------------------------------------------------------------
+// 7. BACKGROUND RESILIENCE, SCREEN RESUME & RECONNECT LISTENERS
+// -------------------------------------------------------------
 async function handleScreenResumeVoice() {
     if (document.hidden) return;
 
+    // 1. Re-acquire screen wake lock on wake
+    requestScreenWakeLock();
+
+    // 2. Restart background media loop
     startBackgroundKeepAliveOscillator();
 
-    // If the connection dropped in the background, reconnect immediately
+    // 3. If disconnected by OS throttling, request fresh token and reconnect
     if (!isLiveKitConnected || !livekitRoom || livekitRoom.state !== 'connected') {
+        console.log("[LiveKit] Device returned to foreground — fetching fresh token...");
         triggerVoiceReconnect();
         return;
     }
 
-    // If the mic was active before backgrounding, re-assert capture
+    // 4. If mic was previously active before backgrounding, re-assert audio capture
     if (isMicActive && livekitRoom.localParticipant) {
         try {
             if (livekitRoom.startAudio) {
@@ -635,6 +667,7 @@ function unlockAudioOnFirstTouch() {
     if (livekitRoom && livekitRoom.startAudio) {
         livekitRoom.startAudio().catch(() => {});
     }
+    requestScreenWakeLock();
 }
 
 window.addEventListener('touchstart', unlockAudioOnFirstTouch, { passive: true });
