@@ -47,36 +47,51 @@ function sendSocket(payload) {
     }
 }
 
+
+
+// -------------------------------------------------------------
+// SAFE AUDIO, HAPTICS & ANDROID AUTOPLAY UNLOCK
+// -------------------------------------------------------------
 window.safePlaySound = function(cueType) {
     try {
+        // 1. Direct targeting of primed DOM tags FIRST (bypasses Android WebSocket block)
+        const audioEl = document.getElementById(`sound-${cueType}`);
+        if (audioEl) {
+            audioEl.currentTime = 0;
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => console.warn(`[Audio] Blocked HTML tag for ${cueType}:`, e));
+            }
+            return;
+        }
+
+        // 2. Fallback to global helper only if HTML tag does not exist
         if (typeof window.playSound === 'function') {
             window.playSound(cueType);
             return;
         }
-        const audioEl = document.getElementById(`sound-${cueType}`);
-        if (audioEl) {
-            audioEl.currentTime = 0;
-            audioEl.play().catch(e => console.warn(`[Audio] Blocked HTML tag for ${cueType}:`, e));
-        } else {
-            const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
-            fallbackAudio.play().catch(e => console.warn(`[Audio] Blocked dynamic audio for ${cueType}:`, e));
-        }
+
+        // 3. Fallback dynamic object
+        const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
+        fallbackAudio.play().catch(e => console.warn(`[Audio] Blocked dynamic audio for ${cueType}:`, e));
     } catch (e) {
         console.error('[Audio] Trigger error:', e);
     }
 };
 
+// Aliases ensuring all turn and knock calls route to primed tags
+window.triggerAudioCue = window.safePlaySound;
+window.playYourTurnCue = function() { window.safePlaySound('yourturn'); };
+
 window.safeVibrate = function(pattern) {
-    try {
-        if (navigator.vibrate) {
-            navigator.vibrate(pattern);
-        }
-    } catch (e) {}
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
 };
 
-// Global one-tap unlock for mobile Chrome / Safari AudioContext
+// Global one-tap unlock & HTML5 Audio Element Priming for Android Chrome
 function unlockAudioContextOnTap() {
-    // 1. Resume Web Audio Context if present
+    // 1. Resume Web Audio API context if present
     if (window.audioCtx && window.audioCtx.state === 'suspended') {
         window.audioCtx.resume();
     }
@@ -85,19 +100,26 @@ function unlockAudioContextOnTap() {
         if (ctx && ctx.state === 'suspended') ctx.resume();
     }
 
-    // 2. Prime HTML5 Audio Elements for Android Chrome
+    // 2. Prime HTML5 <audio> tags on user touch
+    let allPrimed = true;
     ['sound-knock', 'sound-yourturn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.play().then(() => {
                 el.pause();
                 el.currentTime = 0;
-            }).catch(() => {});
+            }).catch(() => {
+                allPrimed = false;
+            });
+        } else {
+            allPrimed = false;
         }
     });
 
-    document.removeEventListener('touchstart', unlockAudioContextOnTap);
-    document.removeEventListener('click', unlockAudioContextOnTap);
+    if (allPrimed) {
+        document.removeEventListener('touchstart', unlockAudioContextOnTap);
+        document.removeEventListener('click', unlockAudioContextOnTap);
+    }
 }
 document.addEventListener('touchstart', unlockAudioContextOnTap, { passive: true });
 document.addEventListener('click', unlockAudioContextOnTap);
