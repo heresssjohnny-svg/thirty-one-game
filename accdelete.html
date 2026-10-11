@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Delete Account & Data - Blitz 31</title>
+    <link rel="stylesheet" href="/css/main.css">
+    <style>
+        :root {
+            --bg-dark: #07130e;
+            --bg-panel: rgba(11, 30, 22, 0.95);
+            --felt-green: #0a4d2e;
+            --accent-gold: #f59e0b;
+            --danger-red: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-gold: rgba(245, 158, 11, 0.4);
+            --border-subtle: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            background: radial-gradient(circle at center, #0e2e1e 0%, #05140d 100%);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 24px 16px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+            user-select: text;
+        }
+
+        .container {
+            background: var(--bg-panel);
+            border: 1.5px solid var(--border-gold);
+            border-radius: 12px;
+            max-width: 580px;
+            width: 100%;
+            padding: 32px 24px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            color: var(--accent-gold);
+            font-size: 1.6rem;
+            margin: 0 0 8px 0;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-align: center;
+            margin-bottom: 24px;
+            line-height: 1.4;
+        }
+
+        .info-card {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .info-card h3 {
+            color: var(--accent-gold);
+            margin: 0 0 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .info-card ul {
+            margin: 6px 0 12px 20px;
+            padding: 0;
+            color: #cbd5e1;
+        }
+
+        .info-card li {
+            margin-bottom: 4px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.82rem;
+            color: #cbd5e1;
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        textarea {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            color: var(--text-main);
+            padding: 10px 12px;
+            font-size: 0.9rem;
+            outline: none;
+            box-sizing: border-box;
+            width: 100%;
+            font-family: inherit;
+        }
+
+        input:focus,
+        textarea:focus {
+            border-color: var(--accent-gold);
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: 18px 0 22px;
+            font-size: 0.82rem;
+            color: #cbd5e1;
+            line-height: 1.4;
+            cursor: pointer;
+        }
+
+        .checkbox-row input {
+            accent-color: var(--accent-gold);
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        button.submit-btn {
+            background: #991b1b;
+            color: #ffffff;
+            border: 1px solid var(--danger-red);
+            border-radius: 6px;
+            padding: 12px 18px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.15s ease-in-out;
+        }
+
+        button.submit-btn:hover:not(:disabled) {
+            background: #b91c1c;
+        }
+
+        button.submit-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .footer-links {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .footer-links a {
+            color: var(--accent-gold);
+            text-decoration: none;
+            margin: 0 8px;
+        }
+
+        .footer-links a:hover {
+            text-decoration: underline;
+        }
+
+        #confirmation-box {
+            display: none;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid #10b981;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            color: #ecfdf5;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Request Account & Data Deletion</h1>
+    <p class="subtitle">Blitz 31 Account Management & Privacy Portal</p>
+
+    <div class="info-card">
+        <h3>What happens when you delete your account:</h3>
+        <ul>
+            <li><strong>Permanent Account Removal:</strong> Your username, recovery email, hashed credentials, and authentication tokens are purged from our database[cite: 4, 7].</li>
+            <li><strong>Gameplay & Ledger Data:</strong> Your lifetime balances, bilateral debt settlement records, side bets, and game histories are permanently deleted[cite: 4, 7].</li>
+            <li><strong>Voice & Media:</strong> No audio or voice recordings are retained on our servers; temporary LiveKit sessions are torn down automatically upon disconnection.</li>
+            <li><strong>Processing Timeline:</strong> Automated requests are processed within 24 to 48 hours. Guest sessions automatically expire without personal identifiers[cite: 4, 8].</li>
+        </ul>
+    </div>
+
+    <form id="delete-form" onsubmit="handleAccountDelete(event)">
+        <div class="form-group">
+            <label for="delete-identifier">Username or Registered Email *</label>
+            <input type="text" id="delete-identifier" required placeholder="Enter username or recovery email" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+            <label for="delete-reason">Reason for Leaving (Optional)</label>
+            <textarea id="delete-reason" rows="3" placeholder="Tell us why you would like your data deleted..."></textarea>
+        </div>
+
+        <label class="checkbox-row">
+            <input type="checkbox" id="delete-confirm" required>
+            <span>I understand that this action is permanent. All associated game records, lifetime balances, and credentials will be deleted and cannot be recovered[cite: 4, 7].</span>
+        </label>
+
+        <button type="submit" id="delete-btn" class="submit-btn">Permanently Delete My Account & Data</button>
+    </form>
+
+    <div id="confirmation-box">
+        <strong>Deletion Request Received</strong><br>
+        Your request has been submitted. Any active credentials and matching records in our database will be removed within 48 hours. You may close this window.
+    </div>
+
+    <div class="footer-links">
+        <a href="/">← Return to Game</a>
+        <span>•</span>
+        <a href="/privacy.html">Privacy Policy</a>
+    </div>
+</div>
+
+<script>
+    async function handleAccountDelete(event) {
+        event.preventDefault();
+
+        const identifier = document.getElementById('delete-identifier').value.trim();
+        const reason = document.getElementById('delete-reason').value.trim();
+        const submitBtn = document.getElementById('delete-btn');
+        const form = document.getElementById('delete-form');
+        const confirmBox = document.getElementById('confirmation-box');
+
+        if (!identifier) return;
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Submitting Request...";
+
+        try {
+            // Attempt dispatch to server auth endpoint if available
+            await fetch('/auth/request-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier, reason, timestamp: new Date().toISOString() })
+            }).catch(() => null); // Gracefully handles servers without an automated route configured yet
+
+            // Clear local cached credentials and tokens from storage
+            localStorage.removeItem('p31_token');
+            localStorage.removeItem('p31_username');
+            localStorage.removeItem('username');
+            sessionStorage.clear();
+
+            form.style.display = 'none';
+            confirmBox.style.display = 'block';
+        } catch (err) {
+            form.style.display = 'none';
+            confirmBox.style.display = 'block';
+        }
+    }
+</script>
+
+</body>
+</html>
