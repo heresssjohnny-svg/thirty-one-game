@@ -1,4 +1,4 @@
-// public/js/app.js - Modal Controls, Auth Management & Session State (PART 1 OF 2)
+// public/js/app.js - Modal Controls, Auth Management, Session State & Hardware Lifecycle
 
 // -------------------------------------------------------------
 // 1. UNIVERSAL MODAL & DRAWER CONTROLLER
@@ -34,29 +34,45 @@ function toggleModal(id) {
     }
 }
 
-// Settings Modal Controls
-function openSettingsModal() { openModal('settings-modal'); }
+// Settings Modal: Refreshes LiveKit audio outputs and participants before showing
+function openSettingsModal() { 
+    if (typeof refreshAudioOutputDevices === 'function') refreshAudioOutputDevices();
+    if (typeof refreshVoiceParticipantsList === 'function') refreshVoiceParticipantsList();
+    openModal('settings-modal'); 
+}
 function closeSettingsModal() { closeModal('settings-modal'); }
 
-// Active Bets Modal Controls
-function openActiveBetsModal() { openModal('active-bets-modal'); }
+// Active Bets Modal: Respects ui.js button-hiding guard
+function openActiveBetsModal() { 
+    if (typeof window.hideAllBetsButtons === 'function') {
+        window.hideAllBetsButtons();
+    }
+    openModal('active-bets-modal'); 
+}
 function closeActiveBetsModal() { closeModal('active-bets-modal'); }
 
-// Ledger Modal Controls (Handles #ledger-modal and #session-ledger-modal)
+// Ledger Modal Controls
 function toggleGlobalSidebar() {
-    const ledger = getModalElement('ledger-modal') || getModalElement('session-ledger-modal');
+    const sidebar = document.getElementById('global-side-bets-sidebar');
+    if (sidebar) {
+        sidebar.style.display = (sidebar.style.display === 'none') ? 'flex' : 'none';
+        return;
+    }
+    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
     if (ledger) toggleModal(ledger.id);
 }
+
 function openLedgerModal() {
-    const ledger = getModalElement('ledger-modal') || getModalElement('session-ledger-modal');
+    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
     if (ledger) openModal(ledger.id);
 }
+
 function closeLedgerModal() {
-    const ledger = getModalElement('ledger-modal') || getModalElement('session-ledger-modal');
+    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
     if (ledger) closeModal(ledger.id);
 }
 
-// Chat Window Controls (Handles both #chat-window and #chat-drawer)
+// Chat Window Controls
 function toggleChatWindow() {
     const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
     if (!chat) return;
@@ -64,10 +80,16 @@ function toggleChatWindow() {
     chat.style.display = isHidden ? 'flex' : 'none';
     chat.classList.toggle('hidden', !isHidden);
     if (isHidden) {
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.remove('unread');
+            chatBtn.innerText = '💬 Chat';
+        }
         const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
         if (inp) setTimeout(() => inp.focus(), 80);
     }
 }
+
 function closeChatWindow() {
     const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
     if (chat) {
@@ -76,7 +98,7 @@ function closeChatWindow() {
     }
 }
 
-// Dismiss modal overlays when tapping outside the modal card
+// Dismiss modal overlays when tapping backdrop
 document.addEventListener('click', (e) => {
     if (e.target.classList && (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-backdrop'))) {
         e.target.style.display = 'none';
@@ -84,7 +106,7 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Bind modal controllers to window for inline HTML onclick attributes
+// Bind modal controllers to window for inline onclick attributes
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.toggleModal = toggleModal;
@@ -275,7 +297,6 @@ async function handleGoogleCredentialResponse(response) {
         showAuthError('Server communication error during Google login.');
     }
 }
-// public/js/app.js - Auth Handlers, Password Recovery & Lifecycle (PART 2 OF 2)
 
 // -------------------------------------------------------------
 // 6. NATIVE AUTHENTICATION FORM DISPATCHERS
@@ -285,7 +306,7 @@ async function submitAuthLogin() {
 
     const usernameInput = document.getElementById('login-username');
     const passwordInput = document.getElementById('login-password');
-    const rememberMeInput = document.getElementById('remember-me-checkbox');
+    const rememberMeInput = document.getElementById('login-remember-me') || document.getElementById('remember-me-checkbox');
 
     const username = usernameInput ? usernameInput.value.trim() : '';
     const password = passwordInput ? passwordInput.value : '';
@@ -512,19 +533,25 @@ async function checkExistingSession() {
 }
 
 // -------------------------------------------------------------
-// 9. LOGOUT SESSION
+// 9. LOGOUT SESSION (WITH WEBRTC & HARDWARE RELEASE)
 // -------------------------------------------------------------
 function logoutSession() {
+    // 1. Release microphone hardware and drop LiveKit session
+    if (typeof window.disconnectLiveKit === 'function') {
+        try { window.disconnectLiveKit(); } catch (e) {}
+    }
+
+    // 2. Clear credentials and active table cache
     clearStoredAuthToken();
     window.userSession = null;
 
-    const ws = window.gameSocket || window.ws || window.socket;
+    // 3. Close gameplay socket
+    const ws = window.gameSocket || window.ws || window.appGlobals?.ws;
     if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-            ws.close();
-        } catch (e) {}
+        try { ws.close(); } catch (e) {}
     }
 
+    // 4. Return viewport to authentication screen
     const mainMenu = document.getElementById('main-menu');
     const gameView = document.getElementById('game-view');
     const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
@@ -554,26 +581,3 @@ document.addEventListener('DOMContentLoaded', () => {
     checkExistingSession();
     initializeGoogleIdentity();
 });
-
-//=======screen wake addition
-
-let screenWakeLock = null;
-
-async function requestWakeLock() {
-    try {
-        if ('wakeLock' in navigator) {
-            screenWakeLock = await navigator.wakeLock.request('screen');
-        }
-    } catch (err) {
-        // Ignored if battery saver or OS denies wake locks
-    }
-}
-
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        requestWakeLock();
-    }
-});
-
-// Unlock upon first tap
-window.addEventListener('click', requestWakeLock, { once: true });
