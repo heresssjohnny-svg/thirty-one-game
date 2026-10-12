@@ -10,10 +10,10 @@ let latestLiveKitRoom = null;
 let currentVoiceVolume = 1.0;
 let selectedAudioOutputId = 'default';
 
-// Background audio keep-alive: Decoded audio element to bypass mobile 5-second sleep
+// Background audio keep-alive: Decoded audio element
 let keepAliveAudioElement = null;
 
-// Screen Wake Lock Sentinel to prevent mobile screens from sleeping during active gameplay
+// Screen Wake Lock Sentinel
 let wakeLockSentinel = null;
 
 // Clean, inaudible 1-second WAV audio loop
@@ -56,27 +56,27 @@ function startBackgroundKeepAliveOscillator() {
             keepAliveAudioElement.id = 'lk-keepalive-media';
             keepAliveAudioElement.src = SILENT_WAV_BASE64;
             keepAliveAudioElement.loop = true;
-            keepAliveAudioElement.volume = 0.01; // Non-zero volume prevents iOS from flagging it as idle
+            keepAliveAudioElement.volume = 0.01;
             keepAliveAudioElement.setAttribute('playsinline', '');
             keepAliveAudioElement.setAttribute('webkit-playsinline', '');
             keepAliveAudioElement.style.display = 'none';
             document.body.appendChild(keepAliveAudioElement);
         }
 
-        const playPromise = keepAliveAudioElement.play();
-        if (playPromise !== undefined) {
-            playPromise.then(() => {
-                if ('mediaSession' in navigator) {
-                    navigator.mediaSession.playbackState = 'playing';
-                    navigator.mediaSession.metadata = new MediaMetadata({
-                        title: "Voice Chat Active",
-                        artist: "Blitz 31",
-                        album: "Live Game Voice"
-                    });
-                }
-            }).catch(() => {
-                // Autoplay policy: will unlock on the first screen tap
-            });
+        if (keepAliveAudioElement.paused) {
+            const playPromise = keepAliveAudioElement.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    if ('mediaSession' in navigator && !navigator.mediaSession.metadata) {
+                        navigator.mediaSession.playbackState = 'playing';
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: "Voice Chat Active",
+                            artist: "Blitz 31",
+                            album: "Live Game Voice"
+                        });
+                    }
+                }).catch(() => {});
+            }
         }
     } catch (e) {
         console.warn("[LiveKit] Could not initialize keep-alive:", e);
@@ -93,6 +93,7 @@ function stopBackgroundKeepAliveOscillator() {
         }
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'none';
+            navigator.mediaSession.metadata = null;
         }
     } catch (e) {}
 }
@@ -153,7 +154,7 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
-            stopLocalTrackOnUnpublish: false, // Prevents track destruction on mobile background sleep
+            stopLocalTrackOnUnpublish: false,
             reconnectPolicy: {
                 maxAttempts: 15,
                 initialDelay: 300,
@@ -168,7 +169,8 @@ async function connectToLiveKit(host, token, roomCode) {
 
         // Remote participant audio playback
         livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-            if (track.kind === LK.Track.Kind.Audio || track.kind === 'audio') {
+            const trackKind = track.kind || '';
+            if (trackKind === 'audio' || (LK.Track && trackKind === LK.Track.Kind.Audio)) {
                 const audioElem = track.attach();
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
@@ -198,15 +200,14 @@ async function connectToLiveKit(host, token, roomCode) {
             refreshVoiceParticipantsList();
         });
 
-        // Real-time track mute/unmute events from other players over WebRTC
         livekitRoom.on(LK.RoomEvent.TrackMuted, (publication, participant) => {
-            if (publication.kind === 'audio' || publication.source === LK.Track.Source.Microphone) {
+            if (publication.kind === 'audio' || publication.source === 'microphone') {
                 syncRemoteParticipantMuteState(participant, true);
             }
         });
 
         livekitRoom.on(LK.RoomEvent.TrackUnmuted, (publication, participant) => {
-            if (publication.kind === 'audio' || publication.source === LK.Track.Source.Microphone) {
+            if (publication.kind === 'audio' || publication.source === 'microphone') {
                 syncRemoteParticipantMuteState(participant, false);
             }
         });
@@ -216,7 +217,7 @@ async function connectToLiveKit(host, token, roomCode) {
             refreshVoiceParticipantsList();
         });
 
-        livekitRoom.on(LK.RoomEvent.ParticipantDisconnected, (participant) => {
+        livekitRoom.on(LK.RoomEvent.ParticipantDisconnected, () => {
             refreshVoiceParticipantsList();
         });
 
@@ -230,7 +231,6 @@ async function connectToLiveKit(host, token, roomCode) {
             updateVoiceUI();
             refreshVoiceParticipantsList();
 
-            // Auto-reconnect if dropped unexpectedly during an active match
             if (window.clientState && window.clientState.gameState !== 'mainMenu') {
                 setTimeout(triggerVoiceReconnect, 1500);
             }
@@ -239,13 +239,12 @@ async function connectToLiveKit(host, token, roomCode) {
         await livekitRoom.connect(cleanHost, token);
         isLiveKitConnected = true;
 
-        // Prevent display sleeping while voice chat is connected
         requestScreenWakeLock();
 
-        // Check if mid-game window reopen/reconnect or an initial connection
+        // Check stored mic state, but do not clear storage on initial muted connect
         const savedMicState = localStorage.getItem('blitz31_mic_state');
 
-        if (savedMicState === 'true') {
+        if (savedMicState === 'true' && navigator.userActivation && navigator.userActivation.hasBeenActive) {
             try {
                 if (livekitRoom.startAudio) {
                     await livekitRoom.startAudio();
@@ -254,17 +253,12 @@ async function connectToLiveKit(host, token, roomCode) {
                 isMicActive = true;
                 sendVCStatusInternal(true, false);
             } catch (micErr) {
-                console.warn("[LiveKit] Reopen mic restore blocked:", micErr);
-                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+                console.warn("[LiveKit] Reopen mic restore blocked by browser policy:", micErr);
                 isMicActive = false;
-                localStorage.setItem('blitz31_mic_state', 'false');
                 sendVCStatusInternal(true, true);
             }
         } else {
-            // Initial connection: always connect muted by default
-            await livekitRoom.localParticipant.setMicrophoneEnabled(false);
             isMicActive = false;
-            localStorage.setItem('blitz31_mic_state', 'false');
             sendVCStatusInternal(true, true);
         }
 
@@ -288,8 +282,10 @@ async function connectToLiveKit(host, token, roomCode) {
 async function toggleVoiceOnOff() {
     startBackgroundKeepAliveOscillator();
 
+    // If disconnected, connect first and carry through the unmute intent
     if (!livekitRoom || !isLiveKitConnected) {
         updateVoiceButtonState('Connecting...');
+        localStorage.setItem('blitz31_mic_state', 'true');
         if (latestLiveKitHost && latestLiveKitToken) {
             await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
         } else {
@@ -300,11 +296,14 @@ async function toggleVoiceOnOff() {
 
     if (!livekitRoom || !isLiveKitConnected) return;
 
+    const LK = getLiveKitSDK();
+    const micSource = (LK && LK.Track && LK.Track.Source) ? LK.Track.Source.Microphone : 'microphone';
+
     try {
         if (isMicActive) {
-            // Soft mute: disable the media stream track before calling setMicrophoneEnabled
-            const micPub = livekitRoom.localParticipant.getTrackPublication(getLiveKitSDK().Track.Source.Microphone);
-            if (micPub && micPub.track) {
+            // Mute
+            const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
+            if (micPub && micPub.track && micPub.track.mediaStreamTrack) {
                 micPub.track.mediaStreamTrack.enabled = false;
             }
             await livekitRoom.localParticipant.setMicrophoneEnabled(false);
@@ -320,8 +319,8 @@ async function toggleVoiceOnOff() {
             }
             await livekitRoom.localParticipant.setMicrophoneEnabled(true);
 
-            const micPub = livekitRoom.localParticipant.getTrackPublication(getLiveKitSDK().Track.Source.Microphone);
-            if (micPub && micPub.track) {
+            const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
+            if (micPub && micPub.track && micPub.track.mediaStreamTrack) {
                 micPub.track.mediaStreamTrack.enabled = true;
             }
 
@@ -474,7 +473,6 @@ function triggerVoiceReconnect() {
                        localStorage.getItem('blitz31_active_room') || 
                        latestLiveKitRoom || 
                        'lobby';
-    // Always request a fresh token rather than reusing an expired session token
     requestVoiceToken(targetRoom);
 }
 
@@ -628,29 +626,12 @@ if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefine
 async function handleScreenResumeVoice() {
     if (document.hidden) return;
 
-    // 1. Re-acquire screen wake lock on wake
     requestScreenWakeLock();
-
-    // 2. Restart background media loop
     startBackgroundKeepAliveOscillator();
 
-    // 3. If disconnected by OS throttling, request fresh token and reconnect
+    // If disconnected while sleeping, reconnect voice with a fresh token
     if (!isLiveKitConnected || !livekitRoom || livekitRoom.state !== 'connected') {
-        console.log("[LiveKit] Device returned to foreground — fetching fresh token...");
         triggerVoiceReconnect();
-        return;
-    }
-
-    // 4. If mic was previously active before backgrounding, re-assert audio capture
-    if (isMicActive && livekitRoom.localParticipant) {
-        try {
-            if (livekitRoom.startAudio) {
-                await livekitRoom.startAudio();
-            }
-            await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-        } catch (err) {
-            console.warn("[LiveKit] Screen resume failed to unmute:", err);
-        }
     }
 }
 
@@ -658,16 +639,17 @@ document.addEventListener('visibilitychange', handleScreenResumeVoice);
 window.addEventListener('pageshow', handleScreenResumeVoice);
 window.addEventListener('focus', handleScreenResumeVoice);
 
-// Universal audio unlock on user gesture
+// Universal initial user-gesture audio unlock (executes once only)
 function unlockAudioOnFirstTouch() {
     startBackgroundKeepAliveOscillator();
-    if (keepAliveAudioElement && keepAliveAudioElement.paused) {
-        keepAliveAudioElement.play().catch(() => {});
-    }
     if (livekitRoom && livekitRoom.startAudio) {
         livekitRoom.startAudio().catch(() => {});
     }
     requestScreenWakeLock();
+
+    window.removeEventListener('touchstart', unlockAudioOnFirstTouch);
+    window.removeEventListener('pointerdown', unlockAudioOnFirstTouch);
+    window.removeEventListener('click', unlockAudioOnFirstTouch);
 }
 
 window.addEventListener('touchstart', unlockAudioOnFirstTouch, { passive: true });
