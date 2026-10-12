@@ -531,28 +531,27 @@
             </div>
         </div>
 
-
     <!-- KNOCK ALERT OVERLAY BANNER -->
     <div id="knock-alert-modal" style="display: none; position: fixed; top: 18%; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 12px 26px; font-weight: 800; border-radius: 8px; z-index: 9999; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6);"></div>
 
-<!-- Background Keep-Alive Audio Anchor (Prevents 5s mobile tab freeze) -->
-<audio id="mobile-voice-keepalive" loop playsinline webkit-playsinline preload="auto" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"></audio>
+    <!-- BACKGROUND VOICE KEEP-ALIVE (Matches voice.js selector) -->
+    <audio id="lk-keepalive-media" loop playsinline webkit-playsinline preload="auto" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"></audio>
 
-
-    <!-- SOUND ENGINE AUDIO TAGS -->
+    <!-- SOUND ENGINE AUDIO TAGS (All 4 Game Cues) -->
     <audio id="sound-knock" src="/mp3s/knock.mp3" preload="auto"></audio>
     <audio id="sound-yourturn" src="/mp3s/yourturn.mp3" preload="auto"></audio>
+    <audio id="sound-card" src="/mp3s/card.mp3" preload="auto"></audio>
+    <audio id="sound-win" src="/mp3s/win.mp3" preload="auto"></audio>
 
     <!-- CELEBRATION EFFECT CANVAS -->
-<canvas id="celebration-canvas" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 99999;"></canvas>
+    <canvas id="celebration-canvas" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 99999;"></canvas>
 
-
-    <!-- CLIENT SCRIPT PIPELINE -->
-    <script src="/js/celebration.js?v=41"></script>
-    <script src="/js/network.js?v=41"></script>
-    <script src="/js/ledger.js?v=41"></script>
-    <script src="/js/voice.js?v=41"></script>
-    <script src="/js/ui.js?v=41"></script>
-    <script src="/js/app.js?v=41"></script>
+    <!-- CLIENT SCRIPT PIPELINE (Dependency Order) -->
+    <script src="/js/celebration.js?v=42"></script>
+    <script src="/js/network.js?v=42"></script>
+    <script src="/js/ledger.js?v=42"></script>
+    <script src="/js/voice.js?v=42"></script>
+    <script src="/js/ui.js?v=42"></script>
+    <script src="/js/app.js?v=42"></script>
 </body>
 </html>
