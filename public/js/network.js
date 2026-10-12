@@ -124,7 +124,7 @@ window.connectSocket = function() {
                 }
             }
 
-            // 3. Username fallback priority: persistent state first to avoid reverting to 'Player1'
+            // 3. Username fallback priority
             const myName = (window.clientState?.username || 
                             localStorage.getItem('saved_username') || 
                             document.getElementById('username-input')?.value || 
@@ -190,7 +190,6 @@ function handleIncomingServerMessage(data) {
 
     switch (data.type) {
         case 'PONG':
-            // Heartbeat reply; keep-alive confirmed
             break;
 
         case 'AUTH_SUCCESS':
@@ -240,12 +239,14 @@ function handleIncomingServerMessage(data) {
                 gameView.style.visibility = 'visible';
             }
 
-            // Connect LiveKit Voice Room
+            // Connect LiveKit Voice Room with canonical (host, token, room) signature
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
             if (livekitHost && livekitToken) {
-                if (typeof window.connectLiveKit === 'function') {
-                    window.connectLiveKit(livekitToken, livekitHost, data.code);
+                if (typeof window.connectToLiveKit === 'function') {
+                    window.connectToLiveKit(livekitHost, livekitToken, data.code);
+                } else if (typeof window.connectLiveKit === 'function') {
+                    window.connectLiveKit(livekitHost, livekitToken, data.code);
                 } else if (typeof window.connectToVoiceChat === 'function') {
                     window.connectToVoiceChat(livekitHost, livekitToken);
                 }
@@ -270,8 +271,6 @@ function handleIncomingServerMessage(data) {
                 }
             }
             break;
-
-
 
         case 'LEFT_LOBBY':
             window.appGlobals.currentJoinedCode = null;
@@ -324,12 +323,15 @@ function handleIncomingServerMessage(data) {
                 if (typeof window.updateUIFromLobby === 'function') {
                     window.updateUIFromLobby(snap);
                 }
+                if (typeof window.refreshVoiceParticipantsList === 'function') {
+                    window.refreshVoiceParticipantsList();
+                }
             }
             break;
 
         case 'CHAT_MESSAGE':
             if (typeof window.appendChatMessage === 'function') {
-                window.appendChatMessage(data);
+                window.appendChatMessage(data.user || data.username || 'Player', data.text || data.message || '');
             }
             break;
 
@@ -413,7 +415,6 @@ window.joinLobby = function(targetCode) {
                          localStorage.getItem('saved_username') ||
                          'Player1';
 
-        // Read code from argument (when clicking a list row) or fall back to input box
         const rawCode = (typeof targetCode === 'string' && targetCode.trim())
             ? targetCode.trim()
             : (codeIn?.value || '').trim();
@@ -458,21 +459,16 @@ window.leaveLobby = function() {
     }
 
     window.appGlobals.currentJoinedCode = null;
-
-    // Clear saved mic preference so subsequent room joins start muted
     localStorage.removeItem('blitz31_mic_state');
 
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
 
-    // Inform server of explicit departure
     if (window.appGlobals.ws && window.appGlobals.ws.readyState === WebSocket.OPEN) {
         window.appGlobals.ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' }));
     }
 
-    // Authorize deletion of active room
     window.resetToMainMenu(true);
 };
-
 
 window.resetToMainMenu = function(forceClearRoom = false) {
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
@@ -480,7 +476,6 @@ window.resetToMainMenu = function(forceClearRoom = false) {
     window.appGlobals.latestLobbySnapshot = null;
     window.appGlobals.lastChatCount = 0;
 
-    // STRICT SANDBOX: Only clear room context and mic preferences on explicit leave/reset
     if (forceClearRoom === true) {
         localStorage.removeItem('blitz31_active_room');
         localStorage.removeItem('blitz31_mic_state');
@@ -512,7 +507,6 @@ window.resetToMainMenu = function(forceClearRoom = false) {
 
     if (typeof window.refreshLobbies === 'function') window.refreshLobbies();
 };
-
 
 // -------------------------------------------------------------
 // 5. TABLE SEATING & PRE-GAME CONTROLS
@@ -652,25 +646,9 @@ window.readyNextHand = function() {
 window.clickNextHand = window.readyNextHand;
 
 // -------------------------------------------------------------
-// 7. LIFECYCLE LISTENERS & AUTO-START
-// -------------------------------------------------------------
-document.addEventListener('DOMContentLoaded', () => {
-    window.restoreSavedInputs();
-    window.connectSocket();
-});
-
-// UI & HTML compatibility aliases
-window.setReady = window.toggleReady;
-window.handleSitDown = window.sitDown;
-window.handleStandUp = window.standUp;
-window.handleLeaveLobby = window.leaveLobby;
-
-
-// -------------------------------------------------------------
-// MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
+// 7. MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
 // -------------------------------------------------------------
 function resyncActiveSession() {
-    // 1. Guard against auto-rejoining while user is on the login/register screen
     const authScreen = document.getElementById('auth-screen');
     if (authScreen && authScreen.style.display !== 'none') {
         return;
@@ -679,8 +657,6 @@ function resyncActiveSession() {
     const activeRoom = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
     if (!activeRoom) return;
 
-    // 2. Prioritize persistent active session over the hidden main-menu DOM input
-    //    so background drops never accidentally revert you to 'Player1'
     const myName = (window.clientState?.username || 
                     localStorage.getItem('saved_username') || 
                     document.getElementById('username-input')?.value || 
@@ -690,7 +666,6 @@ function resyncActiveSession() {
 
     const ws = window.appGlobals?.ws;
 
-    // 3. Re-link active socket or reconnect
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         if (typeof window.connectSocket === 'function') {
             window.connectSocket();
@@ -712,43 +687,24 @@ window.addEventListener('pageshow', () => {
     resyncActiveSession();
 });
 
-//=============== Additional coding
+window.addEventListener('focus', () => {
+    resyncActiveSession();
+});
 
-function bindMenuButtons() {
-    const joinBtns = [
-        document.getElementById('join-lobby-btn'),
-        document.getElementById('join-table-btn'),
-        document.getElementById('join-btn'),
-        document.getElementById('btn-join')
-    ];
-    joinBtns.forEach(btn => {
-        if (btn) {
-            btn.onclick = (e) => {
-                if (e) e.preventDefault();
-                window.joinLobby();
-            };
-        }
-    });
+// UI & HTML compatibility aliases
+window.setReady = window.toggleReady;
+window.handleSitDown = window.sitDown;
+window.handleStandUp = window.standUp;
+window.handleLeaveLobby = window.leaveLobby;
 
-    const createBtns = [
-        document.getElementById('create-lobby-btn'),
-        document.getElementById('create-table-btn'),
-        document.getElementById('create-btn'),
-        document.getElementById('btn-create')
-    ];
-    createBtns.forEach(btn => {
-        if (btn) {
-            btn.onclick = (e) => {
-                if (e) e.preventDefault();
-                window.createLobby();
-            };
-        }
-    });
+// Boot synchronization
+function bootNetworkLayer() {
+    window.restoreSavedInputs();
+    window.connectSocket();
 }
 
-// Bind immediately if DOM is ready, and on DOMContentLoaded
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bindMenuButtons);
+    document.addEventListener('DOMContentLoaded', bootNetworkLayer);
 } else {
-    bindMenuButtons();
+    bootNetworkLayer();
 }
