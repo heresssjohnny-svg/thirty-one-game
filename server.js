@@ -2,6 +2,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 
@@ -16,6 +17,15 @@ const { getPublicLobbiesList, leaveLobby } = require('./server/game/lobbyManager
 const app = express();
 const server = http.createServer(app);
 
+// Helper to reliably locate index.html without exposing root files
+function getIndexHtmlPath() {
+    const publicIndex = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(publicIndex)) {
+        return publicIndex;
+    }
+    return path.join(__dirname, 'index.html');
+}
+
 // -------------------------------------------------------------
 // 1. MIDDLEWARE & ROUTING CONFIGURATION
 // -------------------------------------------------------------
@@ -26,11 +36,10 @@ app.use(express.urlencoded({ extended: true }));
 // Mount Authentication Router (/auth/register, /auth/login, /auth/guest, /auth/google, /auth/me)
 app.use('/auth', authRouter);
 
-// Serve static frontend assets from /public and root directory
+// Serve ONLY static assets from /public (prevents leaking .env and server code)
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(__dirname));
 
-// Multi-path static mounts for sound effects (checks root and /public folders)
+// Explicit static mounts for sound effects (checks both root and public directories)
 app.use('/mp3s', express.static(path.join(__dirname, 'mp3s')));
 app.use('/mp3s', express.static(path.join(__dirname, 'public', 'mp3s')));
 app.use('/audio', express.static(path.join(__dirname, 'audio')));
@@ -59,9 +68,11 @@ app.post('/token', async (req, res) => {
             return res.status(500).json({ error: 'LiveKit service failed to generate token.' });
         }
 
+        const resolvedHost = config.LIVEKIT_HOST || process.env.LIVEKIT_HOST || process.env.LIVEKIT_URL;
+
         res.json({
             token,
-            host: config.LIVEKIT_HOST,
+            host: resolvedHost,
             room: cleanRoom
         });
     } catch (err) {
@@ -70,13 +81,13 @@ app.post('/token', async (req, res) => {
     }
 });
 
-// Single Page Application Fallback (loads root index.html)
-// Guard ensures media files never return index.html when missing
+// Single Page Application Fallback:
+// Guard ensures missing audio or script assets return 404 rather than HTML markup
 app.get('*', (req, res) => {
-    if (req.path.match(/\.(mp3|wav|ogg|m4a|aac|js|css|png|jpg|jpeg|gif|ico|svg)$/i)) {
+    if (req.path.match(/\.(mp3|wav|ogg|m4a|aac|js|css|png|jpg|jpeg|gif|ico|svg|map)$/i)) {
         return res.status(404).send('Asset not found');
     }
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(getIndexHtmlPath());
 });
 
 // -------------------------------------------------------------
@@ -257,10 +268,11 @@ wss.on('connection', (ws, req) => {
                     const token = await generateLiveKitToken(cleanRoom, cleanName);
 
                     if (token) {
+                        const resolvedHost = config.LIVEKIT_HOST || process.env.LIVEKIT_HOST || process.env.LIVEKIT_URL;
                         ws.send(JSON.stringify({
                             type: 'LIVEKIT_TOKEN',
                             token,
-                            host: config.LIVEKIT_HOST,
+                            host: resolvedHost,
                             room: cleanRoom
                         }));
                     }
