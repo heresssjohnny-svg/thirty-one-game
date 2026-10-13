@@ -1,4 +1,4 @@
-// public/js/app.js - Modal Controls, Auth Management, Session State & Hardware Lifecycle
+// public/js/app.js - Modal Controls, Auth Management, Audio Bridge, Session State & Hardware Lifecycle
 
 // -------------------------------------------------------------
 // 1. UNIVERSAL MODAL & DRAWER CONTROLLER
@@ -23,9 +23,14 @@ function closeModal(id) {
     }
 }
 
-function toggleModal(id) {
+function toggleModal(id, forceState) {
     const el = getModalElement(id);
     if (!el) return;
+    if (typeof forceState === 'boolean') {
+        if (forceState) openModal(id);
+        else closeModal(id);
+        return;
+    }
     const isHidden = !el.style.display || el.style.display === 'none' || el.classList.contains('hidden');
     if (isHidden) {
         openModal(id);
@@ -36,11 +41,32 @@ function toggleModal(id) {
 
 // Settings Modal: Refreshes LiveKit audio outputs and participants before showing
 function openSettingsModal() { 
-    if (typeof refreshAudioOutputDevices === 'function') refreshAudioOutputDevices();
-    if (typeof refreshVoiceParticipantsList === 'function') refreshVoiceParticipantsList();
+    if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
+    if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
     openModal('settings-modal'); 
 }
 function closeSettingsModal() { closeModal('settings-modal'); }
+
+// Rules Modal Controls
+function openRulesModal() { openModal('rules-modal'); }
+function closeRulesModal() { closeModal('rules-modal'); }
+
+// Spectator List Modal Controls
+function openSpectatorListModal() {
+    const content = document.getElementById('spectators-list') || document.getElementById('spectators-list-content');
+    const specs = (window.clientState && window.clientState.spectatorsList) || [];
+    if (content) {
+        if (specs.length === 0) {
+            content.innerHTML = '<div class="empty-list-notice">No spectators currently watching.</div>';
+        } else {
+            content.innerHTML = '<ul style="padding-left:14px; margin:0;">' +
+                specs.map(s => `<li style="margin-bottom:4px;"><b>${s.username || s}</b>${s.inVC ? (s.isMuted ? ' 🔇' : ' 🎙️') : ''}</li>`).join('') +
+                '</ul>';
+        }
+    }
+    openModal('spectator-list-modal');
+}
+function closeSpectatorListModal() { closeModal('spectator-list-modal'); }
 
 // Active Bets Modal: Respects ui.js button-hiding guard
 function openActiveBetsModal() { 
@@ -63,6 +89,10 @@ function toggleGlobalSidebar() {
 }
 
 function openLedgerModal() {
+    if (typeof window.toggleSessionLedger === 'function') {
+        window.toggleSessionLedger(true);
+        return;
+    }
     const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
     if (ledger) openModal(ledger.id);
 }
@@ -70,6 +100,24 @@ function openLedgerModal() {
 function closeLedgerModal() {
     const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
     if (ledger) closeModal(ledger.id);
+}
+
+function closeSessionLedgerModal() {
+    closeModal('session-ledger-modal');
+}
+
+function openLifetimeLedgerModal() {
+    if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend({
+            type: 'GET_LIFETIME_LEDGER',
+            token: getStoredAuthToken()
+        });
+    }
+    openModal('lifetime-ledger-modal');
+}
+
+function closeLifetimeLedgerModal() {
+    closeModal('lifetime-ledger-modal');
 }
 
 // Chat Window Controls
@@ -85,6 +133,8 @@ function toggleChatWindow() {
             chatBtn.classList.remove('unread');
             chatBtn.innerText = '💬 Chat';
         }
+        const box = document.getElementById('chat-messages');
+        if (box) box.scrollTop = box.scrollHeight;
         const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
         if (inp) setTimeout(() => inp.focus(), 80);
     }
@@ -106,17 +156,92 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Bind modal controllers to window for inline onclick attributes
+// -------------------------------------------------------------
+// 1B. SOUND EFFECTS, HAPTICS & SETTINGS BRIDGE
+// -------------------------------------------------------------
+window.isSfxEnabled = function() {
+    const toggle = document.getElementById('setting-sfx');
+    if (toggle) return toggle.checked;
+    return localStorage.getItem('blitz31_sfx_enabled') !== 'false';
+};
+
+window.toggleSoundSetting = function() {
+    const toggle = document.getElementById('setting-sfx');
+    const enabled = toggle ? toggle.checked : true;
+    localStorage.setItem('blitz31_sfx_enabled', enabled ? 'true' : 'false');
+};
+
+window.playSound = function(cueType) {
+    if (!window.isSfxEnabled()) return;
+    try {
+        const audioEl = document.getElementById(`sound-${cueType}`);
+        if (audioEl) {
+            try { audioEl.currentTime = 0; } catch (e) {}
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(() => {});
+            }
+            return;
+        }
+        const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
+        fallbackAudio.play().catch(() => {});
+    } catch (e) {}
+};
+
+window.safePlaySound = window.playSound;
+window.triggerAudioCue = window.playSound;
+window.playYourTurnCue = function() { window.playSound('yourturn'); };
+
+window.triggerVibration = function(pattern) {
+    if (!window.isSfxEnabled()) return;
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
+};
+window.safeVibrate = window.triggerVibration;
+
+// Public Lobbies List Renderer Fallback (if not already in ui.js)
+window.renderLobbyList = window.renderLobbyList || function(lobbiesList) {
+    const container = document.getElementById('lobby-list');
+    if (!container) return;
+    if (!Array.isArray(lobbiesList) || lobbiesList.length === 0) {
+        container.innerHTML = '<div class="empty-list-notice">No public tables active. Create one!</div>';
+        return;
+    }
+    container.innerHTML = lobbiesList.map(l => {
+        const count = l.playerCount !== undefined ? l.playerCount : (l.count || 0);
+        const max = l.maxPlayers || 6;
+        const statusLabel = l.gameState === 'lobby' ? 'Waiting' : 'In Progress';
+        return `
+            <div class="lobby-item" style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(212,175,55,0.3); border-radius:8px; margin-bottom:8px;">
+                <div>
+                    <div style="font-weight:800; color:#fbbf24;">${l.name || 'Table'} <span style="font-size:0.75rem; color:#94a3b8;">[${l.code}]</span></div>
+                    <div style="font-size:0.75rem; color:#cbd5e1;">Host: ${l.host || 'Player'} • ${count}/${max} Seated • ${statusLabel}</div>
+                </div>
+                <button class="secondary-btn" style="padding:6px 12px; font-size:0.8rem;" onclick="window.joinLobby('${l.code}')">Join</button>
+            </div>
+        `;
+    }).join('');
+};
+
+// Bind modal & utility controllers to window for inline onclick attributes
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.toggleModal = toggleModal;
 window.openSettingsModal = openSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
+window.openRulesModal = openRulesModal;
+window.closeRulesModal = closeRulesModal;
+window.openSpectatorListModal = openSpectatorListModal;
+window.closeSpectatorListModal = closeSpectatorListModal;
 window.openActiveBetsModal = openActiveBetsModal;
 window.closeActiveBetsModal = closeActiveBetsModal;
 window.toggleGlobalSidebar = toggleGlobalSidebar;
 window.openLedgerModal = openLedgerModal;
 window.closeLedgerModal = closeLedgerModal;
+window.closeSessionLedgerModal = closeSessionLedgerModal;
+window.openLifetimeLedgerModal = openLifetimeLedgerModal;
+window.closeLifetimeLedgerModal = closeLifetimeLedgerModal;
 window.toggleChatWindow = toggleChatWindow;
 window.closeChatWindow = closeChatWindow;
 
@@ -124,7 +249,11 @@ window.closeChatWindow = closeChatWindow;
 // 2. TOKEN & SESSION PERSISTENCE HELPERS
 // -------------------------------------------------------------
 function getStoredAuthToken() {
-    return sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || null;
+    return sessionStorage.getItem('31_jwt') ||
+           localStorage.getItem('31_jwt') ||
+           localStorage.getItem('auth_token') ||
+           localStorage.getItem('token') ||
+           null;
 }
 
 function saveStoredAuthToken(token, rememberMe = true) {
@@ -140,8 +269,30 @@ function saveStoredAuthToken(token, rememberMe = true) {
 
 function clearStoredAuthToken() {
     localStorage.removeItem('31_jwt');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('jwt');
     sessionStorage.removeItem('31_jwt');
     localStorage.removeItem('blitz31_active_room');
+}
+
+function authenticateActiveSocket(token, user) {
+    if (typeof window.connectSocket === 'function') {
+        window.connectSocket();
+    }
+    const authToken = token || getStoredAuthToken();
+    if (authToken && typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend({ type: 'AUTH_TOKEN', token: authToken });
+    }
+    const activeRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room');
+    const myName = (user && user.username) || (window.clientState && window.clientState.username) || localStorage.getItem('saved_username') || 'Player1';
+    if (activeRoom && typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend({
+            type: 'JOIN_LOBBY',
+            code: activeRoom.toUpperCase(),
+            username: myName
+        });
+    }
 }
 
 // -------------------------------------------------------------
@@ -221,11 +372,24 @@ function switchAuthTab(tab) {
 function updateViewForAuth(user) {
     const authOverlay = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
     const mainMenu = document.getElementById('main-menu');
+    const gameView = document.getElementById('game-view');
     const userBadge = document.getElementById('menu-user-badge');
     const usernameInput = document.getElementById('username-input');
 
+    if (!user) {
+        if (mainMenu) mainMenu.style.display = 'none';
+        if (gameView) gameView.style.display = 'none';
+        if (authOverlay) authOverlay.style.display = 'flex';
+        return;
+    }
+
     if (authOverlay) authOverlay.style.display = 'none';
-    if (mainMenu) mainMenu.style.display = 'flex';
+
+    // Only show Main Menu if the user is not already seated inside the Game View
+    const isGameActive = gameView && gameView.style.display === 'flex';
+    if (!isGameActive && mainMenu) {
+        mainMenu.style.display = 'flex';
+    }
 
     const displayName = user?.username || 'Player';
     if (userBadge) userBadge.textContent = displayName;
@@ -238,7 +402,7 @@ function updateViewForAuth(user) {
         window.clientState.username = displayName;
     }
 
-    if (typeof window.refreshLobbies === 'function') {
+    if (!isGameActive && typeof window.refreshLobbies === 'function') {
         window.refreshLobbies();
     }
 }
@@ -270,7 +434,7 @@ function initializeGoogleIdentity() {
         } catch (e) {
             console.warn('[GIS] Error initializing Google button:', e);
         }
-    } else {
+    } else if (document.getElementById('google-signin-btn')) {
         setTimeout(initializeGoogleIdentity, 300);
     }
 }
@@ -288,8 +452,8 @@ async function handleGoogleCredentialResponse(response) {
         if (res.ok && data.token) {
             saveStoredAuthToken(data.token, true);
             window.userSession = data.user;
-            if (typeof window.connectSocket === 'function') window.connectSocket();
             updateViewForAuth(data.user);
+            authenticateActiveSocket(data.token, data.user);
         } else {
             showAuthError(data.error || 'Google sign-in failed.');
         }
@@ -327,12 +491,8 @@ async function submitAuthLogin() {
         if (res.ok && data.token) {
             saveStoredAuthToken(data.token, rememberMe);
             window.userSession = data.user;
-
-            if (typeof window.connectSocket === 'function') {
-                window.connectSocket();
-            }
-
             updateViewForAuth(data.user);
+            authenticateActiveSocket(data.token, data.user);
         } else {
             showAuthError(data.error || 'Invalid credentials.');
         }
@@ -367,12 +527,8 @@ async function submitAuthRegister() {
         if (res.ok && data.token) {
             saveStoredAuthToken(data.token, true);
             window.userSession = data.user;
-
-            if (typeof window.connectSocket === 'function') {
-                window.connectSocket();
-            }
-
             updateViewForAuth(data.user);
+            authenticateActiveSocket(data.token, data.user);
         } else {
             showAuthError(data.error || 'Registration failed.');
         }
@@ -394,12 +550,8 @@ async function submitGuestLogin() {
         if (res.ok && data.token) {
             saveStoredAuthToken(data.token, false);
             window.userSession = data.user;
-
-            if (typeof window.connectSocket === 'function') {
-                window.connectSocket();
-            }
-
             updateViewForAuth(data.user);
+            authenticateActiveSocket(data.token, data.user);
         } else {
             showAuthError(data.error || 'Guest login currently unavailable.');
         }
@@ -497,6 +649,12 @@ async function submitResetPassword() {
 // 8. SESSION REHYDRATION ON BOOT
 // -------------------------------------------------------------
 async function checkExistingSession() {
+    // Restore SFX checkbox state from localStorage
+    const sfxToggle = document.getElementById('setting-sfx');
+    if (sfxToggle) {
+        sfxToggle.checked = localStorage.getItem('blitz31_sfx_enabled') !== 'false';
+    }
+
     const token = getStoredAuthToken();
     if (!token) {
         const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
@@ -515,12 +673,8 @@ async function checkExistingSession() {
         if (res.ok) {
             const data = await res.json();
             window.userSession = data.user;
-
-            if (typeof window.connectSocket === 'function') {
-                window.connectSocket();
-            }
-
             updateViewForAuth(data.user);
+            authenticateActiveSocket(token, data.user);
         } else {
             clearStoredAuthToken();
             const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
@@ -541,17 +695,26 @@ function logoutSession() {
         try { window.disconnectLiveKit(); } catch (e) {}
     }
 
-    // 2. Clear credentials and active table cache
+    // 2. Notify server if leaving an active room before closing socket
+    const ws = window.gameSocket || window.ws || window.appGlobals?.ws;
+    if (ws && ws.readyState === WebSocket.OPEN && window.appGlobals?.currentJoinedCode) {
+        try { ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' })); } catch (e) {}
+    }
+
+    // 3. Clear credentials and active table cache
     clearStoredAuthToken();
     window.userSession = null;
+    if (window.appGlobals) {
+        window.appGlobals.currentJoinedCode = null;
+        window.appGlobals.latestLobbySnapshot = null;
+    }
 
-    // 3. Close gameplay socket
-    const ws = window.gameSocket || window.ws || window.appGlobals?.ws;
+    // 4. Close gameplay socket
     if (ws && ws.readyState === WebSocket.OPEN) {
         try { ws.close(); } catch (e) {}
     }
 
-    // 4. Return viewport to authentication screen
+    // 5. Return viewport to authentication screen
     const mainMenu = document.getElementById('main-menu');
     const gameView = document.getElementById('game-view');
     const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
@@ -569,6 +732,8 @@ function logoutSession() {
 // -------------------------------------------------------------
 // 10. GLOBAL EXPORTS & LIFECYCLE LISTENERS
 // -------------------------------------------------------------
+window.switchAuthTab = switchAuthTab;
+window.updateViewForAuth = updateViewForAuth;
 window.submitAuthLogin = submitAuthLogin;
 window.submitAuthRegister = submitAuthRegister;
 window.submitGuestLogin = submitGuestLogin;
@@ -580,4 +745,18 @@ window.checkExistingSession = checkExistingSession;
 document.addEventListener('DOMContentLoaded', () => {
     checkExistingSession();
     initializeGoogleIdentity();
+
+    // Allow pressing Enter to submit Login or Registration forms
+    const loginPass = document.getElementById('login-password');
+    if (loginPass) {
+        loginPass.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitAuthLogin();
+        });
+    }
+    const regPass = document.getElementById('reg-password');
+    if (regPass) {
+        regPass.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitAuthRegister();
+        });
+    }
 });
