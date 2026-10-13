@@ -20,6 +20,7 @@ window.appGlobals.lastCelebratedWinner = null;
 window.appGlobals.lastCelebrated31 = null;
 window.appGlobals.lastChatCount = 0;
 window.appGlobals.notificationTimer = null;
+window.appGlobals.lastConnectedLiveKitRoom = null;
 
 window.clientState = window.clientState || {
     username: localStorage.getItem('saved_username') || 'Player1',
@@ -39,19 +40,30 @@ window.clientState = window.clientState || {
     pendingBetsList: []
 };
 
+// Helper to reliably get the active player's username
+window.getActiveUsername = window.getActiveUsername || function() {
+    const uIn = document.getElementById('username-input');
+    const fromInput = uIn && uIn.value ? uIn.value.trim() : '';
+    if (fromInput) return fromInput;
+    if (window.clientState && window.clientState.username) return window.clientState.username.trim();
+    if (window.userSession && window.userSession.username) return window.userSession.username.trim();
+    return (localStorage.getItem('saved_username') || localStorage.getItem('blitz31_username') || 'Player1').trim();
+};
+
 // Input field persistence helpers
 window.saveInputs = window.saveInputs || function() {
     try {
         const u = document.getElementById('username-input');
         const l = document.getElementById('lobby-name-input');
-        if (u) {
-            localStorage.setItem('saved_username', u.value);
-            localStorage.setItem('blitz31_username', u.value);
-            if (window.clientState) window.clientState.username = u.value.trim() || 'Player1';
+        if (u && u.value.trim()) {
+            const val = u.value.trim();
+            localStorage.setItem('saved_username', val);
+            localStorage.setItem('blitz31_username', val);
+            if (window.clientState) window.clientState.username = val;
         }
         if (l) {
-            localStorage.setItem('saved_lobby_name', l.value);
-            localStorage.setItem('blitz31_lobby_name', l.value);
+            localStorage.setItem('saved_lobby_name', l.value.trim());
+            localStorage.setItem('blitz31_lobby_name', l.value.trim());
         }
     } catch (e) {}
 };
@@ -64,8 +76,8 @@ window.restoreSavedInputs = window.restoreSavedInputs || function() {
         const savedL = localStorage.getItem('saved_lobby_name') || localStorage.getItem('blitz31_lobby_name');
         if (u && savedU) u.value = savedU;
         if (l && savedL) l.value = savedL;
-        if (window.clientState && u) {
-            window.clientState.username = u.value.trim() || 'Player1';
+        if (window.clientState && savedU) {
+            window.clientState.username = savedU.trim() || 'Player1';
         }
     } catch (e) {}
 };
@@ -75,6 +87,7 @@ window.restoreSavedInputs = window.restoreSavedInputs || function() {
 // -------------------------------------------------------------
 let reconnectTimer = null;
 let heartbeatTimer = null;
+let lastResyncTimestamp = 0;
 
 function getWebSocketUrl() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -116,26 +129,15 @@ window.connectSocket = function() {
                 ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token: jwtToken }));
             }
 
-            // 2. Flush pending message queue
-            if (window.appGlobals.pendingQueue && window.appGlobals.pendingQueue.length > 0) {
-                while (window.appGlobals.pendingQueue.length > 0) {
-                    const msg = window.appGlobals.pendingQueue.shift();
-                    ws.send(JSON.stringify(msg));
-                }
-            }
-
-            // 3. Username fallback priority
-            const myName = (window.clientState?.username || 
-                            localStorage.getItem('saved_username') || 
-                            document.getElementById('username-input')?.value || 
-                            'Player1').trim();
-
+            // 2. Username & active room resolution
+            const myName = window.getActiveUsername();
             const authScreen = document.getElementById('auth-screen');
             const isAuthScreenVisible = authScreen && authScreen.style.display !== 'none';
             const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
 
-            // 4. Reclaim seat only if not actively on the login/register screen
+            // 3. Reclaim seat first so ws.currentLobbyCode & ws.currentUsername are bound on the server
             if (activeRoom && !isAuthScreenVisible) {
+                lastResyncTimestamp = Date.now();
                 ws.send(JSON.stringify({
                     type: 'JOIN_LOBBY',
                     code: activeRoom.toUpperCase(),
@@ -143,6 +145,14 @@ window.connectSocket = function() {
                 }));
             } else if (!isAuthScreenVisible) {
                 window.refreshLobbies();
+            }
+
+            // 4. Flush pending message queue after JOIN_LOBBY
+            if (window.appGlobals.pendingQueue && window.appGlobals.pendingQueue.length > 0) {
+                while (window.appGlobals.pendingQueue.length > 0) {
+                    const msg = window.appGlobals.pendingQueue.shift();
+                    ws.send(JSON.stringify(msg));
+                }
             }
         };
 
@@ -217,14 +227,17 @@ function handleIncomingServerMessage(data) {
         case 'PUBLIC_LOBBIES':
             if (typeof window.renderLobbyList === 'function') {
                 window.renderLobbyList(data.lobbies || []);
+            } else if (typeof window.renderPublicLobbies === 'function') {
+                window.renderPublicLobbies(data.lobbies || []);
             }
             break;
 
         case 'LOBBY_CREATED':
-        case 'LOBBY_JOINED':
-            if (data.code) {
-                window.appGlobals.currentJoinedCode = data.code.toUpperCase();
-                localStorage.setItem('blitz31_active_room', data.code.toUpperCase());
+        case 'LOBBY_JOINED': {
+            const joinedCode = (data.code || data.lobby?.code || '').toUpperCase();
+            if (joinedCode) {
+                window.appGlobals.currentJoinedCode = joinedCode;
+                localStorage.setItem('blitz31_active_room', joinedCode);
             }
             if (data.lobby) window.appGlobals.latestLobbySnapshot = data.lobby;
 
@@ -239,14 +252,15 @@ function handleIncomingServerMessage(data) {
                 gameView.style.visibility = 'visible';
             }
 
-            // Connect LiveKit Voice Room with canonical (host, token, room) signature
+            // Connect LiveKit Voice Room only if not already connected to this room
             const livekitHost = data.livekitHost || data.host;
             const livekitToken = data.livekitToken || data.token;
-            if (livekitHost && livekitToken) {
+            if (livekitHost && livekitToken && window.appGlobals.lastConnectedLiveKitRoom !== joinedCode) {
+                window.appGlobals.lastConnectedLiveKitRoom = joinedCode;
                 if (typeof window.connectToLiveKit === 'function') {
-                    window.connectToLiveKit(livekitHost, livekitToken, data.code);
+                    window.connectToLiveKit(livekitHost, livekitToken, joinedCode);
                 } else if (typeof window.connectLiveKit === 'function') {
-                    window.connectLiveKit(livekitHost, livekitToken, data.code);
+                    window.connectLiveKit(livekitHost, livekitToken, joinedCode);
                 } else if (typeof window.connectToVoiceChat === 'function') {
                     window.connectToVoiceChat(livekitHost, livekitToken);
                 }
@@ -259,10 +273,15 @@ function handleIncomingServerMessage(data) {
                 window.renderLobbyState(data.lobby);
             }
             break;
+        }
 
         case 'GAME_STATE_UPDATE':
         case 'LOBBY_UPDATE':
             if (data.lobby) {
+                if (data.lobby.code) {
+                    window.appGlobals.currentJoinedCode = data.lobby.code.toUpperCase();
+                    localStorage.setItem('blitz31_active_room', data.lobby.code.toUpperCase());
+                }
                 window.appGlobals.latestLobbySnapshot = data.lobby;
                 if (typeof window.updateUIFromLobby === 'function') {
                     window.updateUIFromLobby(data.lobby);
@@ -275,14 +294,29 @@ function handleIncomingServerMessage(data) {
         case 'LEFT_LOBBY':
             window.appGlobals.currentJoinedCode = null;
             window.appGlobals.latestLobbySnapshot = null;
+            window.appGlobals.lastConnectedLiveKitRoom = null;
             if (typeof window.resetToMainMenu === 'function') {
                 window.resetToMainMenu(true);
             }
             break;
 
-        case 'ERROR':
-            if (data.message && data.message.includes('Table does not exist')) {
+        case ' NOTIFICATION':
+        case 'NOTIFICATION':
+            if (data.message && typeof window.showCenterNotification === 'function') {
+                window.showCenterNotification(data.message);
+            }
+            break;
+
+        case 'ERROR': {
+            const msg = data.message || 'Error occurred';
+            const isDeadLobby = msg.includes('Table does not exist') ||
+                                msg.includes('Lobby not found') ||
+                                msg.includes('Lobby does not exist') ||
+                                msg.includes('closed due to inactivity');
+
+            if (isDeadLobby) {
                 window.appGlobals.currentJoinedCode = null;
+                window.appGlobals.lastConnectedLiveKitRoom = null;
                 localStorage.removeItem('blitz31_active_room');
                 localStorage.removeItem('blitz31_mic_state');
                 if (typeof window.resetToMainMenu === 'function') {
@@ -290,9 +324,10 @@ function handleIncomingServerMessage(data) {
                 }
             }
             if (typeof window.showCenterNotification === 'function') {
-                window.showCenterNotification(data.message || 'Error occurred');
+                window.showCenterNotification(msg);
             }
             break;
+        }
 
         case 'LIVEKIT_TOKEN':
             if (data.token && data.host && typeof window.connectToLiveKit === 'function') {
@@ -303,6 +338,18 @@ function handleIncomingServerMessage(data) {
         case 'LIFETIME_LEDGER_DATA':
             if (typeof window.renderLifetimeLedger === 'function') {
                 window.renderLifetimeLedger(data.balances || data.ledger || data.debts || []);
+            }
+            break;
+
+        case 'SESSION_LEDGER_DATA':
+            if (window.appGlobals.latestLobbySnapshot) {
+                if (data.mainGameLedger) window.appGlobals.latestLobbySnapshot.mainGameLedger = data.mainGameLedger;
+                if (data.sideBetLedger) window.appGlobals.latestLobbySnapshot.sideBetLedger = data.sideBetLedger;
+                if (data.botBetLedger) window.appGlobals.latestLobbySnapshot.botBetLedger = data.botBetLedger;
+                if (data.activeBets) window.appGlobals.latestLobbySnapshot.activeBets = data.activeBets;
+            }
+            if (typeof window.renderSessionLedger === 'function') {
+                window.renderSessionLedger(window.appGlobals.latestLobbySnapshot || data);
             }
             break;
 
@@ -344,7 +391,21 @@ function handleIncomingServerMessage(data) {
 // 3. OUTGOING MESSAGE DISPATCHERS
 // -------------------------------------------------------------
 window.initSocketAndSend = function(data) {
-    if (!data) return;
+    if (!data || typeof data !== 'object') return;
+
+    // Auto-attach room code, username, and session userId so no packet is ever orphaned
+    if (!data.code) {
+        const activeCode = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+        if (activeCode) data.code = activeCode.toUpperCase();
+    }
+    if (!data.username) {
+        data.username = window.getActiveUsername();
+    }
+    if (window.userSession && !data.userId) {
+        data.userId = window.userSession.id || window.userSession.userId;
+        data.isGuest = Boolean(window.userSession.isGuest);
+    }
+
     const ws = window.appGlobals.ws;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(data));
@@ -358,28 +419,23 @@ window.initSocketAndSend = function(data) {
 };
 
 window.sendSocket = window.initSocketAndSend;
+window.sendSocketMessage = window.initSocketAndSend;
 
 // -------------------------------------------------------------
 // 4. LOBBY CREATION, NAVIGATION & LIFECYCLE
 // -------------------------------------------------------------
 window.refreshLobbies = function() {
     window.initSocketAndSend({ type: 'GET_LOBBIES' });
-    window.initSocketAndSend({ type: 'REFRESH_LOBBIES' });
 };
 
 window.createLobby = function() {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
-        const userIn = document.getElementById('username-input');
         const nameIn = document.getElementById('lobby-name-input');
         const privIn = document.getElementById('lobby-private-toggle') || document.getElementById('private-lobby-checkbox');
         const livesSelect = document.getElementById('lobby-lives-select') || document.getElementById('initial-lives-select');
 
-        const username = (userIn?.value || '').trim() ||
-                         (window.clientState && window.clientState.username) ||
-                         (window.userSession && window.userSession.username) ||
-                         localStorage.getItem('saved_username') ||
-                         'Player1';
+        const username = window.getActiveUsername();
         const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
         const isPrivate = privIn ? Boolean(privIn.checked) : false;
         const defaultLives = livesSelect ? (parseInt(livesSelect.value, 10) || 2) : 2;
@@ -391,6 +447,7 @@ window.createLobby = function() {
         window.initSocketAndSend({
             type: 'CREATE_LOBBY',
             name: lobbyName,
+            lobbyName: lobbyName,
             username: username,
             isPrivate: isPrivate,
             defaultLives: defaultLives
@@ -404,16 +461,11 @@ window.joinLobby = function(targetCode) {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
 
-        const userIn = document.getElementById('username-input');
         const codeIn = document.getElementById('lobby-code-input') || 
                        document.getElementById('join-code-input') ||
                        document.getElementById('table-code-input');
 
-        const username = (userIn?.value || '').trim() ||
-                         (window.clientState && window.clientState.username) ||
-                         (window.userSession && window.userSession.username) ||
-                         localStorage.getItem('saved_username') ||
-                         'Player1';
+        const username = window.getActiveUsername();
 
         const rawCode = (typeof targetCode === 'string' && targetCode.trim())
             ? targetCode.trim()
@@ -459,6 +511,7 @@ window.leaveLobby = function() {
     }
 
     window.appGlobals.currentJoinedCode = null;
+    window.appGlobals.lastConnectedLiveKitRoom = null;
     localStorage.removeItem('blitz31_mic_state');
 
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
@@ -474,6 +527,7 @@ window.resetToMainMenu = function(forceClearRoom = false) {
     if (typeof disconnectLiveKit === 'function') disconnectLiveKit();
     window.appGlobals.currentJoinedCode = null;
     window.appGlobals.latestLobbySnapshot = null;
+    window.appGlobals.lastConnectedLiveKitRoom = null;
     window.appGlobals.lastChatCount = 0;
 
     if (forceClearRoom === true) {
@@ -509,18 +563,14 @@ window.resetToMainMenu = function(forceClearRoom = false) {
 };
 
 // -------------------------------------------------------------
-// 5. TABLE SEATING & PRE-GAME CONTROLS
+// 5. TABLE SEATING, PEEKING & PRE-GAME CONTROLS
 // -------------------------------------------------------------
 window.sitDown = function() {
-    const uName = (document.getElementById('username-input')?.value || window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    window.initSocketAndSend({ type: 'SIT_DOWN', username: uName, code: code });
+    window.initSocketAndSend({ type: 'SIT_DOWN' });
 };
 
 window.standUp = function() {
-    const uName = (document.getElementById('username-input')?.value || window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    window.initSocketAndSend({ type: 'STAND_UP', username: uName, code: code });
+    window.initSocketAndSend({ type: 'STAND_UP' });
 };
 
 window.toggleReady = function() {
@@ -534,6 +584,9 @@ window.toggleReady = function() {
         btn.innerText = nextState ? 'Unready' : 'Ready Up';
         btn.classList.toggle('ready-active', nextState);
     }
+
+    window.appGlobals.hasChosenPoolCard = false;
+    if (typeof playSound === 'function') playSound('card');
 
     window.initSocketAndSend({
         type: 'SET_READY',
@@ -564,20 +617,52 @@ window.proposeEndGame = function() {
     }
 };
 
+window.requestPeekAction = function(targetUsername) {
+    window.initSocketAndSend({
+        type: 'REQUEST_PEEK',
+        targetUsername: targetUsername,
+        target: targetUsername
+    });
+};
+
+window.respondPeekAction = function(spectatorUsername, allow) {
+    window.initSocketAndSend({
+        type: 'RESPOND_PEEK',
+        spectatorUsername: spectatorUsername,
+        requester: spectatorUsername,
+        allow: Boolean(allow),
+        accept: Boolean(allow)
+    });
+};
+
+window.stopPeekingAction = function() {
+    window.initSocketAndSend({ type: 'STOP_PEEK' });
+    const banner = document.getElementById('active-peeking-banner');
+    if (banner) banner.style.display = 'none';
+};
+
+window.kickPeekerAction = function(spectatorUsername) {
+    window.initSocketAndSend({
+        type: 'KICK_PEEKER',
+        spectatorUsername: spectatorUsername,
+        requester: spectatorUsername,
+        target: spectatorUsername
+    });
+};
+
 // -------------------------------------------------------------
 // 6. IN-GAME TURN & CARD ACTIONS
 // -------------------------------------------------------------
 window.drawCard = function(source) {
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
-    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
-    const isDiscard = source === 'discard';
+    if (window.clientState && window.clientState.isSpectator) return;
+    if (typeof playSound === 'function') playSound('card');
+    if (typeof triggerVibration === 'function') triggerVibration(40);
 
+    const isDiscard = source === 'discard';
     window.initSocketAndSend({
-        type: 'DRAW_CARD',
+        type: isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK',
         source: isDiscard ? 'discard' : 'deck',
-        action: isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK',
-        code: code.toUpperCase(),
-        username: username
+        action: isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK'
     });
 };
 
@@ -585,43 +670,38 @@ window.drawFromDeck = function() { window.drawCard('deck'); };
 window.drawFromDiscard = function() { window.drawCard('discard'); };
 
 window.discardCard = function(cardIndex) {
-    const idx = parseInt(cardIndex, 10) || 0;
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
-    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    if (window.clientState && window.clientState.isSpectator) return;
+    const idx = parseInt(cardIndex, 10);
+    if (isNaN(idx)) return;
+
+    if (typeof playSound === 'function') playSound('card');
+    if (typeof triggerVibration === 'function') triggerVibration(30);
 
     window.initSocketAndSend({
         type: 'DISCARD_CARD',
         cardIndex: idx,
-        index: idx,
-        code: code.toUpperCase(),
-        username: username
+        index: idx
     });
 };
 
 window.knockGame = function() {
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
-    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
-    window.initSocketAndSend({ 
-        type: 'KNOCK',
-        code: code.toUpperCase(),
-        username: username
-    });
+    window.initSocketAndSend({ type: 'KNOCK' });
 };
 
 window.selectPoolCard = function(poolIndex) {
     if (window.appGlobals.hasChosenPoolCard) return;
-    window.appGlobals.hasChosenPoolCard = true;
     const idx = parseInt(poolIndex, 10);
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
-    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
+    if (isNaN(idx)) return;
+
+    window.appGlobals.hasChosenPoolCard = true;
+    if (typeof playSound === 'function') playSound('card');
+    if (typeof triggerVibration === 'function') triggerVibration(25);
 
     window.initSocketAndSend({ 
         type: 'CHOOSE_POOL_CARD', 
         poolIndex: idx, 
         cardIndex: idx,
-        index: idx,
-        code: code.toUpperCase(),
-        username: username
+        index: idx
     });
 };
 window.choosePoolCard = window.selectPoolCard;
@@ -634,21 +714,15 @@ window.readyNextHand = function() {
         btn.innerText = 'Waiting...';
         btn.disabled = true;
     }
-    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '';
-    const username = (window.clientState?.username || localStorage.getItem('saved_username') || 'Player1').trim();
 
-    window.initSocketAndSend({ 
-        type: 'NEXT_HAND_READY',
-        code: code.toUpperCase(),
-        username: username
-    });
+    window.initSocketAndSend({ type: 'NEXT_HAND_READY' });
 };
 window.clickNextHand = window.readyNextHand;
 
 // -------------------------------------------------------------
 // 7. MOBILE VISIBILITY, LIFECYCLE RE-SYNC & ANTI-KICK
 // -------------------------------------------------------------
-function resyncActiveSession() {
+function resyncActiveSession(forceJoin = false) {
     const authScreen = document.getElementById('auth-screen');
     if (authScreen && authScreen.style.display !== 'none') {
         return;
@@ -657,11 +731,7 @@ function resyncActiveSession() {
     const activeRoom = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
     if (!activeRoom) return;
 
-    const myName = (window.clientState?.username || 
-                    localStorage.getItem('saved_username') || 
-                    document.getElementById('username-input')?.value || 
-                    '').trim();
-
+    const myName = window.getActiveUsername();
     if (!myName) return;
 
     const ws = window.appGlobals?.ws;
@@ -670,7 +740,9 @@ function resyncActiveSession() {
         if (typeof window.connectSocket === 'function') {
             window.connectSocket();
         }
-    } else {
+    } else if (forceJoin || (Date.now() - lastResyncTimestamp > 5000)) {
+        // Throttle JOIN_LOBBY resyncs so closing confirm() modals doesn't spam LiveKit tokens
+        lastResyncTimestamp = Date.now();
         ws.send(JSON.stringify({
             type: 'JOIN_LOBBY',
             code: activeRoom.toUpperCase(),
@@ -680,15 +752,15 @@ function resyncActiveSession() {
 }
 
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) resyncActiveSession();
+    if (!document.hidden) resyncActiveSession(true);
 });
 
 window.addEventListener('pageshow', () => {
-    resyncActiveSession();
+    resyncActiveSession(true);
 });
 
 window.addEventListener('focus', () => {
-    resyncActiveSession();
+    resyncActiveSession(false);
 });
 
 // UI & HTML compatibility aliases
