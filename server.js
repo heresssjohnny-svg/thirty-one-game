@@ -11,8 +11,13 @@ const config = require('./server/config');
 const db = require('./server/db');
 const authRouter = require('./server/auth');
 const { generateLiveKitToken } = require('./server/services/livekit');
-const { handleWebSocketMessage } = require('./server/game/wsHandler');
-const { getPublicLobbiesList, leaveLobby } = require('./server/game/lobbyManager');
+const { handleWebSocketMessage, clearReadyCountdown } = require('./server/game/wsHandler');
+const {
+    lobbies,
+    getPublicLobbiesList,
+    touchLobbyActivity,
+    broadcastLobbyUpdate
+} = require('./server/game/lobbyManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -102,8 +107,14 @@ function broadcastLobbyList() {
     });
 
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && !client.currentLobbyCode) {
-            client.send(listPayload);
+        if (client.readyState === WebSocket.OPEN) {
+            // Clear stale room reference if that lobby was closed
+            if (client.currentLobbyCode && !lobbies[client.currentLobbyCode]) {
+                client.currentLobbyCode = null;
+            }
+            if (!client.currentLobbyCode) {
+                client.send(listPayload);
+            }
         }
     });
 }
@@ -144,6 +155,9 @@ wss.on('connection', (ws, req) => {
     } catch (e) {}
 
     ws.on('message', async (message) => {
+        // Mark socket alive on any incoming message (including client PINGs)
+        ws.isAlive = true;
+
         let parsed;
         try {
             parsed = JSON.parse(message);
@@ -159,10 +173,20 @@ wss.on('connection', (ws, req) => {
                     const decoded = jwt.verify(token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
                     ws.user = decoded;
                     ws.userId = decoded.id || decoded.userId;
-                    ws.currentUsername = decoded.username;
+                    if (!ws.currentUsername && decoded.username) {
+                        ws.currentUsername = decoded.username;
+                    }
+                    ws.send(JSON.stringify({
+                        type: 'AUTH_SUCCESS',
+                        user: decoded
+                    }));
                 }
             } catch (err) {
                 console.error('[WS Auth] Invalid auth token:', err.message);
+                ws.send(JSON.stringify({
+                    type: 'AUTH_ERROR',
+                    message: 'Invalid or expired session token.'
+                }));
             }
             return;
         }
@@ -177,7 +201,9 @@ wss.on('connection', (ws, req) => {
                     ws.user = decoded;
                     uid = decoded.id || decoded.userId;
                     ws.userId = uid;
-                    ws.currentUsername = decoded.username;
+                    if (!ws.currentUsername && decoded.username) {
+                        ws.currentUsername = decoded.username;
+                    }
                 } catch (e) {}
             }
 
@@ -218,7 +244,9 @@ wss.on('connection', (ws, req) => {
                     const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
                     ws.user = decoded;
                     ws.userId = decoded.id || decoded.userId;
-                    ws.currentUsername = decoded.username;
+                    if (!ws.currentUsername && decoded.username) {
+                        ws.currentUsername = decoded.username;
+                    }
                 } catch (e) {}
             }
 
@@ -285,6 +313,39 @@ wss.on('connection', (ws, req) => {
 
         // Forward gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
+    });
+
+    // Clean up player/spectator state when a socket disconnects
+    ws.on('close', () => {
+        if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
+            const lobby = lobbies[ws.currentLobbyCode];
+
+            const player = lobby.players.find(p => p.id === ws);
+            if (player) {
+                if (typeof clearReadyCountdown === 'function') {
+                    clearReadyCountdown(player);
+                }
+                player.id = null;
+                player.disconnectedAt = Date.now();
+
+                if (lobby.endGameVote) {
+                    const seatedHumans = lobby.players.filter(p => !p.isBot && p.id !== null);
+                    if (seatedHumans.length <= 1) {
+                        lobby.endGameVote = null;
+                    }
+                }
+
+                broadcastLobbyUpdate(ws.currentLobbyCode);
+            }
+
+            const spec = (lobby.spectators || []).find(s => s.idSocket === ws);
+            if (spec) {
+                spec.idSocket = null;
+                spec.disconnectedAt = Date.now();
+            }
+
+            touchLobbyActivity(lobby, broadcastLobbyList);
+        }
     });
 });
 
