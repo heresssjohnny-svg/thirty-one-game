@@ -204,11 +204,11 @@
                 <button class="tool-btn" onclick="openSettingsModal()">⚙️</button>
             </div>
             
-            <!-- HOST WAITING ROOM CONFIG BAR -->
+                        <!-- HOST WAITING ROOM CONFIG BAR -->
             <div id="lobby-config-bar" class="lobby-controls" style="display: none;">
                 <div class="config-item">
                     <label>Starting Lives:</label>
-                    <select id="config-lives" onchange="updateSettings()">
+                    <select id="config-lives" onchange="window.updateSettings()">
                         <option value="1">1 Life</option>
                         <option value="2" selected>2 Lives</option>
                         <option value="3">3 Lives</option>
@@ -216,17 +216,18 @@
                 </div>
                 <div class="config-item">
                     <label>Table Wager:</label>
-                    <select id="config-wager" onchange="updateWager()">
+                    <select id="config-wager" onchange="window.updateWager()">
                         <option value="5" selected>$5</option>
                         <option value="10">$10</option>
                         <option value="20">$20</option>
                     </select>
                 </div>
                 <div class="config-item bot-actions">
-                    <button class="btn-sm" onclick="addBot()">+ Add Bot</button>
-                    <button class="btn-sm danger" onclick="removeBot()">- Remove Bot</button>
+                    <button class="btn-sm" onclick="window.addBot()">+ Add Bot</button>
+                    <button class="btn-sm danger" onclick="window.removeBot()">- Remove Bot</button>
                 </div>
             </div>
+
 
             <!-- IN-GAME REVEAL MODALS -->
             <div id="center-notification-banner" class="notification-pill" style="display: none;"></div>
