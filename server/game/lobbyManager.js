@@ -563,42 +563,6 @@ function broadcastLobbyUpdate(code) {
     });
 }
 
-function handleSetReady(lobby, username, isReady) {
-    if (!lobby || lobby.gameState !== 'lobby') return;
-    const player = lobby.players.find(p => p.username && p.username.toLowerCase() === (username || '').toLowerCase());
-    if (!player) return;
-
-    player.ready = Boolean(isReady);
-
-    if (player.ready) {
-        clearReadyCountdown(player);
-    } else {
-        startReadyCountdown(lobby, player);
-    }
-
-    syncBotReadiness(lobby);
-    broadcastLobbyUpdate(lobby.code);
-
-    const active = getActiveParticipants(lobby);
-    if (active.length >= 2 && active.every(p => p.ready)) {
-        lobby.players.forEach(p => { 
-            clearReadyCountdown(p);
-            p.ready = false; 
-        });
-
-        const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
-            p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
-        );
-
-        if (winnerStillSeated) {
-            establishDealer(lobby);
-            startRound(lobby);
-        } else {
-            startDealerDrawPhase(lobby);
-        }
-    }
-}
-
 // -------------------------------------------------------------
 // SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
 // -------------------------------------------------------------
@@ -780,7 +744,6 @@ function startDealerDrawPhase(lobby) {
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
 }
-
 
 function startRound(lobby) {
     clearRoundOverTimer(lobby);
@@ -1486,30 +1449,6 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
             lobby.spectators = lobby.spectators.filter(s => s !== spec);
         }
     });
-
-    establishDealer(lobby);
-
-    lobby.players.forEach((p, idx) => {
-        p.lives = lobby.defaultLives || 2;
-        p.eliminated = false;
-        p.cards = [];
-        p.ready = false;
-        p.seat = idx;
-        p.nextHandReady = false;
-        p.peekRequests = {};
-        p.peekAllowed = {};
-        startReadyCountdown(lobby, p);
-    });
-
-    lobby.spectators = lobby.spectators.filter(s => {
-        return s.idSocket && s.idSocket.readyState === WebSocket.OPEN;
-    });
-
-    syncBotReadiness(lobby);
-    broadcastLobbyUpdate(lobby.code);
-    if (broadcastLobbyList) broadcastLobbyList();
-}
-
 
     establishDealer(lobby);
 
