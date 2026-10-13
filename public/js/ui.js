@@ -1290,7 +1290,13 @@ window.updateUIFromLobby = function(lobby) {
         handContainer.innerHTML = '';
         if (scoreDisplay) scoreDisplay.innerText = '0';
     }
-};
+    // 14. LOBBY CONFIG BAR VISIBILITY
+    const configBar = document.getElementById('lobby-config-bar');
+    if (configBar) {
+        configBar.style.display = (lobby.gameState === 'lobby') ? 'flex' : 'none';
+    }
+}; // <-- This is the existing closing bracket for window.updateUIFromLobby
+
 
 window.renderLobbyState = window.updateUIFromLobby;
 
