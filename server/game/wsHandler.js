@@ -289,6 +289,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 phaseMessage: 'Waiting for players to ready up...',
                 turnsTakenThisRound: 0,
                 livesVote: null,
+                endGameVote: null,
                 players: [{
                     id: ws,
                     username,
@@ -1158,12 +1159,67 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        // ---------------------------------------------------------
+        // 5. END GAME VOTE ENGINE
+        // ---------------------------------------------------------
         case 'END_GAME_PROPOSAL': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                clearTurnTimer(lobby);
-                resetLobbyToReadyRoom(lobby, `${currentUsername} ended the match.`, broadcastLobbyList);
+
+                // Prevent starting another vote if one is already in progress
+                if (lobby.endGameVote) return;
+
+                const seatedHumans = lobby.players.filter(p => !p.isBot);
+
+                // If only 1 human player is present (playing solo or with bots), end immediately
+                if (seatedHumans.length <= 1) {
+                    clearTurnTimer(lobby);
+                    resetLobbyToReadyRoom(lobby, `${currentUsername} ended the match.`, broadcastLobbyList);
+                    return;
+                }
+
+                // If multiple human players are seated, initiate a majority vote
+                lobby.endGameVote = {
+                    proposer: currentUsername,
+                    votes: { [currentUsername]: true }, // Proposer automatically votes "Yes"
+                    totalVoters: seatedHumans.length
+                };
+
+                lobby.phaseMessage = `🗳️ ${currentUsername} proposed ending the match! Cast your vote.`;
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
+        case 'VOTE_END_GAME': {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                if (!lobby.endGameVote) return;
+
+                const seatedHuman = lobby.players.find(p => p.id === ws && !p.isBot);
+                if (!seatedHuman) return;
+
+                lobby.endGameVote.votes[seatedHuman.username] = !!data.agree;
+
+                const seatedHumans = lobby.players.filter(p => !p.isBot);
+                const yesCount = Object.values(lobby.endGameVote.votes).filter(v => v === true).length;
+                const noCount = Object.values(lobby.endGameVote.votes).filter(v => v === false).length;
+                const majorityNeeded = Math.floor(seatedHumans.length / 2) + 1;
+
+                if (yesCount >= majorityNeeded) {
+                    lobby.phaseMessage = `✅ Vote passed! Match ended by majority vote.`;
+                    lobby.endGameVote = null;
+                    clearTurnTimer(lobby);
+                    resetLobbyToReadyRoom(lobby, `🗳️ Match ended by majority vote.`, broadcastLobbyList);
+                    return;
+                } else if (noCount >= majorityNeeded || Object.keys(lobby.endGameVote.votes).length >= seatedHumans.length) {
+                    lobby.phaseMessage = `❌ Vote failed. Match continues!`;
+                    lobby.endGameVote = null;
+                }
+
+                broadcastLobbyUpdate(currentLobbyCode);
             }
             break;
         }
@@ -1260,6 +1316,15 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     clearReadyCountdown(player);
                     player.id = null;
                     player.disconnectedAt = Date.now();
+
+                    // If an end game vote is active and this player drops, check if threshold is resolved
+                    if (lobby.endGameVote) {
+                        const seatedHumans = lobby.players.filter(p => !p.isBot && p.id !== null);
+                        if (seatedHumans.length <= 1) {
+                            lobby.endGameVote = null;
+                        }
+                    }
+
                     broadcastLobbyUpdate(ws.currentLobbyCode);
                 }
                 
