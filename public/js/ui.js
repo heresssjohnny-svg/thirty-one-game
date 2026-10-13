@@ -1378,6 +1378,89 @@ window.updateUIFromLobby = function(lobby) {
             dealerDrawModal.style.display = 'none';
         }
     }
+    // 15. DEALER DRAW & TIE BREAKER MODALS
+    const dealerDrawModal = document.getElementById('dealer-draw-modal');
+    if (dealerDrawModal) {
+        if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+            dealerDrawModal.style.display = 'flex';
+
+            const pTitle = document.getElementById('dealer-draw-title');
+            if (pTitle) pTitle.innerText = lobby.gameState === 'tieBreaker' ? 'Tie-Breaker Draw' : 'Picking for Dealer';
+
+            const pInstr = document.getElementById('dealer-draw-status');
+            if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
+            
+            const sequenceDiv = document.getElementById('draw-order-sequence');
+            if (sequenceDiv) {
+                let drawParts = (lobby.players || []).filter(p => !p.eliminated);
+                if (lobby.gameState === 'tieBreaker') {
+                    drawParts = drawParts.filter(p => (lobby.tiedParticipantsList || []).includes(p.username));
+                }
+                
+                let showcaseHtml = '';
+                drawParts.forEach(p => {
+                    const card = lobby.drawResults?.[p.username];
+                    const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
+                    showcaseHtml += `
+                        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+                            <span style="font-size:0.75rem; font-weight:bold; ${isMe ? 'color:#38bdf8;' : 'color:#cbd5e1;'}">
+                                ${p.username}${p.isBot ? ' 🤖' : ''}
+                            </span>
+                            ${card ? window.formatCardHtml(card, true) : '<div style="width:40px; height:56px; border:1px dashed #64748b; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#94a3b8;">Wait</div>'}
+                        </div>
+                    `;
+                });
+                sequenceDiv.style.display = 'flex';
+                sequenceDiv.style.gap = '12px';
+                sequenceDiv.style.justifyContent = 'center';
+                sequenceDiv.style.flexWrap = 'wrap';
+                sequenceDiv.style.marginBottom = '16px';
+                sequenceDiv.innerHTML = showcaseHtml;
+            }
+
+            const poolGrid = document.getElementById('draw-pool-grid');
+            if (poolGrid) {
+                let poolHtml = '';
+                const isSpecUser = window.clientState.isSpectator;
+                
+                (lobby.drawPool || []).forEach((slot, idx) => {
+                    const slotIndex = slot.index !== undefined ? slot.index : idx;
+                    const isChosen = slot.chosenBy !== null;
+                    
+                    let clickable = false;
+                    if (!isSpecUser && !isChosen) {
+                        if (lobby.gameState === 'dealerDraw' && !lobby.drawResults?.[activeUsername]) clickable = true;
+                        if (lobby.gameState === 'tieBreaker' && (lobby.tiedParticipantsList || []).includes(activeUsername) && !lobby.drawResults?.[activeUsername]) clickable = true;
+                    }
+
+                    if (isChosen) {
+                        poolHtml += `
+                            <div style="width:40px; height:56px; background:rgba(0,0,0,0.6); border-radius:4px; display:flex; align-items:center; justify-content:center; flex-direction:column;">
+                                <span style="font-size:0.5rem; color:#94a3b8; text-align:center; word-break:break-all; padding:2px;">${slot.chosenBy}</span>
+                            </div>
+                        `;
+                    } else if (clickable) {
+                        poolHtml += `
+                            <div style="width:40px; height:56px; background:repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px); border:1px solid #3b82f6; border-radius:4px; cursor:pointer;" onclick="window.selectPoolCard(${slotIndex})">
+                            </div>
+                        `;
+                    } else {
+                        poolHtml += `
+                            <div style="width:40px; height:56px; background:repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px); border:1px solid #475569; border-radius:4px; opacity:0.5;" onclick="window.showCenterNotification('You cannot pick a card right now.')">
+                            </div>
+                        `;
+                    }
+                });
+                poolGrid.style.display = 'flex';
+                poolGrid.style.flexWrap = 'wrap';
+                poolGrid.style.gap = '6px';
+                poolGrid.style.justifyContent = 'center';
+                poolGrid.innerHTML = poolHtml;
+            }
+        } else {
+            dealerDrawModal.style.display = 'none';
+        }
+    }
 }; // <-- Make sure this closing bracket is still at the very end!
 
 
