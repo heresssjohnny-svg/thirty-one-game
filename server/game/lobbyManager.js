@@ -238,7 +238,7 @@ function executeLevel8AITurn(lobby, player) {
         && cards.length === 3 
         && (lobby.turnsTakenThisRound || 0) >= active.length;
 
-    const knockThreshold = active.length > 2 ? 26 : 26;
+    const knockThreshold = active.length > 2 ? 26 : 25;
     if (canKnock && currentScore >= knockThreshold) {
         handleKnock(lobby, player.id);
         return;
@@ -316,6 +316,15 @@ function handleRequestPeek(lobby, ws, targetUsername) {
     if (!target.peekAllowed) target.peekAllowed = {};
 
     if (target.isBot) {
+        lobby.players.forEach(p => {
+            if (p.peekAllowed) {
+                Object.keys(p.peekAllowed).forEach(k => {
+                    if (k.toLowerCase() === requesterName.toLowerCase()) {
+                        delete p.peekAllowed[k];
+                    }
+                });
+            }
+        });
         target.peekAllowed[requesterName] = true;
     } else {
         target.peekRequests[requesterName] = true;
@@ -885,6 +894,7 @@ function startDealerDrawPhase(lobby) {
     lobby.lastDiscardPickup = null;
     lobby.fedCardReminders = {};
     lobby.fedCardsHistory = {};
+    lobby.globalProposals = [];
     lobby.players.forEach(p => {
         p.peekAllowed = {};
         p.peekRequests = {};
@@ -916,6 +926,12 @@ function startRound(lobby) {
     lobby.gameState = 'playing';
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
+
+    // Single-round global proposals/bets do not carry over to a new round
+    lobby.globalProposals = [];
+    if (Array.isArray(lobby.activeBets)) {
+        lobby.activeBets = lobby.activeBets.filter(b => b.type === 'eliminate' || b.type === 'first_out');
+    }
 
     const activeParts = getActiveParticipants(lobby);
     if (activeParts.length <= 1) {
@@ -1146,21 +1162,28 @@ function handleTurnAction(lobby, wsId, actionType) {
             }
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
+            // Pass 1: Deduct lives and mark all eliminated players first
+            const newlyEliminated = [];
             lobby.players.forEach(p => {
                 if (p.username !== currentPlayer.username && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
-                        resolveFirstToLoseBets(lobby, p.username);
+                        newlyEliminated.push(p);
                         if (p.id && typeof p.id === 'object') {
                             addSpectatorUnique(lobby, { idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
                         }
                     }
                 }
             });
+            // Pass 2: Resolve First-to-Lose bets now that all life totals are updated
+            newlyEliminated.forEach(p => {
+                resolveFirstToLoseBets(lobby, p.username);
+            });
             lobby.phaseMessage = `⚡ 31! ${currentPlayer.username} hit 31 points! All other players lose a life.`;
         }
 
+        // Resolve single-round global bets for this hand
         resolveWinSideBets(lobby, currentPlayer.username);
         syncLifetimeLedgerBalances(lobby);
 
@@ -1263,21 +1286,28 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             }
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
+            // Pass 1: Deduct lives and mark all eliminated players first
+            const newlyEliminated = [];
             lobby.players.forEach(p => {
                 if (p.username !== currentPlayer.username && !p.eliminated) {
                     p.lives = Math.max(0, p.lives - 1);
                     if (p.lives <= 0) {
                         p.eliminated = true;
-                        resolveFirstToLoseBets(lobby, p.username);
+                        newlyEliminated.push(p);
                         if (p.id && typeof p.id === 'object') {
                             addSpectatorUnique(lobby, { idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
                         }
                     }
                 }
             });
+            // Pass 2: Resolve First-to-Lose bets now that all life totals are updated
+            newlyEliminated.forEach(p => {
+                resolveFirstToLoseBets(lobby, p.username);
+            });
             lobby.phaseMessage = `⚡ 31! ${currentPlayer.username} hit 31 points! All other players lose a life.`;
         }
 
+        // Resolve single-round global bets for this hand
         resolveWinSideBets(lobby, currentPlayer.username);
         syncLifetimeLedgerBalances(lobby);
 
@@ -1406,6 +1436,15 @@ function resolveRoundEnd(lobby) {
     const lowest = scores[0].s;
     const tied = scores.filter(s => s.s === lowest);
 
+    // Determine single-round winner (unique highest score in this hand)
+    const highest = scores[scores.length - 1].s;
+    const highestTied = scores.filter(s => s.s === highest);
+    const roundWinnerUsername = (highestTied.length === 1) ? highestTied[0].p.username : null;
+
+    // Resolve (or push if tied) all single-round Global 'win' bets for this hand immediately
+    resolveWinSideBets(lobby, roundWinnerUsername);
+    syncLifetimeLedgerBalances(lobby);
+
     if (tied.length > 1) {
         if (active.length === 2) {
             triggerRoundOver(lobby, `Round tied at ${lowest} pts. No one loses a life!`);
@@ -1423,7 +1462,6 @@ function resolveRoundEnd(lobby) {
         }
     } else {
         const loser = scores[0].p;
-        const winner = scores[scores.length - 1].p;
         loser.lives = Math.max(0, loser.lives - 1);
 
         if (loser.lives <= 0 && !loser.eliminated) {
@@ -1434,9 +1472,6 @@ function resolveRoundEnd(lobby) {
                 addSpectatorUnique(lobby, { idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
             }
         }
-
-        resolveWinSideBets(lobby, winner.username);
-        syncLifetimeLedgerBalances(lobby);
 
         if (getActiveParticipants(lobby).length <= 1) {
             awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
@@ -1451,6 +1486,10 @@ function triggerRoundOver(lobby, msg) {
     clearRoundOverTimer(lobby);
     clearTurnTimer(lobby);
     lobby.fedCardReminders = {};
+    lobby.globalProposals = [];
+    if (Array.isArray(lobby.activeBets)) {
+        lobby.activeBets = lobby.activeBets.filter(b => b.type === 'eliminate' || b.type === 'first_out');
+    }
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
     lobby.players.forEach(p => { 
@@ -1499,9 +1538,9 @@ function awardTournamentWinner(lobby, winner) {
         }
     });
 
-    if (typeof resolveWinSideBets === 'function') {
-        resolveWinSideBets(lobby, winner.username);
-    }
+    // Clear any remaining activeBets/proposals at tournament end
+    lobby.globalProposals = [];
+    lobby.activeBets = [];
 
     lobby.lastGameWinner = winner.username;
     lobby.tournamentWinner = winner.username;
