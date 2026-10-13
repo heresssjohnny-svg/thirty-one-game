@@ -602,12 +602,52 @@ function handleSetReady(lobby, username, isReady) {
 // -------------------------------------------------------------
 // SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
 // -------------------------------------------------------------
+
+function attemptGameStart(lobby) {
+    const active = getActiveParticipants(lobby);
+    if (active.length >= 2 && active.every(p => p.ready)) {
+        lobby.players.forEach(p => { 
+            clearReadyCountdown(p);
+            p.ready = false; 
+            p.eliminated = false;
+            p.lives = lobby.defaultLives || 2;
+        });
+
+        const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
+            p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
+        );
+
+        if (winnerStillSeated || lobby.hasEstablishedInitialDealer) {
+            establishDealer(lobby);
+            startRound(lobby);
+        } else {
+            startDealerDrawPhase(lobby);
+        }
+    }
+}
+
+function handleSetReady(lobby, username, isReady) {
+    if (!lobby || lobby.gameState !== 'lobby') return;
+    const player = lobby.players.find(p => p.username && p.username.toLowerCase() === (username || '').toLowerCase());
+    if (!player) return;
+
+    player.ready = Boolean(isReady);
+
+    if (player.ready) {
+        clearReadyCountdown(player);
+    } else {
+        startReadyCountdown(lobby, player);
+    }
+
+    syncBotReadiness(lobby);
+    attemptGameStart(lobby);
+    broadcastLobbyUpdate(lobby.code);
+}
+
 function handleSitDown(lobby, ws, username) {
     if (!lobby || lobby.gameState !== 'lobby') return false;
 
     const cleanName = (username || '').trim().toLowerCase();
-
-    // 1. Re-attach to existing seated player
     const existingPlayer = lobby.players.find(p => 
         (p.id && p.id === ws) || 
         (cleanName && p.username && p.username.toLowerCase() === cleanName)
@@ -623,13 +663,13 @@ function handleSitDown(lobby, ws, username) {
         if (!existingPlayer.ready) {
             startReadyCountdown(lobby, existingPlayer);
         }
+        attemptGameStart(lobby);
         broadcastLobbyUpdate(lobby.code);
         return true;
     }
 
     if (lobby.players.length >= 6) return false;
 
-    // 2. Identify spectator from lobby.spectators
     const specIndex = lobby.spectators.findIndex(s => 
         (s.idSocket && s.idSocket === ws) || 
         (cleanName && s.username && s.username.toLowerCase() === cleanName)
@@ -669,6 +709,7 @@ function handleSitDown(lobby, ws, username) {
     startReadyCountdown(lobby, newPlayer);
 
     syncBotReadiness(lobby);
+    attemptGameStart(lobby);
     broadcastLobbyUpdate(lobby.code);
     return true;
 }
@@ -705,6 +746,7 @@ function handleStandUp(lobby, ws, username) {
 
     establishDealer(lobby);
     syncBotReadiness(lobby);
+    attemptGameStart(lobby);
     broadcastLobbyUpdate(lobby.code);
     return true;
 }
@@ -720,6 +762,7 @@ function startDealerDrawPhase(lobby) {
     lobby.drawOrderSequence = [];
     lobby.tiedParticipantsList = [];
     lobby.pendingBotDraw = {};
+    lobby.hasEstablishedInitialDealer = true; 
     lobby.phaseMessage = "Picking for Dealer (Lowest card deals, Ace highest)";
     lobby.gameState = 'dealerDraw';
     lobby.knockedBy = null;
@@ -737,6 +780,7 @@ function startDealerDrawPhase(lobby) {
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
 }
+
 
 function startRound(lobby) {
     clearRoundOverTimer(lobby);
@@ -1393,7 +1437,12 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.globalProposals = [];
     lobby.knockedBy = null;
     lobby.finalTurnsTaken = {};
+    
+    // Completely wipe previous state to force a new Dealer Draw on the next match
     lobby.tournamentWinner = null;
+    lobby.lastGameWinner = null;
+    lobby.hasEstablishedInitialDealer = false;
+    
     lobby.hit31Player = null;
     lobby.lastDiscardPickup = null;
     lobby.lastDiscardDonor = null;
@@ -1437,6 +1486,30 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
             lobby.spectators = lobby.spectators.filter(s => s !== spec);
         }
     });
+
+    establishDealer(lobby);
+
+    lobby.players.forEach((p, idx) => {
+        p.lives = lobby.defaultLives || 2;
+        p.eliminated = false;
+        p.cards = [];
+        p.ready = false;
+        p.seat = idx;
+        p.nextHandReady = false;
+        p.peekRequests = {};
+        p.peekAllowed = {};
+        startReadyCountdown(lobby, p);
+    });
+
+    lobby.spectators = lobby.spectators.filter(s => {
+        return s.idSocket && s.idSocket.readyState === WebSocket.OPEN;
+    });
+
+    syncBotReadiness(lobby);
+    broadcastLobbyUpdate(lobby.code);
+    if (broadcastLobbyList) broadcastLobbyList();
+}
+
 
     establishDealer(lobby);
 
