@@ -36,12 +36,35 @@ window.appGlobals = window.appGlobals || {
     notificationTimer: null
 };
 
-// Unified username helper preventing fallbacks to 'Player1'
+// Resilient username resolver preventing fallbacks to 'Player1'
+window.getMyUsername = function(lobby) {
+    let name = (window.clientState?.username || '').trim();
+
+    if (!name || name === 'Player1') {
+        const inputVal = (document.getElementById('username-input')?.value || '').trim();
+        if (inputVal && inputVal !== 'Player1') name = inputVal;
+    }
+
+    if (!name || name === 'Player1') {
+        name = (localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '').trim();
+    }
+
+    if (lobby && Array.isArray(lobby.players) && lobby.players.length > 0) {
+        if (name) {
+            const match = lobby.players.find(p => p.username.toLowerCase() === name.toLowerCase());
+            if (match) return match.username;
+        }
+        const seatZero = lobby.players.find(p => p.seat === 0 && !p.isBot);
+        if (seatZero) {
+            window.clientState.username = seatZero.username;
+            return seatZero.username;
+        }
+    }
+    return name || 'Player1';
+};
+
 function getActiveUsername() {
-    return (window.clientState?.username || 
-            localStorage.getItem('saved_username') || 
-            document.getElementById('username-input')?.value || 
-            'Player1').trim();
+    return window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
 }
 
 function getActiveRoomCode() {
@@ -347,8 +370,45 @@ window.hideAllBetsButtons = function() {
         });
     });
 };
-window.openActiveBetsModal = window.hideAllBetsButtons;
 document.addEventListener('DOMContentLoaded', window.hideAllBetsButtons);
+
+window.openActiveBetsModal = function() {
+    const myName = getActiveUsername();
+    const contentDiv = document.getElementById('active-bets-content');
+    const active = window.clientState.activeBetsList || [];
+    const pending = window.clientState.pendingBetsList || [];
+
+    const myActive = active.filter(b => (b.proposer || b.bettor) === myName || b.target === myName || b.pickUser === myName);
+    const myPending = pending.filter(b => (b.proposer || b.creator) === myName || b.target === myName || b.pickUser === myName);
+
+    let html = `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Active Side Bets (${myActive.length})</div>`;
+    if (myActive.length === 0) {
+        html += `<div style="margin-left:8px; margin-bottom:8px; color:var(--text-muted);">None currently active.</div>`;
+    } else {
+        html += '<ul style="margin-left:14px; margin-bottom:8px;">';
+        myActive.forEach(b => {
+            const desc = (b.type === 'eliminate' || b.type === 'first_out')
+                ? `Bet with ${(b.proposer || b.bettor) === myName ? b.target : (b.proposer || b.bettor)}: $${b.wagerAmt} on ${b.pickUser} to lose first`
+                : `Global Bet: $${b.wagerAmt} on ${b.pickUser || b.condition}`;
+            html += `<li style="margin-bottom:3px;">${desc}</li>`;
+        });
+        html += '</ul>';
+    }
+
+    html += `<div style="font-weight:bold; color:var(--accent-gold); margin-bottom:4px;">Pending Side Bets (${myPending.length})</div>`;
+    if (myPending.length === 0) {
+        html += `<div style="margin-left:8px; color:var(--text-muted);">None currently pending.</div>`;
+    } else {
+        html += '<ul style="margin-left:14px;">';
+        myPending.forEach(b => {
+            html += `<li style="margin-bottom:3px;">Proposal from ${b.proposer || b.creator}: $${b.wagerAmt}</li>`;
+        });
+        html += '</ul>';
+    }
+
+    if (contentDiv) contentDiv.innerHTML = html;
+    window.toggleModal('active-bets-modal');
+};
 
 // --- LOBBY SESSION LEDGER CONTROLS (BILATERAL NETTED ENGINE) ---
 window.toggleSessionLedger = function(show) {
@@ -480,7 +540,6 @@ window.renderLobbyList = function(lobbies) {
 };
 
 window.renderPublicLobbies = window.renderLobbyList;
-
 
 // -------------------------------------------------------------
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
@@ -1255,6 +1314,11 @@ window.updateUIFromLobby = function(lobby) {
                 </div>
             `;
         });
+        
+        // Hide remaining unused seats dynamically
+        for (let i = (lobby.players || []).length; i < 6; i++) {
+             html += `<div class="seat seat-${i} empty-seat" style="display: none !important;"></div>`;
+        }
 
         tableContainer.innerHTML = html;
         if (nextHandOverlay) tableContainer.appendChild(nextHandOverlay);
@@ -1290,11 +1354,13 @@ window.updateUIFromLobby = function(lobby) {
         handContainer.innerHTML = '';
         if (scoreDisplay) scoreDisplay.innerText = '0';
     }
+
     // 14. LOBBY CONFIG BAR VISIBILITY
     const configBar = document.getElementById('lobby-config-bar');
     if (configBar) {
         configBar.style.display = (lobby.gameState === 'lobby') ? 'flex' : 'none';
     }
+
     // 15. DEALER DRAW & TIE BREAKER MODALS
     const dealerDrawModal = document.getElementById('dealer-draw-modal');
     if (dealerDrawModal) {
@@ -1358,7 +1424,7 @@ window.updateUIFromLobby = function(lobby) {
                         `;
                     } else if (clickable) {
                         poolHtml += `
-                            <div style="width:40px; height:56px; background:repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px); border:1px solid #3b82f6; border-radius:4px; cursor:pointer;" onclick="window.selectPoolCard(${slotIndex})">
+                            <div style="width:40px; height:56px; background:repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px); border:1px solid #3b82f6; border-radius:4px; cursor:pointer;" onclick="window.choosePoolCard(${slotIndex})">
                             </div>
                         `;
                     } else {
@@ -1378,92 +1444,7 @@ window.updateUIFromLobby = function(lobby) {
             dealerDrawModal.style.display = 'none';
         }
     }
-    // 15. DEALER DRAW & TIE BREAKER MODALS
-    const dealerDrawModal = document.getElementById('dealer-draw-modal');
-    if (dealerDrawModal) {
-        if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
-            dealerDrawModal.style.display = 'flex';
-
-            const pTitle = document.getElementById('dealer-draw-title');
-            if (pTitle) pTitle.innerText = lobby.gameState === 'tieBreaker' ? 'Tie-Breaker Draw' : 'Picking for Dealer';
-
-            const pInstr = document.getElementById('dealer-draw-status');
-            if (pInstr) pInstr.innerText = lobby.phaseMessage || 'Lowest card deals (Ace highest). Tap any card!';
-            
-            const sequenceDiv = document.getElementById('draw-order-sequence');
-            if (sequenceDiv) {
-                let drawParts = (lobby.players || []).filter(p => !p.eliminated);
-                if (lobby.gameState === 'tieBreaker') {
-                    drawParts = drawParts.filter(p => (lobby.tiedParticipantsList || []).includes(p.username));
-                }
-                
-                let showcaseHtml = '';
-                drawParts.forEach(p => {
-                    const card = lobby.drawResults?.[p.username];
-                    const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
-                    showcaseHtml += `
-                        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-                            <span style="font-size:0.75rem; font-weight:bold; ${isMe ? 'color:#38bdf8;' : 'color:#cbd5e1;'}">
-                                ${p.username}${p.isBot ? ' 🤖' : ''}
-                            </span>
-                            ${card ? window.formatCardHtml(card, true) : '<div style="width:40px; height:56px; border:1px dashed #64748b; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#94a3b8;">Wait</div>'}
-                        </div>
-                    `;
-                });
-                sequenceDiv.style.display = 'flex';
-                sequenceDiv.style.gap = '12px';
-                sequenceDiv.style.justifyContent = 'center';
-                sequenceDiv.style.flexWrap = 'wrap';
-                sequenceDiv.style.marginBottom = '16px';
-                sequenceDiv.innerHTML = showcaseHtml;
-            }
-
-            const poolGrid = document.getElementById('draw-pool-grid');
-            if (poolGrid) {
-                let poolHtml = '';
-                const isSpecUser = window.clientState.isSpectator;
-                
-                (lobby.drawPool || []).forEach((slot, idx) => {
-                    const slotIndex = slot.index !== undefined ? slot.index : idx;
-                    const isChosen = slot.chosenBy !== null;
-                    
-                    let clickable = false;
-                    if (!isSpecUser && !isChosen) {
-                        if (lobby.gameState === 'dealerDraw' && !lobby.drawResults?.[activeUsername]) clickable = true;
-                        if (lobby.gameState === 'tieBreaker' && (lobby.tiedParticipantsList || []).includes(activeUsername) && !lobby.drawResults?.[activeUsername]) clickable = true;
-                    }
-
-                    if (isChosen) {
-                        poolHtml += `
-                            <div style="width:40px; height:56px; background:rgba(0,0,0,0.6); border-radius:4px; display:flex; align-items:center; justify-content:center; flex-direction:column;">
-                                <span style="font-size:0.5rem; color:#94a3b8; text-align:center; word-break:break-all; padding:2px;">${slot.chosenBy}</span>
-                            </div>
-                        `;
-                    } else if (clickable) {
-                        poolHtml += `
-                            <div style="width:40px; height:56px; background:repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px); border:1px solid #3b82f6; border-radius:4px; cursor:pointer;" onclick="window.selectPoolCard(${slotIndex})">
-                            </div>
-                        `;
-                    } else {
-                        poolHtml += `
-                            <div style="width:40px; height:56px; background:repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px); border:1px solid #475569; border-radius:4px; opacity:0.5;" onclick="window.showCenterNotification('You cannot pick a card right now.')">
-                            </div>
-                        `;
-                    }
-                });
-                poolGrid.style.display = 'flex';
-                poolGrid.style.flexWrap = 'wrap';
-                poolGrid.style.gap = '6px';
-                poolGrid.style.justifyContent = 'center';
-                poolGrid.innerHTML = poolHtml;
-            }
-        } else {
-            dealerDrawModal.style.display = 'none';
-        }
-    }
-}; // <-- Make sure this closing bracket is still at the very end!
-
-
+};
 
 window.renderLobbyState = window.updateUIFromLobby;
 
@@ -1471,7 +1452,6 @@ window.renderLobbyState = window.updateUIFromLobby;
 // 10. MICROPHONE BUTTON BINDINGS & DOM READY INITIALIZATION
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-    // Bind all known microphone buttons to voice.js toggle function
     const micButtons = [
         document.getElementById('vc-main-btn'),
         document.getElementById('voice-btn'),
@@ -1496,7 +1476,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // 16. MISSING MODAL CLOSES, ALIASES & SPECTATOR LIST FIX
 // -------------------------------------------------------------
 
-// Fix: The Spectator Modal IDs didn't match the HTML
 window.openSpectatorListModal = function() {
     const content = document.getElementById('spectators-list');
     const specs = window.clientState.spectatorsList || [];
@@ -1511,7 +1490,6 @@ window.openSpectatorListModal = function() {
     window.toggleModal('spectator-list-modal');
 };
 
-// Fix: Missing "X" close button handlers from index.html
 window.closeSettingsModal = function() { 
     const m = document.getElementById('settings-modal');
     if (m) m.style.display = 'none'; 
@@ -1532,18 +1510,15 @@ window.closeLifetimeLedgerModal = function() {
     if (m) m.style.display = 'none'; 
 };
 
-// Fix: Missing Lifetime Ledger Open handler (Requests data from backend)
 window.openLifetimeLedgerModal = function() {
     if (typeof sendSocket === 'function') sendSocket({ type: 'GET_LIFETIME_LEDGER' });
     const m = document.getElementById('lifetime-ledger-modal');
     if (m) m.style.display = 'flex';
 };
 
-// Fix: Missing Ledger Share Button handler (Copies to clipboard)
 window.shareLedgerSnapshot = function() {
     const content = document.getElementById('session-ledger-content');
     if (content && navigator.clipboard) {
-        // Strip out any UI artifacts like the close 'X' before copying
         const textToCopy = content.innerText.replace(/✕/g, '').trim();
         navigator.clipboard.writeText(textToCopy).then(() => {
             if (typeof window.showCenterNotification === 'function') {
@@ -1552,4 +1527,3 @@ window.shareLedgerSnapshot = function() {
         }).catch(err => console.warn("Clipboard copy failed", err));
     }
 };
-
