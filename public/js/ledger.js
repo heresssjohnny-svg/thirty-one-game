@@ -1,9 +1,9 @@
-// public/js/ledger.js - Session & Lifetime Ledger Management Engine (PART 1 OF 2)
+// public/js/ledger.js - Session & Lifetime Ledger Management Engine
 
 /**
- * Calculates bilateral/pairwise net balances from raw ledger debts.
- * Positive = player is owed money (creditor).
- * Negative = player owes money (debtor).
+ * Calculates bilateral/pairwise net balances from raw ledger debts[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span).
+ * Positive = player is owed money (creditor)[span_6](start_span)[span_6](end_span)[span_7](start_span)[span_7](end_span).
+ * Negative = player owes money (debtor)[span_8](start_span)[span_8](end_span)[span_9](start_span)[span_9](end_span).
  */
 function calculatePairwiseNet(ledger) {
     if (!ledger) return {};
@@ -23,12 +23,26 @@ function calculatePairwiseNet(ledger) {
 }
 
 /**
- * Renders the in-game Lobby Session Ledger modal
+ * Helper to dispatch WebSocket payloads across client setups
  */
+function sendLedgerSocket(payload) {
+    if (typeof window.sendSocket === 'function') {
+        window.sendSocket(payload);
+    } else {
+        const ws = window.gameSocket || window.ws || window.socket || window.appGlobals?.ws;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(payload));
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// 1. SESSION LEDGER (FILTERED TO "OWES ME" / "I OWE")
+// -------------------------------------------------------------
+
 function openSessionLedgerModal() {
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
-
     renderSessionLedger();
     modal.style.display = 'flex';
 }
@@ -39,40 +53,17 @@ function closeSessionLedgerModal() {
 }
 
 function renderSessionLedger() {
-    const activeBetsEl = document.getElementById('active-session-bets-list');
-    const container = document.getElementById('session-settled-ledger-list')
-        || document.getElementById('session-ledger-display')
-        || document.getElementById('session-ledger-content') 
-        || document.getElementById('ledger-content');
-
-    const state = window.clientState || {};
-    const snapshot = window.appGlobals?.latestLobbySnapshot || {};
-    const mainLedger = snapshot.mainGameLedger || state.mainGameLedger || {};
-    const sideLedger = snapshot.sideBetLedger || state.sideBetLedger || {};
-
-    // 1. Render Active Unresolved Bets
-    if (activeBetsEl) {
-        const activeList = snapshot.activeBets || state.activeBetsList || [];
-        if (activeList.length === 0) {
-            activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
-        } else {
-            activeBetsEl.innerHTML = activeList.map(b => {
-                const desc = (b.type === 'eliminate' || b.type === 'first_out')
-                    ? `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.pickUser} out first)`
-                    : `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.condition || 'Win'})`;
-                return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:0.8rem;">${desc}</span>
-                        <span style="color:var(--accent-gold); font-weight:bold; font-size:0.85rem;">$${b.wagerAmt || 5}</span>
-                    </div>
-                `;
-            }).join('');
-        }
-    }
-
+    const container = document.getElementById('session-ledger-content') 
+        || document.getElementById('ledger-content')
+        || document.getElementById('session-ledger-list')
+        || document.getElementById('session-settled-ledger-list');
     if (!container) return;
 
-    // 2. Net settlement ledger
+    const state = window.clientState || {};
+    const lobby = window.appGlobals?.latestLobbySnapshot || {};
+    const mainLedger = lobby.mainGameLedger || state.mainGameLedger || {};
+    const sideLedger = lobby.sideBetLedger || state.sideBetLedger || {};
+
     const combined = {};
     const mergeLedger = (src) => {
         for (const debtor in src) {
@@ -84,6 +75,223 @@ function renderSessionLedger() {
         }
     };
 
+    mergeLedger(mainLedger);
+    mergeLedger(sideLedger);
+
+    const netMatrix = calculatePairwiseNet(combined);
+    const myUsername = (state.username || localStorage.getItem('blitz31_username') || localStorage.getItem('saved_username') || '').toLowerCase();
+    const allRows = [];
+    const processedPairs = new Set();
+
+    for (const p1 in netMatrix) {
+        for (const p2 in netMatrix[p1]) {
+            const pairKey = [p1, p2].sort().join(':::');
+            if (processedPairs.has(pairKey)) continue;
+            processedPairs.add(pairKey);
+
+            const balance = netMatrix[p1][p2];
+            if (balance > 0) {
+                allRows.push({ debtor: p2, creditor: p1, amount: balance });
+            } else if (balance < 0) {
+                allRows.push({ debtor: p1, creditor: p2, amount: Math.abs(balance) });
+            }
+        }
+    }
+
+    // FILTER: Only display debts involving the current player
+    const myRows = allRows.filter(r => 
+        r.debtor.toLowerCase() === myUsername || r.creditor.toLowerCase() === myUsername
+    );
+
+    if (myRows.length === 0) {
+        container.innerHTML = `
+            <div class="ledger-empty-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
+                No debts involving you. All square!
+            </div>
+        `;
+        return;
+    }
+
+    // List of players I currently owe (targets for debt transfer)
+    const peopleIOwe = myRows
+        .filter(r => r.debtor.toLowerCase() === myUsername)
+        .map(r => ({ name: r.creditor, amount: r.amount }));
+
+    let html = '<div class="ledger-rows-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">';
+    myRows.forEach(r => {
+        const isMeDebtor = r.debtor.toLowerCase() === myUsername;
+        const isMeCreditor = r.creditor.toLowerCase() === myUsername;
+
+        const debtorStyle = isMeDebtor ? 'color: #f87171; font-weight: bold;' : 'color: #fca5a5;';
+        const creditorStyle = isMeCreditor ? 'color: #34d399; font-weight: bold;' : 'color: #86efac;';
+
+        // Transfer button is enabled when someone owes me AND I owe someone else
+        const canTransfer = isMeCreditor && peopleIOwe.length > 0;
+        const transferBtn = canTransfer ? `
+            <button type="button" class="transfer-debt-btn" onclick="openTransferDebtModal('${escapeHtml(r.debtor)}', ${r.amount})" style="background: linear-gradient(135deg, #d97706, #b45309); color: #fff; border: 1px solid #fbbf24; border-radius: 4px; padding: 3px 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                Transfer
+            </button>
+        ` : '';
+
+        html += `
+            <div class="ledger-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 0.6rem 0.8rem; border-radius: 6px; border-left: 3px solid ${isMeDebtor ? '#ef4444' : '#10b981'};">
+                <div style="font-size: 0.9rem;">
+                    <span style="${debtorStyle}">${isMeDebtor ? 'You' : escapeHtml(r.debtor)}</span> owes 
+                    <span style="${creditorStyle}">${isMeCreditor ? 'You' : escapeHtml(r.creditor)}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <div style="font-weight: bold; color: ${isMeDebtor ? '#f87171' : '#34d399'}; font-size: 1rem;">
+                        ${isMeDebtor ? '-' : '+'}$${r.amount.toFixed(2)}
+                    </div>
+                    ${transferBtn}
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+}
+
+// -------------------------------------------------------------
+// 2. SESSION DEBT TRANSFER MODAL
+// -------------------------------------------------------------
+
+function ensureTransferModalDOM() {
+    let modal = document.getElementById('debt-transfer-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'debt-transfer-modal';
+        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; z-index: 10005; padding: 16px;';
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function openTransferDebtModal(debtorName, maxOwed) {
+    const modal = ensureTransferModalDOM();
+    const state = window.clientState || {};
+    const myUsername = (state.username || localStorage.getItem('blitz31_username') || localStorage.getItem('saved_username') || '').toLowerCase();
+
+    const lobby = window.appGlobals?.latestLobbySnapshot || {};
+    const mainLedger = lobby.mainGameLedger || state.mainGameLedger || {};
+    const sideLedger = lobby.sideBetLedger || state.sideBetLedger || {};
+
+    const combined = {};
+    const merge = (src) => {
+        for (const d in src) {
+            if (!combined[d]) combined[d] = {};
+            for (const c in src[d]) {
+                combined[d][c] = (combined[d][c] || 0) + (Number(src[d][c]) || 0);
+            }
+        }
+    };
+    merge(mainLedger);
+    merge(sideLedger);
+
+    const netMatrix = calculatePairwiseNet(combined);
+    const creditors = [];
+
+    if (netMatrix[myUsername]) {
+        for (const target in netMatrix[myUsername]) {
+            const balance = netMatrix[myUsername][target];
+            if (balance < 0) {
+                creditors.push({ name: target, amount: Math.abs(balance) });
+            }
+        }
+    }
+
+    if (creditors.length === 0) {
+        alert("You do not currently owe anyone money to transfer this debt to.");
+        return;
+    }
+
+    modal.innerHTML = `
+        <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #fbbf24; border-radius: 10px; width: 100%; max-width: 380px; padding: 18px; color: #f8fafc; font-family: inherit; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            <h3 style="margin: 0 0 8px; color: #fbbf24; font-size: 1.15rem; text-align: center; text-transform: uppercase;">Transfer Debt</h3>
+            <p style="margin: 0 0 14px; font-size: 0.85rem; text-align: center; color: #cbd5e1;">
+                Transfer <strong style="color: #fca5a5;">${escapeHtml(debtorName)}</strong>'s debt (up to $${maxOwed.toFixed(2)}) to someone you owe.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div>
+                    <label style="font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 4px;">Transfer To (Creditor You Owe):</label>
+                    <select id="transfer-target-select" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.6); border: 1px solid #34d399; color: #fff; font-size: 0.9rem;">
+                        ${creditors.map(c => `<option value="${escapeHtml(c.name)}" data-max="${c.amount}">${escapeHtml(c.name)} (You owe$${c.amount.toFixed(2)})</option>`).join('')}
+                    </select>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 4px;">Amount to Transfer ($):</label>
+                    <input type="number" id="transfer-amount-input" step="0.5" min="0.5" max="${maxOwed}" value="${maxOwed.toFixed(2)}" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.6); border: 1px solid #34d399; color: #fbbf24; font-weight: bold; font-size: 1rem; box-sizing: border-box;" />
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button type="button" onclick="closeTransferDebtModal()" style="flex: 1; padding: 8px; border-radius: 6px; background: #374151; color: #fff; border: none; cursor: pointer; font-weight: bold;">Cancel</button>
+                    <button type="button" onclick="confirmDebtTransfer('${escapeHtml(debtorName)}', ${maxOwed})" style="flex: 1; padding: 8px; border-radius: 6px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: 1px solid #34d399; cursor: pointer; font-weight: bold;">Confirm</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    modal.style.display = 'flex';
+}
+
+function closeTransferDebtModal() {
+    const modal = document.getElementById('debt-transfer-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function confirmDebtTransfer(debtorName, maxOwed) {
+    const targetSelect = document.getElementById('transfer-target-select');
+    const amountInput = document.getElementById('transfer-amount-input');
+    if (!targetSelect || !amountInput) return;
+
+    const toCreditor = targetSelect.value;
+    const amount = parseFloat(amountInput.value);
+
+    if (isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid amount.");
+        return;
+    }
+
+    const maxAllowed = Math.min(maxOwed, parseFloat(targetSelect.selectedOptions[0].dataset.max || maxOwed));
+    if (amount > maxAllowed) {
+        alert(`Maximum transferable amount is $${maxAllowed.toFixed(2)}.`);
+        return;
+    }
+
+    sendLedgerSocket({
+        type: 'TRANSFER_DEBT',
+        fromDebtor: debtorName,
+        toCreditor: toCreditor,
+        amount: amount,
+        code: window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room')
+    });
+
+    closeTransferDebtModal();
+}
+
+// -------------------------------------------------------------
+// 3. CANVAS SNAPSHOT (FILTERED PERSONAL LEDGER)
+// -------------------------------------------------------------
+
+async function shareLedgerSnapshot() {
+    const state = window.clientState || {};
+    const lobby = window.appGlobals?.latestLobbySnapshot || {};
+    const mainLedger = lobby.mainGameLedger || state.mainGameLedger || {};
+    const sideLedger = lobby.sideBetLedger || state.sideBetLedger || {};
+
+    const combined = {};
+    const mergeLedger = (src) => {
+        for (const debtor in src) {
+            if (!combined[debtor]) combined[debtor] = {};
+            for (const creditor in src[debtor]) {
+                const amt = Number(src[debtor][creditor]) || 0;
+                combined[debtor][creditor] = (combined[debtor][creditor] || 0) + amt;
+            }
+        }
+    };
     mergeLedger(mainLedger);
     mergeLedger(sideLedger);
 
@@ -100,81 +308,14 @@ function renderSessionLedger() {
 
             const balance = netMatrix[p1][p2];
             if (balance > 0) {
-                rows.push({ debtor: p2, creditor: p1, amount: balance });
+                if (p1.toLowerCase() === myUsername || p2.toLowerCase() === myUsername) {
+                    rows.push({ debtor: p2, creditor: p1, amount: balance });
+                }
             } else if (balance < 0) {
-                rows.push({ debtor: p1, creditor: p2, amount: Math.abs(balance) });
+                if (p1.toLowerCase() === myUsername || p2.toLowerCase() === myUsername) {
+                    rows.push({ debtor: p1, creditor: p2, amount: Math.abs(balance) });
+                }
             }
-        }
-    }
-
-    if (rows.length === 0) {
-        container.innerHTML = `
-            <div class="ledger-empty-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
-                No active session debts. All square!
-            </div>
-        `;
-        return;
-    }
-
-    let html = '<div class="ledger-rows-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">';
-    rows.forEach(r => {
-        const isMeDebtor = r.debtor.toLowerCase() === myUsername;
-        const isMeCreditor = r.creditor.toLowerCase() === myUsername;
-
-        const debtorStyle = isMeDebtor ? 'color: #f87171; font-weight: bold;' : 'color: #fca5a5;';
-        const creditorStyle = isMeCreditor ? 'color: #34d399; font-weight: bold;' : 'color: #86efac;';
-
-        html += `
-            <div class="ledger-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 0.6rem 0.8rem; border-radius: 6px; border-left: 3px solid #10b981;">
-                <div style="font-size: 0.9rem;">
-                    <span style="${debtorStyle}">${escapeHtml(r.debtor)}</span> owes 
-                    <span style="${creditorStyle}">${escapeHtml(r.creditor)}</span>
-                </div>
-                <div style="font-weight: bold; color: #fbbf24; font-size: 1rem;">
-                    $${r.amount.toFixed(2)}
-                </div>
-            </div>
-        `;
-    });
-    html += '</div>';
-
-    container.innerHTML = html;
-}
-
-/**
- * HTML5 Canvas Exporter for sharing session ledgers
- */
-async function shareLedgerSnapshot() {
-    const state = window.clientState || {};
-    const mainLedger = state.mainGameLedger || {};
-    const sideLedger = state.sideBetLedger || {};
-
-    const combined = {};
-    const mergeLedger = (src) => {
-        for (const debtor in src) {
-            if (!combined[debtor]) combined[debtor] = {};
-            for (const creditor in src[debtor]) {
-                const amt = Number(src[debtor][creditor]) || 0;
-                combined[debtor][creditor] = (combined[debtor][creditor] || 0) + amt;
-            }
-        }
-    };
-    mergeLedger(mainLedger);
-    mergeLedger(sideLedger);
-
-    const netMatrix = calculatePairwiseNet(combined);
-    const rows = [];
-    const processedPairs = new Set();
-
-    for (const p1 in netMatrix) {
-        for (const p2 in netMatrix[p1]) {
-            const pairKey = [p1, p2].sort().join(':::');
-            if (processedPairs.has(pairKey)) continue;
-            processedPairs.add(pairKey);
-
-            const balance = netMatrix[p1][p2];
-            if (balance > 0) rows.push({ debtor: p2, creditor: p1, amount: balance });
-            else if (balance < 0) rows.push({ debtor: p1, creditor: p2, amount: Math.abs(balance) });
         }
     }
 
@@ -193,7 +334,7 @@ async function shareLedgerSnapshot() {
     ctx.fillStyle = '#fbbf24';
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('BLITZ 31 - SESSION LEDGER', canvas.width / 2, 60);
+    ctx.fillText('BLITZ 31 - PERSONAL LEDGER', canvas.width / 2, 60);
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '14px sans-serif';
@@ -252,11 +393,11 @@ async function shareLedgerSnapshot() {
         console.error('Snapshot export failed:', err);
     }
 }
-// public/js/ledger.js - PART 2 OF 2
 
 // -------------------------------------------------------------
-// IDENTITY & JWT HELPER
+// 4. IDENTITY & LIFETIME RETRIEVAL
 // -------------------------------------------------------------
+
 function getCurrentUserId() {
     try {
         const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token');
@@ -272,16 +413,8 @@ function getCurrentUserId() {
         || null;
 }
 
-// -------------------------------------------------------------
-// LIFETIME LEDGER DISPATCH & RENDERING
-// -------------------------------------------------------------
-
-/**
- * Requests lifetime ledger balances from the server over WebSocket.
- * Passes stored JWT tokens and username as resilient identity fallbacks.
- */
 function requestLifetimeLedger() {
-    const ws = window.gameSocket || window.ws || window.socket;
+    const ws = window.gameSocket || window.ws || window.socket || window.appGlobals?.ws;
     const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token');
     const savedUser = localStorage.getItem('blitz31_username') || localStorage.getItem('saved_username');
     const badgeElem = document.getElementById('menu-user-badge') || document.getElementById('user-display-name');
@@ -299,7 +432,7 @@ function requestLifetimeLedger() {
         ws.send(payload);
     } else {
         setTimeout(() => {
-            const retryWs = window.gameSocket || window.ws || window.socket;
+            const retryWs = window.gameSocket || window.ws || window.socket || window.appGlobals?.ws;
             if (retryWs && retryWs.readyState === WebSocket.OPEN) {
                 retryWs.send(payload);
             }
@@ -307,9 +440,6 @@ function requestLifetimeLedger() {
     }
 }
 
-/**
- * Opens the Lifetime Ledger modal and initiates balance retrieval.
- */
 function openLifetimeLedgerModal() {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
@@ -331,19 +461,15 @@ function openLifetimeLedgerModal() {
     modal.style.display = 'flex';
 }
 
-/**
- * Closes the Lifetime Ledger modal.
- */
 function closeLifetimeLedgerModal() {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (modal) modal.style.display = 'none';
 }
 
-/**
- * Renders the Lifetime Ledger data received from the backend.
- * Adds a Credit / Settle action button when other players owe the current user.
- * @param {Array<{ other_id: string, username: string, net: number }>} balances
- */
+// -------------------------------------------------------------
+// 5. LIFETIME LEDGER RENDERING & TRANSFER
+// -------------------------------------------------------------
+
 function renderLifetimeLedger(balances) {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     const container = document.getElementById('lifetime-ledger-table-container')
@@ -353,7 +479,8 @@ function renderLifetimeLedger(balances) {
 
     if (!container) return;
 
-    const activeRows = (Array.isArray(balances) ? balances : []).filter(b => Math.abs(Number(b.net) || 0) > 0.01);
+    window.cachedLifetimeBalancesList = Array.isArray(balances) ? balances : [];
+    const activeRows = window.cachedLifetimeBalancesList.filter(b => Math.abs(Number(b.net) || 0) > 0.01);
 
     if (activeRows.length === 0) {
         container.innerHTML = `
@@ -364,6 +491,7 @@ function renderLifetimeLedger(balances) {
         return;
     }
 
+    const peopleIOweLifetime = activeRows.filter(b => Number(b.net) < -0.01);
     let html = '<div class="lifetime-ledger-rows" style="display: flex; flex-direction: column; gap: 0.65rem; margin-top: 0.5rem;">';
 
     activeRows.forEach(row => {
@@ -372,25 +500,33 @@ function renderLifetimeLedger(balances) {
         const rawNameAttr = (row.username || 'Player').replace(/'/g, "\\'");
 
         if (net > 0) {
-            // Other user owes current user (Creditor view -> can credit/settle)
+            // Other player owes current player
+            const canTransfer = peopleIOweLifetime.length > 0;
+            const transferBtn = canTransfer ? `
+                <button type="button" class="transfer-lifetime-btn" onclick="openLifetimeTransferModal('${row.other_id}', '${rawNameAttr}', ${net})" style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 9px; font-size: 0.76rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                    Transfer
+                </button>
+            ` : '';
+
             html += `
                 <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #10b981; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="font-size: 0.92rem;">
                         <span style="color: #fca5a5; font-weight: 600;">${otherName}</span> owes 
                         <span style="color: #34d399; font-weight: 700;">You</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span style="font-weight: 700; color: #34d399; font-size: 1.05rem;">
                             +$${net.toFixed(2)}
                         </span>
-                        <button type="button" class="credit-action-btn" onclick="openCreditDialog('${row.other_id}', '${rawNameAttr}', ${net})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 4px 9px; font-size: 0.76rem; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                        ${transferBtn}
+                        <button type="button" class="credit-action-btn" onclick="openCreditDialog('${row.other_id}', '${rawNameAttr}', ${net})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 4px 9px; font-size: 0.76rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                             Credit
                         </button>
                     </div>
                 </div>
             `;
         } else {
-            // Current user owes other user (Debtor view)
+            // Current player owes other player
             html += `
                 <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #ef4444; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="font-size: 0.92rem;">
@@ -411,9 +547,97 @@ function renderLifetimeLedger(balances) {
     container.innerHTML = html;
 }
 
+function ensureLifetimeTransferModalDOM() {
+    let modal = document.getElementById('lifetime-debt-transfer-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'lifetime-debt-transfer-modal';
+        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center; z-index: 10006; padding: 16px;';
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function openLifetimeTransferModal(debtorId, debtorName, maxAmount) {
+    const modal = ensureLifetimeTransferModalDOM();
+    const creditors = (window.cachedLifetimeBalancesList || [])
+        .filter(b => Number(b.net) < -0.01)
+        .map(b => ({ id: b.other_id, name: b.username, amount: Math.abs(Number(b.net)) }));
+
+    if (creditors.length === 0) {
+        alert("You do not currently owe anyone money in your lifetime records to transfer this to.");
+        return;
+    }
+
+    modal.innerHTML = `
+        <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #fbbf24; border-radius: 10px; width: 100%; max-width: 380px; padding: 18px; color: #f8fafc; font-family: inherit; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            <h3 style="margin: 0 0 8px; color: #fbbf24; font-size: 1.15rem; text-align: center; text-transform: uppercase;">Transfer Lifetime Debt</h3>
+            <p style="margin: 0 0 14px; font-size: 0.85rem; text-align: center; color: #cbd5e1;">
+                Transfer <strong style="color: #fca5a5;">${escapeHtml(debtorName)}</strong>'s debt (up to $${maxAmount.toFixed(2)}) to someone you owe.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div>
+                    <label style="font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 4px;">Transfer To (Creditor You Owe):</label>
+                    <select id="lifetime-transfer-target" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.6); border: 1px solid #34d399; color: #fff; font-size: 0.9rem;">
+                        ${creditors.map(c => `<option value="${c.id}" data-max="${c.amount}">${escapeHtml(c.name)} (You owe$${c.amount.toFixed(2)})</option>`).join('')}
+                    </select>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 4px;">Amount to Transfer ($):</label>
+                    <input type="number" id="lifetime-transfer-amount" step="0.5" min="0.5" max="${maxAmount}" value="${maxAmount.toFixed(2)}" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.6); border: 1px solid #34d399; color: #fbbf24; font-weight: bold; font-size: 1rem; box-sizing: border-box;" />
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button type="button" onclick="document.getElementById('lifetime-debt-transfer-modal').style.display='none'" style="flex: 1; padding: 8px; border-radius: 6px; background: #374151; color: #fff; border: none; cursor: pointer; font-weight: bold;">Cancel</button>
+                    <button type="button" onclick="confirmLifetimeDebtTransfer('${debtorId}', ${maxAmount})" style="flex: 1; padding: 8px; border-radius: 6px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: 1px solid #34d399; cursor: pointer; font-weight: bold;">Confirm</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    modal.style.display = 'flex';
+}
+
+function confirmLifetimeDebtTransfer(debtorId, maxOwed) {
+    const targetSelect = document.getElementById('lifetime-transfer-target');
+    const amountInput = document.getElementById('lifetime-transfer-amount');
+    if (!targetSelect || !amountInput) return;
+
+    const toCreditorId = targetSelect.value;
+    const amount = parseFloat(amountInput.value);
+
+    if (isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid amount.");
+        return;
+    }
+
+    const maxAllowed = Math.min(maxOwed, parseFloat(targetSelect.selectedOptions[0].dataset.max || maxOwed));
+    if (amount > maxAllowed) {
+        alert(`Maximum transferable amount is $${maxAllowed.toFixed(2)}.`);
+        return;
+    }
+
+    const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token');
+    const myId = getCurrentUserId();
+
+    sendLedgerSocket({
+        type: 'TRANSFER_LIFETIME_DEBT',
+        fromDebtorId: debtorId,
+        toCreditorId: toCreditorId,
+        myId: myId,
+        amount: amount,
+        token: token || null
+    });
+
+    document.getElementById('lifetime-debt-transfer-modal').style.display = 'none';
+}
+
 // -------------------------------------------------------------
-// CREDIT & SETTLEMENT DIALOG ENGINE
+// 6. CREDIT / SETTLEMENT ENGINE
 // -------------------------------------------------------------
+
 let activeCreditTarget = null;
 
 function ensureCreditModalDOM() {
@@ -505,33 +729,20 @@ function closeCreditDialog() {
     activeCreditTarget = null;
 }
 
-/**
- * Sends an APPLY_CREDIT packet over WebSocket to offset pairwise SQLite debt.
- */
 function applySettlementCredit(otherUserId, amount) {
-    const ws = window.gameSocket || window.ws || window.socket;
     const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token');
     const myId = getCurrentUserId();
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        alert('Server connection lost. Please refresh the page and try again.');
-        return;
-    }
-
     const cleanAmount = Number(amount);
     if (!cleanAmount || cleanAmount <= 0) return;
 
-    // In bilateral netting: current user (creditor) records an offsetting debt entry
-    // to credit the debtor's balance down to zero or reduced principal
-    ws.send(JSON.stringify({
+    sendLedgerSocket({
         type: 'APPLY_CREDIT',
         debtorId: myId,
         creditorId: otherUserId,
         amount: cleanAmount,
         token: token || null
-    }));
+    });
 
-    // Briefly display loading status in container
     const container = document.getElementById('lifetime-ledger-table-container');
     if (container) {
         container.innerHTML = `
@@ -542,9 +753,10 @@ function applySettlementCredit(otherUserId, amount) {
     }
 }
 
-/**
- * String safety escaping helper to prevent XSS in dynamic usernames.
- */
+// -------------------------------------------------------------
+// 7. UTILITIES & GLOBAL EXPORTS
+// -------------------------------------------------------------
+
 function escapeHtml(str) {
     if (!str) return '';
     return String(str)
@@ -555,19 +767,21 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
-// -------------------------------------------------------------
-// GLOBAL EXPORTS & WINDOW HOOKS
-// -------------------------------------------------------------
 window.calculatePairwiseNet = calculatePairwiseNet;
 window.openSessionLedgerModal = openSessionLedgerModal;
 window.closeSessionLedgerModal = closeSessionLedgerModal;
 window.renderSessionLedger = renderSessionLedger;
+window.openTransferDebtModal = openTransferDebtModal;
+window.closeTransferDebtModal = closeTransferDebtModal;
+window.confirmDebtTransfer = confirmDebtTransfer;
 window.shareLedgerSnapshot = shareLedgerSnapshot;
 window.requestLifetimeLedger = requestLifetimeLedger;
 window.openLifetimeLedgerModal = openLifetimeLedgerModal;
 window.closeLifetimeLedgerModal = closeLifetimeLedgerModal;
 window.renderLifetimeLedger = renderLifetimeLedger;
 window.handleLifetimeLedgerData = renderLifetimeLedger;
+window.openLifetimeTransferModal = openLifetimeTransferModal;
+window.confirmLifetimeDebtTransfer = confirmLifetimeDebtTransfer;
 window.openCreditDialog = openCreditDialog;
 window.closeCreditDialog = closeCreditDialog;
 window.applySettlementCredit = applySettlementCredit;
