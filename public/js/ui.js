@@ -1491,3 +1491,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// -------------------------------------------------------------
+// 16. MISSING MODAL CLOSES, ALIASES & SPECTATOR LIST FIX
+// -------------------------------------------------------------
+
+// Fix: The Spectator Modal IDs didn't match the HTML
+window.openSpectatorListModal = function() {
+    const content = document.getElementById('spectators-list');
+    const specs = window.clientState.spectatorsList || [];
+    if (!content) return;
+    
+    if (specs.length === 0) {
+        content.innerHTML = '<div class="empty-list-notice">No spectators currently watching.</div>';
+    } else {
+        content.innerHTML = '<ul style="padding-left:14px; margin:0;">' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
+    }
+    
+    window.toggleModal('spectator-list-modal');
+};
+
+// Fix: Missing "X" close button handlers from index.html
+window.closeSettingsModal = function() { 
+    const m = document.getElementById('settings-modal');
+    if (m) m.style.display = 'none'; 
+};
+
+window.closeSpectatorListModal = function() { 
+    const m = document.getElementById('spectator-list-modal');
+    if (m) m.style.display = 'none'; 
+};
+
+window.closeSessionLedgerModal = function() { 
+    const m = document.getElementById('session-ledger-modal');
+    if (m) m.style.display = 'none'; 
+};
+
+window.closeLifetimeLedgerModal = function() { 
+    const m = document.getElementById('lifetime-ledger-modal');
+    if (m) m.style.display = 'none'; 
+};
+
+// Fix: Missing Lifetime Ledger Open handler (Requests data from backend)
+window.openLifetimeLedgerModal = function() {
+    if (typeof sendSocket === 'function') sendSocket({ type: 'GET_LIFETIME_LEDGER' });
+    const m = document.getElementById('lifetime-ledger-modal');
+    if (m) m.style.display = 'flex';
+};
+
+// Fix: Missing Ledger Share Button handler (Copies to clipboard)
+window.shareLedgerSnapshot = function() {
+    const content = document.getElementById('session-ledger-content');
+    if (content && navigator.clipboard) {
+        // Strip out any UI artifacts like the close 'X' before copying
+        const textToCopy = content.innerText.replace(/✕/g, '').trim();
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            if (typeof window.showCenterNotification === 'function') {
+                window.showCenterNotification("Ledger copied to clipboard!");
+            }
+        }).catch(err => console.warn("Clipboard copy failed", err));
+    }
+};
+
