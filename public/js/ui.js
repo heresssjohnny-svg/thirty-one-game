@@ -480,6 +480,9 @@ window.renderLobbyList = function(lobbies) {
 };
 
 window.renderPublicLobbies = window.renderLobbyList;
+window.addBot = function() { window.initSocketAndSend({ type: 'ADD_BOT' }); }; 
+window.removeBot = function() { window.initSocketAndSend({ type: 'REMOVE_BOT' }); };
+
 
 // -------------------------------------------------------------
 // 5. IN-GAME ACTIONS & CARD INTERACTIONS
