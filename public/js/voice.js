@@ -282,45 +282,44 @@ async function connectToLiveKit(host, token, roomCode) {
 async function toggleVoiceOnOff() {
     startBackgroundKeepAliveOscillator();
 
-    // If disconnected, connect first and carry through the unmute intent
+    // 1. Prevent Race Condition: Let connectToLiveKit handle the initial unmute
     if (!livekitRoom || !isLiveKitConnected) {
         updateVoiceButtonState('Connecting...');
-        localStorage.setItem('blitz31_mic_state', 'true');
+        localStorage.setItem('blitz31_mic_state', 'true'); // Save intent for connectToLiveKit
         if (latestLiveKitHost && latestLiveKitToken) {
             await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
         } else {
             await requestVoiceToken();
-            return;
         }
+        return; // Exit immediately to avoid dual-firing hardware requests
     }
-
-    if (!livekitRoom || !isLiveKitConnected) return;
 
     const LK = getLiveKitSDK();
     const micSource = (LK && LK.Track && LK.Track.Source) ? LK.Track.Source.Microphone : 'microphone';
 
     try {
         if (isMicActive) {
-            // Mute
+            // 2. Soft-Mute: Disable the track, do NOT release the OS hardware
             const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
             if (micPub && micPub.track && micPub.track.mediaStreamTrack) {
                 micPub.track.mediaStreamTrack.enabled = false;
             }
-            await livekitRoom.localParticipant.setMicrophoneEnabled(false);
-
+            
             isMicActive = false;
             localStorage.setItem('blitz31_mic_state', 'false');
             updateVoiceUI();
             sendVCStatusInternal(true, true);
         } else {
-            // Unmute
+            // 3. Unmute
             if (livekitRoom.startAudio) {
                 await livekitRoom.startAudio();
             }
-            await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-
+            
+            // Only request new hardware access if the track was entirely missing
             const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
-            if (micPub && micPub.track && micPub.track.mediaStreamTrack) {
+            if (!micPub || !micPub.track) {
+                await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+            } else if (micPub.track.mediaStreamTrack) {
                 micPub.track.mediaStreamTrack.enabled = true;
             }
 
@@ -332,7 +331,7 @@ async function toggleVoiceOnOff() {
     } catch (err) {
         console.error("[LiveKit] Mic toggle error:", err);
         isMicActive = false;
-        localStorage.setItem('blitz31_mic_state', 'false');
+        // Never permanently lock localStorage to 'false' on a temporary hardware/background error
         updateVoiceUI();
         sendVCStatusInternal(isLiveKitConnected, true);
         alert("Microphone permission denied or audio input device unavailable.");
@@ -435,6 +434,7 @@ function sendVCStatusInternal(inVC, isMuted) {
         }
     }
 }
+
 
 // -------------------------------------------------------------
 // 5. FRESH TOKEN FETCH & EXPLICIT DISCONNECT
