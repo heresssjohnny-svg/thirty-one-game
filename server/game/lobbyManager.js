@@ -511,6 +511,7 @@ function getSanitizedLobby(lobby, wsId) {
         currentSongElapsedSeconds: elapsedSeconds,
         livekitHost: config.LIVEKIT_HOST,
         livesVote: lobby.livesVote || null,
+        endGameVote: lobby.endGameVote || null,
         players: lobby.players.map(p => {
             const canSee = lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd' || p.username === myUsername;
             const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
@@ -1386,6 +1387,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.gameState = 'lobby';
     lobby.phaseMessage = msg || "Returned to waiting room.";
     lobby.endGameVotes = {};
+    lobby.endGameVote = null;
     lobby.activeBets = [];
     lobby.pendingBets = [];
     lobby.globalProposals = [];
@@ -1545,7 +1547,8 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         songPausedAtOffset: 0,
         inactivityTimer: null,
         roundOverAutoTimer: null,
-        turnTimeoutTimer: null
+        turnTimeoutTimer: null,
+        endGameVote: null
     };
     return lobbies[code];
 }
