@@ -549,6 +549,11 @@ window.submitLivesVote = function(lives) {
     }
 };
 
+window.proposeEndGame = function() {
+    if (!confirm("Propose ending the game and returning to the lobby?")) return;
+    dispatchGameAction({ type: 'END_GAME_PROPOSAL' });
+};
+
 window.leaveLobby = function() {
     if (!confirm("Are you sure you want to leave the table?")) return;
     dispatchGameAction({ type: 'LEAVE_LOBBY' });
@@ -618,7 +623,69 @@ window.knockGame = window.knock;
 window.selectPoolCard = window.choosePoolCard;
 
 // -------------------------------------------------------------
-// 6. KNOCK VALIDATION & EXECUTION
+// 6. END GAME VOTE MODAL & SUBMISSION
+// -------------------------------------------------------------
+function renderEndGameVoteModal(lobby) {
+    let modal = document.getElementById('end-game-vote-modal');
+    if (!lobby || !lobby.endGameVote) {
+        if (modal) modal.style.display = 'none';
+        return;
+    }
+
+    const activeUsername = getActiveUsername().toLowerCase();
+    const vote = lobby.endGameVote;
+
+    // Check if current user is an active seated human
+    const isSeatedHuman = (lobby.players || []).some(
+        p => p.username && p.username.toLowerCase() === activeUsername && !p.isBot
+    );
+
+    // Check if user has already voted
+    const hasVoted = Object.keys(vote.votes || {}).some(
+        u => u.toLowerCase() === activeUsername
+    );
+
+    if (!isSeatedHuman || hasVoted) {
+        if (modal) modal.style.display = 'none';
+        return;
+    }
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'end-game-vote-modal';
+        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10010; padding: 16px;';
+        document.body.appendChild(modal);
+    }
+
+    const proposer = vote.proposer || 'A player';
+
+    modal.innerHTML = `
+        <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #ef4444; border-radius: 12px; width: 100%; max-width: 380px; padding: 20px; color: #f8fafc; font-family: inherit; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center;">
+            <h3 style="margin: 0 0 10px; color: #fca5a5; font-size: 1.2rem; text-transform: uppercase;">Vote to End Match</h3>
+            <p style="margin: 0 0 16px; font-size: 0.95rem; color: #cbd5e1;">
+                <strong style="color: #fbbf24;">${proposer}</strong> has proposed ending the game and returning to the lobby.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button type="button" onclick="submitEndGameVote(false)" style="flex: 1; padding: 10px; border-radius: 6px; background: #374151; color: #fff; border: 1px solid #6b7280; cursor: pointer; font-weight: bold; font-size: 0.95rem;">
+                    No (Keep Playing)
+                </button>
+                <button type="button" onclick="submitEndGameVote(true)" style="flex: 1; padding: 10px; border-radius: 6px; background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; border: 1px solid #f87171; cursor: pointer; font-weight: bold; font-size: 0.95rem;">
+                    Yes (End Match)
+                </button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
+window.submitEndGameVote = function(agree) {
+    dispatchGameAction({ type: 'VOTE_END_GAME', agree: !!agree });
+    const modal = document.getElementById('end-game-vote-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+// -------------------------------------------------------------
+// 7. KNOCK VALIDATION & EXECUTION
 // -------------------------------------------------------------
 function updateKnockAlertAndAudio(lobby) {
     const knockAlertModal = document.getElementById('knock-alert-modal');
@@ -699,7 +766,7 @@ window.knockRound = function() {
 };
 
 // -------------------------------------------------------------
-// 7. SIDE BETS & PEEKING DIALOGS
+// 8. SIDE BETS & PEEKING DIALOGS
 // -------------------------------------------------------------
 window.handleSeatClick = function(seatIndex) {
     if (window.clientState.gameState === 'lobby') {
@@ -828,7 +895,7 @@ window.respondToBet = function(betId, accept) {
 };
 
 // -------------------------------------------------------------
-// 8. MASTER TABLE RENDER & SPECTATOR LOGIC
+// 9. MASTER TABLE RENDER & SPECTATOR LOGIC
 // -------------------------------------------------------------
 window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
@@ -955,10 +1022,13 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 5. KNOCK VISUALS & ALERTS
+    // 5. END GAME VOTE MODAL
+    renderEndGameVoteModal(lobby);
+
+    // 6. KNOCK VISUALS & ALERTS
     updateKnockAlertAndAudio(lobby);
 
-    // 6. TOP IN-GAME FEEDS
+    // 7. TOP IN-GAME FEEDS
     const topleftModal = document.getElementById('discard-pickup-topleft-modal');
     const topleftCardContent = document.getElementById('discard-pickup-card-content');
     if (lobby.lastDiscardPickup && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
@@ -981,7 +1051,7 @@ window.updateUIFromLobby = function(lobby) {
         fedModal.style.display = 'none';
     }
 
-    // 7. PARTICIPANT & SPECTATOR DETERMINATION
+    // 8. PARTICIPANT & SPECTATOR DETERMINATION
     window.clientState.gameState = lobby.gameState;
     window.clientState.playersList = (lobby.players || []).map(p => p.username);
     window.clientState.spectatorsList = lobby.spectators || [];
@@ -1008,7 +1078,7 @@ window.updateUIFromLobby = function(lobby) {
         if (readyBtn) readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
     }
 
-    // 8. DYNAMIC ACTION BAR
+    // 9. DYNAMIC ACTION BAR
     const standUpBtn = document.getElementById('stand-up-btn');
     const sitBtn = document.getElementById('sit-btn');
     const readyBtn = document.getElementById('ready-btn');
@@ -1048,7 +1118,7 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 9. TURN AUDIO & HAPTIC NOTIFICATION
+    // 10. TURN AUDIO & HAPTIC NOTIFICATION
     const isMyTurnPlaying = !isSpectatorOnly && 
         ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
@@ -1065,7 +1135,7 @@ window.updateUIFromLobby = function(lobby) {
 
     updateKnockButtonState(lobby, me, isMyTurnPlaying);
 
-    // 10. POTS & SHOWDOWN OVERLAYS
+    // 11. POTS & SHOWDOWN OVERLAYS
     const potBanner = document.getElementById('pot-total-banner');
     if (potBanner) potBanner.innerText = `Pot: $${lobby.potTotal || 0}`;
 
@@ -1131,7 +1201,7 @@ window.updateUIFromLobby = function(lobby) {
         if (showdownContainer) showdownContainer.innerHTML = '';
     }
 
-    // 11. CENTER TABLE & HARDWARE FELT
+    // 12. CENTER TABLE & HARDWARE FELT
     const tableContainer = document.getElementById('table-oval-container');
     if (tableContainer) {
         let discardSlotHtml = '';
@@ -1189,7 +1259,7 @@ window.updateUIFromLobby = function(lobby) {
         if (nextHandOverlay) tableContainer.appendChild(nextHandOverlay);
     }
 
-    // 12. LOCAL HAND RENDERING
+    // 13. LOCAL HAND RENDERING
     const handContainer = document.getElementById('my-cards-container');
     const scoreDisplay = document.getElementById('my-score-display');
     const myHandTitle = document.getElementById('my-hand-title');
@@ -1224,7 +1294,7 @@ window.updateUIFromLobby = function(lobby) {
 window.renderLobbyState = window.updateUIFromLobby;
 
 // -------------------------------------------------------------
-// 9. MICROPHONE BUTTON BINDINGS & DOM READY INITIALIZATION
+// 10. MICROPHONE BUTTON BINDINGS & DOM READY INITIALIZATION
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
     // Bind all known microphone buttons to voice.js toggle function
