@@ -1,4 +1,4 @@
-// public/js/ui.js
+// public/js/ui.js - Complete DOM Coordinator, Table Render, Spectator Peek & Card Visuals
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT SAFEGUARDS
@@ -36,36 +36,43 @@ window.appGlobals = window.appGlobals || {
     notificationTimer: null
 };
 
-// Resilient username resolver preventing fallbacks to 'Player1'
+// Resilient username resolver that checks both players AND spectators
 window.getMyUsername = function(lobby) {
-    let name = (window.clientState?.username || '').trim();
+    let name = '';
 
+    if (window.userSession && window.userSession.username) {
+        name = window.userSession.username.trim();
+    }
     if (!name || name === 'Player1') {
         const inputVal = (document.getElementById('username-input')?.value || '').trim();
         if (inputVal && inputVal !== 'Player1') name = inputVal;
     }
-
     if (!name || name === 'Player1') {
-        name = (localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '').trim();
+        const stateVal = (window.clientState?.username || '').trim();
+        if (stateVal && stateVal !== 'Player1') name = stateVal;
+    }
+    if (!name || name === 'Player1') {
+        name = (localStorage.getItem('saved_username') || localStorage.getItem('blitz31_username') || localStorage.getItem('p31_username') || '').trim();
     }
 
-    if (lobby && Array.isArray(lobby.players) && lobby.players.length > 0) {
-        if (name) {
-            const match = lobby.players.find(p => p.username.toLowerCase() === name.toLowerCase());
-            if (match) return match.username;
+    if (lobby && name) {
+        if (Array.isArray(lobby.players)) {
+            const pMatch = lobby.players.find(p => p.username && p.username.toLowerCase() === name.toLowerCase());
+            if (pMatch) return pMatch.username;
         }
-        const seatZero = lobby.players.find(p => p.seat === 0 && !p.isBot);
-        if (seatZero) {
-            window.clientState.username = seatZero.username;
-            return seatZero.username;
+        if (Array.isArray(lobby.spectators)) {
+            const sMatch = lobby.spectators.find(s => s.username && s.username.toLowerCase() === name.toLowerCase());
+            if (sMatch) return sMatch.username;
         }
     }
+
     return name || 'Player1';
 };
 
 function getActiveUsername() {
     return window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
 }
+window.getActiveUsername = getActiveUsername;
 
 function getActiveRoomCode() {
     return (window.appGlobals?.currentJoinedCode || 
@@ -74,6 +81,15 @@ function getActiveRoomCode() {
 }
 
 function sendSocket(payload) {
+    if (!payload) return;
+    if (!payload.code) {
+        const c = getActiveRoomCode();
+        if (c) payload.code = c;
+    }
+    if (!payload.username) {
+        payload.username = getActiveUsername();
+    }
+
     const sendFunc = window.initSocketAndSend || window.sendSocketMessage;
     if (typeof sendFunc === 'function') {
         sendFunc(payload);
@@ -88,6 +104,10 @@ function sendSocket(payload) {
 // SAFE AUDIO, HAPTICS & MOBILE AUTOPLAY UNLOCK
 // -------------------------------------------------------------
 window.safePlaySound = function(cueType) {
+    const sfxToggle = document.getElementById('setting-sfx');
+    if (sfxToggle && !sfxToggle.checked) return;
+    if (localStorage.getItem('blitz31_sfx_enabled') === 'false') return;
+
     try {
         // 1. Direct targeting of primed DOM tags FIRST (bypasses Android WebSocket blocks)
         const audioEl = document.getElementById(`sound-${cueType}`);
@@ -100,13 +120,7 @@ window.safePlaySound = function(cueType) {
             return;
         }
 
-        // 2. Global helper fallback
-        if (typeof window.playSound === 'function') {
-            window.playSound(cueType);
-            return;
-        }
-
-        // 3. Dynamic audio fallback
+        // 2. Dynamic audio fallback
         const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
         fallbackAudio.play().catch(e => console.warn(`[Audio] Blocked dynamic audio for ${cueType}:`, e));
     } catch (e) {
@@ -114,14 +128,18 @@ window.safePlaySound = function(cueType) {
     }
 };
 
+window.playSound = window.safePlaySound;
 window.triggerAudioCue = window.safePlaySound;
 window.playYourTurnCue = function() { window.safePlaySound('yourturn'); };
 
 window.safeVibrate = function(pattern) {
+    const sfxToggle = document.getElementById('setting-sfx');
+    if (sfxToggle && !sfxToggle.checked) return;
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try { navigator.vibrate(pattern); } catch (e) {}
     }
 };
+window.triggerVibration = window.safeVibrate;
 
 // Global one-tap unlock & priming for all 4 sound elements
 function unlockAudioContextOnTap() {
@@ -162,6 +180,15 @@ function normalizeSuit(rawSuit) {
         'C': '♣', 'CLUBS': '♣', '♣': '♣'
     };
     return map[s] || s;
+}
+
+function getCardPoints(card) {
+    if (!card) return 0;
+    if (card.points !== undefined) return Number(card.points) || 0;
+    const v = String(card.val || card.value || '').toUpperCase();
+    if (v === 'A') return 11;
+    if (['K', 'Q', 'J', '10'].includes(v)) return 10;
+    return Number(v) || 0;
 }
 
 window.formatCardHtml = function(card, isMini = false) {
@@ -207,26 +234,43 @@ window.formatCardHtml = function(card, isMini = false) {
     `;
 };
 
-window.calculateLocalScore = function(cards) {
-    const scoringCards = cards.length === 4 ? cards.slice(0, 3) : cards;
-    if (!scoringCards || scoringCards.length === 0) return 0;
-    const sums = {};
-    scoringCards.forEach(c => {
-        const s = normalizeSuit(c.suit);
-        sums[s] = (sums[s] || 0) + (c.points !== undefined ? c.points : 0);
-    });
-    if (scoringCards.length === 3 && scoringCards[0].val === scoringCards[1].val && scoringCards[0].val === scoringCards[2].val) {
+function scoreThreeCards(threeCards) {
+    if (!threeCards || threeCards.length === 0) return 0;
+    if (threeCards.length === 3 && threeCards[0].val && threeCards[0].val === threeCards[1].val && threeCards[0].val === threeCards[2].val) {
         return 30.5;
     }
+    const sums = {};
+    threeCards.forEach(c => {
+        if (!c) return;
+        const s = normalizeSuit(c.suit);
+        sums[s] = (sums[s] || 0) + getCardPoints(c);
+    });
     return Math.max(...Object.values(sums), 0);
+}
+
+window.calculateLocalScore = function(cards) {
+    if (!cards || !Array.isArray(cards) || cards.length === 0) return 0;
+    if (cards.length === 4) {
+        let best = 0;
+        for (let i = 0; i < 4; i++) {
+            const sub = cards.filter((_, idx) => idx !== i);
+            best = Math.max(best, scoreThreeCards(sub));
+        }
+        return best;
+    }
+    return scoreThreeCards(cards);
 };
 
 // -------------------------------------------------------------
 // 3. MODALS, NOTIFICATIONS, CHAT & SESSION LEDGER CONTROLS
 // -------------------------------------------------------------
-window.toggleModal = function(id) {
+window.toggleModal = function(id, forceState) {
     const m = document.getElementById(id);
     if (!m) return;
+    if (typeof forceState === 'boolean') {
+        m.style.display = forceState ? 'flex' : 'none';
+        return;
+    }
     m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
 };
 
@@ -242,9 +286,15 @@ window.showCenterNotification = function(msg) {
 };
 
 window.openSettingsModal = function() {
-    if (typeof refreshAudioOutputDevices === 'function') refreshAudioOutputDevices();
-    if (typeof refreshVoiceParticipantsList === 'function') refreshVoiceParticipantsList();
-    window.toggleModal('settings-modal');
+    if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
+    if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
+    const m = document.getElementById('settings-modal');
+    if (m) m.style.display = 'flex';
+};
+
+window.closeSettingsModal = function() {
+    const m = document.getElementById('settings-modal');
+    if (m) m.style.display = 'none';
 };
 
 window.openRulesModal = function() {
@@ -337,15 +387,24 @@ window.toggleGlobalSidebar = function() {
 };
 
 window.openSpectatorListModal = function() {
-    const content = document.getElementById('spectators-list-content');
+    const content = document.getElementById('spectators-list') || document.getElementById('spectators-list-content');
     const specs = window.clientState.spectatorsList || [];
-    if (!content) return;
-    if (specs.length === 0) {
-        content.innerHTML = 'No spectators.';
-    } else {
-        content.innerHTML = '<ul>' + specs.map(s => `<li style="margin-bottom:3px;"><b>${s.username}</b></li>`).join('') + '</ul>';
+    if (content) {
+        if (specs.length === 0) {
+            content.innerHTML = '<div class="empty-list-notice">No spectators currently watching.</div>';
+        } else {
+            content.innerHTML = '<ul style="padding-left:14px; margin:0;">' +
+                specs.map(s => `<li style="margin-bottom:4px;"><b>${s.username || s}</b>${s.inVC ? (s.isMuted ? ' 🔇' : ' 🎙️') : ''}</li>`).join('') +
+                '</ul>';
+        }
     }
-    window.toggleModal('spectators-modal');
+    const modal = document.getElementById('spectator-list-modal') || document.getElementById('spectators-modal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.closeSpectatorListModal = function() {
+    const modal = document.getElementById('spectator-list-modal') || document.getElementById('spectators-modal');
+    if (modal) modal.style.display = 'none';
 };
 
 window.hideAllBetsButtons = function() {
@@ -423,6 +482,32 @@ window.toggleSessionLedger = function(show) {
 
 window.openSessionLedgerModal = function() {
     window.toggleSessionLedger(true);
+};
+
+window.closeSessionLedgerModal = function() {
+    const m = document.getElementById('session-ledger-modal');
+    if (m) m.style.display = 'none';
+};
+
+window.openLifetimeLedgerModal = function() {
+    sendSocket({ type: 'GET_LIFETIME_LEDGER' });
+    const m = document.getElementById('lifetime-ledger-modal');
+    if (m) m.style.display = 'flex';
+};
+
+window.closeLifetimeLedgerModal = function() {
+    const m = document.getElementById('lifetime-ledger-modal');
+    if (m) m.style.display = 'none';
+};
+
+window.shareLedgerSnapshot = function() {
+    const content = document.getElementById('session-ledger-content');
+    if (content && navigator.clipboard) {
+        const textToCopy = content.innerText.replace(/✕/g, '').trim();
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            window.showCenterNotification("Ledger copied to clipboard!");
+        }).catch(err => console.warn("Clipboard copy failed", err));
+    }
 };
 
 window.renderSessionLedger = function(lobby) {
@@ -541,16 +626,19 @@ window.renderLobbyList = function(lobbies) {
 
 window.renderPublicLobbies = window.renderLobbyList;
 
-// public/js/ui.js - Complete DOM Coordinator, Table Render & Card Visuals (Part 2 of 2)
-
 // -------------------------------------------------------------
 // 5. IN-GAME ACTIONS, AUDIO & CARD INTERACTIONS
 // -------------------------------------------------------------
 window.drawCard = function(source) {
     if (window.clientState.isSpectator) return;
-    if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(40);
-    sendSocket({ type: source === 'deck' ? 'DRAW_DECK' : 'DRAW_DISCARD' });
+    window.safePlaySound('card');
+    window.safeVibrate(40);
+    const isDiscard = source === 'discard';
+    sendSocket({
+        type: isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK',
+        source: isDiscard ? 'discard' : 'deck',
+        action: isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK'
+    });
 };
 
 window.drawFromDeck = function() { window.drawCard('deck'); };
@@ -558,12 +646,14 @@ window.drawFromDiscard = function() { window.drawCard('discard'); };
 
 window.discardCard = function(cardIndex) {
     if (window.clientState.isSpectator) return;
-    if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(30);
+    const idx = parseInt(cardIndex, 10);
+    if (isNaN(idx)) return;
+    window.safePlaySound('card');
+    window.safeVibrate(30);
     sendSocket({
         type: 'DISCARD_CARD',
-        index: cardIndex,
-        cardIndex: cardIndex
+        index: idx,
+        cardIndex: idx
     });
 };
 
@@ -573,12 +663,13 @@ window.choosePoolCard = function(cardIndex) {
     if (isNaN(resolvedIndex)) return;
 
     window.appGlobals.hasChosenPoolCard = true;
-    if (typeof playSound === 'function') playSound('card');
-    if (typeof triggerVibration === 'function') triggerVibration(25);
+    window.safePlaySound('card');
+    window.safeVibrate(25);
     sendSocket({
         type: 'CHOOSE_POOL_CARD',
         index: resolvedIndex,
-        cardIndex: resolvedIndex
+        cardIndex: resolvedIndex,
+        poolIndex: resolvedIndex
     });
 };
 
@@ -589,16 +680,21 @@ window.clickNextHand = function() {
         btn.disabled = true;
     }
     sendSocket({ type: 'NEXT_HAND_READY' });
-    sendSocket({ type: 'NEXT_HAND' });
 };
 
 window.toggleReady = function() {
-    window.clientState.isReady = !window.clientState.isReady;
+    const myName = getActiveUsername().toLowerCase();
+    const snap = window.appGlobals?.latestLobbySnapshot;
+    const me = snap?.players?.find(p => p.username?.toLowerCase() === myName);
+    const current = me ? Boolean(me.ready) : Boolean(window.clientState?.isReady);
+    const nextState = !current;
+
+    window.clientState.isReady = nextState;
     const btn = document.getElementById('ready-btn');
-    if (btn) btn.innerText = window.clientState.isReady ? 'Unready' : 'Ready Up';
+    if (btn) btn.innerText = nextState ? 'Unready' : 'Ready Up';
     window.appGlobals.hasChosenPoolCard = false;
-    if (typeof playSound === 'function') playSound('card');
-    sendSocket({ type: 'SET_READY', ready: window.clientState.isReady });
+    window.safePlaySound('card');
+    sendSocket({ type: 'SET_READY', ready: nextState });
 };
 
 window.standUp = function() { sendSocket({ type: 'STAND_UP' }); };
@@ -611,7 +707,7 @@ window.updateWager = function() {
 
 window.updateSettings = function() {
     const sel = document.getElementById('config-lives');
-    if (sel) sendSocket({ type: 'UPDATE_SETTINGS', lives: parseInt(sel.value, 10) || 3 });
+    if (sel) sendSocket({ type: 'UPDATE_SETTINGS', lives: parseInt(sel.value, 10) || 2 });
 };
 
 window.submitLivesVote = function(agree) {
@@ -629,6 +725,61 @@ window.proposeEndGame = function() {
     }
 };
 
+window.submitEndGameVote = function(agree) {
+    sendSocket({ type: 'VOTE_END_GAME', agree: !!agree });
+    const modal = document.getElementById('end-game-vote-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+function renderEndGameVoteModal(lobby) {
+    let modal = document.getElementById('end-game-vote-modal');
+    if (!lobby || !lobby.endGameVote) {
+        if (modal) modal.style.display = 'none';
+        return;
+    }
+
+    const activeUsername = getActiveUsername().toLowerCase();
+    const vote = lobby.endGameVote;
+
+    const isSeatedHuman = (lobby.players || []).some(
+        p => p.username && p.username.toLowerCase() === activeUsername && !p.isBot
+    );
+    const hasVoted = Object.keys(vote.votes || {}).some(
+        u => u.toLowerCase() === activeUsername
+    );
+
+    if (!isSeatedHuman || hasVoted) {
+        if (modal) modal.style.display = 'none';
+        return;
+    }
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'end-game-vote-modal';
+        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10010; padding: 16px;';
+        document.body.appendChild(modal);
+    }
+
+    const proposer = vote.proposer || 'A player';
+    modal.innerHTML = `
+        <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #ef4444; border-radius: 12px; width: 100%; max-width: 380px; padding: 20px; color: #f8fafc; font-family: inherit; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center;">
+            <h3 style="margin: 0 0 10px; color: #fca5a5; font-size: 1.2rem; text-transform: uppercase;">Vote to End Match</h3>
+            <p style="margin: 0 0 16px; font-size: 0.95rem; color: #cbd5e1;">
+                <strong style="color: #fbbf24;">${proposer}</strong> has proposed ending the game and returning to the lobby.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button type="button" onclick="submitEndGameVote(false)" style="flex: 1; padding: 10px; border-radius: 6px; background: #374151; color: #fff; border: 1px solid #6b7280; cursor: pointer; font-weight: bold; font-size: 0.95rem;">
+                    No (Keep Playing)
+                </button>
+                <button type="button" onclick="submitEndGameVote(true)" style="flex: 1; padding: 10px; border-radius: 6px; background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; border: 1px solid #f87171; cursor: pointer; font-weight: bold; font-size: 0.95rem;">
+                    Yes (End Match)
+                </button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
 window.stopPeekingAction = function() {
     sendSocket({ type: 'STOP_PEEK' });
     const banner = document.getElementById('active-peeking-banner');
@@ -641,8 +792,7 @@ window.kickPeekerAction = function(spectatorUsername) {
         type: 'KICK_PEEKER',
         spectatorUsername: spectatorUsername,
         requester: spectatorUsername,
-        target: spectatorUsername,
-        username: spectatorUsername
+        target: spectatorUsername
     });
     window.showCenterNotification(`Removed ${spectatorUsername} from peeking your hand.`);
 };
@@ -660,9 +810,12 @@ function updateKnockAlertAndAudio(lobby) {
 
         if (window.appGlobals.lastKnownKnockedBy !== lobby.knockedBy) {
             window.appGlobals.lastKnownKnockedBy = lobby.knockedBy;
-            if (typeof playSound === 'function') playSound('knock');
-            if (typeof speakKnockedCue === 'function') speakKnockedCue();
-            if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
+            const activeUsername = getActiveUsername();
+            if (lobby.knockedBy.toLowerCase() !== activeUsername.toLowerCase()) {
+                window.safePlaySound('knock');
+                if (typeof speakKnockedCue === 'function') speakKnockedCue();
+                window.safeVibrate([180, 110, 180, 110, 180]);
+            }
         }
     } else {
         knockAlertModal.style.display = 'none';
@@ -694,9 +847,7 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
 }
 
 window.knockRound = function() {
-    const activeUsername = (typeof getActiveUsername === 'function')
-        ? getActiveUsername()
-        : (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+    const activeUsername = getActiveUsername();
     const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
 
     if (!me || !me.cards || me.cards.length !== 3) {
@@ -718,20 +869,34 @@ window.knockRound = function() {
         if (!confirmKnock) return;
     }
 
-    if (typeof playSound === 'function') playSound('knock');
+    window.safePlaySound('knock');
     if (typeof speakKnockedCue === 'function') speakKnockedCue();
-    if (typeof triggerVibration === 'function') triggerVibration([180, 110, 180, 110, 180]);
+    window.safeVibrate([180, 110, 180, 110, 180]);
     sendSocket({ type: 'KNOCK' });
 };
 
 // -------------------------------------------------------------
 // 7. SIDE BETS & PEEKING DIALOGS
 // -------------------------------------------------------------
+window.handleSeatClick = function(seatIndex) {
+    if (window.clientState.gameState === 'lobby') {
+        window.showCenterNotification("Game hasn't started yet! Ready up to play.");
+        return;
+    }
+    const lobby = window.appGlobals.latestLobbySnapshot;
+    if (!lobby || !lobby.players) return;
+    const targetPlayer = lobby.players.find(p => String(p.seat) === String(seatIndex));
+    if (targetPlayer?.username) {
+        window.tapSeat(targetPlayer.username);
+    }
+};
+
 window.tapSeat = function(targetUsername) {
-    const activeUsername = (typeof getActiveUsername === 'function')
-        ? getActiveUsername()
-        : (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
-    if (window.clientState.gameState === 'lobby') return;
+    const activeUsername = getActiveUsername();
+    if (window.clientState.gameState === 'lobby') {
+        window.showCenterNotification("Game hasn't started yet! Ready up to play.");
+        return;
+    }
 
     const isSpecOnly = window.clientState.isSpectator;
     const activeCount = window.clientState.activeParticipantsCount;
@@ -745,10 +910,10 @@ window.tapSeat = function(targetUsername) {
             if (activeCount === 2) {
                 actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${targetUsername}')">🤝 Bet on ${targetUsername}</button>`;
             }
-            actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal')" style="margin-top:6px;">Cancel</button>`;
+            actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal', false)" style="margin-top:6px;">Cancel</button>`;
             modalBody.innerHTML = actionsHtml;
         }
-        window.toggleModal('seat-action-modal');
+        window.toggleModal('seat-action-modal', true);
         return;
     }
 
@@ -763,10 +928,10 @@ window.tapSeat = function(targetUsername) {
                 <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
                 <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
                 <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
-                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+                <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
             `;
         }
-        window.toggleModal('bet-modal');
+        window.toggleModal('bet-modal', true);
     } else if (activeCount === 2) {
         const modalTitle = document.getElementById('bet-modal-title');
         const modalBody = document.getElementById('bet-modal-body');
@@ -777,27 +942,25 @@ window.tapSeat = function(targetUsername) {
                 <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
                 <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
                 <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
-                <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+                <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
             `;
         }
-        window.toggleModal('bet-modal');
+        window.toggleModal('bet-modal', true);
     }
 };
 
 window.requestPeekFromModal = function(targetUsername) {
-    const seatModal = document.getElementById('seat-action-modal');
-    if (seatModal) seatModal.style.display = 'none';
+    window.toggleModal('seat-action-modal', false);
     sendSocket({
         type: 'REQUEST_PEEK',
         targetUsername: targetUsername,
-        target: targetUsername,
-        username: targetUsername
+        target: targetUsername
     });
     window.showCenterNotification(`Peek request sent to ${targetUsername}!`);
 };
 
 window.betOnHimFromModal = function(targetUsername) {
-    window.toggleModal('seat-action-modal');
+    window.toggleModal('seat-action-modal', false);
     const modalTitle = document.getElementById('bet-modal-title');
     const modalBody = document.getElementById('bet-modal-body');
     if (modalTitle) modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
@@ -807,28 +970,31 @@ window.betOnHimFromModal = function(targetUsername) {
             <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
             <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
             <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
-            <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:4px;">Cancel</button>
+            <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
         `;
     }
-    window.toggleModal('bet-modal');
+    window.toggleModal('bet-modal', true);
 };
 
 window.submitEliminationProposal = function(target, wagerAmt) {
     sendSocket({ type: 'PROPOSE_ELIMINATION_BET', target, wagerAmt });
-    window.toggleModal('bet-modal');
+    window.toggleModal('bet-modal', false);
     window.showCenterNotification(`First to lose bet proposed to ${target}!`);
 };
 
 window.submitGlobalProposal = function(pickUser, wagerAmt) {
     sendSocket({ type: 'PROPOSE_GLOBAL_SIDE_BET', pickUser, wagerAmt });
-    window.toggleModal('bet-modal');
+    window.toggleModal('bet-modal', false);
     window.showCenterNotification(`Global bet offered on ${pickUser}!`);
 };
 
-window.acceptGlobalProposal = function(proposalId) { sendSocket({ type: 'ACCEPT_GLOBAL_PROPOSAL', proposalId }); };
+window.acceptGlobalProposal = function(proposalId) {
+    sendSocket({ type: 'ACCEPT_GLOBAL_PROPOSAL', proposalId });
+};
+
 window.confirmGlobalBet = function(proposalId, acceptedUser, confirmChoice) {
     sendSocket({ type: 'CONFIRM_GLOBAL_BET', proposalId, acceptedUser, confirm: !!confirmChoice });
-    window.toggleModal('bet-modal');
+    window.toggleModal('bet-modal', false);
 };
 
 window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers) {
@@ -851,7 +1017,7 @@ window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers
         modalBody.innerHTML = `
             <p style="font-size:0.80rem; color:var(--text-muted); margin-bottom:6px;">Players who accepted your proposal:</p>
             ${listHtml}
-            <button class="secondary" onclick="toggleModal('bet-modal')" style="margin-top:8px;">Close</button>
+            <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:8px;">Close</button>
         `;
     }
     if (modal) modal.style.display = 'flex';
@@ -859,7 +1025,7 @@ window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers
 
 window.respondToBet = function(betId, accept) {
     sendSocket({ type: 'RESPOND_BET', betId, accept: !!accept });
-    window.toggleModal('bet-modal');
+    window.toggleModal('bet-modal', false);
 };
 
 // -------------------------------------------------------------
@@ -893,21 +1059,21 @@ window.updateUIFromLobby = function(lobby) {
         window.syncChatHistory(lobby.chatHistory);
     }
 
-    const activeUsername = (typeof getActiveUsername === 'function')
-        ? getActiveUsername()
-        : (document.getElementById('username-input')?.value || window.clientState.username || 'Player1').trim();
+    const activeUsername = getActiveUsername();
 
     // 1. CELEBRATION TRIGGER: HIT 31
     if (lobby.hit31Player) {
         if (window.appGlobals.lastCelebrated31 !== lobby.hit31Player) {
             window.appGlobals.lastCelebrated31 = lobby.hit31Player;
-            if (typeof trigger31Celebration === 'function') {
-                trigger31Celebration(lobby.hit31Player);
-            } else if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(lobby.hit31Player, "HIT 31!");
+            const canvas = document.getElementById('celebration-canvas');
+            if (canvas) canvas.style.display = 'block';
+            if (typeof window.trigger31Celebration === 'function') {
+                window.trigger31Celebration(lobby.hit31Player);
+            } else if (typeof window.triggerWinnerCelebration === 'function') {
+                window.triggerWinnerCelebration(lobby.hit31Player, "HIT 31!");
             }
-            if (typeof playSound === 'function') playSound('win');
-            if (typeof triggerVibration === 'function') triggerVibration([100, 50, 100, 50, 200]);
+            window.safePlaySound('win');
+            window.safeVibrate([100, 50, 100, 50, 200]);
         }
     } else {
         window.appGlobals.lastCelebrated31 = null;
@@ -923,11 +1089,13 @@ window.updateUIFromLobby = function(lobby) {
         }
         if (winnerName && window.appGlobals.lastCelebratedWinner !== winnerName) {
             window.appGlobals.lastCelebratedWinner = winnerName;
-            if (typeof triggerWinnerCelebration === 'function') {
-                triggerWinnerCelebration(winnerName, "TOURNAMENT CHAMPION!");
+            const canvas = document.getElementById('celebration-canvas');
+            if (canvas) canvas.style.display = 'block';
+            if (typeof window.triggerWinnerCelebration === 'function') {
+                window.triggerWinnerCelebration(winnerName, "TOURNAMENT CHAMPION!");
             }
-            if (typeof playSound === 'function') playSound('win');
-            if (typeof triggerVibration === 'function') triggerVibration([150, 80, 150, 80, 300]);
+            window.safePlaySound('win');
+            window.safeVibrate([150, 80, 150, 80, 300]);
         }
     } else if (lobby.gameState === 'lobby' || lobby.gameState === 'playing') {
         window.appGlobals.lastCelebratedWinner = null;
@@ -945,11 +1113,11 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 4. LIVES VOTING MODAL
+    // 4. LIVES VOTING & END GAME VOTING MODALS
     const voteModal = document.getElementById('lives-vote-modal');
     if (voteModal) {
         if (lobby.livesVote && lobby.gameState === 'lobby') {
-            const hasVoted = lobby.livesVote.votes && lobby.livesVote.votes[activeUsername] !== undefined;
+            const hasVoted = lobby.livesVote.votes && Object.keys(lobby.livesVote.votes).some(u => u.toLowerCase() === activeUsername.toLowerCase());
             const isSeatedHuman = (lobby.players || []).some(p => p.username.toLowerCase() === activeUsername.toLowerCase() && !p.isBot);
 
             if (isSeatedHuman && !hasVoted) {
@@ -965,6 +1133,8 @@ window.updateUIFromLobby = function(lobby) {
             voteModal.style.display = 'none';
         }
     }
+
+    renderEndGameVoteModal(lobby);
 
     const configLivesSelect = document.getElementById('config-lives');
     if (configLivesSelect && lobby.defaultLives) {
@@ -1014,7 +1184,7 @@ window.updateUIFromLobby = function(lobby) {
 
     const me = (lobby.players || []).find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
     const isSpecUser = (lobby.spectators || []).some(s => (s.username || '').trim().toLowerCase() === activeUsername.toLowerCase());
-    const isEliminated = me && me.eliminated;
+    const isEliminated = Boolean(me && me.eliminated);
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
     window.clientState.isSpectator = isSpectatorOnly;
 
@@ -1044,7 +1214,7 @@ window.updateUIFromLobby = function(lobby) {
     }
 
     const peekModal = document.getElementById('peek-request-modal');
-    if (me) {
+    if (me && !me.eliminated) {
         window.clientState.isReady = me.ready;
         const readyBtn = document.getElementById('ready-btn');
         if (readyBtn) readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
@@ -1063,7 +1233,6 @@ window.updateUIFromLobby = function(lobby) {
                         type: 'RESPOND_PEEK',
                         spectatorUsername: requester,
                         requester: requester,
-                        username: requester,
                         allow: true,
                         accept: true
                     });
@@ -1076,7 +1245,6 @@ window.updateUIFromLobby = function(lobby) {
                         type: 'RESPOND_PEEK',
                         spectatorUsername: requester,
                         requester: requester,
-                        username: requester,
                         allow: false,
                         accept: false
                     });
@@ -1134,12 +1302,8 @@ window.updateUIFromLobby = function(lobby) {
     if (isMyTurnPlaying) {
         if (!window.appGlobals.wasMyTurn) {
             window.appGlobals.wasMyTurn = true;
-            if (typeof playYourTurnCue === 'function') {
-                playYourTurnCue();
-            } else if (typeof playSound === 'function') {
-                playSound('yourturn');
-            }
-            if (typeof triggerVibration === 'function') triggerVibration([60, 40, 60]);
+            window.safePlaySound('yourturn');
+            window.safeVibrate([60, 40, 60]);
         }
     } else {
         window.appGlobals.wasMyTurn = false;
@@ -1226,36 +1390,71 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 13. NEXT HAND OVERLAY
+    // 13. NEXT HAND & SHOWDOWN OVERLAY
     const nextHandOverlay = document.getElementById('next-hand-overlay');
     const nextBtn = document.getElementById('next-hand-btn');
+    const showdownContainer = document.getElementById('showdown-hands-container');
 
-    if (lobby.gameState === 'roundOver') {
+    if (lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd') {
+        if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
+
+        if (showdownContainer) {
+            let showdownHtml = '';
+            (lobby.players || []).forEach(p => {
+                const score = (p.cards && p.cards.length > 0) ? window.calculateLocalScore(p.cards) : null;
+                const cardsHtml = (p.cards || []).map(c => {
+                    const s = normalizeSuit(c.suit);
+                    const isRed = (s === '♥' || s === '♦');
+                    return `
+                        <div class="showdown-mini-card ${isRed ? 'card-red' : 'card-black'}">
+                            <span class="card-val">${c.val}</span>
+                            <span class="card-suit">${s}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                const isSelf = p.username.toLowerCase() === activeUsername.toLowerCase();
+                showdownHtml += `
+                    <div class="showdown-player-cell ${isSelf ? 'my-showdown-cell' : ''}">
+                        <div class="showdown-player-header">
+                            <span class="showdown-name">${p.username} ${isSelf ? '(You)' : ''}</span>
+                            <span class="showdown-score ${score === 31 ? 'blitz-score' : ''}">${score !== null ? score + ' pts' : ''}</span>
+                        </div>
+                        <div class="showdown-cards-row">
+                            ${cardsHtml || '<span style="color:#94a3b8; font-size:0.75rem;">No cards</span>'}
+                        </div>
+                    </div>
+                `;
+            });
+            showdownContainer.innerHTML = showdownHtml;
+        }
+
         const myPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
-        if (lobby.activeParticipantsCount <= 1) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+        if (lobby.activeParticipantsCount <= 1 || lobby.gameState === 'tournamentEnd') {
             if (nextBtn) {
+                nextBtn.style.display = 'inline-block';
                 nextBtn.innerText = 'Returning to Ready Room...';
                 nextBtn.disabled = true;
             }
         } else if (myPlayer && !isPermanentlyOut) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
             if (nextBtn) {
+                nextBtn.style.display = 'inline-block';
                 if (myPlayer.nextHandReady) {
-                    nextBtn.innerText = 'Waiting for players (Auto in 6s)...';
+                    nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
                     nextBtn.disabled = true;
                 } else {
-                    nextBtn.innerText = 'Next Hand (Auto in 6s)';
+                    nextBtn.innerText = 'Next Hand (Auto in 8s)';
                     nextBtn.disabled = false;
                 }
             }
-        } else if (nextHandOverlay) {
-            nextHandOverlay.style.display = 'none';
+        } else if (nextBtn) {
+            nextBtn.style.display = 'none';
         }
-    } else if (nextHandOverlay) {
-        nextHandOverlay.style.display = 'none';
+    } else {
+        if (nextHandOverlay) nextHandOverlay.style.display = 'none';
+        if (showdownContainer) showdownContainer.innerHTML = '';
     }
 
     // 14. DEALER DRAW & TIE BREAKER MODALS
@@ -1316,7 +1515,7 @@ window.updateUIFromLobby = function(lobby) {
         if (dealerDrawModal) dealerDrawModal.style.display = 'none';
         if (revealModal) revealModal.style.display = 'flex';
 
-        const isTied = (lobby.tiedParticipantsList || []).includes(activeUsername);
+        const isTied = (lobby.tiedParticipantsList || []).some(u => u.toLowerCase() === activeUsername.toLowerCase());
         const tMsg = document.getElementById('tie-breaker-stream-msg');
         if (tMsg) tMsg.innerText = isTied ? 'You are tied for lowest score! Pick your tie-breaker card:' : 'Watching tied players draw for elimination...';
 
@@ -1370,6 +1569,8 @@ window.updateUIFromLobby = function(lobby) {
                 turnBanner.innerText = isMyTurnPlaying ? "YOUR TURN!" : `Turn: ${lobby.currentTurnUser}`;
             } else if (lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd') {
                 turnBanner.innerText = lobby.phaseMessage || 'Round Over';
+            } else {
+                turnBanner.innerText = lobby.phaseMessage || 'Waiting...';
             }
         }
     }
@@ -1432,13 +1633,13 @@ window.updateUIFromLobby = function(lobby) {
                     ? p.peekAllowed
                     : Object.keys(p.peekAllowed).filter(k => p.peekAllowed[k]);
                 if (peekers.length > 0) {
-                    peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">${peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('')}</div>`;
+                    peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">${peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="event.stopPropagation(); kickPeekerAction('${pk}')" title="Click to kick">Kick ${pk} ✕</span>`).join('')}</div>`;
                 }
             }
 
             html += `
-                <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}">
-                    <div class="seat-name-area" onclick="tapSeat('${p.username}')">
+                <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}" onclick="tapSeat('${p.username}')" style="cursor:pointer;">
+                    <div class="seat-name-area">
                         <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                     </div>
                     ${revealedCardsHtml}
@@ -1489,12 +1690,13 @@ window.updateUIFromLobby = function(lobby) {
             }).join('');
             if (scoreDisplay) scoreDisplay.innerText = peekScore;
         } else {
-            if (handContainer) handContainer.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:12px;">👀 Spectator Mode</div>';
+            if (handContainer) handContainer.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:12px;">👀 Spectator Mode — Tap any player seat to Peek Hand</div>';
             if (scoreDisplay) scoreDisplay.innerText = '-';
             if (myHandTitle) myHandTitle.innerHTML = 'Spectating Table';
         }
     } else if (me && me.cards && handContainer) {
-        if (myHandTitle) myHandTitle.innerHTML = 'My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">' + window.calculateLocalScore(me.cards) + '</strong>)';
+        const myScore = window.calculateLocalScore(me.cards);
+        if (myHandTitle) myHandTitle.innerHTML = `My Hand (Score: <strong style="font-size: 1rem; color: var(--accent-gold);" id="my-score-display">${myScore}</strong>)`;
         handContainer.innerHTML = me.cards.map((c, i) => {
             const val = c.val || '';
             const suit = normalizeSuit(c.suit);
@@ -1516,7 +1718,7 @@ window.updateUIFromLobby = function(lobby) {
             `;
         }).join('');
 
-        if (scoreDisplay) scoreDisplay.innerText = window.calculateLocalScore(me.cards);
+        if (scoreDisplay) scoreDisplay.innerText = myScore;
     } else if (handContainer) {
         handContainer.innerHTML = '';
         if (scoreDisplay) scoreDisplay.innerText = '0';
@@ -1530,35 +1732,3 @@ window.updateUIFromLobby = function(lobby) {
 };
 
 window.renderLobbyState = window.updateUIFromLobby;
-
-// -------------------------------------------------------------
-// 9. GLOBAL WINDOW BINDINGS
-// -------------------------------------------------------------
-window.drawCard = drawCard;
-window.drawFromDeck = drawFromDeck;
-window.drawFromDiscard = drawFromDiscard;
-window.discardCard = discardCard;
-window.choosePoolCard = choosePoolCard;
-window.clickNextHand = clickNextHand;
-window.toggleReady = toggleReady;
-window.standUp = standUp;
-window.sitDown = sitDown;
-window.updateWager = updateWager;
-window.updateSettings = updateSettings;
-window.submitLivesVote = submitLivesVote;
-window.addBot = addBot;
-window.removeBot = removeBot;
-window.proposeEndGame = proposeEndGame;
-window.leaveLobby = typeof leaveLobby !== 'undefined' ? leaveLobby : window.leaveLobby;
-window.resetToMainMenu = typeof resetToMainMenu !== 'undefined' ? resetToMainMenu : window.resetToMainMenu;
-window.tapSeat = tapSeat;
-window.requestPeekFromModal = requestPeekFromModal;
-window.betOnHimFromModal = betOnHimFromModal;
-window.submitEliminationProposal = submitEliminationProposal;
-window.submitGlobalProposal = submitGlobalProposal;
-window.acceptGlobalProposal = acceptGlobalProposal;
-window.confirmGlobalBet = confirmGlobalBet;
-window.openConfirmModal = openConfirmModal;
-window.respondToBet = respondToBet;
-window.stopPeekingAction = stopPeekingAction;
-window.kickPeekerAction = kickPeekerAction;
