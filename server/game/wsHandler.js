@@ -232,9 +232,39 @@ function resetTurnTimer(lobby) {
     }
 }
 
+
 // -------------------------------------------------------------
 // 3. MASTER WEBSOCKET MESSAGE DISPATCHER
 // -------------------------------------------------------------
+
+function attemptGameStart(lobby) {
+    const seatedPlayers = lobby.players;
+    if (seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready)) {
+        lobby.players.forEach(p => { 
+            clearReadyCountdown(p);
+            p.ready = false; 
+            p.eliminated = false;
+            p.lives = lobby.defaultLives || 2;
+        });
+
+        const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
+            p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase()
+        );
+
+        if (winnerStillSeated || lobby.hasEstablishedInitialDealer) {
+            if (typeof establishDealer === 'function') {
+                establishDealer(lobby);
+            } else if (lobby.players.length > 0) {
+                lobby.dealerIndex = ((lobby.dealerIndex ?? -1) + 1) % lobby.players.length;
+                lobby.dealerName = lobby.players[lobby.dealerIndex]?.username || null;
+            }
+            startRound(lobby);
+            resetTurnTimer(lobby);
+        } else {
+            startDealerDrawPhase(lobby);
+        }
+    }
+}
 
 function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     let data;
@@ -445,34 +475,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     }
 
                     syncBotReadiness(lobby);
+                    attemptGameStart(lobby); // Centralized check fires here
                     broadcastLobbyUpdate(currentLobbyCode);
-
-                    const seatedPlayers = lobby.players;
-                    if (seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready)) {
-                        lobby.players.forEach(p => { 
-                            clearReadyCountdown(p);
-                            p.ready = false; 
-                            p.eliminated = false;
-                            p.lives = lobby.defaultLives || 2;
-                        });
-
-                        const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
-                            p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase()
-                        );
-
-                        if (winnerStillSeated || lobby.hasEstablishedInitialDealer) {
-                            if (typeof establishDealer === 'function') {
-                                establishDealer(lobby);
-                            } else if (lobby.players.length > 0) {
-                                lobby.dealerIndex = ((lobby.dealerIndex ?? -1) + 1) % lobby.players.length;
-                                lobby.dealerName = lobby.players[lobby.dealerIndex]?.username || null;
-                            }
-                            startRound(lobby);
-                            resetTurnTimer(lobby);
-                        } else {
-                            startDealerDrawPhase(lobby);
-                        }
-                    }
                 }
             }
             break;
@@ -564,6 +568,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         }
 
                         syncBotReadiness(lobby);
+                        attemptGameStart(lobby); // Starts the game if a spectator taking a seat completes the threshold
                         broadcastLobbyUpdate(code);
                         if (broadcastLobbyList) broadcastLobbyList();
                     }
@@ -844,6 +849,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     });
 
                     syncBotReadiness(lobby);
+                    attemptGameStart(lobby); // Instantly starts the game if the host was already ready
                     lobby.phaseMessage = `🤖 ${chosenName} joined the table.`;
                     broadcastLobbyUpdate(currentLobbyCode);
                     if (broadcastLobbyList) broadcastLobbyList();
