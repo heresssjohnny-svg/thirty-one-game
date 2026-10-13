@@ -72,14 +72,18 @@
     font-weight: 700;
 }
 
-.deck-center {
+.deck-center, .table-center-area {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: row;
     gap: 12px;
     z-index: 10;
+    width: auto;
 }
 
 .card-slot {
