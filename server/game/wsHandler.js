@@ -30,6 +30,17 @@ try {
     dbModule = null;
 }
 
+// Helper to reliably resolve a socket's username in a lobby
+function resolveSocketUsername(lobby, ws, fallbackUsername) {
+    if (lobby) {
+        const p = lobby.players.find(pl => pl.id === ws);
+        if (p && p.username) return p.username;
+        const s = (lobby.spectators || []).find(sp => sp.idSocket === ws);
+        if (s && s.username) return s.username;
+    }
+    return (fallbackUsername || ws?.currentUsername || ws?.user?.username || '').trim() || null;
+}
+
 // -------------------------------------------------------------
 // 1. LOBBY 30-SECOND READY TIMEOUT CONTROLLER
 // -------------------------------------------------------------
@@ -88,7 +99,7 @@ function startReadyCountdown(lobby, player, broadcastLobbyList) {
 
 function calculateHandScore(cards) {
     if (!cards || !Array.isArray(cards) || cards.length === 0) return 0;
-    const suitTotals = { H: 0, D: 0, C: 0, S: 0 };
+    const suitTotals = { '♠': 0, '♥': 0, '♦': 0, '♣': 0, S: 0, H: 0, D: 0, C: 0 };
     const rankCounts = {};
 
     cards.forEach(c => {
@@ -136,13 +147,13 @@ function executeLevel8AITurn(lobby, player) {
         return;
     }
 
-    // LEVEL 8 KNOCK EVALUATION (Before drawing)
+    // LEVEL 8 KNOCK EVALUATION (Before drawing) - Must be >= 25 in 2-player games to match handleKnock
     const canKnock = lobby.gameState === 'playing' 
         && !lobby.knockedBy 
         && cards.length === 3 
         && (lobby.turnsTakenThisRound || 0) >= active.length;
 
-    const knockThreshold = active.length > 2 ? 26 : 24;
+    const knockThreshold = active.length > 2 ? 26 : 25;
     if (canKnock && currentScore >= knockThreshold) {
         handleKnock(lobby, player.id);
         resetTurnTimer(lobby);
@@ -281,7 +292,15 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     if (currentUsername && !ws.currentUsername) ws.currentUsername = currentUsername;
 
     switch (data.type) {
-        case 'GET_LOBBIES': {
+        case 'PING': {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'PONG' }));
+            }
+            break;
+        }
+
+        case 'GET_LOBBIES':
+        case 'REFRESH_LOBBIES': {
             if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
             break;
         }
@@ -349,7 +368,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 currentSongIndex: 0,
                 isPlaying: false,
                 songStartedAt: null,
-                songPausedAtOffset: 0
+                songPausedAtOffset: 0,
+                turnTimeoutTimer: null
             };
 
             lobbies[code] = newLobby;
@@ -394,8 +414,24 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (existingPlayer) {
                 existingPlayer.id = ws;
                 existingPlayer.disconnectedAt = null;
-                if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
-                    startReadyCountdown(lobby, existingPlayer, broadcastLobbyList);
+                if (existingPlayer.eliminated) {
+                    if (existingSpec) {
+                        existingSpec.idSocket = ws;
+                        existingSpec.disconnectedAt = null;
+                    } else {
+                        lobby.spectators.push({
+                            idSocket: ws,
+                            username: existingPlayer.username,
+                            inVC: existingPlayer.inVC ?? true,
+                            isMuted: existingPlayer.isMuted ?? true,
+                            disconnectedAt: null
+                        });
+                    }
+                } else {
+                    lobby.spectators = lobby.spectators.filter(s => s.username.toLowerCase() !== username.toLowerCase());
+                    if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
+                        startReadyCountdown(lobby, existingPlayer, broadcastLobbyList);
+                    }
                 }
             } else if (existingSpec) {
                 existingSpec.idSocket = ws;
@@ -464,8 +500,11 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const player = lobby.players.find(p => p.id === ws);
+                const player = lobby.players.find(p =>
+                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                );
                 if (player && lobby.gameState === 'lobby') {
+                    player.id = ws;
                     player.ready = !!data.ready;
 
                     if (player.ready) {
@@ -475,7 +514,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     }
 
                     syncBotReadiness(lobby);
-                    attemptGameStart(lobby); // Centralized check fires here
+                    attemptGameStart(lobby);
                     broadcastLobbyUpdate(currentLobbyCode);
                 }
             }
@@ -515,6 +554,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
 
                         lobby.players.forEach((p, idx) => { p.seat = idx; });
                         syncBotReadiness(lobby);
+                        attemptGameStart(lobby);
                         broadcastLobbyUpdate(code);
                         if (broadcastLobbyList) broadcastLobbyList();
                     }
@@ -568,7 +608,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         }
 
                         syncBotReadiness(lobby);
-                        attemptGameStart(lobby); // Starts the game if a spectator taking a seat completes the threshold
+                        attemptGameStart(lobby);
                         broadcastLobbyUpdate(code);
                         if (broadcastLobbyList) broadcastLobbyList();
                     }
@@ -578,10 +618,16 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'CHOOSE_POOL_CARD': {
-            if (currentLobbyCode && lobbies[currentLobbyCode] && typeof data.cardIndex === 'number') {
+            if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
-                touchLobbyActivity(lobby, broadcastLobbyList);
-                handlePoolCardSelection(lobby, currentUsername, data.cardIndex);
+                const rawIdx = data.cardIndex !== undefined ? data.cardIndex : data.index;
+                const cardIdx = Number(rawIdx);
+                const pickerUsername = resolveSocketUsername(lobby, ws, currentUsername);
+
+                if (!isNaN(cardIdx) && pickerUsername) {
+                    touchLobbyActivity(lobby, broadcastLobbyList);
+                    handlePoolCardSelection(lobby, pickerUsername, cardIdx);
+                }
             }
             break;
         }
@@ -634,7 +680,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const player = lobby.players.find(p => p.id === ws);
+                const player = lobby.players.find(p =>
+                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                );
                 if (player && lobby.gameState === 'roundOver') {
                     player.nextHandReady = true;
                     broadcastLobbyUpdate(currentLobbyCode);
@@ -653,7 +701,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (code && lobbies[code]) {
                 const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const myUsername = currentUsername || ws.currentUsername;
+                const myUsername = resolveSocketUsername(lobby, ws, currentUsername);
                 if (!myUsername) break;
 
                 const { fromDebtor, toCreditor, amount } = data;
@@ -750,7 +798,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const player = lobby.players.find(p => p.id === ws);
+                const player = lobby.players.find(p =>
+                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                );
                 if (player && lobby.gameState === 'lobby') {
                     player.wager = Math.max(1, parseInt(data.wager, 10) || 5);
                     broadcastLobbyUpdate(currentLobbyCode);
@@ -768,6 +818,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const requestedLives = parseInt(data.lives, 10) || 2;
                 if (requestedLives === lobby.defaultLives) return;
 
+                const proposerName = resolveSocketUsername(lobby, ws, currentUsername) || 'Host';
                 const seatedHumans = lobby.players.filter(p => !p.isBot);
                 if (seatedHumans.length <= 1) {
                     lobby.defaultLives = requestedLives;
@@ -778,13 +829,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 }
 
                 lobby.livesVote = {
-                    proposer: currentUsername,
+                    proposer: proposerName,
                     proposedLives: requestedLives,
-                    votes: { [currentUsername]: true },
+                    votes: { [proposerName]: true },
                     totalVoters: seatedHumans.length
                 };
 
-                lobby.phaseMessage = `🗳️ ${currentUsername} proposed changing starting lives to ${requestedLives}!`;
+                lobby.phaseMessage = `🗳️ ${proposerName} proposed changing starting lives to ${requestedLives}!`;
                 broadcastLobbyUpdate(currentLobbyCode);
             }
             break;
@@ -796,7 +847,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (!lobby.livesVote || lobby.gameState !== 'lobby') return;
 
-                const seatedHuman = lobby.players.find(p => p.id === ws && !p.isBot);
+                const seatedHuman = lobby.players.find(p =>
+                    !p.isBot && (p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase()))
+                );
                 if (!seatedHuman) return;
 
                 lobby.livesVote.votes[seatedHuman.username] = !!data.agree;
@@ -849,7 +902,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     });
 
                     syncBotReadiness(lobby);
-                    attemptGameStart(lobby); // Instantly starts the game if the host was already ready
+                    attemptGameStart(lobby);
                     lobby.phaseMessage = `🤖 ${chosenName} joined the table.`;
                     broadcastLobbyUpdate(currentLobbyCode);
                     if (broadcastLobbyList) broadcastLobbyList();
@@ -883,14 +936,35 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'REQUEST_PEEK': {
-            if (currentLobbyCode && lobbies[currentLobbyCode] && data.targetUsername) {
+            const targetRaw = data.targetUsername || data.target || data.username;
+            if (currentLobbyCode && lobbies[currentLobbyCode] && targetRaw) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const targetLower = data.targetUsername.trim().toLowerCase();
+
+                const requesterName = resolveSocketUsername(lobby, ws, currentUsername);
+                if (!requesterName) break;
+
+                const targetLower = String(targetRaw).trim().toLowerCase();
                 const targetPlayer = lobby.players.find(p => p.username.toLowerCase() === targetLower);
-                if (targetPlayer) {
+                if (targetPlayer && !targetPlayer.eliminated) {
                     if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
-                    targetPlayer.peekRequests[currentUsername] = true;
+                    if (!targetPlayer.peekAllowed) targetPlayer.peekAllowed = {};
+
+                    // Bots auto-accept peek requests immediately
+                    if (targetPlayer.isBot) {
+                        lobby.players.forEach(p => {
+                            if (p.peekAllowed) {
+                                Object.keys(p.peekAllowed).forEach(k => {
+                                    if (k.toLowerCase() === requesterName.toLowerCase()) {
+                                        delete p.peekAllowed[k];
+                                    }
+                                });
+                            }
+                        });
+                        targetPlayer.peekAllowed[requesterName] = true;
+                    } else {
+                        targetPlayer.peekRequests[requesterName] = true;
+                    }
                     broadcastLobbyUpdate(currentLobbyCode);
                 }
             }
@@ -898,23 +972,46 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'RESPOND_PEEK': {
-            if (currentLobbyCode && lobbies[currentLobbyCode] && data.spectatorUsername) {
+            const specRaw = data.spectatorUsername || data.requester || data.username;
+            if (currentLobbyCode && lobbies[currentLobbyCode] && specRaw) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const player = lobby.players.find(p => p.id === ws);
+                const player = lobby.players.find(p =>
+                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                );
                 if (player) {
-                    const specName = data.spectatorUsername.trim();
+                    const specName = String(specRaw).trim();
                     const specLower = specName.toLowerCase();
+                    const isAllowed = data.allow !== undefined ? !!data.allow : !!data.accept;
 
                     if (player.peekRequests) {
                         Object.keys(player.peekRequests).forEach(k => {
                             if (k.toLowerCase() === specLower) delete player.peekRequests[k];
                         });
                     }
+                    if (player.peekIncoming) {
+                        Object.keys(player.peekIncoming).forEach(k => {
+                            if (k.toLowerCase() === specLower) delete player.peekIncoming[k];
+                        });
+                    }
 
-                    if (data.allow) {
+                    if (isAllowed) {
+                        // Clear any previous player this spectator was peeking so they view one hand at a time
+                        lobby.players.forEach(p => {
+                            if (p.peekAllowed) {
+                                Object.keys(p.peekAllowed).forEach(k => {
+                                    if (k.toLowerCase() === specLower) {
+                                        delete p.peekAllowed[k];
+                                    }
+                                });
+                            }
+                        });
                         if (!player.peekAllowed) player.peekAllowed = {};
                         player.peekAllowed[specName] = true;
+                    } else if (player.peekAllowed) {
+                        Object.keys(player.peekAllowed).forEach(k => {
+                            if (k.toLowerCase() === specLower) delete player.peekAllowed[k];
+                        });
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
                 }
@@ -923,12 +1020,15 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'KICK_PEEKER': {
-            if (currentLobbyCode && lobbies[currentLobbyCode]) {
+            const targetRaw = data.spectatorUsername || data.requester || data.target || data.username;
+            if (currentLobbyCode && lobbies[currentLobbyCode] && targetRaw) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const player = lobby.players.find(p => p.id === ws);
+                const player = lobby.players.find(p =>
+                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                );
                 if (player && player.peekAllowed) {
-                    const targetName = (data.spectatorUsername || '').trim().toLowerCase();
+                    const targetName = String(targetRaw).trim().toLowerCase();
                     Object.keys(player.peekAllowed).forEach(k => {
                         if (k.toLowerCase() === targetName) {
                             delete player.peekAllowed[k];
@@ -944,17 +1044,20 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const myLower = (currentUsername || '').trim().toLowerCase();
-                lobby.players.forEach(pl => {
-                    if (pl.peekAllowed) {
-                        Object.keys(pl.peekAllowed).forEach(k => {
-                            if (k.toLowerCase() === myLower) {
-                                delete pl.peekAllowed[k];
-                            }
-                        });
-                    }
-                });
-                broadcastLobbyUpdate(currentLobbyCode);
+                const myName = resolveSocketUsername(lobby, ws, currentUsername);
+                const myLower = (myName || '').trim().toLowerCase();
+                if (myLower) {
+                    lobby.players.forEach(pl => {
+                        if (pl.peekAllowed) {
+                            Object.keys(pl.peekAllowed).forEach(k => {
+                                if (k.toLowerCase() === myLower) {
+                                    delete pl.peekAllowed[k];
+                                }
+                            });
+                        }
+                    });
+                    broadcastLobbyUpdate(currentLobbyCode);
+                }
             }
             break;
         }
@@ -963,6 +1066,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const proposerName = resolveSocketUsername(lobby, ws, currentUsername);
+                if (!proposerName) break;
+
                 const wagerAmt = Math.max(1, parseInt(data.wagerAmt, 10) || 5);
                 const targetPlayer = lobby.players.find(p => p.username === data.target);
 
@@ -971,26 +1077,26 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     lobby.activeBets.push({
                         id: `bet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                         type: 'eliminate',
-                        proposer: currentUsername,
-                        bettor: currentUsername,
+                        proposer: proposerName,
+                        bettor: proposerName,
                         target: data.target,
                         pickUser: data.target,
-                        targetSurvivor: currentUsername,
+                        targetSurvivor: proposerName,
                         wagerAmt,
                         isBotBet: true,
                         createdAt: Date.now()
                     });
-                    lobby.phaseMessage = `🤝 Bot Bet Accepted! ${targetPlayer.username} accepted ${currentUsername}'s $${wagerAmt} bet!`;
+                    lobby.phaseMessage = `🤝 Bot Bet Accepted! ${targetPlayer.username} accepted ${proposerName}'s $${wagerAmt} bet!`;
                 } else {
                     if (!lobby.pendingBets) lobby.pendingBets = [];
                     lobby.pendingBets.push({
                         id: `bet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                         type: 'eliminate',
-                        proposer: currentUsername,
-                        bettor: currentUsername,
+                        proposer: proposerName,
+                        bettor: proposerName,
                         target: data.target,
                         pickUser: data.target,
-                        targetSurvivor: currentUsername,
+                        targetSurvivor: proposerName,
                         wagerAmt,
                         createdAt: Date.now()
                     });
@@ -1005,17 +1111,20 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const proposerName = resolveSocketUsername(lobby, ws, currentUsername);
+                if (!proposerName) break;
+
                 const wagerAmt = Math.max(1, parseInt(data.wagerAmt, 10) || 5);
                 const newProp = {
                     id: data.id || `prop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                    proposer: currentUsername,
-                    creator: currentUsername,
-                    pickUser: data.pickUser || currentUsername,
-                    condition: data.condition || `I like ${data.pickUser || currentUsername} to win`,
+                    proposer: proposerName,
+                    creator: proposerName,
+                    pickUser: data.pickUser || proposerName,
+                    condition: data.condition || `I like ${data.pickUser || proposerName} to win`,
                     betType: data.betType || 'win',
                     wagerAmt,
                     acceptedBy: [],
-                    deniedBy: [currentUsername],
+                    deniedBy: [proposerName],
                     createdAt: Date.now()
                 };
                 if (!lobby.globalProposals) lobby.globalProposals = [];
@@ -1029,13 +1138,16 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const accepterName = resolveSocketUsername(lobby, ws, currentUsername);
+                if (!accepterName) break;
+
                 const propId = data.proposalId || data.betId || data.id;
                 const prop = (lobby.globalProposals || []).find(gp => gp.id === propId);
                 const proposerName = prop ? (prop.proposer || prop.creator) : null;
-                if (prop && proposerName !== currentUsername) {
+                if (prop && proposerName !== accepterName) {
                     if (!prop.acceptedBy) prop.acceptedBy = [];
-                    if (!prop.acceptedBy.includes(currentUsername)) {
-                        prop.acceptedBy.push(currentUsername);
+                    if (!prop.acceptedBy.includes(accepterName)) {
+                        prop.acceptedBy.push(accepterName);
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
                 }
@@ -1048,18 +1160,21 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const actorName = resolveSocketUsername(lobby, ws, currentUsername);
+                if (!actorName) break;
+
                 const propId = data.proposalId || data.betId || data.id;
                 const pIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === propId);
 
                 if (pIdx !== -1) {
                     const prop = lobby.globalProposals[pIdx];
                     const proposerName = prop.proposer || prop.creator;
-                    const isProposer = (proposerName === currentUsername);
+                    const isProposer = (proposerName === actorName);
                     const isAccept = data.confirm !== undefined ? !!data.confirm : (data.accept !== undefined ? !!data.accept : true);
 
                     const partnerUser = isProposer
                         ? (data.acceptedUser || (prop.acceptedBy && prop.acceptedBy[0]))
-                        : currentUsername;
+                        : actorName;
 
                     if (isProposer) {
                         if (isAccept) {
@@ -1086,8 +1201,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         }
                     } else {
                         if (!prop.acceptedBy) prop.acceptedBy = [];
-                        if (!prop.acceptedBy.includes(currentUsername)) {
-                            prop.acceptedBy.push(currentUsername);
+                        if (!prop.acceptedBy.includes(actorName)) {
+                            prop.acceptedBy.push(actorName);
                         }
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
@@ -1100,6 +1215,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const actorName = resolveSocketUsername(lobby, ws, currentUsername);
                 const betId = data.betId || data.proposalId || data.id;
                 const isAccept = data.accept !== undefined ? !!data.accept : !!data.confirm;
 
@@ -1111,7 +1227,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         lobby.activeBets.push(bet);
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
-                } else {
+                } else if (actorName) {
                     const gpIdx = (lobby.globalProposals || []).findIndex(gp => gp.id === betId);
                     if (gpIdx !== -1) {
                         const prop = lobby.globalProposals[gpIdx];
@@ -1120,13 +1236,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
 
                         const alreadyExists = lobby.activeBets.some(b =>
                             b.proposalId === prop.id &&
-                            ((b.proposer === proposerName && b.target === currentUsername) ||
-                             (b.target === proposerName && b.proposer === currentUsername))
+                            ((b.proposer === proposerName && b.target === actorName) ||
+                             (b.target === proposerName && b.proposer === actorName))
                         );
 
                         if (isAccept && !alreadyExists) {
                             if (!prop.acceptedBy) prop.acceptedBy = [];
-                            if (!prop.acceptedBy.includes(currentUsername)) prop.acceptedBy.push(currentUsername);
+                            if (!prop.acceptedBy.includes(actorName)) prop.acceptedBy.push(actorName);
 
                             lobby.activeBets.push({
                                 id: `gbet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -1134,7 +1250,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                                 type: prop.betType || 'win',
                                 proposer: proposerName,
                                 bettor: proposerName,
-                                target: currentUsername,
+                                target: actorName,
                                 pickUser: prop.pickUser || proposerName,
                                 wagerAmt: Number(prop.wagerAmt) || 5,
                                 condition: prop.condition || 'Win the Match',
@@ -1142,8 +1258,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             });
                         } else if (!isAccept) {
                             if (!prop.deniedBy) prop.deniedBy = [];
-                            if (!prop.deniedBy.includes(currentUsername)) prop.deniedBy.push(currentUsername);
-                            if (prop.acceptedBy) prop.acceptedBy = prop.acceptedBy.filter(u => u !== currentUsername);
+                            if (!prop.deniedBy.includes(actorName)) prop.deniedBy.push(actorName);
+                            if (prop.acceptedBy) prop.acceptedBy = prop.acceptedBy.filter(u => u !== actorName);
                         }
                         broadcastLobbyUpdate(currentLobbyCode);
                     }
@@ -1156,7 +1272,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode] && data.message) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const msgObj = { user: currentUsername || 'Unknown', text: String(data.message).slice(0, 200) };
+                const senderName = resolveSocketUsername(lobby, ws, currentUsername) || 'Unknown';
+                const msgObj = { user: senderName, text: String(data.message).slice(0, 200) };
                 if (!lobby.chatHistory) lobby.chatHistory = [];
                 lobby.chatHistory.push(msgObj);
                 if (lobby.chatHistory.length > 50) lobby.chatHistory.shift();
@@ -1173,26 +1290,24 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
 
-                // Prevent starting another vote if one is already in progress
                 if (lobby.endGameVote) return;
 
+                const proposerName = resolveSocketUsername(lobby, ws, currentUsername) || 'Host';
                 const seatedHumans = lobby.players.filter(p => !p.isBot);
 
-                // If only 1 human player is present (playing solo or with bots), end immediately
                 if (seatedHumans.length <= 1) {
                     clearTurnTimer(lobby);
-                    resetLobbyToReadyRoom(lobby, `${currentUsername} ended the match.`, broadcastLobbyList);
+                    resetLobbyToReadyRoom(lobby, `${proposerName} ended the match.`, broadcastLobbyList);
                     return;
                 }
 
-                // If multiple human players are seated, initiate a majority vote
                 lobby.endGameVote = {
-                    proposer: currentUsername,
-                    votes: { [currentUsername]: true }, // Proposer automatically votes "Yes"
+                    proposer: proposerName,
+                    votes: { [proposerName]: true },
                     totalVoters: seatedHumans.length
                 };
 
-                lobby.phaseMessage = `🗳️ ${currentUsername} proposed ending the match! Cast your vote.`;
+                lobby.phaseMessage = `🗳️ ${proposerName} proposed ending the match! Cast your vote.`;
                 broadcastLobbyUpdate(currentLobbyCode);
             }
             break;
@@ -1204,7 +1319,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (!lobby.endGameVote) return;
 
-                const seatedHuman = lobby.players.find(p => p.id === ws && !p.isBot);
+                const seatedHuman = lobby.players.find(p =>
+                    !p.isBot && (p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase()))
+                );
                 if (!seatedHuman) return;
 
                 lobby.endGameVote.votes[seatedHuman.username] = !!data.agree;
@@ -1352,6 +1469,7 @@ module.exports = {
     setupWebSocket,
     initWebSocketHandler: setupWebSocket,
     resetTurnTimer,
+    clearTurnTimer,
     executeLevel8AITurn,
     startReadyCountdown,
     clearReadyCountdown
