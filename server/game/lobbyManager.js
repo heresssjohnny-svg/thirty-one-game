@@ -30,6 +30,33 @@ function findOpenSeat(lobby) {
     return -1;
 }
 
+function extractSocketUsername(wsId) {
+    if (!wsId) return null;
+    if (typeof wsId === 'string') return wsId.trim();
+    return (wsId.currentUsername || wsId.user?.username || wsId.username || '').trim() || null;
+}
+
+function addSpectatorUnique(lobby, specObj) {
+    if (!lobby || !specObj || !specObj.username) return;
+    const cleanName = specObj.username.trim().toLowerCase();
+    const existing = lobby.spectators.find(s =>
+        (specObj.idSocket && s.idSocket === specObj.idSocket) ||
+        (s.username && s.username.trim().toLowerCase() === cleanName)
+    );
+    if (existing) {
+        if (specObj.idSocket) existing.idSocket = specObj.idSocket;
+        existing.inVC = specObj.inVC !== undefined ? specObj.inVC : existing.inVC;
+        existing.isMuted = specObj.isMuted !== undefined ? specObj.isMuted : existing.isMuted;
+    } else {
+        lobby.spectators.push({
+            idSocket: specObj.idSocket || null,
+            username: specObj.username,
+            inVC: !!specObj.inVC,
+            isMuted: specObj.isMuted !== undefined ? specObj.isMuted : true
+        });
+    }
+}
+
 function touchLobbyActivity(lobby, broadcastLobbyList) {
     if (!lobby) return;
     if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
@@ -205,13 +232,13 @@ function executeLevel8AITurn(lobby, player) {
         return;
     }
 
-    // LEVEL 8 KNOCK EVALUATION (Before drawing)
+    // LEVEL 8 KNOCK EVALUATION (Before drawing) - Must be >= 25 in 2-player games to match handleKnock
     const canKnock = lobby.gameState === 'playing' 
         && !lobby.knockedBy 
         && cards.length === 3 
         && (lobby.turnsTakenThisRound || 0) >= active.length;
 
-    const knockThreshold = active.length > 2 ? 26 : 24;
+    const knockThreshold = active.length > 2 ? 26 : 26;
     if (canKnock && currentScore >= knockThreshold) {
         handleKnock(lobby, player.id);
         return;
@@ -267,6 +294,112 @@ function executeLevel8AITurn(lobby, player) {
 
         handleDiscardAction(curLobby, curPlayer.id, bestDiscardIndex);
     }, 600);
+}
+
+// -------------------------------------------------------------
+// PEEK HAND CONTROLLERS
+// -------------------------------------------------------------
+
+function handleRequestPeek(lobby, ws, targetUsername) {
+    if (!lobby || !targetUsername) return;
+    const sockName = extractSocketUsername(ws);
+    const reqSpec = lobby.spectators.find(s => s.idSocket === ws || (sockName && s.username.toLowerCase() === sockName.toLowerCase()));
+    const reqPlayer = lobby.players.find(p => p.id === ws || (sockName && p.username.toLowerCase() === sockName.toLowerCase()));
+    const requesterName = reqSpec?.username || (reqPlayer?.eliminated ? reqPlayer.username : sockName);
+
+    if (!requesterName) return;
+
+    const target = lobby.players.find(p => p.username.toLowerCase() === String(targetUsername).trim().toLowerCase());
+    if (!target || target.eliminated) return;
+
+    if (!target.peekRequests) target.peekRequests = {};
+    if (!target.peekAllowed) target.peekAllowed = {};
+
+    if (target.isBot) {
+        target.peekAllowed[requesterName] = true;
+    } else {
+        target.peekRequests[requesterName] = true;
+    }
+    broadcastLobbyUpdate(lobby.code);
+}
+
+function handleRespondPeek(lobby, ws, requesterUsername, allow) {
+    if (!lobby || !requesterUsername) return;
+    const sockName = extractSocketUsername(ws);
+    const me = lobby.players.find(p => p.id === ws || (sockName && p.username.toLowerCase() === sockName.toLowerCase()));
+    if (!me) return;
+
+    if (!me.peekRequests) me.peekRequests = {};
+    if (!me.peekAllowed) me.peekAllowed = {};
+
+    Object.keys(me.peekRequests).forEach(k => {
+        if (k.toLowerCase() === String(requesterUsername).trim().toLowerCase()) {
+            delete me.peekRequests[k];
+        }
+    });
+    if (me.peekIncoming) {
+        Object.keys(me.peekIncoming).forEach(k => {
+            if (k.toLowerCase() === String(requesterUsername).trim().toLowerCase()) {
+                delete me.peekIncoming[k];
+            }
+        });
+    }
+
+    if (allow) {
+        // Clear any previous peek target for this spectator so they view one hand at a time
+        lobby.players.forEach(p => {
+            if (p.peekAllowed) {
+                Object.keys(p.peekAllowed).forEach(k => {
+                    if (k.toLowerCase() === String(requesterUsername).trim().toLowerCase()) {
+                        delete p.peekAllowed[k];
+                    }
+                });
+            }
+        });
+        me.peekAllowed[requesterUsername] = true;
+    } else {
+        Object.keys(me.peekAllowed).forEach(k => {
+            if (k.toLowerCase() === String(requesterUsername).trim().toLowerCase()) {
+                delete me.peekAllowed[k];
+            }
+        });
+    }
+
+    broadcastLobbyUpdate(lobby.code);
+}
+
+function handleStopPeek(lobby, ws) {
+    if (!lobby) return;
+    const sockName = extractSocketUsername(ws);
+    const reqSpec = lobby.spectators.find(s => s.idSocket === ws || (sockName && s.username.toLowerCase() === sockName.toLowerCase()));
+    const reqPlayer = lobby.players.find(p => p.id === ws || (sockName && p.username.toLowerCase() === sockName.toLowerCase()));
+    const requesterName = reqSpec?.username || reqPlayer?.username || sockName;
+    if (!requesterName) return;
+
+    lobby.players.forEach(p => {
+        if (p.peekAllowed) {
+            Object.keys(p.peekAllowed).forEach(k => {
+                if (k.toLowerCase() === requesterName.toLowerCase()) {
+                    delete p.peekAllowed[k];
+                }
+            });
+        }
+    });
+    broadcastLobbyUpdate(lobby.code);
+}
+
+function handleKickPeeker(lobby, ws, spectatorUsername) {
+    if (!lobby || !spectatorUsername) return;
+    const sockName = extractSocketUsername(ws);
+    const me = lobby.players.find(p => p.id === ws || (sockName && p.username.toLowerCase() === sockName.toLowerCase()));
+    if (!me || !me.peekAllowed) return;
+
+    Object.keys(me.peekAllowed).forEach(k => {
+        if (k.toLowerCase() === String(spectatorUsername).trim().toLowerCase()) {
+            delete me.peekAllowed[k];
+        }
+    });
+    broadcastLobbyUpdate(lobby.code);
 }
 
 // -------------------------------------------------------------
@@ -437,16 +570,25 @@ function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUse
 function getSanitizedLobby(lobby, wsId) {
     const activeParts = getActiveParticipants(lobby);
     const allParticipants = [...lobby.players];
-    const requestingPlayer = lobby.players.find(p => p.id === wsId);
-    const requestingSpectator = lobby.spectators.find(s => s.idSocket === wsId);
-    const myUsername = requestingPlayer ? requestingPlayer.username : (requestingSpectator?.username || null);
+    const sockUsername = extractSocketUsername(wsId);
 
+    const requestingPlayer = lobby.players.find(p =>
+        p.id === wsId || (sockUsername && p.username.toLowerCase() === sockUsername.toLowerCase())
+    );
+    const requestingSpectator = lobby.spectators.find(s =>
+        s.idSocket === wsId || (sockUsername && s.username.toLowerCase() === sockUsername.toLowerCase())
+    );
+    const myUsername = requestingPlayer?.username || requestingSpectator?.username || sockUsername || null;
+    const isRequesterSpectating = Boolean(requestingSpectator || (requestingPlayer && requestingPlayer.eliminated) || !requestingPlayer);
+
+    // Compute rotated seat indices without mutating server-side player.seat
     let sortedParticipants = [...allParticipants];
     if (myUsername) {
-        const idx = sortedParticipants.findIndex(p => p.username === myUsername);
-        if (idx !== -1) sortedParticipants = sortedParticipants.slice(idx).concat(sortedParticipants.slice(0, idx));
+        const idx = sortedParticipants.findIndex(p => p.username.toLowerCase() === myUsername.toLowerCase());
+        if (idx !== -1) {
+            sortedParticipants = sortedParticipants.slice(idx).concat(sortedParticipants.slice(0, idx));
+        }
     }
-    sortedParticipants.forEach((p, i) => { p.seat = i; });
 
     const myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.delivered?.[myUsername]);
     myUnrespondedBets.forEach(b => {
@@ -513,24 +655,34 @@ function getSanitizedLobby(lobby, wsId) {
         livesVote: lobby.livesVote || null,
         endGameVote: lobby.endGameVote || null,
         players: lobby.players.map(p => {
-            const canSee = lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd' || p.username === myUsername;
-            const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
-                k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
+            const isMe = Boolean(myUsername && p.username.toLowerCase() === myUsername.toLowerCase());
+            const canSee = lobby.gameState === 'roundOver' || lobby.gameState === 'tournamentEnd' || isMe;
+
+            const specAllowed = Boolean(
+                isRequesterSpectating &&
+                myUsername &&
+                p.peekAllowed &&
+                (Array.isArray(p.peekAllowed)
+                    ? p.peekAllowed.some(k => String(k).toLowerCase() === myUsername.toLowerCase())
+                    : Object.keys(p.peekAllowed).some(k => k.toLowerCase() === myUsername.toLowerCase() && Boolean(p.peekAllowed[k])))
             );
-            const sortedRef = sortedParticipants.find(sp => sp.username === p.username);
+
+            const rotatedSeatIdx = sortedParticipants.findIndex(sp => sp.username === p.username);
+            const mergedIncoming = { ...(p.peekRequests || {}), ...(p.peekIncoming || {}) };
+
             return {
                 username: p.username,
                 lives: Math.max(0, p.lives),
                 wager: p.wager || 5,
                 cardCount: p.cards ? p.cards.length : 0,
                 ready: p.ready,
-                seat: sortedRef ? sortedRef.seat : p.seat,
+                seat: rotatedSeatIdx !== -1 ? rotatedSeatIdx : p.seat,
                 nextHandReady: p.nextHandReady,
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
                 inVC: !!p.inVC,
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
-                peekIncoming: wsId === p.id ? (p.peekRequests || {}) : {},
+                peekIncoming: (wsId === p.id || isMe) ? mergedIncoming : {},
                 peekAllowed: p.peekAllowed || {},
                 cards: (canSee || specAllowed) ? (p.cards || []) : []
             };
@@ -547,15 +699,19 @@ function broadcastLobbyUpdate(code) {
     const lobby = lobbies[code];
     if (!lobby) return;
 
+    const sentSockets = new Set();
+
     lobby.players.forEach(p => {
-        if (p.id?.readyState === WebSocket.OPEN) {
+        if (p.id?.readyState === WebSocket.OPEN && !sentSockets.has(p.id)) {
+            sentSockets.add(p.id);
             const data = getSanitizedLobby(lobby, p.id);
             p.id.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: data }));
             p.id.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: data }));
         }
     });
     lobby.spectators.forEach(s => {
-        if (s.idSocket?.readyState === WebSocket.OPEN) {
+        if (s.idSocket?.readyState === WebSocket.OPEN && !sentSockets.has(s.idSocket)) {
+            sentSockets.add(s.idSocket);
             const data = getSanitizedLobby(lobby, s.idSocket);
             s.idSocket.send(JSON.stringify({ type: 'GAME_STATE_UPDATE', lobby: data }));
             s.idSocket.send(JSON.stringify({ type: 'LOBBY_UPDATE', lobby: data }));
@@ -694,19 +850,12 @@ function handleStandUp(lobby, ws, username) {
 
     lobby.players.forEach((p, idx) => { p.seat = idx; });
 
-    const alreadySpec = lobby.spectators.some(s => 
-        (s.idSocket && s.idSocket === ws) || 
-        (s.username && cleanName && s.username.toLowerCase() === cleanName)
-    );
-
-    if (!alreadySpec) {
-        lobby.spectators.push({
-            idSocket: ws || player.id,
-            username: player.username,
-            inVC: player.inVC || false,
-            isMuted: player.isMuted !== undefined ? player.isMuted : true
-        });
-    }
+    addSpectatorUnique(lobby, {
+        idSocket: ws || player.id,
+        username: player.username,
+        inVC: player.inVC || false,
+        isMuted: player.isMuted !== undefined ? player.isMuted : true
+    });
 
     establishDealer(lobby);
     syncBotReadiness(lobby);
@@ -739,6 +888,7 @@ function startDealerDrawPhase(lobby) {
     lobby.players.forEach(p => {
         p.peekAllowed = {};
         p.peekRequests = {};
+        p.peekIncoming = {};
         if (!p.eliminated) p.nextHandReady = p.isBot;
     });
     broadcastLobbyUpdate(lobby.code);
@@ -776,6 +926,7 @@ function startRound(lobby) {
     lobby.players.forEach(p => {
         p.peekAllowed = {};
         p.peekRequests = {};
+        p.peekIncoming = {};
     });
 
     establishDealer(lobby);
@@ -878,7 +1029,7 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                     resolveFirstToLoseBets(lobby, loser.username);
                     syncLifetimeLedgerBalances(lobby);
                     if (loser.id && typeof loser.id === 'object') {
-                        lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
+                        addSpectatorUnique(lobby, { idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
                     }
                 }
             }
@@ -991,7 +1142,7 @@ function handleTurnAction(lobby, wsId, actionType) {
             feeder.eliminated = true;
             resolveFirstToLoseBets(lobby, feeder.username);
             if (feeder.id && typeof feeder.id === 'object') {
-                lobby.spectators.push({ idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
+                addSpectatorUnique(lobby, { idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
             }
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
@@ -1002,7 +1153,7 @@ function handleTurnAction(lobby, wsId, actionType) {
                         p.eliminated = true;
                         resolveFirstToLoseBets(lobby, p.username);
                         if (p.id && typeof p.id === 'object') {
-                            lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
+                            addSpectatorUnique(lobby, { idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
                         }
                     }
                 }
@@ -1108,7 +1259,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             feeder.eliminated = true;
             resolveFirstToLoseBets(lobby, feeder.username);
             if (feeder.id && typeof feeder.id === 'object') {
-                lobby.spectators.push({ idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
+                addSpectatorUnique(lobby, { idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
             }
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
@@ -1119,7 +1270,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
                         p.eliminated = true;
                         resolveFirstToLoseBets(lobby, p.username);
                         if (p.id && typeof p.id === 'object') {
-                            lobby.spectators.push({ idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
+                            addSpectatorUnique(lobby, { idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
                         }
                     }
                 }
@@ -1280,7 +1431,7 @@ function resolveRoundEnd(lobby) {
             resolveFirstToLoseBets(lobby, loser.username);
             syncLifetimeLedgerBalances(lobby);
             if (loser.id && typeof loser.id === 'object') {
-                lobby.spectators.push({ idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
+                addSpectatorUnique(lobby, { idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
             }
         }
 
@@ -1305,6 +1456,7 @@ function triggerRoundOver(lobby, msg) {
     lobby.players.forEach(p => { 
         p.peekAllowed = {};
         p.peekRequests = {};
+        p.peekIncoming = {};
         p.nextHandReady = p.isBot; 
     });
     broadcastLobbyUpdate(lobby.code);
@@ -1460,6 +1612,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         p.seat = idx;
         p.nextHandReady = false;
         p.peekRequests = {};
+        p.peekIncoming = {};
         p.peekAllowed = {};
         startReadyCountdown(lobby, p);
     });
@@ -1578,13 +1731,22 @@ function joinLobby(ws, code, username) {
     if (existingPlayer) {
         existingPlayer.id = ws;
         existingPlayer.disconnectedAt = null;
-        lobby.spectators = lobby.spectators.filter(s => 
-            s.idSocket !== ws && s.username.toLowerCase() !== cleanName
-        );
+        if (existingPlayer.eliminated) {
+            addSpectatorUnique(lobby, {
+                idSocket: ws,
+                username: existingPlayer.username,
+                inVC: existingPlayer.inVC,
+                isMuted: existingPlayer.isMuted
+            });
+        } else {
+            lobby.spectators = lobby.spectators.filter(s => 
+                s.idSocket !== ws && s.username.toLowerCase() !== cleanName
+            );
+        }
         if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
             startReadyCountdown(lobby, existingPlayer);
         }
-        return { success: true, lobby, isSpectator: false };
+        return { success: true, lobby, isSpectator: !!existingPlayer.eliminated };
     }
 
     // 2. Re-attach to existing spectator
@@ -1623,7 +1785,7 @@ function joinLobby(ws, code, username) {
     }
 
     // 4. Fresh spectator join
-    lobby.spectators.push({
+    addSpectatorUnique(lobby, {
         idSocket: ws,
         username,
         inVC: false,
@@ -1647,7 +1809,9 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
 
     const remainingHumans = lobby.players.filter(p => !p.isBot);
-    if (remainingHumans.length === 0) {
+    const remainingSpectators = lobby.spectators.filter(s => s.idSocket && s.idSocket.readyState === WebSocket.OPEN);
+
+    if (remainingHumans.length === 0 && remainingSpectators.length === 0) {
         clearRoundOverTimer(lobby);
         clearTurnTimer(lobby);
         if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
@@ -1697,6 +1861,10 @@ module.exports = {
     handleSetReady,
     handleSitDown,
     handleStandUp,
+    handleRequestPeek,
+    handleRespondPeek,
+    handleStopPeek,
+    handleKickPeeker,
     startDealerDrawPhase,
     startRound,
     advanceDealerToNextActive,
