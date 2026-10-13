@@ -23,12 +23,29 @@ function getLiveKitSDK() {
     return window.LivekitClient || window.LiveKitClient || window.livekitClient || null;
 }
 
+function getActiveRoomCode() {
+    return (window.appGlobals && window.appGlobals.currentJoinedCode) ||
+           localStorage.getItem('blitz31_active_room') ||
+           latestLiveKitRoom ||
+           null;
+}
+
+function cleanupRemoteAudioElements() {
+    document.querySelectorAll('.lk-remote-audio').forEach(el => {
+        try {
+            el.pause();
+            el.srcObject = null;
+            el.remove();
+        } catch (e) {}
+    });
+}
+
 // -------------------------------------------------------------
 // 1. SCREEN WAKE LOCK ENGINE
 // -------------------------------------------------------------
 async function requestScreenWakeLock() {
     try {
-        if ('wakeLock' in navigator && !wakeLockSentinel) {
+        if ('wakeLock' in navigator && !wakeLockSentinel && !document.hidden) {
             wakeLockSentinel = await navigator.wakeLock.request('screen');
             wakeLockSentinel.addEventListener('release', () => {
                 wakeLockSentinel = null;
@@ -114,7 +131,8 @@ async function connectLiveKit(arg1, arg2, roomCode) {
 }
 
 async function connectToLiveKit(host, token, roomCode) {
-    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || 'lobby';
+    const targetRoom = roomCode || getActiveRoomCode();
+    if (!targetRoom) return;
 
     if (!host || !token) {
         await requestVoiceToken(targetRoom);
@@ -127,12 +145,13 @@ async function connectToLiveKit(host, token, roomCode) {
     }
 
     if (livekitRoom && isLiveKitConnected) {
-        if (livekitRoom.name === targetRoom && latestLiveKitToken === token) {
+        if ((livekitRoom.name === targetRoom || latestLiveKitRoom === targetRoom) && latestLiveKitToken === token) {
             return;
         }
         try {
             await livekitRoom.disconnect();
         } catch (e) {}
+        cleanupRemoteAudioElements();
         livekitRoom = null;
         isLiveKitConnected = false;
     }
@@ -151,6 +170,8 @@ async function connectToLiveKit(host, token, roomCode) {
     isConnectingVoice = true;
 
     try {
+        cleanupRemoteAudioElements();
+
         livekitRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
@@ -171,6 +192,11 @@ async function connectToLiveKit(host, token, roomCode) {
         livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             const trackKind = track.kind || '';
             if (trackKind === 'audio' || (LK.Track && trackKind === LK.Track.Kind.Audio)) {
+                // Remove any stale audio element for this track sid
+                if (track.sid) {
+                    document.querySelectorAll(`.lk-remote-audio[data-track-sid="${track.sid}"]`).forEach(el => el.remove());
+                }
+
                 const audioElem = track.attach();
                 audioElem.autoplay = true;
                 audioElem.playsInline = true;
@@ -178,6 +204,7 @@ async function connectToLiveKit(host, token, roomCode) {
                 audioElem.setAttribute('playsinline', '');
                 audioElem.setAttribute('webkit-playsinline', '');
                 audioElem.classList.add('lk-remote-audio');
+                if (track.sid) audioElem.setAttribute('data-track-sid', track.sid);
 
                 if (selectedAudioOutputId && typeof audioElem.setSinkId === 'function') {
                     audioElem.setSinkId(selectedAudioOutputId).catch(() => {
@@ -201,13 +228,13 @@ async function connectToLiveKit(host, token, roomCode) {
         });
 
         livekitRoom.on(LK.RoomEvent.TrackMuted, (publication, participant) => {
-            if (publication.kind === 'audio' || publication.source === 'microphone') {
+            if (publication.kind === 'audio' || publication.source === 'microphone' || (LK.Track && publication.source === LK.Track.Source.Microphone)) {
                 syncRemoteParticipantMuteState(participant, true);
             }
         });
 
         livekitRoom.on(LK.RoomEvent.TrackUnmuted, (publication, participant) => {
-            if (publication.kind === 'audio' || publication.source === 'microphone') {
+            if (publication.kind === 'audio' || publication.source === 'microphone' || (LK.Track && publication.source === LK.Track.Source.Microphone)) {
                 syncRemoteParticipantMuteState(participant, false);
             }
         });
@@ -227,11 +254,13 @@ async function connectToLiveKit(host, token, roomCode) {
 
         livekitRoom.on(LK.RoomEvent.Disconnected, () => {
             isLiveKitConnected = false;
+            cleanupRemoteAudioElements();
             stopBackgroundKeepAliveOscillator();
             updateVoiceUI();
             refreshVoiceParticipantsList();
 
-            if (window.clientState && window.clientState.gameState !== 'mainMenu') {
+            const activeRoom = getActiveRoomCode();
+            if (activeRoom && window.clientState && window.clientState.gameState !== 'mainMenu') {
                 setTimeout(triggerVoiceReconnect, 1500);
             }
         });
@@ -244,7 +273,7 @@ async function connectToLiveKit(host, token, roomCode) {
         // Check stored mic state, but do not clear storage on initial muted connect
         const savedMicState = localStorage.getItem('blitz31_mic_state');
 
-        if (savedMicState === 'true' && navigator.userActivation && navigator.userActivation.hasBeenActive) {
+        if (savedMicState === 'true' && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) {
             try {
                 if (livekitRoom.startAudio) {
                     await livekitRoom.startAudio();
@@ -287,11 +316,11 @@ async function toggleVoiceOnOff() {
         updateVoiceButtonState('Connecting...');
         localStorage.setItem('blitz31_mic_state', 'true'); // Save intent for connectToLiveKit
         if (latestLiveKitHost && latestLiveKitToken) {
-            await connectToLiveKit(latestLiveKitHost, latestLiveKitToken);
+            await connectToLiveKit(latestLiveKitHost, latestLiveKitToken, getActiveRoomCode());
         } else {
-            await requestVoiceToken();
+            await requestVoiceToken(getActiveRoomCode());
         }
-        return; // Exit immediately to avoid dual-firing hardware requests
+        return;
     }
 
     const LK = getLiveKitSDK();
@@ -299,12 +328,17 @@ async function toggleVoiceOnOff() {
 
     try {
         if (isMicActive) {
-            // 2. Soft-Mute: Disable the track, do NOT release the OS hardware
+            // 2. Soft-Mute: Disable the track and notify LiveKit publication without releasing hardware
             const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
-            if (micPub && micPub.track && micPub.track.mediaStreamTrack) {
-                micPub.track.mediaStreamTrack.enabled = false;
+            if (micPub) {
+                if (micPub.track && micPub.track.mediaStreamTrack) {
+                    micPub.track.mediaStreamTrack.enabled = false;
+                }
+                if (typeof micPub.mute === 'function') {
+                    await micPub.mute();
+                }
             }
-            
+
             isMicActive = false;
             localStorage.setItem('blitz31_mic_state', 'false');
             updateVoiceUI();
@@ -314,13 +348,18 @@ async function toggleVoiceOnOff() {
             if (livekitRoom.startAudio) {
                 await livekitRoom.startAudio();
             }
-            
+
             // Only request new hardware access if the track was entirely missing
             const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
             if (!micPub || !micPub.track) {
                 await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-            } else if (micPub.track.mediaStreamTrack) {
-                micPub.track.mediaStreamTrack.enabled = true;
+            } else {
+                if (typeof micPub.unmute === 'function' && micPub.isMuted) {
+                    await micPub.unmute();
+                }
+                if (micPub.track.mediaStreamTrack) {
+                    micPub.track.mediaStreamTrack.enabled = true;
+                }
             }
 
             isMicActive = true;
@@ -331,7 +370,6 @@ async function toggleVoiceOnOff() {
     } catch (err) {
         console.error("[LiveKit] Mic toggle error:", err);
         isMicActive = false;
-        // Never permanently lock localStorage to 'false' on a temporary hardware/background error
         updateVoiceUI();
         sendVCStatusInternal(isLiveKitConnected, true);
         alert("Microphone permission denied or audio input device unavailable.");
@@ -379,25 +417,29 @@ function syncRemoteParticipantMuteState(participant, isMuted) {
         if (player) {
             player.inVC = true;
             player.isMuted = Boolean(isMuted);
-            if (typeof window.updateUIFromLobby === 'function') {
-                window.updateUIFromLobby(snap);
-            }
         }
         const spectator = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === participantName.toLowerCase());
         if (spectator) {
             spectator.inVC = true;
             spectator.isMuted = Boolean(isMuted);
         }
+        if (typeof window.updateUIFromLobby === 'function') {
+            window.updateUIFromLobby(snap);
+        }
     }
     refreshVoiceParticipantsList();
 }
 
 function sendVCStatusInternal(inVC, isMuted) {
-    const targetRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || latestLiveKitRoom || '';
-    const myName = (window.clientState && window.clientState.username) || (document.getElementById('username-input')?.value || '').trim() || localStorage.getItem('saved_username') || '';
+    const targetRoom = getActiveRoomCode() || '';
+    const myName = (typeof window.getActiveUsername === 'function' ? window.getActiveUsername() : '') ||
+                   (window.clientState && window.clientState.username) ||
+                   (document.getElementById('username-input')?.value || '').trim() ||
+                   localStorage.getItem('saved_username') || '';
 
+    // Send VC_STATUS_UPDATE to match server/game/wsHandler.js
     const payload = {
-        type: 'UPDATE_VC_STATUS',
+        type: 'VC_STATUS_UPDATE',
         room: targetRoom,
         code: targetRoom,
         username: myName,
@@ -405,14 +447,10 @@ function sendVCStatusInternal(inVC, isMuted) {
         isMuted: Boolean(isMuted)
     };
 
-    if (typeof sendSocket === 'function') {
-        sendSocket(payload);
+    if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend(payload);
     } else if (typeof window.sendSocket === 'function') {
         window.sendSocket(payload);
-    } else if (typeof initSocketAndSend === 'function') {
-        initSocketAndSend(payload);
-    } else if (typeof window.initSocketAndSend === 'function') {
-        window.initSocketAndSend(payload);
     } else if (window.appGlobals && window.appGlobals.ws && window.appGlobals.ws.readyState === 1) {
         window.appGlobals.ws.send(JSON.stringify(payload));
     }
@@ -422,17 +460,23 @@ function sendVCStatusInternal(inVC, isMuted) {
         window.clientState.isMuted = Boolean(isMuted);
     }
 
-    if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
+    if (window.appGlobals && window.appGlobals.latestLobbySnapshot && myName) {
         const snap = window.appGlobals.latestLobbySnapshot;
         const myPlayer = (snap.players || []).find(p => p.username.toLowerCase() === myName.toLowerCase());
         if (myPlayer) {
             myPlayer.inVC = Boolean(inVC);
             myPlayer.isMuted = Boolean(isMuted);
-            if (typeof window.updateUIFromLobby === 'function') {
-                window.updateUIFromLobby(snap);
-            }
+        }
+        const mySpec = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === myName.toLowerCase());
+        if (mySpec) {
+            mySpec.inVC = Boolean(inVC);
+            mySpec.isMuted = Boolean(isMuted);
+        }
+        if (typeof window.updateUIFromLobby === 'function') {
+            window.updateUIFromLobby(snap);
         }
     }
+    refreshVoiceParticipantsList();
 }
 
 
@@ -440,8 +484,13 @@ function sendVCStatusInternal(inVC, isMuted) {
 // 5. FRESH TOKEN FETCH & EXPLICIT DISCONNECT
 // -------------------------------------------------------------
 async function requestVoiceToken(roomCode) {
-    const targetRoom = roomCode || (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room') || 'lobby';
-    const myUsername = (window.clientState && window.clientState.username) || localStorage.getItem('saved_username') || 'Player';
+    const targetRoom = roomCode || getActiveRoomCode();
+    if (!targetRoom) return;
+
+    const myUsername = (typeof window.getActiveUsername === 'function' ? window.getActiveUsername() : '') ||
+                       (window.clientState && window.clientState.username) ||
+                       localStorage.getItem('saved_username') ||
+                       'Player';
 
     try {
         const res = await fetch('/token', {
@@ -461,24 +510,24 @@ async function requestVoiceToken(roomCode) {
     }
 
     const wsPayload = { type: 'REQUEST_LIVEKIT_TOKEN', room: targetRoom, code: targetRoom };
-    if (typeof sendSocket === 'function') {
-        sendSocket(wsPayload);
-    } else if (typeof window.initSocketAndSend === 'function') {
+    if (typeof window.initSocketAndSend === 'function') {
         window.initSocketAndSend(wsPayload);
+    } else if (typeof window.sendSocket === 'function') {
+        window.sendSocket(wsPayload);
     }
 }
 
 function triggerVoiceReconnect() {
-    const targetRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || 
-                       localStorage.getItem('blitz31_active_room') || 
-                       latestLiveKitRoom || 
-                       'lobby';
+    const targetRoom = getActiveRoomCode();
+    if (!targetRoom) return;
     requestVoiceToken(targetRoom);
 }
 
 async function disconnectLiveKit() {
     releaseScreenWakeLock();
     stopBackgroundKeepAliveOscillator();
+    cleanupRemoteAudioElements();
+
     if (livekitRoom) {
         try { await livekitRoom.disconnect(); } catch (e) {}
         livekitRoom = null;
@@ -486,6 +535,7 @@ async function disconnectLiveKit() {
     latestLiveKitHost = null;
     latestLiveKitToken = null;
     latestLiveKitRoom = null;
+    if (window.appGlobals) window.appGlobals.lastConnectedLiveKitRoom = null;
     isLiveKitConnected = false;
     isMicActive = false;
 
@@ -565,8 +615,8 @@ async function refreshAudioOutputDevices() {
 
         if (selectedAudioOutputId !== 'default' && !isSelectedDeviceStillConnected) {
             await setAudioOutputDevice('default');
-            if (typeof showCenterNotification === 'function') {
-                showCenterNotification("Audio route switched to Phone Speaker");
+            if (typeof window.showCenterNotification === 'function') {
+                window.showCenterNotification("Audio route switched to Phone Speaker");
             }
         } else {
             select.value = selectedAudioOutputId;
@@ -626,12 +676,22 @@ if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefine
 async function handleScreenResumeVoice() {
     if (document.hidden) return;
 
+    const activeRoom = getActiveRoomCode();
+    if (!activeRoom) return; // Do not auto-connect voice while on the main menu or login screen
+
     requestScreenWakeLock();
     startBackgroundKeepAliveOscillator();
 
     // If disconnected while sleeping, reconnect voice with a fresh token
     if (!isLiveKitConnected || !livekitRoom || livekitRoom.state !== 'connected') {
-        triggerVoiceReconnect();
+        if (!isConnectingVoice) {
+            triggerVoiceReconnect();
+        }
+        return;
+    }
+
+    if (livekitRoom.startAudio) {
+        livekitRoom.startAudio().catch(() => {});
     }
 }
 
@@ -641,11 +701,13 @@ window.addEventListener('focus', handleScreenResumeVoice);
 
 // Universal initial user-gesture audio unlock (executes once only)
 function unlockAudioOnFirstTouch() {
-    startBackgroundKeepAliveOscillator();
+    if (getActiveRoomCode()) {
+        startBackgroundKeepAliveOscillator();
+        requestScreenWakeLock();
+    }
     if (livekitRoom && livekitRoom.startAudio) {
         livekitRoom.startAudio().catch(() => {});
     }
-    requestScreenWakeLock();
 
     window.removeEventListener('touchstart', unlockAudioOnFirstTouch);
     window.removeEventListener('pointerdown', unlockAudioOnFirstTouch);
@@ -664,6 +726,7 @@ window.toggleLiveKitVoice = toggleVoiceOnOff;
 window.disconnectLiveKit = disconnectLiveKit;
 window.setAudioOutputDevice = setAudioOutputDevice;
 window.refreshAudioOutputDevices = refreshAudioOutputDevices;
+window.refreshVoiceParticipantsList = refreshVoiceParticipantsList;
 window.setVoiceChatVolume = setVoiceChatVolume;
 window.triggerVoiceReconnect = triggerVoiceReconnect;
 window.sendVCStatusInternal = sendVCStatusInternal;
