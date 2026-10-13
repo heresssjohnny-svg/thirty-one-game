@@ -12,7 +12,7 @@ for (const p of ['../db', '../../db', './db', './server/db']) {
 }
 
 const lobbies = {};
-const INACTIVITY_TIMEOUT_MS = 300000; // 5-minute inactivity protection
+const INACTIVITY_TIMEOUT_MS = 300000; // 5-minute lobby inactivity protection
 
 function getLobbies() {
     return lobbies;
@@ -37,6 +37,7 @@ function touchLobbyActivity(lobby, broadcastLobbyList) {
 
     const now = Date.now();
 
+    // 1. Check seated human players
     const hasSeatedHumans = lobby.players.some(p => {
         if (p.isBot) return false;
         if (p.id !== null) return true;
@@ -44,13 +45,16 @@ function touchLobbyActivity(lobby, broadcastLobbyList) {
         return false;
     });
 
+    // 2. Also check human spectators so standing up doesn't delete the table
     const hasSpectatorHumans = (lobby.spectators || []).some(s => {
         if (s.idSocket !== null) return true;
         if (s.disconnectedAt && (now - s.disconnectedAt < INACTIVITY_TIMEOUT_MS)) return true;
         return false;
     });
 
-    if (!hasSeatedHumans && !hasSpectatorHumans) {
+    const hasActiveHumans = hasSeatedHumans || hasSpectatorHumans;
+
+    if (!hasActiveHumans) {
         delete lobbies[lobby.code];
         if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
     }
@@ -78,6 +82,7 @@ function closeInactiveLobby(code, broadcastLobbyList) {
 
     const closePayload = JSON.stringify({ type: 'ERROR', message: 'Lobby closed due to inactivity.' });
     lobby.players.forEach(p => {
+        clearReadyCountdown(p);
         if (p.id?.readyState === WebSocket.OPEN) {
             p.id.send(closePayload);
             p.id.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
@@ -112,6 +117,161 @@ function clearRoundOverTimer(lobby) {
         lobby.roundOverAutoTimer = null;
     }
 }
+
+// -------------------------------------------------------------
+// 1. LOBBY 30-SECOND READY-UP TIMEOUT CONTROLLER
+// -------------------------------------------------------------
+
+function clearReadyCountdown(player) {
+    if (player && player.readyTimeout) {
+        clearTimeout(player.readyTimeout);
+        player.readyTimeout = null;
+    }
+}
+
+function startReadyCountdown(lobby, player) {
+    if (!lobby || lobby.gameState !== 'lobby' || !player || player.isBot) return;
+    clearReadyCountdown(player);
+
+    player.readyTimeout = setTimeout(() => {
+        const curLobby = lobbies[lobby.code];
+        if (!curLobby || curLobby.gameState !== 'lobby') return;
+
+        const target = curLobby.players.find(p => p.username && p.username.toLowerCase() === (player.username || '').toLowerCase());
+        if (target && !target.ready) {
+            clearReadyCountdown(target);
+            handleStandUp(curLobby, target.id, target.username);
+            curLobby.phaseMessage = `⏱️ ${target.username} timed out after 30s and was moved to spectator mode.`;
+            broadcastLobbyUpdate(curLobby.code);
+        }
+    }, 30000); // 30 seconds
+}
+
+// -------------------------------------------------------------
+// 2. TURN INACTIVITY TIMER & LEVEL 8/10 AI DECISION ENGINE
+// -------------------------------------------------------------
+
+function clearTurnTimer(lobby) {
+    if (lobby && lobby.turnTimeoutTimer) {
+        clearTimeout(lobby.turnTimeoutTimer);
+        lobby.turnTimeoutTimer = null;
+    }
+}
+
+function resetTurnTimer(lobby) {
+    if (!lobby) return;
+    clearTurnTimer(lobby);
+
+    if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
+
+    const currentPlayer = lobby.players[lobby.turnIndex];
+    if (!currentPlayer || currentPlayer.eliminated) return;
+
+    // Only apply timer to human players
+    if (!currentPlayer.isBot) {
+        lobby.turnTimeoutTimer = setTimeout(() => {
+            const curLobby = lobbies[lobby.code];
+            if (!curLobby || (curLobby.gameState !== 'playing' && curLobby.gameState !== 'finalTurn')) return;
+            const p = curLobby.players[curLobby.turnIndex];
+            if (!p || p.username !== currentPlayer.username) return;
+
+            curLobby.phaseMessage = `🤖 ${p.username} ran out of time! AI Level 8 played for them.`;
+            executeLevel8AITurn(curLobby, p);
+            broadcastLobbyUpdate(curLobby.code);
+        }, 25000); // 25 seconds turn timeout
+    }
+}
+
+function executeLevel8AITurn(lobby, player) {
+    if (!lobby || !player || player.eliminated) return;
+
+    const cards = player.cards || [];
+    const active = getActiveParticipants(lobby);
+    const currentScore = calculateScore(cards);
+
+    // If player already drew and holds 4 cards: pick the optimal discard
+    if (cards.length === 4) {
+        let bestDiscardIdx = 0;
+        let highestSubScore = -1;
+        for (let i = 0; i < 4; i++) {
+            const subHand = cards.filter((_, idx) => idx !== i);
+            const score = calculateScore(subHand);
+            if (score > highestSubScore) {
+                highestSubScore = score;
+                bestDiscardIdx = i;
+            }
+        }
+        handleDiscardAction(lobby, player.id, bestDiscardIdx);
+        return;
+    }
+
+    // LEVEL 8 KNOCK EVALUATION (Before drawing)
+    const canKnock = lobby.gameState === 'playing' 
+        && !lobby.knockedBy 
+        && cards.length === 3 
+        && (lobby.turnsTakenThisRound || 0) >= active.length;
+
+    const knockThreshold = active.length > 2 ? 26 : 24;
+    if (canKnock && currentScore >= knockThreshold) {
+        handleKnock(lobby, player.id);
+        return;
+    }
+
+    // LEVEL 8 DRAW DECISION: Discard vs Center Deck
+    const topDiscard = (lobby.discardPile && lobby.discardPile.length > 0)
+        ? lobby.discardPile[lobby.discardPile.length - 1]
+        : null;
+
+    let shouldDrawDiscard = false;
+    if (topDiscard && cards.length === 3) {
+        let bestScoreWithDiscard = 0;
+        for (let i = 0; i < 3; i++) {
+            const testHand = cards.filter((_, idx) => idx !== i).concat([topDiscard]);
+            bestScoreWithDiscard = Math.max(bestScoreWithDiscard, calculateScore(testHand));
+        }
+        if (bestScoreWithDiscard > currentScore) {
+            shouldDrawDiscard = true;
+        }
+    }
+
+    // 1. Draw Card
+    handleTurnAction(lobby, player.id, shouldDrawDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK');
+
+    // 2. Discard Card (Permutational Evaluation)
+    setTimeout(() => {
+        const curLobby = lobbies[lobby.code];
+        if (!curLobby || (curLobby.gameState !== 'playing' && curLobby.gameState !== 'finalTurn')) return;
+        const curPlayer = curLobby.players[curLobby.turnIndex];
+        if (!curPlayer || curPlayer.username !== player.username || curPlayer.cards.length !== 4) return;
+
+        let bestDiscardIndex = 0;
+        let maxScore = -1;
+
+        for (let i = 0; i < 4; i++) {
+            const simulatedHand = curPlayer.cards.filter((_, idx) => idx !== i);
+            const score = calculateScore(simulatedHand);
+
+            if (score > maxScore) {
+                maxScore = score;
+                bestDiscardIndex = i;
+            } else if (score === maxScore) {
+                const c1 = curPlayer.cards[i];
+                const c2 = curPlayer.cards[bestDiscardIndex];
+                const v1 = (c1.val === 'A') ? 11 : (['K','Q','J','10'].includes(c1.val) ? 10 : Number(c1.val));
+                const v2 = (c2.val === 'A') ? 11 : (['K','Q','J','10'].includes(c2.val) ? 10 : Number(c2.val));
+                if (v1 < v2) {
+                    bestDiscardIndex = i;
+                }
+            }
+        }
+
+        handleDiscardAction(curLobby, curPlayer.id, bestDiscardIndex);
+    }, 600);
+}
+
+// -------------------------------------------------------------
+// DEALER & GAMEPLAY ENGINE
+// -------------------------------------------------------------
 
 function establishDealer(lobby) {
     if (lobby.lastGameWinner) {
@@ -281,14 +441,12 @@ function getSanitizedLobby(lobby, wsId) {
     const requestingSpectator = lobby.spectators.find(s => s.idSocket === wsId);
     const myUsername = requestingPlayer ? requestingPlayer.username : (requestingSpectator?.username || null);
 
-    // Calculate rotation without mutating the original player objects in memory
     let sortedParticipants = [...allParticipants];
     if (myUsername) {
         const idx = sortedParticipants.findIndex(p => p.username === myUsername);
         if (idx !== -1) sortedParticipants = sortedParticipants.slice(idx).concat(sortedParticipants.slice(0, idx));
     }
-    const seatMap = {};
-    sortedParticipants.forEach((p, i) => { seatMap[p.username] = i; });
+    sortedParticipants.forEach((p, i) => { p.seat = i; });
 
     const myUnrespondedBets = (lobby.pendingBets || []).filter(b => b.target === myUsername && !b.delivered?.[myUsername]);
     myUnrespondedBets.forEach(b => {
@@ -314,8 +472,6 @@ function getSanitizedLobby(lobby, wsId) {
         elapsedSeconds = lobby.songPausedAtOffset || 0;
     }
 
-    const currentTurnUser = allParticipants[lobby.turnIndex]?.username || '';
-
     return {
         code: lobby.code,
         name: lobby.name,
@@ -325,7 +481,7 @@ function getSanitizedLobby(lobby, wsId) {
         deckCount: lobby.deck ? lobby.deck.length : 0,
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
-        currentTurnUser: currentTurnUser,
+        currentTurnUser: allParticipants[lobby.turnIndex]?.username || '',
         phaseMessage: lobby.phaseMessage,
         canKnock: lobby.turnsTakenThisRound >= activeParts.length,
         potTotal: allParticipants.reduce((sum, p) => sum + (p.wager || 5), 0),
@@ -360,13 +516,14 @@ function getSanitizedLobby(lobby, wsId) {
             const specAllowed = requestingSpectator && p.peekAllowed && Object.keys(p.peekAllowed).some(
                 k => k.toLowerCase() === requestingSpectator.username.toLowerCase()
             );
+            const sortedRef = sortedParticipants.find(sp => sp.username === p.username);
             return {
                 username: p.username,
                 lives: Math.max(0, p.lives),
                 wager: p.wager || 5,
                 cardCount: p.cards ? p.cards.length : 0,
                 ready: p.ready,
-                seat: seatMap[p.username] !== undefined ? seatMap[p.username] : p.seat,
+                seat: sortedRef ? sortedRef.seat : p.seat,
                 nextHandReady: p.nextHandReady,
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
@@ -411,12 +568,22 @@ function handleSetReady(lobby, username, isReady) {
     if (!player) return;
 
     player.ready = Boolean(isReady);
+
+    if (player.ready) {
+        clearReadyCountdown(player);
+    } else {
+        startReadyCountdown(lobby, player);
+    }
+
     syncBotReadiness(lobby);
     broadcastLobbyUpdate(lobby.code);
 
     const active = getActiveParticipants(lobby);
     if (active.length >= 2 && active.every(p => p.ready)) {
-        lobby.players.forEach(p => { p.ready = false; });
+        lobby.players.forEach(p => { 
+            clearReadyCountdown(p);
+            p.ready = false; 
+        });
 
         const winnerStillSeated = lobby.lastGameWinner && lobby.players.some(
             p => p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
@@ -431,11 +598,15 @@ function handleSetReady(lobby, username, isReady) {
     }
 }
 
+// -------------------------------------------------------------
+// SPECTATOR SEAT CONTROLS: SIT DOWN & STAND UP
+// -------------------------------------------------------------
 function handleSitDown(lobby, ws, username) {
     if (!lobby || lobby.gameState !== 'lobby') return false;
 
     const cleanName = (username || '').trim().toLowerCase();
 
+    // 1. Re-attach to existing seated player
     const existingPlayer = lobby.players.find(p => 
         (p.id && p.id === ws) || 
         (cleanName && p.username && p.username.toLowerCase() === cleanName)
@@ -448,12 +619,16 @@ function handleSitDown(lobby, ws, username) {
             s.idSocket !== ws && 
             (!cleanName || !s.username || s.username.toLowerCase() !== cleanName)
         );
+        if (!existingPlayer.ready) {
+            startReadyCountdown(lobby, existingPlayer);
+        }
         broadcastLobbyUpdate(lobby.code);
         return true;
     }
 
     if (lobby.players.length >= 6) return false;
 
+    // 2. Identify spectator from lobby.spectators
     const specIndex = lobby.spectators.findIndex(s => 
         (s.idSocket && s.idSocket === ws) || 
         (cleanName && s.username && s.username.toLowerCase() === cleanName)
@@ -471,7 +646,7 @@ function handleSitDown(lobby, ws, username) {
         s.username.toLowerCase() !== targetUsername.toLowerCase()
     );
 
-    lobby.players.push({
+    const newPlayer = {
         id: ws,
         username: targetUsername,
         lives: lobby.defaultLives || 2,
@@ -487,7 +662,10 @@ function handleSitDown(lobby, ws, username) {
         peekRequests: {},
         peekAllowed: {},
         disconnectedAt: null
-    });
+    };
+
+    lobby.players.push(newPlayer);
+    startReadyCountdown(lobby, newPlayer);
 
     syncBotReadiness(lobby);
     broadcastLobbyUpdate(lobby.code);
@@ -505,6 +683,7 @@ function handleStandUp(lobby, ws, username) {
     if (playerIndex === -1) return false;
 
     const player = lobby.players[playerIndex];
+    clearReadyCountdown(player);
     lobby.players.splice(playerIndex, 1);
 
     lobby.players.forEach((p, idx) => { p.seat = idx; });
@@ -531,6 +710,9 @@ function handleStandUp(lobby, ws, username) {
 
 function startDealerDrawPhase(lobby) {
     clearRoundOverTimer(lobby);
+    clearTurnTimer(lobby);
+    lobby.players.forEach(p => clearReadyCountdown(p));
+
     const deck = createDeck();
     lobby.drawPool = deck.map((c, i) => ({ index: i, card: c, chosenBy: null }));
     lobby.drawResults = {};
@@ -557,6 +739,9 @@ function startDealerDrawPhase(lobby) {
 
 function startRound(lobby) {
     clearRoundOverTimer(lobby);
+    clearTurnTimer(lobby);
+    lobby.players.forEach(p => clearReadyCountdown(p));
+
     lobby.deck = createDeck();
     lobby.discardPile = [];
     lobby.drawPool = [];
@@ -617,6 +802,7 @@ function startRound(lobby) {
     lobby.phaseMessage = `Round started! Turn: ${lobby.players[lobby.turnIndex].username}`;
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
+    resetTurnTimer(lobby);
 }
 
 function advanceDealerToNextActive(lobby) {
@@ -708,29 +894,27 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
 }
 
 // -------------------------------------------------------------
-// TURN ACTION & DISCARD LOGIC WITH RESILIENT IDENTIFICATION
+// TURN ACTION & DISCARD LOGIC WITH RESILIENT MATCHING
 // -------------------------------------------------------------
 function handleTurnAction(lobby, wsId, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
 
-    // Resilient socket & username fallback so mobile re-sync doesn't block turns
-    const isSocketMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId);
-    const isNameMatch = wsId && (
+    const isDirectMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId) || (wsId === currentPlayer.username);
+    const isSocketNameMatch = wsId && (
         (wsId.currentUsername && currentPlayer.username && wsId.currentUsername.toLowerCase() === currentPlayer.username.toLowerCase()) ||
         (wsId.user?.username && currentPlayer.username && wsId.user.username.toLowerCase() === currentPlayer.username.toLowerCase())
     );
 
-    if (!isSocketMatch && !isNameMatch) return;
-    if (isNameMatch && !isSocketMatch) {
+    if (!isDirectMatch && !isSocketNameMatch) return;
+    if (isSocketNameMatch && !isDirectMatch) {
         currentPlayer.id = wsId;
         currentPlayer.disconnectedAt = null;
     }
 
     if (lobby.gameState === 'finalTurn' && lobby.knockedBy === currentPlayer.username) return;
 
-    // Normalize action across string and object formats ('DRAW_DECK', 'deck', 'DRAW_CARD', 'discard')
     let act = typeof actionType === 'object' ? (actionType.source || actionType.action || actionType.type) : actionType;
     act = String(act || '').toUpperCase();
 
@@ -774,6 +958,7 @@ function handleTurnAction(lobby, wsId, actionType) {
     }
 
     if (calculateBestFourCardScore(currentPlayer.cards) === 31 || calculateScore(currentPlayer.cards) === 31) {
+        clearTurnTimer(lobby);
         lobby.hit31Player = currentPlayer.username;
 
         if (currentPlayer.cards.length === 4) {
@@ -840,17 +1025,19 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.cards.length !== 4) return;
 
-    const isSocketMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId);
-    const isNameMatch = wsId && (
+    const isDirectMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId) || (wsId === currentPlayer.username);
+    const isSocketNameMatch = wsId && (
         (wsId.currentUsername && currentPlayer.username && wsId.currentUsername.toLowerCase() === currentPlayer.username.toLowerCase()) ||
         (wsId.user?.username && currentPlayer.username && wsId.user.username.toLowerCase() === currentPlayer.username.toLowerCase())
     );
 
-    if (!isSocketMatch && !isNameMatch) return;
-    if (isNameMatch && !isSocketMatch) {
+    if (!isDirectMatch && !isSocketNameMatch) return;
+    if (isSocketNameMatch && !isDirectMatch) {
         currentPlayer.id = wsId;
         currentPlayer.disconnectedAt = null;
     }
+
+    clearTurnTimer(lobby);
 
     const idx = Number(cardIndex);
     if (isNaN(idx) || idx < 0 || idx >= currentPlayer.cards.length) {
@@ -871,6 +1058,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
         lobby.phaseMessage = `📢 ${currentPlayer.username} put the discard back. Must draw from deck!`;
         broadcastLobbyUpdate(lobby.code);
         scheduleBotActions(lobby);
+        resetTurnTimer(lobby);
         return;
     }
 
@@ -952,14 +1140,14 @@ function handleKnock(lobby, wsId) {
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.eliminated || lobby.knockedBy) return;
 
-    const isSocketMatch = (p.id === wsId) || (p.idSocket === wsId);
-    const isNameMatch = wsId && (
+    const isDirectMatch = (p.id === wsId) || (p.idSocket === wsId) || (wsId === p.username);
+    const isSocketNameMatch = wsId && (
         (wsId.currentUsername && p.username && wsId.currentUsername.toLowerCase() === p.username.toLowerCase()) ||
         (wsId.user?.username && p.username && wsId.user.username.toLowerCase() === p.username.toLowerCase())
     );
 
-    if (!isSocketMatch && !isNameMatch) return;
-    if (isNameMatch && !isSocketMatch) {
+    if (!isDirectMatch && !isSocketNameMatch) return;
+    if (isSocketNameMatch && !isDirectMatch) {
         p.id = wsId;
         p.disconnectedAt = null;
     }
@@ -970,6 +1158,7 @@ function handleKnock(lobby, wsId) {
     if (lobby.turnsTakenThisRound < active.length) return;
     if (calculateScore(p.cards) < (active.length > 2 ? 21 : 25)) return;
 
+    clearTurnTimer(lobby);
     lobby.gameState = 'finalTurn';
     lobby.knockedBy = p.username;
     lobby.finalTurnsTaken = {};
@@ -985,6 +1174,7 @@ function handleKnock(lobby, wsId) {
     lobby.turnIndex = next;
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
+    resetTurnTimer(lobby);
 }
 
 function advanceTurnOrResolve(lobby) {
@@ -1016,6 +1206,7 @@ function advanceTurnOrResolve(lobby) {
 
         broadcastLobbyUpdate(lobby.code);
         scheduleBotActions(lobby);
+        resetTurnTimer(lobby);
         return;
     }
 
@@ -1029,9 +1220,12 @@ function advanceTurnOrResolve(lobby) {
     lobby.turnIndex = next;
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
+    resetTurnTimer(lobby);
 }
 
 function resolveRoundEnd(lobby) {
+    clearTurnTimer(lobby);
+
     lobby.players.forEach(p => {
         if (p.cards && p.cards.length === 4) {
             let bestCards = p.cards.slice(0, 3);
@@ -1096,6 +1290,7 @@ function resolveRoundEnd(lobby) {
 
 function triggerRoundOver(lobby, msg) {
     clearRoundOverTimer(lobby);
+    clearTurnTimer(lobby);
     lobby.fedCardReminders = {};
     lobby.gameState = 'roundOver';
     lobby.phaseMessage = msg;
@@ -1129,6 +1324,7 @@ function triggerRoundOver(lobby, msg) {
 
 function awardTournamentWinner(lobby, winner) {
     clearRoundOverTimer(lobby);
+    clearTurnTimer(lobby);
     if (!winner) return;
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
@@ -1185,6 +1381,8 @@ function checkNextHandReady(lobby) {
 
 function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     clearRoundOverTimer(lobby);
+    clearTurnTimer(lobby);
+
     lobby.gameState = 'lobby';
     lobby.phaseMessage = msg || "Returned to waiting room.";
     lobby.endGameVotes = {};
@@ -1216,7 +1414,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         const alreadyIn = lobby.players.some(p => p.username && spec.username && p.username.toLowerCase() === spec.username.toLowerCase());
         if (!alreadyIn && lobby.players.length < 6) {
             const openSeat = findOpenSeat(lobby);
-            lobby.players.push({
+            const recl = {
                 id: spec.idSocket,
                 username: spec.username,
                 lives: lobby.defaultLives || 2,
@@ -1232,7 +1430,8 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
                 peekRequests: {},
                 peekAllowed: {},
                 disconnectedAt: null
-            });
+            };
+            lobby.players.push(recl);
             lobby.spectators = lobby.spectators.filter(s => s !== spec);
         }
     });
@@ -1248,6 +1447,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
         p.nextHandReady = false;
         p.peekRequests = {};
         p.peekAllowed = {};
+        startReadyCountdown(lobby, p);
     });
 
     lobby.spectators = lobby.spectators.filter(s => {
@@ -1344,7 +1544,8 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         songStartedAt: null,
         songPausedAtOffset: 0,
         inactivityTimer: null,
-        roundOverAutoTimer: null
+        roundOverAutoTimer: null,
+        turnTimeoutTimer: null
     };
     return lobbies[code];
 }
@@ -1355,6 +1556,7 @@ function joinLobby(ws, code, username) {
 
     const cleanName = (username || '').trim().toLowerCase();
 
+    // 1. Re-attach to existing seated player
     const existingPlayer = lobby.players.find(p => 
         (cleanName && p.username.toLowerCase() === cleanName) || (p.id && p.id === ws)
     );
@@ -1364,9 +1566,13 @@ function joinLobby(ws, code, username) {
         lobby.spectators = lobby.spectators.filter(s => 
             s.idSocket !== ws && s.username.toLowerCase() !== cleanName
         );
+        if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
+            startReadyCountdown(lobby, existingPlayer);
+        }
         return { success: true, lobby, isSpectator: false };
     }
 
+    // 2. Re-attach to existing spectator
     const existingSpectator = lobby.spectators.find(s => 
         (cleanName && s.username.toLowerCase() === cleanName) || (s.idSocket && s.idSocket === ws)
     );
@@ -1376,9 +1582,10 @@ function joinLobby(ws, code, username) {
         return { success: true, lobby, isSpectator: true };
     }
 
+    // 3. Fresh join into waiting room lobby
     if (lobby.players.length < 6 && lobby.gameState === 'lobby') {
         const seat = findOpenSeat(lobby);
-        lobby.players.push({
+        const newPlayer = {
             id: ws,
             username,
             lives: lobby.defaultLives || 2,
@@ -1394,10 +1601,13 @@ function joinLobby(ws, code, username) {
             peekRequests: {},
             peekAllowed: {},
             disconnectedAt: null
-        });
+        };
+        lobby.players.push(newPlayer);
+        startReadyCountdown(lobby, newPlayer);
         return { success: true, lobby, isSpectator: false };
     }
 
+    // 4. Fresh spectator join
     lobby.spectators.push({
         idSocket: ws,
         username,
@@ -1414,12 +1624,17 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     const leavingPlayerIndex = lobby.players.findIndex(p => p.id === ws);
     const leavingUsername = leavingPlayerIndex !== -1 ? lobby.players[leavingPlayerIndex].username : null;
 
+    if (leavingPlayerIndex !== -1) {
+        clearReadyCountdown(lobby.players[leavingPlayerIndex]);
+    }
+
     lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
 
     const remainingHumans = lobby.players.filter(p => !p.isBot);
     if (remainingHumans.length === 0) {
         clearRoundOverTimer(lobby);
+        clearTurnTimer(lobby);
         if (lobby.inactivityTimer) clearTimeout(lobby.inactivityTimer);
         delete lobbies[code];
         if (broadcastLobbyList) broadcastLobbyList();
@@ -1440,12 +1655,13 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     if (activeParts.length <= 1 && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn' || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker')) {
         awardTournamentWinner(lobby, activeParts[0]);
     } else {
-        if (lobby.turnIndex >= lobby.players.length || lobby.turnIndex < 0) {
+        if (lobby.turnIndex >= lobby.players.length) {
             lobby.turnIndex = 0;
         }
         establishDealer(lobby);
         syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
+        resetTurnTimer(lobby);
     }
 
     if (broadcastLobbyList) broadcastLobbyList();
@@ -1480,5 +1696,10 @@ module.exports = {
     resolveUserId,
     recordSessionAndLifetimeDebt,
     syncLifetimeLedgerBalances,
-    sendLifetimeLedger
+    sendLifetimeLedger,
+    startReadyCountdown,
+    clearReadyCountdown,
+    resetTurnTimer,
+    clearTurnTimer,
+    executeLevel8AITurn
 };
