@@ -416,15 +416,22 @@ function handleKickPeeker(lobby, ws, spectatorUsername) {
 // -------------------------------------------------------------
 
 function establishDealer(lobby) {
-    if (lobby.lastGameWinner) {
-        const winIdx = lobby.players.findIndex(p => p.username === lobby.lastGameWinner);
+    // Only set dealer to lastGameWinner on the initial hand of a match (if not already established)
+    if (!lobby.hasEstablishedInitialDealer && lobby.lastGameWinner) {
+        const winIdx = lobby.players.findIndex(
+            p => p.username && p.username.toLowerCase() === lobby.lastGameWinner.toLowerCase() && !p.eliminated
+        );
         if (winIdx !== -1) {
             lobby.dealerIndex = winIdx;
+            lobby.hasEstablishedInitialDealer = true;
             return;
         }
     }
-    if (lobby.dealerIndex >= lobby.players.length || lobby.dealerIndex < 0) {
+    if (lobby.dealerIndex === undefined || lobby.dealerIndex >= lobby.players.length || lobby.dealerIndex < 0) {
         lobby.dealerIndex = 0;
+    }
+    if (lobby.players[lobby.dealerIndex]?.eliminated) {
+        advanceDealerToNextActive(lobby);
     }
 }
 
@@ -1488,8 +1495,17 @@ function resolveRoundEnd(lobby) {
     syncLifetimeLedgerBalances(lobby);
 
     if (tied.length > 1) {
-        if (active.length === 2) {
-            triggerRoundOver(lobby, `Round tied at ${lowest} pts. No one loses a life!`);
+        if (active.length <= 2) {
+            // Heads-up (2-player) tie: NEVER enter 'tieBreaker' modal.
+            // Pass the dealer chip to the next active player and trigger roundOver for a re-deal.
+            lobby.tiedParticipantsList = [];
+            lobby.drawPool = [];
+            lobby.drawResults = {};
+            lobby.drawOrderSequence = [];
+            lobby.pendingBotDraw = {};
+            advanceDealerToNextActive(lobby);
+            const nextDealerName = lobby.players[lobby.dealerIndex]?.username || 'next player';
+            triggerRoundOver(lobby, `Round tied at ${lowest} pts! No one loses a life. Passing deal to ${nextDealerName}...`);
         } else {
             lobby.tiedParticipantsList = tied.map(t => t.p.username);
             const tieDeck = (lobby.deck && lobby.deck.length >= tied.length) ? lobby.deck : createDeck();
