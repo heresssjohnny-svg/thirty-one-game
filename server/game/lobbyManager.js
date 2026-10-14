@@ -228,7 +228,7 @@ function executeLevel8AITurn(lobby, player) {
                 bestDiscardIdx = i;
             }
         }
-        handleDiscardAction(lobby, player.id, bestDiscardIdx);
+        handleDiscardAction(lobby, player.id || player.username, bestDiscardIdx);
         return;
     }
 
@@ -240,7 +240,7 @@ function executeLevel8AITurn(lobby, player) {
 
     const knockThreshold = active.length > 2 ? 26 : 25;
     if (canKnock && currentScore >= knockThreshold) {
-        handleKnock(lobby, player.id);
+        handleKnock(lobby, player.id || player.username);
         return;
     }
 
@@ -262,7 +262,7 @@ function executeLevel8AITurn(lobby, player) {
     }
 
     // 1. Draw Card
-    handleTurnAction(lobby, player.id, shouldDrawDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK');
+    handleTurnAction(lobby, player.id || player.username, shouldDrawDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK');
 
     // 2. Discard Card (Permutational Evaluation)
     setTimeout(() => {
@@ -292,7 +292,7 @@ function executeLevel8AITurn(lobby, player) {
             }
         }
 
-        handleDiscardAction(curLobby, curPlayer.id, bestDiscardIndex);
+        handleDiscardAction(curLobby, curPlayer.id || curPlayer.username, bestDiscardIndex);
     }, 600);
 }
 
@@ -651,8 +651,13 @@ function getSanitizedLobby(lobby, wsId) {
         activeParticipantsCount: activeParts.length,
         lastDiscardPickup: lobby.lastDiscardPickup || null,
         tiedParticipantsList: lobby.tiedParticipantsList || [],
-        drawPool: (lobby.drawPool || []).map((c, i) => ({ index: i, chosenBy: c.chosenBy })),
+        drawPool: (lobby.drawPool || []).map((c, i) => ({
+            index: (c && c.index !== undefined) ? c.index : i,
+            chosenBy: c ? c.chosenBy : null,
+            card: (c && c.chosenBy) ? c.card : null
+        })),
         drawResults: lobby.drawResults || {},
+        drawOrderSequence: lobby.drawOrderSequence || [],
         discardTop: lobby.discardPile ? (lobby.discardPile[lobby.discardPile.length - 1] || null) : null,
         knockedBy: lobby.knockedBy || null,
         chatHistory: lobby.chatHistory || [],
@@ -990,9 +995,40 @@ function advanceDealerToNextActive(lobby) {
     lobby.dealerIndex = nextDealer;
 }
 
-function handlePoolCardSelection(lobby, username, cardIndex) {
-    if (lobby.gameState === 'tieBreaker' && !lobby.tiedParticipantsList.includes(username)) return;
+function handlePoolCardSelection(lobby, userOrWs, rawCardIndex) {
+    if (!lobby || (lobby.gameState !== 'dealerDraw' && lobby.gameState !== 'tieBreaker')) return;
+
+    // Resolve canonical player username case-insensitively or by socket reference
+    const extracted = extractSocketUsername(userOrWs);
+    const matchedPlayer = lobby.players.find(p =>
+        (typeof userOrWs === 'object' && userOrWs !== null && p.id === userOrWs) ||
+        (extracted && p.username && p.username.toLowerCase() === extracted.toLowerCase())
+    );
+    const username = matchedPlayer ? matchedPlayer.username : extracted;
+    if (!username) return;
+
+    if (matchedPlayer && matchedPlayer.eliminated) return;
+
+    if (lobby.gameState === 'tieBreaker') {
+        const isTied = (lobby.tiedParticipantsList || []).some(
+            u => String(u).toLowerCase() === username.toLowerCase()
+        );
+        if (!isTied) return;
+    }
+
     if (lobby.drawResults && lobby.drawResults[username]) return;
+
+    // Normalize index (supports number, numeric string, or payload object)
+    let cardIndex = typeof rawCardIndex === 'object' && rawCardIndex !== null
+        ? Number(rawCardIndex.index ?? rawCardIndex.cardIndex ?? rawCardIndex.slotIndex)
+        : Number(rawCardIndex);
+
+    // Fallback: if index is out of bounds or already taken, pick the first available unchosen slot
+    if (isNaN(cardIndex) || !lobby.drawPool[cardIndex] || lobby.drawPool[cardIndex].chosenBy !== null) {
+        const availableSlot = (lobby.drawPool || []).find(slot => slot && slot.chosenBy === null);
+        if (!availableSlot) return;
+        cardIndex = availableSlot.index !== undefined ? availableSlot.index : lobby.drawPool.indexOf(availableSlot);
+    }
 
     if (lobby.drawPool[cardIndex] && lobby.drawPool[cardIndex].chosenBy === null) {
         lobby.drawPool[cardIndex].chosenBy = username;
@@ -1004,7 +1040,11 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
 
         const activeParts = getActiveParticipants(lobby);
         if (lobby.gameState === 'dealerDraw' && activeParts.every(p => lobby.drawResults[p.username])) {
-            const entries = Object.entries(lobby.drawResults).map(([u, c]) => ({ username: u, card: c })).sort((a, b) => a.card.drawVal - b.card.drawVal);
+            const entries = activeParts
+                .map(p => ({ username: p.username, card: lobby.drawResults[p.username] }))
+                .filter(e => e.card)
+                .sort((a, b) => a.card.drawVal - b.card.drawVal);
+
             lobby.dealerIndex = lobby.players.findIndex(p => p.username === entries[0].username);
             lobby.phaseMessage = `🎉 ${entries[0].username} drew lowest and is Dealer!`;
             broadcastLobbyUpdate(lobby.code);
@@ -1012,7 +1052,11 @@ function handlePoolCardSelection(lobby, username, cardIndex) {
                 if (lobbies[lobby.code]) startRound(lobbies[lobby.code]);
             }, 3000);
         } else if (lobby.gameState === 'tieBreaker' && lobby.tiedParticipantsList.every(u => lobby.drawResults[u])) {
-            const entries = lobby.tiedParticipantsList.map(u => ({ username: u, card: lobby.drawResults[u] })).sort((a, b) => a.card.drawVal - b.card.drawVal);
+            const entries = lobby.tiedParticipantsList
+                .map(u => ({ username: u, card: lobby.drawResults[u] }))
+                .filter(e => e.card)
+                .sort((a, b) => a.card.drawVal - b.card.drawVal);
+
             const lowestDrawVal = entries[0].card.drawVal;
             const tiedLowest = entries.filter(e => e.card.drawVal === lowestDrawVal);
 
@@ -1076,14 +1120,12 @@ function handleTurnAction(lobby, wsId, actionType) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
 
+    const sockName = extractSocketUsername(wsId);
     const isDirectMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId) || (wsId === currentPlayer.username);
-    const isSocketNameMatch = wsId && (
-        (wsId.currentUsername && currentPlayer.username && wsId.currentUsername.toLowerCase() === currentPlayer.username.toLowerCase()) ||
-        (wsId.user?.username && currentPlayer.username && wsId.user.username.toLowerCase() === currentPlayer.username.toLowerCase())
-    );
+    const isSocketNameMatch = Boolean(sockName && currentPlayer.username && sockName.toLowerCase() === currentPlayer.username.toLowerCase());
 
     if (!isDirectMatch && !isSocketNameMatch) return;
-    if (isSocketNameMatch && !isDirectMatch) {
+    if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
         currentPlayer.id = wsId;
         currentPlayer.disconnectedAt = null;
     }
@@ -1183,8 +1225,9 @@ function handleTurnAction(lobby, wsId, actionType) {
             lobby.phaseMessage = `⚡ 31! ${currentPlayer.username} hit 31 points! All other players lose a life.`;
         }
 
-        // Resolve single-round global bets for this hand
-        resolveWinSideBets(lobby, currentPlayer.username);
+        if (typeof resolveWinSideBets === 'function') {
+            resolveWinSideBets(lobby, currentPlayer.username);
+        }
         syncLifetimeLedgerBalances(lobby);
 
         const remaining = getActiveParticipants(lobby);
@@ -1200,6 +1243,7 @@ function handleTurnAction(lobby, wsId, actionType) {
 
     broadcastLobbyUpdate(lobby.code);
     scheduleBotActions(lobby);
+    resetTurnTimer(lobby);
 }
 
 function handleDiscardAction(lobby, wsId, cardIndex) {
@@ -1207,14 +1251,12 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.cards.length !== 4) return;
 
+    const sockName = extractSocketUsername(wsId);
     const isDirectMatch = (currentPlayer.id === wsId) || (currentPlayer.idSocket === wsId) || (wsId === currentPlayer.username);
-    const isSocketNameMatch = wsId && (
-        (wsId.currentUsername && currentPlayer.username && wsId.currentUsername.toLowerCase() === currentPlayer.username.toLowerCase()) ||
-        (wsId.user?.username && currentPlayer.username && wsId.user.username.toLowerCase() === currentPlayer.username.toLowerCase())
-    );
+    const isSocketNameMatch = Boolean(sockName && currentPlayer.username && sockName.toLowerCase() === currentPlayer.username.toLowerCase());
 
     if (!isDirectMatch && !isSocketNameMatch) return;
-    if (isSocketNameMatch && !isDirectMatch) {
+    if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
         currentPlayer.id = wsId;
         currentPlayer.disconnectedAt = null;
     }
@@ -1307,8 +1349,9 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             lobby.phaseMessage = `⚡ 31! ${currentPlayer.username} hit 31 points! All other players lose a life.`;
         }
 
-        // Resolve single-round global bets for this hand
-        resolveWinSideBets(lobby, currentPlayer.username);
+        if (typeof resolveWinSideBets === 'function') {
+            resolveWinSideBets(lobby, currentPlayer.username);
+        }
         syncLifetimeLedgerBalances(lobby);
 
         const remaining = getActiveParticipants(lobby);
@@ -1329,14 +1372,12 @@ function handleKnock(lobby, wsId) {
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.eliminated || lobby.knockedBy) return;
 
+    const sockName = extractSocketUsername(wsId);
     const isDirectMatch = (p.id === wsId) || (p.idSocket === wsId) || (wsId === p.username);
-    const isSocketNameMatch = wsId && (
-        (wsId.currentUsername && p.username && wsId.currentUsername.toLowerCase() === p.username.toLowerCase()) ||
-        (wsId.user?.username && p.username && wsId.user.username.toLowerCase() === p.username.toLowerCase())
-    );
+    const isSocketNameMatch = Boolean(sockName && p.username && sockName.toLowerCase() === p.username.toLowerCase());
 
     if (!isDirectMatch && !isSocketNameMatch) return;
-    if (isSocketNameMatch && !isDirectMatch) {
+    if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
         p.id = wsId;
         p.disconnectedAt = null;
     }
@@ -1441,8 +1482,9 @@ function resolveRoundEnd(lobby) {
     const highestTied = scores.filter(s => s.s === highest);
     const roundWinnerUsername = (highestTied.length === 1) ? highestTied[0].p.username : null;
 
-    // Resolve (or push if tied) all single-round Global 'win' bets for this hand immediately
-    resolveWinSideBets(lobby, roundWinnerUsername);
+    if (typeof resolveWinSideBets === 'function') {
+        try { resolveWinSideBets(lobby, roundWinnerUsername); } catch (e) {}
+    }
     syncLifetimeLedgerBalances(lobby);
 
     if (tied.length > 1) {
@@ -1537,6 +1579,10 @@ function awardTournamentWinner(lobby, winner) {
             recordSessionAndLifetimeDebt(lobby, targetLedger, p.username, winner.username, amt);
         }
     });
+
+    if (typeof resolveWinSideBets === 'function') {
+        try { resolveWinSideBets(lobby, winner.username); } catch (e) {}
+    }
 
     // Clear any remaining activeBets/proposals at tournament end
     lobby.globalProposals = [];
