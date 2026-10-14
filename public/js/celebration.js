@@ -1,146 +1,166 @@
-// server/game/ledger.js - Session Debt Recording & Side Bet Resolution Engine
+// public/js/celebration.js - Self-Healing Center Banner & 2D Confetti Physics Engine
 
-/**
- * Records a debt from debtor to creditor in the given ledger object.
- */
-function recordDebt(ledger, debtor, creditor, amount) {
-    if (!ledger || !debtor || !creditor || debtor.toLowerCase() === creditor.toLowerCase()) return;
-    const amt = Number(amount) || 0;
-    if (amt <= 0) return;
+let celebrationAnimationId = null;
+let celebrationTimeoutId = null;
 
-    if (!ledger[debtor]) ledger[debtor] = {};
-    ledger[debtor][creditor] = (Number(ledger[debtor][creditor]) || 0) + amt;
-}
+function ensureCelebrationElements() {
+    let canvas = document.getElementById('celebration-canvas');
+    if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.id = 'celebration-canvas';
+        document.body.appendChild(canvas);
+    }
+    canvas.style.cssText = 'display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 100000;';
 
-/**
- * Clears bilateral debts between two players in the given ledger.
- */
-function clearDebts(ledger, userA, userB) {
-    if (!ledger || !userA || !userB) return;
-    if (ledger[userA]) delete ledger[userA][userB];
-    if (ledger[userB]) delete ledger[userB][userA];
-}
-
-/**
- * Resolves "First to Lose" (Elimination) side bets when a player loses all their lives.
- * Rule: Determines if the proposer loses all their lives before the target,
- * and pays whichever of the two is still alive when the other loses all their lives.
- */
-function resolveFirstToLoseBets(lobby, eliminatedUsername) {
-    if (!lobby || !Array.isArray(lobby.activeBets) || !eliminatedUsername) return;
-    if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
-    if (!lobby.botBetLedger) lobby.botBetLedger = {};
-
-    const elimLower = String(eliminatedUsername).trim().toLowerCase();
-    const remainingBets = [];
-
-    for (const bet of lobby.activeBets) {
-        const isElimBet = (bet.type === 'eliminate' || bet.type === 'first_out');
-        if (!isElimBet) {
-            remainingBets.push(bet);
-            continue;
-        }
-
-        const proposerName = (bet.proposer || bet.bettor || bet.targetSurvivor || '').trim();
-        const targetName = (bet.target || bet.pickUser || '').trim();
-        const proposerLower = proposerName.toLowerCase();
-        const targetLower = targetName.toLowerCase();
-
-        // If the eliminated player is neither the proposer nor the target, keep the bet active
-        if (elimLower !== proposerLower && elimLower !== targetLower) {
-            remainingBets.push(bet);
-            continue;
-        }
-
-        const proposerPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === proposerLower);
-        const targetPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === targetLower);
-
-        const isProposerAlive = Boolean(proposerPlayer && !proposerPlayer.eliminated && proposerPlayer.lives > 0);
-        const isTargetAlive = Boolean(targetPlayer && !targetPlayer.eliminated && targetPlayer.lives > 0);
-
-        const wagerAmt = Number(bet.wagerAmt) || 5;
-        const isBotInvolved = Boolean(
-            bet.isBotBet ||
-            (proposerPlayer && proposerPlayer.isBot) ||
-            (targetPlayer && targetPlayer.isBot)
-        );
-        const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.sideBetLedger;
-
-        if (elimLower === proposerLower && isTargetAlive) {
-            // Proposer lost all their lives before Target -> Proposer owes Target
-            recordDebt(targetLedger, proposerPlayer ? proposerPlayer.username : proposerName, targetPlayer.username, wagerAmt);
-        } else if (elimLower === targetLower && isProposerAlive) {
-            // Target lost all their lives before Proposer -> Target owes Proposer
-            recordDebt(targetLedger, targetPlayer ? targetPlayer.username : targetName, proposerPlayer.username, wagerAmt);
-        }
-        // If neither is alive (both lost their last life on the same 31 hand), it's a push: no payout, bet is removed.
+    let overlay = document.getElementById('winner-celebration-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'winner-celebration-overlay';
+        overlay.style.cssText = `
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            pointer-events: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.35);
+        `;
+        overlay.innerHTML = `
+            <div style="
+                background: radial-gradient(circle at 50% 50%, rgba(6, 78, 59, 0.96) 0%, rgba(2, 44, 34, 0.98) 100%);
+                border: 3px solid #fbbf24;
+                border-radius: 16px;
+                padding: 24px 36px;
+                text-align: center;
+                box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85), 0 0 25px rgba(251, 191, 36, 0.4);
+                transform: translateY(-10%);
+                max-width: 90vw;
+            ">
+                <div style="font-size: 2.2rem; margin-bottom: 4px;">🏆</div>
+                <h2 id="celebration-winner-title" style="
+                    margin: 0;
+                    font-size: 2rem;
+                    font-weight: 900;
+                    color: #fbbf24;
+                    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+                    letter-spacing: 1px;
+                ">PLAYER</h2>
+                <p id="celebration-subtitle" style="
+                    margin: 8px 0 0;
+                    font-size: 1.1rem;
+                    font-weight: 800;
+                    color: #ffffff;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                ">TOURNAMENT CHAMPION!</p>
+            </div>
+        `;
+        document.body.appendChild(overlay);
     }
 
-    lobby.activeBets = remainingBets;
+    const titleEl = document.getElementById('celebration-winner-title');
+    const subtitleEl = document.getElementById('celebration-subtitle');
+
+    return { overlay, titleEl, subtitleEl, canvas };
 }
 
-/**
- * Resolves Single-Round Global "Win" side bets ("I like [pickUser] to win").
- * Valid ONLY for the round in which it was placed.
- * - If winnerUsername is provided: pays Proposer if pickUser won the round, otherwise pays Accepter.
- * - If winnerUsername is null (round tied for highest score): pushes and clears all single-round 'win' bets.
- */
-function resolveWinSideBets(lobby, winnerUsername) {
-    if (!lobby) return;
-    if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
-    if (!lobby.botBetLedger) lobby.botBetLedger = {};
+window.triggerWinnerCelebration = function(winnerName, customSubtitle = "TOURNAMENT CHAMPION!") {
+    const { overlay, titleEl, subtitleEl, canvas } = ensureCelebrationElements();
+    if (!overlay || !canvas || !titleEl) return;
 
-    // Always wipe any unconfirmed/unaccepted global proposals when the round ends
-    lobby.globalProposals = [];
+    if (titleEl) {
+        titleEl.innerText = winnerName ? String(winnerName).toUpperCase() : "PLAYER";
+    }
+    if (subtitleEl) {
+        subtitleEl.innerText = customSubtitle || "TOURNAMENT CHAMPION!";
+    }
 
-    if (!Array.isArray(lobby.activeBets) || lobby.activeBets.length === 0) return;
+    overlay.style.display = 'flex';
+    canvas.style.display = 'block';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-    const winnerLower = winnerUsername ? String(winnerUsername).trim().toLowerCase() : null;
-    const remainingBets = [];
+    const ctx = canvas.getContext('2d');
+    const particles = [];
+    const colors = ['#facc15', '#38bdf8', '#ef4444', '#10b981', '#a855f7', '#f43f5e', '#ffffff'];
 
-    for (const bet of lobby.activeBets) {
-        // Keep First-to-Lose bets active across rounds until elimination
-        if (bet.type === 'eliminate' || bet.type === 'first_out') {
-            remainingBets.push(bet);
-            continue;
+    for (let i = 0; i < 160; i++) {
+        particles.push({
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            vx: (Math.random() - 0.5) * 16,
+            vy: (Math.random() - 0.5) * 16 - 3,
+            size: Math.random() * 8 + 4,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            rotation: Math.random() * 360,
+            rotSpeed: (Math.random() - 0.5) * 8,
+            gravity: 0.18,
+            opacity: 1
+        });
+    }
+
+    if (celebrationAnimationId) {
+        cancelAnimationFrame(celebrationAnimationId);
+        celebrationAnimationId = null;
+    }
+    if (celebrationTimeoutId) {
+        clearTimeout(celebrationTimeoutId);
+        celebrationTimeoutId = null;
+    }
+
+    function stopCelebration() {
+        if (celebrationAnimationId) {
+            cancelAnimationFrame(celebrationAnimationId);
+            celebrationAnimationId = null;
         }
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (overlay) overlay.style.display = 'none';
+        if (canvas) canvas.style.display = 'none';
+    }
 
-        // If the round ended in a tie (no single round winner), the single-round global bet is a push (cleared without charge)
-        if (!winnerLower) {
-            continue;
-        }
+    function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let active = 0;
 
-        const proposerName = (bet.proposer || bet.bettor || '').trim();
-        const accepterName = (bet.target || '').trim();
-        const pickName = (bet.pickUser || proposerName).trim();
+        particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += p.gravity;
+            p.rotation += p.rotSpeed;
+            p.opacity -= 0.0035;
 
-        if (!proposerName || !accepterName) continue;
+            if (p.opacity > 0) {
+                active++;
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.opacity);
+                ctx.translate(p.x, p.y);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                ctx.restore();
+            }
+        });
 
-        const wagerAmt = Number(bet.wagerAmt) || 5;
-        const proposerPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === proposerName.toLowerCase());
-        const accepterPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === accepterName.toLowerCase());
-        const isBotInvolved = Boolean(
-            bet.isBotBet ||
-            (proposerPlayer && proposerPlayer.isBot) ||
-            (accepterPlayer && accepterPlayer.isBot)
-        );
-        const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.sideBetLedger;
-
-        if (pickName.toLowerCase() === winnerLower) {
-            // Proposer's pick won this round -> Accepter owes Proposer
-            recordDebt(targetLedger, accepterName, proposerName, wagerAmt);
+        if (active > 0) {
+            celebrationAnimationId = requestAnimationFrame(render);
         } else {
-            // Proposer's pick did not win this round -> Proposer owes Accepter
-            recordDebt(targetLedger, proposerName, accepterName, wagerAmt);
+            stopCelebration();
         }
     }
 
-    lobby.activeBets = remainingBets;
-}
+    render();
 
-module.exports = {
-    recordDebt,
-    clearDebts,
-    resolveFirstToLoseBets,
-    resolveWinSideBets
+    // Auto-dismiss celebration overlay and canvas after 4.5 seconds
+    celebrationTimeoutId = setTimeout(stopCelebration, 4500);
 };
+
+window.trigger31Celebration = function(winnerName) {
+    window.triggerWinnerCelebration(winnerName, "⚡ HIT 31! ⚡");
+};
+
+// Fallback aliases for all UI hooks
+window.launchConfetti = window.triggerWinnerCelebration;
+window.startCelebration = window.triggerWinnerCelebration;
+window.triggerCelebration = window.triggerWinnerCelebration;
