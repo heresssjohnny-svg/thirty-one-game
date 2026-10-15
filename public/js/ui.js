@@ -33,7 +33,8 @@ window.appGlobals = window.appGlobals || {
     lastCelebratedWinner: null,
     lastCelebrated31: null,
     lastChatCount: 0,
-    notificationTimer: null
+    notificationTimer: null,
+    declinedProposals: []
 };
 
 // Resilient username resolver that checks both players AND spectators
@@ -989,7 +990,34 @@ window.submitGlobalProposal = function(pickUser, wagerAmt) {
 };
 
 window.acceptGlobalProposal = function(proposalId) {
-    sendSocket({ type: 'ACCEPT_GLOBAL_PROPOSAL', proposalId });
+    sendSocket({
+        type: 'ACCEPT_GLOBAL_PROPOSAL',
+        proposalId: proposalId,
+        betId: proposalId,
+        id: proposalId
+    });
+};
+
+window.declineGlobalProposal = function(proposalId) {
+    if (!window.appGlobals.declinedProposals) {
+        window.appGlobals.declinedProposals = [];
+    }
+    if (!window.appGlobals.declinedProposals.includes(proposalId)) {
+        window.appGlobals.declinedProposals.push(proposalId);
+    }
+
+    sendSocket({
+        type: 'DECLINE_GLOBAL_PROPOSAL',
+        proposalId: proposalId,
+        betId: proposalId,
+        id: proposalId,
+        accept: false,
+        confirm: false
+    });
+
+    if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
+        window.updateUIFromLobby(window.appGlobals.latestLobbySnapshot);
+    }
 };
 
 window.confirmGlobalBet = function(proposalId, acceptedUser, confirmChoice) {
@@ -1315,24 +1343,37 @@ window.updateUIFromLobby = function(lobby) {
     const sidebar = document.getElementById('global-side-bets-sidebar');
     const sidebarList = document.getElementById('global-side-bets-list');
     const globalProps = lobby.globalProposals || [];
+    const declinedIds = (window.appGlobals && window.appGlobals.declinedProposals) || [];
 
-    if (globalProps.length > 0 && lobby.gameState !== 'lobby') {
+    const visibleGlobalProps = globalProps.filter(gp => {
+        const deniedByServer = (gp.deniedBy || []).some(u => u.toLowerCase() === activeUsername.toLowerCase());
+        const deniedLocally = declinedIds.includes(gp.id);
+        return !deniedByServer && !deniedLocally;
+    });
+
+    if (visibleGlobalProps.length > 0 && lobby.gameState !== 'lobby') {
         if (sidebar) sidebar.style.display = 'flex';
         let sidebarHtml = '';
-        globalProps.forEach(gp => {
-            const isMyProp = (gp.proposer === activeUsername);
-            const alreadyAccepted = gp.acceptedBy && gp.acceptedBy.includes(activeUsername);
+        visibleGlobalProps.forEach(gp => {
+            const proposerName = gp.proposer || gp.creator || 'Player';
+            const isMyProp = (proposerName.toLowerCase() === activeUsername.toLowerCase());
+            const alreadyAccepted = gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === activeUsername.toLowerCase());
 
             let actionHtml = '';
             if (isMyProp) {
                 if (gp.acceptedBy && gp.acceptedBy.length > 0) {
-                    actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${gp.proposer}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
+                    actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${proposerName}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
                 } else {
                     actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
                 }
             } else {
                 if (!alreadyAccepted) {
-                    actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
+                    actionHtml = `
+                        <div style="display:flex; flex-direction:column; gap:4px; align-items:stretch; margin-top:4px;">
+                            <button style="font-size:0.7rem; padding:4px 8px; background:#10b981; color:#fff; font-weight:bold; border-radius:4px; border:none; cursor:pointer;" onclick="window.acceptGlobalProposal('${gp.id}')">You got it</button>
+                            <button class="danger" style="font-size:0.7rem; padding:4px 8px; background:#ef4444; color:#fff; font-weight:bold; border-radius:4px; border:none; cursor:pointer;" onclick="window.declineGlobalProposal('${gp.id}')">Decline</button>
+                        </div>
+                    `;
                 } else {
                     actionHtml = `<span style="color:#34d399; font-size:0.65rem;">Accepted ("You got it")</span>`;
                 }
@@ -1340,7 +1381,7 @@ window.updateUIFromLobby = function(lobby) {
 
             sidebarHtml += `
                 <div class="global-bet-item">
-                    <span>I like <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b> (${gp.proposer})</span>
+                    <span>I like <b>${gp.pickUser}</b> for <b>$${gp.wagerAmt}</b> (${proposerName})</span>
                     ${actionHtml}
                 </div>
             `;
