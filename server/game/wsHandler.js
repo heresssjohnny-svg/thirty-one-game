@@ -1155,6 +1155,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        case 'DECLINE_GLOBAL_PROPOSAL':
         case 'CONFIRM_GLOBAL_BET':
         case 'RESPOND_GLOBAL_BET': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
@@ -1170,7 +1171,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     const prop = lobby.globalProposals[pIdx];
                     const proposerName = prop.proposer || prop.creator;
                     const isProposer = (proposerName === actorName);
-                    const isAccept = data.confirm !== undefined ? !!data.confirm : (data.accept !== undefined ? !!data.accept : true);
+                    const isAccept = data.type === 'DECLINE_GLOBAL_PROPOSAL'
+                        ? false
+                        : (data.confirm !== undefined ? !!data.confirm : (data.accept !== undefined ? !!data.accept : true));
 
                     const partnerUser = isProposer
                         ? (data.acceptedUser || (prop.acceptedBy && prop.acceptedBy[0]))
@@ -1200,9 +1203,21 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             }
                         }
                     } else {
-                        if (!prop.acceptedBy) prop.acceptedBy = [];
-                        if (!prop.acceptedBy.includes(actorName)) {
-                            prop.acceptedBy.push(actorName);
+                        if (isAccept) {
+                            // Opponent clicked "You got it"
+                            if (!prop.acceptedBy) prop.acceptedBy = [];
+                            if (!prop.acceptedBy.includes(actorName)) {
+                                prop.acceptedBy.push(actorName);
+                            }
+                        } else {
+                            // Opponent clicked "Decline"
+                            if (!prop.deniedBy) prop.deniedBy = [];
+                            if (!prop.deniedBy.includes(actorName)) {
+                                prop.deniedBy.push(actorName);
+                            }
+                            if (prop.acceptedBy) {
+                                prop.acceptedBy = prop.acceptedBy.filter(u => u !== actorName);
+                            }
                         }
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
