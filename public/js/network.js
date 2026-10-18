@@ -291,6 +291,31 @@ function handleIncomingServerMessage(data) {
             }
             break;
 
+        case 'KICKED_FROM_LOBBY':
+            // Clear active room context first so window.focus doesn't auto-rejoin after alert()
+            window.appGlobals.currentJoinedCode = null;
+            window.appGlobals.latestLobbySnapshot = null;
+            window.appGlobals.lastConnectedLiveKitRoom = null;
+            localStorage.removeItem('blitz31_active_room');
+            localStorage.removeItem('blitz31_mic_state');
+            if (typeof window.resetToMainMenu === 'function') {
+                window.resetToMainMenu(true);
+            }
+            if (typeof window.showCenterNotification === 'function') {
+                window.showCenterNotification(data.message || 'You were kicked from the room by the host.');
+            } else {
+                alert(data.message || 'You were kicked from the room by the host.');
+            }
+            break;
+
+        case 'ADMIN_FORCE_MUTE':
+            if (typeof window.forceMuteLocalMicByAdmin === 'function') {
+                window.forceMuteLocalMicByAdmin(data.byHost);
+            } else if (typeof window.showCenterNotification === 'function') {
+                window.showCenterNotification(`🔇 ${data.byHost || 'The host'} muted your microphone.`);
+            }
+            break;
+
         case 'LEFT_LOBBY':
             window.appGlobals.currentJoinedCode = null;
             window.appGlobals.latestLobbySnapshot = null;
@@ -563,7 +588,7 @@ window.resetToMainMenu = function(forceClearRoom = false) {
 };
 
 // -------------------------------------------------------------
-// 5. TABLE SEATING, PEEKING & PRE-GAME CONTROLS
+// 5. TABLE SEATING, PEEKING, ADMIN & PRE-GAME CONTROLS
 // -------------------------------------------------------------
 window.sitDown = function() {
     window.initSocketAndSend({ type: 'SIT_DOWN' });
@@ -648,6 +673,35 @@ window.kickPeekerAction = function(spectatorUsername) {
         requester: spectatorUsername,
         target: spectatorUsername
     });
+};
+
+// Room Creator (Host) Admin Controls: Kick & Mute
+window.adminKickPlayer = function(targetUsername) {
+    if (!targetUsername) return;
+    if (!confirm(`Kick ${targetUsername} from the room?`)) return;
+    const myName = window.getActiveUsername();
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    window.initSocketAndSend({
+        type: 'ADMIN_KICK_PLAYER',
+        code: code,
+        requesterUsername: myName,
+        targetUsername: targetUsername
+    });
+};
+
+window.adminMutePlayer = function(targetUsername) {
+    if (!targetUsername) return;
+    const myName = window.getActiveUsername();
+    const code = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+    window.initSocketAndSend({
+        type: 'ADMIN_MUTE_PLAYER',
+        code: code,
+        requesterUsername: myName,
+        targetUsername: targetUsername
+    });
+    if (typeof window.showCenterNotification === 'function') {
+        window.showCenterNotification(`🔇 Muted ${targetUsername}`);
+    }
 };
 
 // -------------------------------------------------------------
