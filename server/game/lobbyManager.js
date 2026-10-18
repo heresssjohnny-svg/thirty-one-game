@@ -944,7 +944,7 @@ function handleAdminKickPlayer(lobby, hostWs, targetUsername, broadcastLobbyList
         if (!targetSocket) targetSocket = removedSpec.idSocket;
     }
 
-    // 3. Clean up any peek references for the kicked user
+    // 3. Clean up any peek references and tie-breaker lists for the kicked user
     lobby.players.forEach(p => {
         if (p.peekAllowed) {
             Object.keys(p.peekAllowed).forEach(k => {
@@ -957,6 +957,12 @@ function handleAdminKickPlayer(lobby, hostWs, targetUsername, broadcastLobbyList
             });
         }
     });
+
+    if (Array.isArray(lobby.tiedParticipantsList)) {
+        lobby.tiedParticipantsList = lobby.tiedParticipantsList.filter(
+            u => String(u).trim().toLowerCase() !== cleanTarget
+        );
+    }
 
     // 4. Notify kicked socket and detach room code
     if (targetSocket && typeof targetSocket === 'object' && targetSocket.readyState === WebSocket.OPEN) {
@@ -2080,7 +2086,10 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     const lobby = lobbies[code];
 
     const leavingPlayerIndex = lobby.players.findIndex(p => p.id === ws);
-    const leavingUsername = leavingPlayerIndex !== -1 ? lobby.players[leavingPlayerIndex].username : null;
+    const leavingSpectator = lobby.spectators.find(s => s.idSocket === ws);
+    const leavingUsername = leavingPlayerIndex !== -1
+        ? lobby.players[leavingPlayerIndex].username
+        : (leavingSpectator?.username || null);
 
     if (leavingPlayerIndex !== -1) {
         clearReadyCountdown(lobby.players[leavingPlayerIndex]);
@@ -2102,6 +2111,12 @@ function leaveLobby(ws, code, broadcastLobbyList) {
     }
 
     lobby.players.forEach((p, idx) => { p.seat = idx; });
+
+    // If the room creator left, pass host powers to the next remaining human player or spectator
+    if (leavingUsername && lobby.host && lobby.host.toLowerCase() === leavingUsername.toLowerCase()) {
+        const nextHost = remainingHumans[0]?.username || remainingSpectators[0]?.username;
+        if (nextHost) lobby.host = nextHost;
+    }
 
     if (lobby.gameState === 'roundOver') {
         lobby.phaseMessage = `${leavingUsername || 'A player'} left the game.`;
@@ -2132,6 +2147,7 @@ module.exports = {
     getLobbies,
     createLobby,
     joinLobby,
+    establishDealer,
     getActiveParticipants,
     findOpenSeat,
     touchLobbyActivity,
