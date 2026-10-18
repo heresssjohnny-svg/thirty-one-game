@@ -1772,9 +1772,13 @@ function awardTournamentWinner(lobby, winner) {
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
 
+    const winnerWager = Number(winner.wager) || 5;
+
     lobby.players.forEach(p => {
         if (p.username !== winner.username) {
-            const amt = p.wager || 5;
+            const loserWager = Number(p.wager) || 5;
+            // Effective payout is capped at the lower wager between the winner and the loser
+            const amt = Math.min(loserWager, winnerWager);
             const isBotInvolved = p.isBot || winner.isBot;
             const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
 
