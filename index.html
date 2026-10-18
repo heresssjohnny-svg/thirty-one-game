@@ -415,13 +415,17 @@
             </div>
         </div>
 
-        <!-- 7. SIDE BETS MODAL -->
-        <div id="bet-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-card bet-modal-card">
-                <div class="modal-header">
-                    <h3 id="bet-modal-title">Side Wagers</h3>
-                    <button class="close-btn" onclick="window.toggleModal('bet-modal', false)">✕</button>
+            <!-- 7. SIDE BETS MODAL -->
+    <div id="bet-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card bet-modal-card" id="bet-modal-card">
+            <div class="modal-header">
+                <h3 id="bet-modal-title">Side Wagers</h3>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button type="button" class="close-btn" id="bet-modal-min-btn" onclick="window.toggleMinimizeBetModal()" title="Minimize">—</button>
+                    <button type="button" class="close-btn" onclick="window.toggleModal('bet-modal', false)" title="Close">✕</button>
                 </div>
+            </div>
+            <div id="bet-modal-content-wrap">
                 <div id="bet-modal-body" class="bet-form">
                     <label>Bet on Winner</label>
                     <div class="form-row">
@@ -433,6 +437,19 @@
                 <div id="global-proposals-container" class="proposals-feed"></div>
             </div>
         </div>
+    </div>
+
+    <!-- GLOBAL SIDE BETS RIGHT DRAWER -->
+    <div id="global-side-bets-sidebar" class="global-bets-drawer" style="display: none;">
+        <div class="drawer-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 id="global-sidebar-title">🤝 Open Side Bets</h4>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <button type="button" class="close-btn" id="global-sidebar-min-btn" onclick="window.toggleMinimizeGlobalSidebar()" title="Minimize" style="font-size: 1rem; padding: 0 6px;">—</button>
+            </div>
+        </div>
+        <div id="global-side-bets-list" class="drawer-body"></div>
+    </div>
+
 
         <!-- 8. SPECTATOR LIST MODAL -->
         <div id="spectator-list-modal" class="modal-overlay" style="display: none;">
