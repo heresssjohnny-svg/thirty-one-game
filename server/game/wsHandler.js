@@ -1484,11 +1484,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+                case 'UPDATE_VC_STATUS':
         case 'VC_STATUS_UPDATE': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
-                const player = lobby.players.find(p => p.id === ws);
-                const spec = lobby.spectators.find(s => s.idSocket === ws);
+                const uName = (data.username || currentUsername || ws.currentUsername || '').trim().toLowerCase();
+                const player = lobby.players.find(p => p.id === ws || (uName && p.username && p.username.toLowerCase() === uName));
+                const spec = lobby.spectators.find(s => s.idSocket === ws || (uName && s.username && s.username.toLowerCase() === uName));
                 if (player) {
                     player.inVC = !!data.inVC;
                     player.isMuted = data.isMuted !== undefined ? !!data.isMuted : true;
@@ -1501,6 +1503,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             }
             break;
         }
+
     }
 }
 
