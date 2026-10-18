@@ -306,7 +306,7 @@ async function connectToLiveKit(host, token, roomCode) {
 }
 
 // -------------------------------------------------------------
-// 4. MICROPHONE TRANSMISSION & SOFT-MUTE CONTROLS
+// 4. MICROPHONE TRANSMISSION, SOFT-MUTE & HOST FORCE-MUTE
 // -------------------------------------------------------------
 async function toggleVoiceOnOff() {
     startBackgroundKeepAliveOscillator();
@@ -377,6 +377,43 @@ async function toggleVoiceOnOff() {
 }
 
 const toggleLiveKitVoice = toggleVoiceOnOff;
+
+/**
+ * Invoked when the room creator (host) mutes this player's microphone
+ */
+async function forceMuteLocalMicByAdmin(hostName) {
+    isMicActive = false;
+    localStorage.setItem('blitz31_mic_state', 'false');
+
+    const LK = getLiveKitSDK();
+    const micSource = (LK && LK.Track && LK.Track.Source) ? LK.Track.Source.Microphone : 'microphone';
+
+    try {
+        if (livekitRoom && livekitRoom.localParticipant) {
+            const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
+            if (micPub) {
+                if (micPub.track && micPub.track.mediaStreamTrack) {
+                    micPub.track.mediaStreamTrack.enabled = false;
+                }
+                if (typeof micPub.mute === 'function') {
+                    await micPub.mute();
+                }
+            }
+            if (typeof livekitRoom.localParticipant.setMicrophoneEnabled === 'function') {
+                await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+            }
+        }
+    } catch (e) {
+        console.warn("[LiveKit] Admin force-mute error:", e);
+    }
+
+    updateVoiceUI();
+    sendVCStatusInternal(isLiveKitConnected, true);
+
+    if (typeof window.showCenterNotification === 'function') {
+        window.showCenterNotification(`🔇 ${hostName || 'The host'} muted your microphone.`);
+    }
+}
 
 function updateVoiceUI() {
     const btnMain = document.getElementById('vc-main-btn');
@@ -478,7 +515,6 @@ function sendVCStatusInternal(inVC, isMuted) {
     }
     refreshVoiceParticipantsList();
 }
-
 
 // -------------------------------------------------------------
 // 5. FRESH TOKEN FETCH & EXPLICIT DISCONNECT
@@ -723,6 +759,7 @@ window.connectLiveKit = connectLiveKit;
 window.connectToLiveKit = connectToLiveKit;
 window.toggleVoiceOnOff = toggleVoiceOnOff;
 window.toggleLiveKitVoice = toggleVoiceOnOff;
+window.forceMuteLocalMicByAdmin = forceMuteLocalMicByAdmin;
 window.disconnectLiveKit = disconnectLiveKit;
 window.setAudioOutputDevice = setAudioOutputDevice;
 window.refreshAudioOutputDevices = refreshAudioOutputDevices;
