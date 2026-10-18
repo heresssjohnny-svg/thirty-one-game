@@ -1,4 +1,4 @@
-// public/js/ui.js - Complete DOM Coordinator, Table Render, Spectator Peek & Card Visuals
+// public/js/ui.js - Complete DOM Coordinator, Table Render, Spectator Peek, Host Admin & Card Visuals
 
 // -------------------------------------------------------------
 // 1. STATE & ENVIRONMENT SAFEGUARDS
@@ -390,12 +390,18 @@ window.toggleGlobalSidebar = function() {
 window.openSpectatorListModal = function() {
     const content = document.getElementById('spectators-list') || document.getElementById('spectators-list-content');
     const specs = window.clientState.spectatorsList || [];
+    const lobby = window.appGlobals?.latestLobbySnapshot;
     if (content) {
         if (specs.length === 0) {
             content.innerHTML = '<div class="empty-list-notice">No spectators currently watching.</div>';
         } else {
-            content.innerHTML = '<ul style="padding-left:14px; margin:0;">' +
-                specs.map(s => `<li style="margin-bottom:4px;"><b>${s.username || s}</b>${s.inVC ? (s.isMuted ? ' 🔇' : ' 🎙️') : ''}</li>`).join('') +
+            content.innerHTML = '<ul style="padding-left:14px; margin:0; list-style:none;">' +
+                specs.map(s => {
+                    const sObj = (typeof s === 'object' && s !== null) ? s : { username: String(s) };
+                    const vcBadge = sObj.inVC ? (sObj.isMuted ? ' 🔇' : ' 🎙️') : '';
+                    const adminBtns = window.getHostAdminButtonsHTML(lobby, sObj);
+                    return `<li style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;"><span><b>${sObj.username}</b>${vcBadge}</span>${adminBtns}</li>`;
+                }).join('') +
                 '</ul>';
         }
     }
@@ -470,133 +476,59 @@ window.openActiveBetsModal = function() {
     window.toggleModal('active-bets-modal');
 };
 
-// --- LOBBY SESSION LEDGER CONTROLS (BILATERAL NETTED ENGINE) ---
-window.toggleSessionLedger = function(show) {
+// --- ACTIVE SIDE BETS LIST SYNC & LEDGER FALLBACKS (PRESERVES LEDGER.JS TOGGLE ENGINE) ---
+window.syncActiveSessionBetsList = function(lobby) {
+    if (!lobby) lobby = window.appGlobals?.latestLobbySnapshot || {};
+    const activeBetsEl = document.getElementById('active-session-bets-list');
+    if (!activeBetsEl) return;
+
+    const activeList = lobby.activeBets || window.clientState?.activeBetsList || [];
+    if (activeList.length === 0) {
+        activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
+    } else {
+        activeBetsEl.innerHTML = activeList.map(b => {
+            const desc = (b.type === 'eliminate' || b.type === 'first_out')
+                ? `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.pickUser} out first)`
+                : `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.condition || 'Win'})`;
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
+                    <span style="font-size:0.8rem;">${desc}</span>
+                    <span style="color:var(--accent-gold); font-weight:bold; font-size:0.85rem;">$${b.wagerAmt || 5}</span>
+                </div>
+            `;
+        }).join('');
+    }
+};
+
+// Only define ledger modal helpers if ledger.js hasn't already registered the toggle-enabled versions
+window.toggleSessionLedger = window.toggleSessionLedger || function(show) {
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
     const shouldShow = (show !== undefined) ? !!show : (modal.style.display !== 'flex');
     modal.style.display = shouldShow ? 'flex' : 'none';
-    if (shouldShow) {
+    if (shouldShow && typeof window.renderSessionLedger === 'function') {
         window.renderSessionLedger(window.appGlobals?.latestLobbySnapshot);
     }
 };
 
-window.openSessionLedgerModal = function() {
+window.openSessionLedgerModal = window.openSessionLedgerModal || function() {
     window.toggleSessionLedger(true);
 };
 
-window.closeSessionLedgerModal = function() {
-    const m = document.getElementById('session-ledger-modal');
+window.closeSessionLedgerModal = window.closeSessionLedgerModal || function() {
+    const m = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (m) m.style.display = 'none';
 };
 
-window.openLifetimeLedgerModal = function() {
+window.openLifetimeLedgerModal = window.openLifetimeLedgerModal || function() {
     sendSocket({ type: 'GET_LIFETIME_LEDGER' });
-    const m = document.getElementById('lifetime-ledger-modal');
+    const m = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (m) m.style.display = 'flex';
 };
 
-window.closeLifetimeLedgerModal = function() {
-    const m = document.getElementById('lifetime-ledger-modal');
+window.closeLifetimeLedgerModal = window.closeLifetimeLedgerModal || function() {
+    const m = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (m) m.style.display = 'none';
-};
-
-window.shareLedgerSnapshot = function() {
-    const content = document.getElementById('session-ledger-content');
-    if (content && navigator.clipboard) {
-        const textToCopy = content.innerText.replace(/✕/g, '').trim();
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            window.showCenterNotification("Ledger copied to clipboard!");
-        }).catch(err => console.warn("Clipboard copy failed", err));
-    }
-};
-
-window.renderSessionLedger = function(lobby) {
-    if (!lobby) lobby = window.appGlobals?.latestLobbySnapshot || {};
-    
-    const settledLedgerEl = document.getElementById('session-settled-ledger-list')
-        || document.getElementById('session-ledger-content')
-        || document.getElementById('ledger-content')
-        || document.getElementById('session-ledger-list')
-        || document.getElementById('session-ledger-display');
-
-    const activeBetsEl = document.getElementById('active-session-bets-list');
-
-    if (activeBetsEl) {
-        const activeList = lobby.activeBets || window.clientState?.activeBetsList || [];
-        if (activeList.length === 0) {
-            activeBetsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:4px;">No active side bets.</div>';
-        } else {
-            activeBetsEl.innerHTML = activeList.map(b => {
-                const desc = (b.type === 'eliminate' || b.type === 'first_out')
-                    ? `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.pickUser} out first)`
-                    : `<b>${b.proposer || b.bettor}</b> vs <b>${b.target}</b> (${b.condition || 'Win'})`;
-                return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:0.8rem;">${desc}</span>
-                        <span style="color:var(--accent-gold); font-weight:bold; font-size:0.85rem;">$${b.wagerAmt || 5}</span>
-                    </div>
-                `;
-            }).join('');
-        }
-    }
-
-    if (!settledLedgerEl) return;
-
-    const gross = {};
-    const addGross = (debtor, creditor, amt) => {
-        if (!debtor || !creditor || debtor === creditor || amt <= 0) return;
-        if (!gross[debtor]) gross[debtor] = {};
-        gross[debtor][creditor] = (gross[debtor][creditor] || 0) + amt;
-    };
-
-    const tally = (ledger) => {
-        if (!ledger) return;
-        for (const debtor in ledger) {
-            for (const creditor in ledger[debtor]) {
-                const amt = Number(ledger[debtor][creditor]) || 0;
-                if (amt > 0) addGross(debtor, creditor, amt);
-            }
-        }
-    };
-
-    tally(lobby.mainGameLedger || window.clientState?.mainGameLedger);
-    tally(lobby.sideBetLedger || window.clientState?.sideBetLedger);
-
-    const allUsers = new Set();
-    Object.keys(gross).forEach(u => allUsers.add(u));
-    Object.values(gross).forEach(map => Object.keys(map).forEach(u => allUsers.add(u)));
-
-    const usersArr = Array.from(allUsers);
-    const netList = [];
-
-    for (let i = 0; i < usersArr.length; i++) {
-        for (let j = i + 1; j < usersArr.length; j++) {
-            const u1 = usersArr[i];
-            const u2 = usersArr[j];
-
-            const u1OwesU2 = (gross[u1] && gross[u1][u2]) || 0;
-            const u2OwesU1 = (gross[u2] && gross[u2][u1]) || 0;
-            const diff = u1OwesU2 - u2OwesU1;
-
-            if (diff > 0) {
-                netList.push({ debtor: u1, creditor: u2, amount: diff });
-            } else if (diff < 0) {
-                netList.push({ debtor: u2, creditor: u1, amount: -diff });
-            }
-        }
-    }
-
-    if (netList.length === 0) {
-        settledLedgerEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; padding:8px; text-align:center;">No debts settled this session. All square!</div>';
-    } else {
-        settledLedgerEl.innerHTML = netList.map(({ debtor, creditor, amount }) => `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.08);">
-                <span style="font-size:0.85rem;"><span style="color:#f87171; font-weight:bold;">${debtor}</span> owes <span style="color:#4ade80; font-weight:bold;">${creditor}</span></span>
-                <span style="color:#fde047; font-weight:bold; font-size:0.9rem;">$${amount}</span>
-            </div>
-        `).join('');
-    }
 };
 
 // -------------------------------------------------------------
@@ -628,8 +560,54 @@ window.renderLobbyList = function(lobbies) {
 window.renderPublicLobbies = window.renderLobbyList;
 
 // -------------------------------------------------------------
-// 5. IN-GAME ACTIONS, AUDIO & CARD INTERACTIONS
+// 5. IN-GAME ACTIONS, HOST ADMIN CONTROLS, AUDIO & CARD INTERACTIONS
 // -------------------------------------------------------------
+window.isCurrentUserLobbyHost = function(lobby) {
+    const snap = lobby || window.appGlobals?.latestLobbySnapshot;
+    if (!snap || !snap.host) return false;
+    const myName = getActiveUsername().trim().toLowerCase();
+    return Boolean(myName && snap.host.trim().toLowerCase() === myName);
+};
+
+window.adminKickPlayer = window.adminKickPlayer || function(targetUsername) {
+    if (!targetUsername) return;
+    if (!confirm(`Kick ${targetUsername} from the room?`)) return;
+    sendSocket({
+        type: 'ADMIN_KICK_PLAYER',
+        requesterUsername: getActiveUsername(),
+        targetUsername: targetUsername
+    });
+};
+
+window.adminMutePlayer = window.adminMutePlayer || function(targetUsername) {
+    if (!targetUsername) return;
+    sendSocket({
+        type: 'ADMIN_MUTE_PLAYER',
+        requesterUsername: getActiveUsername(),
+        targetUsername: targetUsername
+    });
+    window.showCenterNotification(`🔇 Muted ${targetUsername}`);
+};
+
+window.getHostAdminButtonsHTML = function(lobby, targetPlayer) {
+    if (!window.isCurrentUserLobbyHost(lobby) || !targetPlayer) return '';
+    const myName = getActiveUsername().trim().toLowerCase();
+    const targetName = (targetPlayer.username || '').trim();
+
+    if (!targetName || targetName.toLowerCase() === myName) return '';
+
+    const safeTarget = targetName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const showMute = !targetPlayer.isBot && !targetPlayer.isMuted;
+
+    const muteBtn = showMute
+        ? `<button type="button" onclick="event.stopPropagation(); window.adminMutePlayer('${safeTarget}')" title="Mute ${targetName}" style="background: rgba(245,158,11,0.25); border: 1px solid #f59e0b; color: #fcd34d; border-radius: 4px; padding: 1px 4px; font-size: 0.62rem; line-height: 1; cursor: pointer;">🔇</button>`
+        : '';
+
+    const kickBtn = `<button type="button" onclick="event.stopPropagation(); window.adminKickPlayer('${safeTarget}')" title="Kick ${targetName}" style="background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #fca5a5; border-radius: 4px; padding: 1px 4px; font-size: 0.62rem; line-height: 1; cursor: pointer;">👢</button>`;
+
+    return `<span class="host-admin-controls" style="display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle;">${muteBtn}${kickBtn}</span>`;
+};
+
 window.drawCard = function(source) {
     if (window.clientState.isSpectator) return;
     window.safePlaySound('card');
@@ -1663,10 +1641,13 @@ window.updateUIFromLobby = function(lobby) {
             const statusBadge = p.eliminated ? ' [OUT]' : '';
             const readyStatusIcon = p.ready ? '✅' : '❌';
             const botBadge = p.isBot ? ' 🤖' : '';
+            const isSeatHost = lobby.host && p.username && lobby.host.trim().toLowerCase() === p.username.trim().toLowerCase();
+            const hostCrown = isSeatHost ? ' 👑' : '';
             const isCurrent = (p.username.toLowerCase() === (lobby.currentTurnUser || '').toLowerCase()) && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
             const isDealer = (idx === lobby.dealerIndex) || (lobby.dealerName === p.username);
             const dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
             const micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
+            const hostAdminBtns = window.getHostAdminButtonsHTML(lobby, p);
 
             let peekerBadgesHtml = '';
             if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
@@ -1681,7 +1662,7 @@ window.updateUIFromLobby = function(lobby) {
             html += `
                 <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}" onclick="tapSeat('${p.username}')" style="cursor:pointer;">
                     <div class="seat-name-area">
-                        <span>${readyStatusIcon}</span> <b>${p.username}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
+                        <span>${readyStatusIcon}</span> <b>${p.username}${hostCrown}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}${hostAdminBtns}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                     </div>
                     ${revealedCardsHtml}
                     ${peekerBadgesHtml}
@@ -1765,10 +1746,18 @@ window.updateUIFromLobby = function(lobby) {
         if (scoreDisplay) scoreDisplay.innerText = '0';
     }
 
-    // 17. SESSION LEDGER AUTO-SYNC
-    const sessionLedgerModal = document.getElementById('session-ledger-modal');
-    if (sessionLedgerModal && sessionLedgerModal.style.display === 'flex' && typeof window.renderSessionLedger === 'function') {
-        window.renderSessionLedger(lobby);
+    // 17. SESSION LEDGER & SPECTATOR MODAL AUTO-SYNC
+    window.syncActiveSessionBetsList(lobby);
+    const sessionLedgerModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    if (sessionLedgerModal && sessionLedgerModal.style.display === 'flex') {
+        if (window.currentLedgerTab !== 'lifetime' && typeof window.renderSessionLedger === 'function') {
+            window.renderSessionLedger(lobby);
+        }
+    }
+
+    const specModal = document.getElementById('spectator-list-modal') || document.getElementById('spectators-modal');
+    if (specModal && specModal.style.display === 'flex') {
+        window.openSpectatorListModal();
     }
 };
 
