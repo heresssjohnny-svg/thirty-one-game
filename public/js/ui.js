@@ -34,7 +34,9 @@ window.appGlobals = window.appGlobals || {
     lastCelebrated31: null,
     lastChatCount: 0,
     notificationTimer: null,
-    declinedProposals: []
+    declinedProposals: [],
+    lastAutoConfirmKey: null,
+    promptedConfirmations: {}
 };
 
 // Resilient username resolver that checks both players AND spectators
@@ -269,6 +271,10 @@ window.toggleModal = function(id, forceState) {
     const m = document.getElementById(id);
     if (!m) return;
     const willOpen = (typeof forceState === 'boolean') ? forceState : (m.style.display !== 'flex');
+    if (willOpen && id === 'bet-modal' && typeof window.toggleMinimizeBetModal === 'function') {
+        window.ensureBetModalMinimizeControls();
+        window.toggleMinimizeBetModal(true);
+    }
     m.style.display = willOpen ? 'flex' : 'none';
 
     if (willOpen && (id === 'session-ledger-modal' || id === 'ledger-modal') && typeof window.renderSessionLedger === 'function') {
@@ -857,8 +863,121 @@ window.knockRound = function() {
 };
 
 // -------------------------------------------------------------
-// 7. SIDE BETS & PEEKING DIALOGS
+// 7. SIDE BETS, MINIMIZE CONTROLS & PEEKING DIALOGS
 // -------------------------------------------------------------
+window.ensureBetModalMinimizeControls = function() {
+    // 1. Ensure #bet-modal has a minimize button in its header
+    const betModal = document.getElementById('bet-modal');
+    if (betModal && !document.getElementById('bet-modal-min-btn')) {
+        const header = betModal.querySelector('.modal-header');
+        if (header) {
+            const closeBtn = header.querySelector('.close-btn');
+            const minBtn = document.createElement('button');
+            minBtn.type = 'button';
+            minBtn.id = 'bet-modal-min-btn';
+            minBtn.className = 'close-btn';
+            minBtn.title = 'Minimize';
+            minBtn.innerText = '—';
+            minBtn.style.marginRight = '6px';
+            minBtn.onclick = function(e) {
+                e.stopPropagation();
+                window.toggleMinimizeBetModal();
+            };
+
+            if (closeBtn && closeBtn.parentNode === header) {
+                const btnGroup = document.createElement('div');
+                btnGroup.style.cssText = 'display: flex; gap: 6px; align-items: center;';
+                header.insertBefore(btnGroup, closeBtn);
+                btnGroup.appendChild(minBtn);
+                btnGroup.appendChild(closeBtn);
+            } else {
+                header.appendChild(minBtn);
+            }
+        }
+    }
+
+    // 2. Ensure #global-side-bets-sidebar has a minimize button in its header
+    const sidebar = document.getElementById('global-side-bets-sidebar');
+    if (sidebar && !document.getElementById('global-sidebar-min-btn')) {
+        let header = sidebar.querySelector('.drawer-header') || sidebar.querySelector('h4')?.parentElement;
+        if (!header) {
+            const h4 = sidebar.querySelector('h4');
+            if (h4) {
+                header = document.createElement('div');
+                header.className = 'drawer-header';
+                header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; width: 100%;';
+                h4.parentNode.insertBefore(header, h4);
+                header.appendChild(h4);
+            }
+        }
+        if (header) {
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
+            const minBtn = document.createElement('button');
+            minBtn.type = 'button';
+            minBtn.id = 'global-sidebar-min-btn';
+            minBtn.className = 'close-btn';
+            minBtn.title = 'Minimize';
+            minBtn.innerText = '—';
+            minBtn.style.cssText = 'font-size: 0.9rem; padding: 0 6px; cursor: pointer; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px;';
+            minBtn.onclick = function(e) {
+                e.stopPropagation();
+                window.toggleMinimizeGlobalSidebar();
+            };
+            header.appendChild(minBtn);
+        }
+    }
+};
+document.addEventListener('DOMContentLoaded', window.ensureBetModalMinimizeControls);
+
+window.toggleMinimizeBetModal = function(forceRestore) {
+    window.ensureBetModalMinimizeControls();
+    const modal = document.getElementById('bet-modal');
+    const wrap = document.getElementById('bet-modal-content-wrap') || document.getElementById('bet-modal-body');
+    const proposalsFeed = document.getElementById('global-proposals-container');
+    const minBtn = document.getElementById('bet-modal-min-btn');
+    if (!modal || !wrap) return;
+
+    const isMinimized = forceRestore === true ? true : modal.classList.contains('minimized-bet-modal');
+
+    if (isMinimized) {
+        modal.classList.remove('minimized-bet-modal');
+        modal.style.cssText = 'display: flex;';
+        wrap.style.display = 'block';
+        if (proposalsFeed) proposalsFeed.style.display = 'block';
+        if (minBtn) minBtn.innerText = '—';
+    } else {
+        modal.classList.add('minimized-bet-modal');
+        modal.style.cssText = 'display: flex; inset: auto 10px 10px auto !important; width: 260px !important; height: auto !important; background: transparent !important; backdrop-filter: none !important; padding: 0 !important; pointer-events: auto !important; z-index: 9999 !important;';
+        wrap.style.display = 'none';
+        if (proposalsFeed) proposalsFeed.style.display = 'none';
+        if (minBtn) minBtn.innerText = '▲';
+    }
+};
+
+window.toggleMinimizeGlobalSidebar = function(forceRestore) {
+    window.ensureBetModalMinimizeControls();
+    const sidebar = document.getElementById('global-side-bets-sidebar');
+    const list = document.getElementById('global-side-bets-list');
+    const minBtn = document.getElementById('global-sidebar-min-btn');
+    if (!sidebar || !list) return;
+
+    const isMinimized = forceRestore === true ? true : sidebar.dataset.minimized === 'true';
+
+    if (isMinimized) {
+        sidebar.dataset.minimized = 'false';
+        sidebar.style.height = '';
+        list.style.display = 'flex';
+        if (minBtn) minBtn.innerText = '—';
+    } else {
+        sidebar.dataset.minimized = 'true';
+        sidebar.style.height = 'auto';
+        list.style.display = 'none';
+        if (minBtn) minBtn.innerText = '▲';
+    }
+};
+
 window.handleSeatClick = function(seatIndex) {
     if (window.clientState.gameState === 'lobby') {
         window.showCenterNotification("Game hasn't started yet! Ready up to play.");
@@ -909,7 +1028,10 @@ window.tapSeat = function(targetUsername) {
                 <button onclick="submitEliminationProposal('${targetUsername}', 5)">$5 Wager</button>
                 <button onclick="submitEliminationProposal('${targetUsername}', 10)">$10 Wager</button>
                 <button onclick="submitEliminationProposal('${targetUsername}', 20)">$20 Wager</button>
-                <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
+                <div style="display:flex; gap:6px; margin-top:6px;">
+                    <button class="secondary" onclick="window.toggleMinimizeBetModal()" style="flex:1;">Minimize</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal', false)" style="flex:1;">Cancel</button>
+                </div>
             `;
         }
         window.toggleModal('bet-modal', true);
@@ -923,7 +1045,10 @@ window.tapSeat = function(targetUsername) {
                 <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
                 <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
                 <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
-                <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
+                <div style="display:flex; gap:6px; margin-top:6px;">
+                    <button class="secondary" onclick="window.toggleMinimizeBetModal()" style="flex:1;">Minimize</button>
+                    <button class="secondary" onclick="toggleModal('bet-modal', false)" style="flex:1;">Cancel</button>
+                </div>
             `;
         }
         window.toggleModal('bet-modal', true);
@@ -951,7 +1076,10 @@ window.betOnHimFromModal = function(targetUsername) {
             <button onclick="submitGlobalProposal('${targetUsername}', 5)">$5 Wager</button>
             <button onclick="submitGlobalProposal('${targetUsername}', 10)">$10 Wager</button>
             <button onclick="submitGlobalProposal('${targetUsername}', 20)">$20 Wager</button>
-            <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+                <button class="secondary" onclick="window.toggleMinimizeBetModal()" style="flex:1;">Minimize</button>
+                <button class="secondary" onclick="toggleModal('bet-modal', false)" style="flex:1;">Cancel</button>
+            </div>
         `;
     }
     window.toggleModal('bet-modal', true);
@@ -974,8 +1102,19 @@ window.acceptGlobalProposal = function(proposalId) {
         type: 'ACCEPT_GLOBAL_PROPOSAL',
         proposalId: proposalId,
         betId: proposalId,
-        id: proposalId
+        id: proposalId,
+        accept: true,
+        confirm: true
     });
+    window.showCenterNotification('Waiting for proposer to confirm bet...');
+};
+
+window.respondGlobalBet = function(proposalId, accept) {
+    if (accept) {
+        window.acceptGlobalProposal(proposalId);
+    } else {
+        window.declineGlobalProposal(proposalId);
+    }
 };
 
 window.declineGlobalProposal = function(proposalId) {
@@ -1001,31 +1140,52 @@ window.declineGlobalProposal = function(proposalId) {
 };
 
 window.confirmGlobalBet = function(proposalId, acceptedUser, confirmChoice) {
-    sendSocket({ type: 'CONFIRM_GLOBAL_BET', proposalId, acceptedUser, confirm: !!confirmChoice });
+    sendSocket({
+        type: 'CONFIRM_GLOBAL_BET',
+        proposalId: proposalId,
+        betId: proposalId,
+        id: proposalId,
+        acceptedUser: acceptedUser,
+        confirm: !!confirmChoice,
+        accept: !!confirmChoice
+    });
+    if (window.appGlobals && window.appGlobals.promptedConfirmations) {
+        delete window.appGlobals.promptedConfirmations[`${proposalId}_${acceptedUser}`];
+    }
+    window.toggleMinimizeBetModal(true);
     window.toggleModal('bet-modal', false);
 };
 
-window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers) {
+window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers, wagerAmt) {
+    window.ensureBetModalMinimizeControls();
     const modal = document.getElementById('bet-modal');
     const modalTitle = document.getElementById('bet-modal-title');
     const modalBody = document.getElementById('bet-modal-body');
+
+    window.toggleMinimizeBetModal(true); // Always un-minimize when a confirmation arrives
+
     if (modalTitle) modalTitle.innerText = `Confirm Global Side Bet (${pickUser})`;
 
     const listHtml = (acceptedUsers || []).map(acc => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:4px;">
-            <span><b>${acc}</b> accepted</span>
-            <div style="display:flex; gap:4px;">
-                <button style="font-size:0.7rem; padding:4px 8px; background:#10b981;" onclick="confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
-                <button class="danger" style="font-size:0.7rem; padding:4px 8px;" onclick="confirmGlobalBet('${proposalId}', '${acc}', false)">Decline</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:8px; border-radius:6px; margin-bottom:6px;">
+            <span><b>${acc}</b> clicked "You got it!" ${wagerAmt ? `($${wagerAmt})` : ''}</span>
+            <div style="display:flex; gap:6px;">
+                <button style="font-size:0.75rem; padding:5px 10px; background:#10b981; color:#fff; font-weight:bold; border-radius:4px; border:none; cursor:pointer;" onclick="window.confirmGlobalBet('${proposalId}', '${acc}', true)">Confirm</button>
+                <button class="danger" style="font-size:0.75rem; padding:5px 10px; background:#ef4444; color:#fff; font-weight:bold; border-radius:4px; border:none; cursor:pointer;" onclick="window.confirmGlobalBet('${proposalId}', '${acc}', false)">Deny</button>
             </div>
         </div>
     `).join('');
 
     if (modalBody) {
         modalBody.innerHTML = `
-            <p style="font-size:0.80rem; color:var(--text-muted); margin-bottom:6px;">Players who accepted your proposal:</p>
+            <p style="font-size:0.85rem; color:#f8fafc; margin-bottom:8px; text-align:center;">
+                Lock in your side bet on <b>${pickUser}</b>:
+            </p>
             ${listHtml}
-            <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:8px;">Close</button>
+            <div style="display:flex; gap:6px; margin-top:8px;">
+                <button class="secondary" onclick="window.toggleMinimizeBetModal()" style="flex:1;">Minimize</button>
+                <button class="secondary" onclick="window.toggleModal('bet-modal', false)" style="flex:1;">Close</button>
+            </div>
         `;
     }
     if (modal) modal.style.display = 'flex';
@@ -1033,6 +1193,7 @@ window.openConfirmModal = function(proposalId, proposer, pickUser, acceptedUsers
 
 window.respondToBet = function(betId, accept) {
     sendSocket({ type: 'RESPOND_BET', betId, accept: !!accept });
+    window.toggleMinimizeBetModal(true);
     window.toggleModal('bet-modal', false);
 };
 
@@ -1043,6 +1204,7 @@ window.updateUIFromLobby = function(lobby) {
     if (!lobby) return;
 
     window.appGlobals.latestLobbySnapshot = lobby;
+    window.ensureBetModalMinimizeControls();
 
     const authScreen = document.getElementById('auth-screen');
     const mainMenu = document.getElementById('main-menu');
@@ -1319,14 +1481,39 @@ window.updateUIFromLobby = function(lobby) {
 
     updateKnockButtonState(lobby, me, isMyTurnPlaying);
 
-    // 11. SIDE BET PROPOSALS
+    // 11. SIDE BET PROPOSALS & AUTO-POPUP CONFIRMATION FOR PROPOSER
     const sidebar = document.getElementById('global-side-bets-sidebar');
     const sidebarList = document.getElementById('global-side-bets-list');
     const globalProps = lobby.globalProposals || [];
     const declinedIds = (window.appGlobals && window.appGlobals.declinedProposals) || [];
+    const activeNameClean = activeUsername.trim().toLowerCase();
+
+    // Auto-popup confirmation modal when someone clicks "You got it" on MY proposal
+    const myAcceptedProposal = globalProps.find(gp => {
+        const propOwner = String(gp.proposer || gp.creator || '').trim().toLowerCase();
+        const acceptedList = gp.acceptedBy || gp.acceptedUsers || (gp.acceptedUser ? [gp.acceptedUser] : []);
+        return propOwner === activeNameClean && Array.isArray(acceptedList) && acceptedList.length > 0;
+    });
+
+    if (myAcceptedProposal && lobby.gameState !== 'lobby') {
+        const acceptedList = myAcceptedProposal.acceptedBy || myAcceptedProposal.acceptedUsers || [myAcceptedProposal.acceptedUser];
+        const confirmKey = `${myAcceptedProposal.id}_${acceptedList.join(',')}`;
+        if (window.appGlobals.lastAutoConfirmKey !== confirmKey) {
+            window.appGlobals.lastAutoConfirmKey = confirmKey;
+            window.openConfirmModal(
+                myAcceptedProposal.id,
+                myAcceptedProposal.proposer || myAcceptedProposal.creator,
+                myAcceptedProposal.pickUser,
+                acceptedList,
+                myAcceptedProposal.wagerAmt
+            );
+        }
+    } else {
+        window.appGlobals.lastAutoConfirmKey = null;
+    }
 
     const visibleGlobalProps = globalProps.filter(gp => {
-        const deniedByServer = (gp.deniedBy || []).some(u => u.toLowerCase() === activeUsername.toLowerCase());
+        const deniedByServer = (gp.deniedBy || []).some(u => u.toLowerCase() === activeNameClean);
         const deniedLocally = declinedIds.includes(gp.id);
         return !deniedByServer && !deniedLocally;
     });
@@ -1336,13 +1523,14 @@ window.updateUIFromLobby = function(lobby) {
         let sidebarHtml = '';
         visibleGlobalProps.forEach(gp => {
             const proposerName = gp.proposer || gp.creator || 'Player';
-            const isMyProp = (proposerName.toLowerCase() === activeUsername.toLowerCase());
-            const alreadyAccepted = gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === activeUsername.toLowerCase());
+            const isMyProp = (proposerName.toLowerCase() === activeNameClean);
+            const acceptedList = gp.acceptedBy || gp.acceptedUsers || (gp.acceptedUser ? [gp.acceptedUser] : []);
+            const alreadyAccepted = acceptedList.some(u => String(u).toLowerCase() === activeNameClean);
 
             let actionHtml = '';
             if (isMyProp) {
-                if (gp.acceptedBy && gp.acceptedBy.length > 0) {
-                    actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px;" onclick="openConfirmModal('${gp.id}', '${proposerName}', '${gp.pickUser}', ${JSON.stringify(gp.acceptedBy).replace(/"/g, '&quot;')})">Review (${gp.acceptedBy.length})</button>`;
+                if (acceptedList.length > 0) {
+                    actionHtml = `<button style="font-size:0.65rem; padding:3px 6px; background:#38bdf8; color:#0f172a; margin-top:4px; font-weight:bold; border-radius:4px; border:none; cursor:pointer;" onclick="window.openConfirmModal('${gp.id}', '${proposerName}', '${gp.pickUser}', ${JSON.stringify(acceptedList).replace(/"/g, '&quot;')}, ${gp.wagerAmt || 5})">Review (${acceptedList.length})</button>`;
                 } else {
                     actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
                 }
@@ -1379,6 +1567,8 @@ window.updateUIFromLobby = function(lobby) {
             const mTitle = document.getElementById('bet-modal-title');
             const mBody = document.getElementById('bet-modal-body');
 
+            window.toggleMinimizeBetModal(true);
+
             if (mTitle) mTitle.innerText = `Incoming Bet Proposal from ${bet.proposer}`;
             if (mBody) {
                 mBody.innerHTML = `
@@ -1386,6 +1576,7 @@ window.updateUIFromLobby = function(lobby) {
                     <div style="display: flex; gap: 8px; justify-content: center;">
                         <button onclick="respondToBet('${bet.id}', true)">Accept</button>
                         <button class="danger" onclick="respondToBet('${bet.id}', false)">Decline</button>
+                        <button class="secondary" onclick="window.toggleMinimizeBetModal()">Minimize</button>
                     </div>
                 `;
             }
