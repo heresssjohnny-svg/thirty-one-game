@@ -268,11 +268,12 @@ window.calculateLocalScore = function(cards) {
 window.toggleModal = function(id, forceState) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (typeof forceState === 'boolean') {
-        m.style.display = forceState ? 'flex' : 'none';
-        return;
+    const willOpen = (typeof forceState === 'boolean') ? forceState : (m.style.display !== 'flex');
+    m.style.display = willOpen ? 'flex' : 'none';
+
+    if (willOpen && (id === 'session-ledger-modal' || id === 'ledger-modal') && typeof window.renderSessionLedger === 'function') {
+        window.renderSessionLedger(window.appGlobals?.latestLobbySnapshot);
     }
-    m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
 };
 
 window.showCenterNotification = function(msg) {
@@ -597,15 +598,16 @@ window.getHostAdminButtonsHTML = function(lobby, targetPlayer) {
     if (!targetName || targetName.toLowerCase() === myName) return '';
 
     const safeTarget = targetName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const showMute = !targetPlayer.isBot && !targetPlayer.isMuted;
+    const isAlreadyMuted = Boolean(targetPlayer.isMuted);
 
-    const muteBtn = showMute
-        ? `<button type="button" onclick="event.stopPropagation(); window.adminMutePlayer('${safeTarget}')" title="Mute ${targetName}" style="background: rgba(245,158,11,0.25); border: 1px solid #f59e0b; color: #fcd34d; border-radius: 4px; padding: 1px 4px; font-size: 0.62rem; line-height: 1; cursor: pointer;">🔇</button>`
+    // Show Mute button on all human players (dimmed if already muted, bright if active)
+    const muteBtn = !targetPlayer.isBot
+        ? `<button type="button" onclick="event.stopPropagation(); window.adminMutePlayer('${safeTarget}')" title="${isAlreadyMuted ? targetName + ' is muted (click to force-mute)' : 'Mute ' + targetName}" style="pointer-events: auto; background: ${isAlreadyMuted ? 'rgba(148,163,184,0.2)' : 'rgba(245,158,11,0.3)'}; border: 1px solid ${isAlreadyMuted ? '#64748b' : '#f59e0b'}; color: ${isAlreadyMuted ? '#94a3b8' : '#fcd34d'}; border-radius: 4px; padding: 2px 5px; font-size: 0.65rem; line-height: 1; cursor: pointer;">🔇</button>`
         : '';
 
-    const kickBtn = `<button type="button" onclick="event.stopPropagation(); window.adminKickPlayer('${safeTarget}')" title="Kick ${targetName}" style="background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #fca5a5; border-radius: 4px; padding: 1px 4px; font-size: 0.62rem; line-height: 1; cursor: pointer;">👢</button>`;
+    const kickBtn = `<button type="button" onclick="event.stopPropagation(); window.adminKickPlayer('${safeTarget}')" title="Kick ${targetName}" style="pointer-events: auto; background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #fca5a5; border-radius: 4px; padding: 2px 5px; font-size: 0.65rem; line-height: 1; cursor: pointer;">👢</button>`;
 
-    return `<span class="host-admin-controls" style="display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle;">${muteBtn}${kickBtn}</span>`;
+    return `<span class="host-admin-controls" style="display: inline-flex; gap: 4px; margin-left: 5px; vertical-align: middle; position: relative; z-index: 25; pointer-events: auto;">${muteBtn}${kickBtn}</span>`;
 };
 
 window.drawCard = function(source) {
