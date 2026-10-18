@@ -885,6 +885,186 @@ function handleStandUp(lobby, ws, username) {
     return true;
 }
 
+// -------------------------------------------------------------
+// ROOM CREATOR ADMIN CONTROLS: KICK & MUTE
+// -------------------------------------------------------------
+
+function isLobbyHost(lobby, ws, username) {
+    if (!lobby || !lobby.host) return false;
+    const reqName = (username || extractSocketUsername(ws) || '').trim().toLowerCase();
+    return Boolean(reqName && lobby.host.trim().toLowerCase() === reqName);
+}
+
+function handleAdminKickPlayer(lobby, hostWs, targetUsername, broadcastLobbyList) {
+    if (!lobby || !targetUsername) return false;
+
+    if (!isLobbyHost(lobby, hostWs, hostWs?.currentUsername)) {
+        if (hostWs && hostWs.readyState === WebSocket.OPEN) {
+            hostWs.send(JSON.stringify({ type: 'ERROR', message: 'Only the room creator can kick players.' }));
+        }
+        return false;
+    }
+
+    const cleanTarget = String(targetUsername).trim().toLowerCase();
+    const cleanHost = (lobby.host || '').trim().toLowerCase();
+    if (!cleanTarget || cleanTarget === cleanHost) return false;
+
+    let targetSocket = null;
+    let kickedName = String(targetUsername).trim();
+    let wasCurrentTurnPlayer = false;
+
+    // 1. Check seated players
+    const playerIdx = lobby.players.findIndex(p => p.username && p.username.trim().toLowerCase() === cleanTarget);
+    if (playerIdx !== -1) {
+        const removedPlayer = lobby.players[playerIdx];
+        kickedName = removedPlayer.username || kickedName;
+        targetSocket = removedPlayer.id;
+        clearReadyCountdown(removedPlayer);
+
+        if (playerIdx === lobby.turnIndex) {
+            wasCurrentTurnPlayer = true;
+            clearTurnTimer(lobby);
+        } else if (playerIdx < lobby.turnIndex) {
+            lobby.turnIndex = Math.max(0, lobby.turnIndex - 1);
+        }
+
+        lobby.players.splice(playerIdx, 1);
+        lobby.players.forEach((p, idx) => { p.seat = idx; });
+
+        if (lobby.turnIndex >= lobby.players.length) {
+            lobby.turnIndex = 0;
+        }
+    }
+
+    // 2. Check spectators
+    const specIdx = lobby.spectators.findIndex(s => s.username && s.username.trim().toLowerCase() === cleanTarget);
+    if (specIdx !== -1) {
+        const removedSpec = lobby.spectators.splice(specIdx, 1)[0];
+        kickedName = removedSpec.username || kickedName;
+        if (!targetSocket) targetSocket = removedSpec.idSocket;
+    }
+
+    // 3. Clean up any peek references for the kicked user
+    lobby.players.forEach(p => {
+        if (p.peekAllowed) {
+            Object.keys(p.peekAllowed).forEach(k => {
+                if (k.toLowerCase() === cleanTarget) delete p.peekAllowed[k];
+            });
+        }
+        if (p.peekRequests) {
+            Object.keys(p.peekRequests).forEach(k => {
+                if (k.toLowerCase() === cleanTarget) delete p.peekRequests[k];
+            });
+        }
+    });
+
+    // 4. Notify kicked socket and detach room code
+    if (targetSocket && typeof targetSocket === 'object' && targetSocket.readyState === WebSocket.OPEN) {
+        targetSocket.currentLobbyCode = null;
+        targetSocket.send(JSON.stringify({
+            type: 'KICKED_FROM_LOBBY',
+            message: `You were kicked from the table by ${lobby.host}.`
+        }));
+        targetSocket.send(JSON.stringify({ type: 'LEFT_LOBBY' }));
+    }
+
+    lobby.phaseMessage = `👢 ${kickedName} was kicked from the room by ${lobby.host}.`;
+
+    // 5. Reconcile game state if a seated player was kicked mid-game
+    if (lobby.gameState === 'lobby') {
+        establishDealer(lobby);
+        syncBotReadiness(lobby);
+        attemptGameStart(lobby);
+        broadcastLobbyUpdate(lobby.code);
+    } else if (lobby.gameState === 'roundOver') {
+        checkNextHandReady(lobby);
+        broadcastLobbyUpdate(lobby.code);
+    } else {
+        const activeLeft = getActiveParticipants(lobby);
+        if (activeLeft.length <= 1) {
+            if (activeLeft.length === 1) {
+                awardTournamentWinner(lobby, activeLeft[0]);
+            } else {
+                resetLobbyToReadyRoom(lobby, `${kickedName} was kicked. Returning to waiting room.`, broadcastLobbyList);
+            }
+        } else {
+            while (lobby.players[lobby.turnIndex] && lobby.players[lobby.turnIndex].eliminated) {
+                lobby.turnIndex = (lobby.turnIndex + 1) % lobby.players.length;
+            }
+            establishDealer(lobby);
+            broadcastLobbyUpdate(lobby.code);
+            if (wasCurrentTurnPlayer || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+                scheduleBotActions(lobby);
+                resetTurnTimer(lobby);
+            }
+        }
+    }
+
+    if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
+    return true;
+}
+
+function handleAdminMutePlayer(lobby, hostWs, targetUsername) {
+    if (!lobby || !targetUsername) return false;
+
+    if (!isLobbyHost(lobby, hostWs, hostWs?.currentUsername)) {
+        if (hostWs && hostWs.readyState === WebSocket.OPEN) {
+            hostWs.send(JSON.stringify({ type: 'ERROR', message: 'Only the room creator can mute players.' }));
+        }
+        return false;
+    }
+
+    const cleanTarget = String(targetUsername).trim().toLowerCase();
+    let targetSocket = null;
+    let targetCanonicalName = String(targetUsername).trim();
+    let targetInVC = false;
+
+    const targetPlayer = lobby.players.find(p => p.username && p.username.trim().toLowerCase() === cleanTarget);
+    if (targetPlayer) {
+        targetPlayer.isMuted = true;
+        targetCanonicalName = targetPlayer.username;
+        targetInVC = Boolean(targetPlayer.inVC);
+        targetSocket = targetPlayer.id;
+    }
+
+    const targetSpec = lobby.spectators.find(s => s.username && s.username.trim().toLowerCase() === cleanTarget);
+    if (targetSpec) {
+        targetSpec.isMuted = true;
+        targetCanonicalName = targetSpec.username || targetCanonicalName;
+        targetInVC = targetInVC || Boolean(targetSpec.inVC);
+        if (!targetSocket) targetSocket = targetSpec.idSocket;
+    }
+
+    if (!targetPlayer && !targetSpec) return false;
+
+    // Instruct target browser to immediately shut off LiveKit microphone
+    if (targetSocket && typeof targetSocket === 'object' && targetSocket.readyState === WebSocket.OPEN) {
+        targetSocket.send(JSON.stringify({
+            type: 'ADMIN_FORCE_MUTE',
+            byHost: lobby.host
+        }));
+    }
+
+    // Broadcast updated VC status to all connected clients in the lobby
+    const vcPayload = JSON.stringify({
+        type: 'VC_STATUS_UPDATE',
+        username: targetCanonicalName,
+        inVC: targetInVC,
+        isMuted: true
+    });
+
+    const sent = new Set();
+    [...lobby.players.map(p => p.id), ...lobby.spectators.map(s => s.idSocket)].forEach(sock => {
+        if (sock && typeof sock === 'object' && sock.readyState === WebSocket.OPEN && !sent.has(sock)) {
+            sent.add(sock);
+            sock.send(vcPayload);
+        }
+    });
+
+    broadcastLobbyUpdate(lobby.code);
+    return true;
+}
+
 function startDealerDrawPhase(lobby) {
     clearRoundOverTimer(lobby);
     clearTurnTimer(lobby);
@@ -1962,6 +2142,9 @@ module.exports = {
     handleSetReady,
     handleSitDown,
     handleStandUp,
+    isLobbyHost,
+    handleAdminKickPlayer,
+    handleAdminMutePlayer,
     handleRequestPeek,
     handleRespondPeek,
     handleStopPeek,
