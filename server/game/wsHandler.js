@@ -16,7 +16,9 @@ const {
     leaveLobby,
     resetLobbyToReadyRoom,
     checkNextHandReady,
-    syncLifetimeLedgerBalances
+    syncLifetimeLedgerBalances,
+    handleAdminKickPlayer,
+    handleAdminMutePlayer
 } = require('./lobbyManager');
 const { generateLiveKitToken } = require('../services/livekit');
 const { BOT_NAMES, syncBotReadiness } = require('./bot');
@@ -496,6 +498,33 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        // ---------------------------------------------------------
+        // ROOM CREATOR (HOST) ADMIN CONTROLS: KICK & MUTE
+        // ---------------------------------------------------------
+        case 'ADMIN_KICK_PLAYER': {
+            const code = currentLobbyCode || ws.currentLobbyCode || data.code;
+            const lobby = code ? lobbies[code] : null;
+            if (lobby && data.targetUsername) {
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const reqName = resolveSocketUsername(lobby, ws, data.requesterUsername || currentUsername);
+                if (reqName) ws.currentUsername = reqName;
+                handleAdminKickPlayer(lobby, ws, data.targetUsername, broadcastLobbyList);
+            }
+            break;
+        }
+
+        case 'ADMIN_MUTE_PLAYER': {
+            const code = currentLobbyCode || ws.currentLobbyCode || data.code;
+            const lobby = code ? lobbies[code] : null;
+            if (lobby && data.targetUsername) {
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const reqName = resolveSocketUsername(lobby, ws, data.requesterUsername || currentUsername);
+                if (reqName) ws.currentUsername = reqName;
+                handleAdminMutePlayer(lobby, ws, data.targetUsername);
+            }
+            break;
+        }
+
         case 'SET_READY': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
@@ -694,7 +723,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         // ---------------------------------------------------------
-        // 4. DEBT TRANSFER / NOVATION HANDLERS
+        // 4. DEBT TRANSFER / NOVATION & LIFETIME LEDGER HANDLERS
         // ---------------------------------------------------------
         case 'TRANSFER_DEBT': {
             const code = currentLobbyCode || ws.currentLobbyCode || data.code;
@@ -727,7 +756,11 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'TRANSFER_LIFETIME_DEBT': {
+            const lookupName = ws.currentUsername || data.username || currentUsername;
             let myUid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || data.myId);
+            if (!myUid && lookupName && dbModule && typeof dbModule.findUserByUsername === 'function') {
+                myUid = dbModule.findUserByUsername(lookupName)?.id || null;
+            }
             const { fromDebtorId, toCreditorId, amount } = data;
             const transferAmt = Number(amount);
 
@@ -749,18 +782,53 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        case 'APPLY_CREDIT': {
+            const lookupName = ws.currentUsername || data.username || currentUsername;
+            let myUid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || data.debtorId);
+            if (!myUid && lookupName && dbModule && typeof dbModule.findUserByUsername === 'function') {
+                myUid = dbModule.findUserByUsername(lookupName)?.id || null;
+            }
+            const otherId = data.creditorId;
+            const creditAmt = Number(data.amount);
+
+            if (dbModule && typeof dbModule.recordLifetimeDebt === 'function' && myUid && otherId && creditAmt > 0) {
+                // Creditor (myUid) records an offsetting entry to reduce what otherId owes them
+                dbModule.recordLifetimeDebt(myUid, otherId, creditAmt);
+
+                if (typeof dbModule.getLifetimeBalances === 'function') {
+                    const balances = dbModule.getLifetimeBalances(myUid);
+                    ws.send(JSON.stringify({
+                        type: 'LIFETIME_LEDGER_DATA',
+                        balances,
+                        ledger: balances,
+                        debts: balances
+                    }));
+                }
+            }
+            break;
+        }
+
         case 'GET_LIFETIME_LEDGER': {
+            const lookupName = ws.currentUsername || data.username || currentUsername;
             let uid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) ||
-                      (ws.currentUsername && dbModule?.findUserByUsername?.(ws.currentUsername)?.id) ||
+                      (lookupName && dbModule?.findUserByUsername?.(lookupName)?.id) ||
                       data.userId;
 
-            if (uid && dbModule && typeof dbModule.getLifetimeBalances === 'function') {
-                const balances = dbModule.getLifetimeBalances(uid);
+            if (uid && !String(uid).startsWith('gst_') && dbModule && typeof dbModule.getLifetimeBalances === 'function') {
+                const balances = dbModule.getLifetimeBalances(uid) || [];
                 ws.send(JSON.stringify({
                     type: 'LIFETIME_LEDGER_DATA',
                     balances,
                     ledger: balances,
                     debts: balances
+                }));
+            } else {
+                // Return empty balances array so guest accounts don't hang on the loading spinner
+                ws.send(JSON.stringify({
+                    type: 'LIFETIME_LEDGER_DATA',
+                    balances: [],
+                    ledger: [],
+                    debts: []
                 }));
             }
             break;
