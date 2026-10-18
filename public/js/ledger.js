@@ -1,5 +1,8 @@
 // public/js/ledger.js - Session & Lifetime Ledger Management Engine
 
+window.currentLedgerTab = 'session';
+window.cachedLifetimeBalancesList = [];
+
 /**
  * Calculates bilateral/pairwise net balances from raw ledger debts.
  * Positive = player is owed money (creditor).
@@ -73,14 +76,110 @@ function sendLedgerSocket(payload) {
 }
 
 // -------------------------------------------------------------
+// 0. MODAL CONTAINER RESOLVER & SESSION / LIFETIME TOGGLE BAR
+// -------------------------------------------------------------
+
+/**
+ * Generates the top toggle bar HTML for switching between Session and Lifetime views
+ */
+function getLedgerToggleHeaderHTML(activeTab) {
+    const isSession = activeTab === 'session';
+    const activeStyle = 'background: #10b981; color: #064e3b; font-weight: 800; box-shadow: 0 2px 6px rgba(16,185,129,0.35);';
+    const inactiveStyle = 'background: rgba(255,255,255,0.08); color: #a7f3d0; font-weight: 600;';
+
+    return `
+        <div class="ledger-mode-toggle" style="display: flex; gap: 0.4rem; background: rgba(0,0,0,0.4); padding: 0.35rem; border-radius: 8px; margin-bottom: 0.85rem; border: 1px solid rgba(16,185,129,0.25);">
+            <button type="button" onclick="window.switchLedgerTab('session')" style="flex: 1; border: none; padding: 0.5rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s ease; ${isSession ? activeStyle : inactiveStyle}">
+                📊 Session Ledger
+            </button>
+            <button type="button" onclick="window.switchLedgerTab('lifetime')" style="flex: 1; border: none; padding: 0.5rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s ease; ${!isSession ? activeStyle : inactiveStyle}">
+                🏦 Lifetime Ledger
+            </button>
+        </div>
+    `;
+}
+
+/**
+ * Updates the modal heading text if present
+ */
+function updateLedgerModalTitle(tab) {
+    const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    if (!sessionModal) return;
+    const titleEl = sessionModal.querySelector('h2, h3, .modal-title');
+    if (titleEl) {
+        titleEl.textContent = (tab === 'lifetime') ? '🏦 Lifetime Ledger' : '📊 Session Ledger';
+    }
+}
+
+/**
+ * Resolves the active container whether opened from the Lobby or Main Menu
+ */
+function getActiveLedgerContainer(mode) {
+    const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    const lifetimeModal = document.getElementById('lifetime-ledger-modal');
+
+    if (sessionModal && sessionModal.style.display === 'flex') {
+        return document.getElementById('session-ledger-content')
+            || document.getElementById('ledger-content')
+            || document.getElementById('session-ledger-list')
+            || document.getElementById('session-settled-ledger-list')
+            || (sessionModal.querySelector ? sessionModal.querySelector('.ledger-content') : null);
+    }
+
+    if (lifetimeModal && lifetimeModal.style.display === 'flex') {
+        return document.getElementById('lifetime-ledger-table-container')
+            || document.getElementById('lifetime-ledger-content')
+            || document.getElementById('lifetime-ledger-list')
+            || (lifetimeModal.querySelector ? lifetimeModal.querySelector('.ledger-content') : null);
+    }
+
+    if (mode === 'lifetime') {
+        return document.getElementById('lifetime-ledger-table-container')
+            || document.getElementById('lifetime-ledger-content')
+            || document.getElementById('lifetime-ledger-list')
+            || document.getElementById('session-ledger-content')
+            || document.getElementById('ledger-content');
+    }
+
+    return document.getElementById('session-ledger-content')
+        || document.getElementById('ledger-content')
+        || document.getElementById('session-ledger-list')
+        || document.getElementById('session-settled-ledger-list');
+}
+
+/**
+ * Switches between Session and Lifetime ledger inside the open modal
+ */
+function switchLedgerTab(tab) {
+    window.currentLedgerTab = (tab === 'lifetime') ? 'lifetime' : 'session';
+    updateLedgerModalTitle(window.currentLedgerTab);
+
+    if (window.currentLedgerTab === 'lifetime') {
+        const container = getActiveLedgerContainer('lifetime');
+        if (container) {
+            container.innerHTML = getLedgerToggleHeaderHTML('lifetime') + `
+                <div class="ledger-loading-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
+                    Fetching lifetime balances from database...
+                </div>
+            `;
+        }
+        requestLifetimeLedger();
+    } else {
+        renderSessionLedger();
+    }
+}
+
+// -------------------------------------------------------------
 // 1. SESSION LEDGER (FILTERED TO "OWES ME" / "I OWE")
 // -------------------------------------------------------------
 
 function openSessionLedgerModal() {
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
-    renderSessionLedger();
+    window.currentLedgerTab = 'session';
+    updateLedgerModalTitle('session');
     modal.style.display = 'flex';
+    renderSessionLedger();
 }
 
 function closeSessionLedgerModal() {
@@ -93,20 +192,27 @@ function toggleSessionLedger(show) {
     if (!modal) return;
     const shouldShow = (show !== undefined) ? Boolean(show) : (modal.style.display !== 'flex');
     if (shouldShow) {
-        renderSessionLedger();
+        window.currentLedgerTab = 'session';
+        updateLedgerModalTitle('session');
         modal.style.display = 'flex';
+        renderSessionLedger();
     } else {
         modal.style.display = 'none';
     }
 }
 
 function renderSessionLedger(lobbyArg) {
-    const container = document.getElementById('session-ledger-content') 
-        || document.getElementById('ledger-content')
-        || document.getElementById('session-ledger-list')
-        || document.getElementById('session-settled-ledger-list');
+    const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    // If a background lobby update arrives while the user is actively viewing the Lifetime tab, keep the Lifetime tab open
+    if (lobbyArg && window.currentLedgerTab === 'lifetime' && sessionModal && sessionModal.style.display === 'flex') {
+        return;
+    }
+
+    window.currentLedgerTab = 'session';
+    const container = getActiveLedgerContainer('session');
     if (!container) return;
 
+    const toggleBar = getLedgerToggleHeaderHTML('session');
     const state = window.clientState || {};
     const lobby = lobbyArg || window.appGlobals?.latestLobbySnapshot || {};
     const mainLedger = lobby.mainGameLedger || state.mainGameLedger || {};
@@ -153,7 +259,7 @@ function renderSessionLedger(lobbyArg) {
         : allRows;
 
     if (myRows.length === 0) {
-        container.innerHTML = `
+        container.innerHTML = toggleBar + `
             <div class="ledger-empty-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
                 No debts involving you. All square!
             </div>
@@ -200,7 +306,7 @@ function renderSessionLedger(lobbyArg) {
     });
     html += '</div>';
 
-    container.innerHTML = html;
+    container.innerHTML = toggleBar + html;
 }
 
 // -------------------------------------------------------------
@@ -485,13 +591,15 @@ function openLifetimeLedgerModal() {
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (!modal) return;
 
-    const container = document.getElementById('lifetime-ledger-table-container') 
-        || document.getElementById('lifetime-ledger-content') 
-        || document.getElementById('lifetime-ledger-list')
-        || (modal.querySelector ? modal.querySelector('.ledger-content') : null);
+    window.currentLedgerTab = 'lifetime';
+    modal.style.display = 'flex';
+
+    const container = getActiveLedgerContainer('lifetime');
+    const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    const includeToggle = (sessionModal && sessionModal === modal);
 
     if (container) {
-        container.innerHTML = `
+        container.innerHTML = (includeToggle ? getLedgerToggleHeaderHTML('lifetime') : '') + `
             <div class="ledger-loading-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
                 Fetching lifetime balances from database...
             </div>
@@ -499,7 +607,6 @@ function openLifetimeLedgerModal() {
     }
 
     requestLifetimeLedger();
-    modal.style.display = 'flex';
 }
 
 function closeLifetimeLedgerModal() {
@@ -512,19 +619,18 @@ function closeLifetimeLedgerModal() {
 // -------------------------------------------------------------
 
 function renderLifetimeLedger(balances) {
-    const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
-    const container = document.getElementById('lifetime-ledger-table-container')
-        || document.getElementById('lifetime-ledger-content') 
-        || document.getElementById('lifetime-ledger-list')
-        || (modal ? modal.querySelector('.ledger-content') : null);
-
+    const container = getActiveLedgerContainer('lifetime');
     if (!container) return;
+
+    const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    const isInsideLobbyModal = Boolean(sessionModal && sessionModal.style.display === 'flex');
+    const toggleBar = isInsideLobbyModal ? getLedgerToggleHeaderHTML('lifetime') : '';
 
     window.cachedLifetimeBalancesList = Array.isArray(balances) ? balances : [];
     const activeRows = window.cachedLifetimeBalancesList.filter(b => Math.abs(Number(b.net) || 0) > 0.01);
 
     if (activeRows.length === 0) {
-        container.innerHTML = `
+        container.innerHTML = toggleBar + `
             <div class="ledger-empty-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
                 All debts settled ($0 net balance).
             </div>
@@ -585,7 +691,7 @@ function renderLifetimeLedger(balances) {
     });
 
     html += '</div>';
-    container.innerHTML = html;
+    container.innerHTML = toggleBar + html;
 }
 
 function ensureLifetimeTransferModalDOM() {
@@ -784,9 +890,13 @@ function applySettlementCredit(otherUserId, amount) {
         token: token || null
     });
 
-    const container = document.getElementById('lifetime-ledger-table-container');
+    const container = getActiveLedgerContainer('lifetime');
+    const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
+    const isInsideLobbyModal = Boolean(sessionModal && sessionModal.style.display === 'flex');
+    const toggleBar = isInsideLobbyModal ? getLedgerToggleHeaderHTML('lifetime') : '';
+
     if (container) {
-        container.innerHTML = `
+        container.innerHTML = toggleBar + `
             <div class="ledger-loading-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
                 Applying credit of $${cleanAmount.toFixed(2)}...
             </div>
@@ -810,6 +920,7 @@ function escapeHtml(str) {
 
 function bindLedgerGlobals() {
     window.calculatePairwiseNet = calculatePairwiseNet;
+    window.switchLedgerTab = switchLedgerTab;
     window.toggleSessionLedger = toggleSessionLedger;
     window.openSessionLedgerModal = openSessionLedgerModal;
     window.closeSessionLedgerModal = closeSessionLedgerModal;
