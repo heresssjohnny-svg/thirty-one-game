@@ -43,6 +43,20 @@ function extractSocketUserId(ws) {
     return null;
 }
 
+function addLedgerHistory(lobby, text, category = 'main') {
+    if (!lobby || !text) return;
+    if (!Array.isArray(lobby.ledgerHistory)) lobby.ledgerHistory = [];
+    lobby.ledgerHistory.unshift({
+        id: `lh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: Date.now(),
+        category,
+        text
+    });
+    if (lobby.ledgerHistory.length > 30) {
+        lobby.ledgerHistory = lobby.ledgerHistory.slice(0, 30);
+    }
+}
+
 function addSpectatorUnique(lobby, specObj) {
     if (!lobby || !specObj || !specObj.username) return;
     const cleanName = specObj.username.trim().toLowerCase();
@@ -199,16 +213,19 @@ function recordForfeitedPlayer(lobby, player) {
 // -------------------------------------------------------------
 
 function clearReadyCountdown(player) {
-    if (player && player.readyTimeout) {
+    if (!player) return;
+    if (player.readyTimeout) {
         clearTimeout(player.readyTimeout);
         player.readyTimeout = null;
     }
+    player.readyDeadline = null;
 }
 
 function startReadyCountdown(lobby, player) {
     if (!lobby || lobby.gameState !== 'lobby' || !player || player.isBot) return;
     clearReadyCountdown(player);
 
+    player.readyDeadline = Date.now() + 30000;
     player.readyTimeout = setTimeout(() => {
         const curLobby = lobbies[lobby.code];
         if (!curLobby || curLobby.gameState !== 'lobby') return;
@@ -228,10 +245,12 @@ function startReadyCountdown(lobby, player) {
 // -------------------------------------------------------------
 
 function clearTurnTimer(lobby) {
-    if (lobby && lobby.turnTimeoutTimer) {
+    if (!lobby) return;
+    if (lobby.turnTimeoutTimer) {
         clearTimeout(lobby.turnTimeoutTimer);
         lobby.turnTimeoutTimer = null;
     }
+    lobby.turnDeadline = null;
 }
 
 function resetTurnTimer(lobby) {
@@ -243,18 +262,24 @@ function resetTurnTimer(lobby) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated) return;
 
-    // Only apply timer to human players
+    // Only apply timer to human players (5s fast-play if disconnected, 25s if connected)
     if (!currentPlayer.isBot) {
+        const isDisconnected = !currentPlayer.id || (typeof currentPlayer.id === 'object' && currentPlayer.id.readyState !== WebSocket.OPEN);
+        const timeoutMs = isDisconnected ? 5000 : 25000;
+        lobby.turnDeadline = Date.now() + timeoutMs;
+
         lobby.turnTimeoutTimer = setTimeout(() => {
             const curLobby = lobbies[lobby.code];
             if (!curLobby || (curLobby.gameState !== 'playing' && curLobby.gameState !== 'finalTurn')) return;
             const p = curLobby.players[curLobby.turnIndex];
             if (!p || p.username !== currentPlayer.username) return;
 
-            curLobby.phaseMessage = `🤖 ${p.username} ran out of time! AI Level 8 played for them.`;
+            curLobby.phaseMessage = isDisconnected
+                ? `🤖 ${p.username} is offline — AI Level 8 played their turn.`
+                : `🤖 ${p.username} ran out of time! AI Level 8 played for them.`;
             executeLevel8AITurn(curLobby, p);
             broadcastLobbyUpdate(curLobby.code);
-        }, 25000); // 25 seconds turn timeout
+        }, timeoutMs);
     }
 }
 
@@ -571,11 +596,32 @@ function sendLifetimeLedger(ws) {
 }
 
 function syncLifetimeLedgerBalances(lobby) {
-    if (!db || typeof db.recordLifetimeDebt !== 'function') return;
-
     if (!lobby.persistedLifetimeLedger) {
-        lobby.persistedLifetimeLedger = { main: {}, side: {} };
+        lobby.persistedLifetimeLedger = { main: {}, side: {}, loggedSide: {} };
     }
+    if (!lobby.persistedLifetimeLedger.loggedSide) {
+        lobby.persistedLifetimeLedger.loggedSide = {};
+    }
+
+    // Track side-bet session history deltas for the UI Recent Activity log
+    if (lobby.sideBetLedger) {
+        for (const debtorName in lobby.sideBetLedger) {
+            for (const creditorName in lobby.sideBetLedger[debtorName]) {
+                const totalSide = Number(lobby.sideBetLedger[debtorName][creditorName]) || 0;
+                if (!lobby.persistedLifetimeLedger.loggedSide[debtorName]) {
+                    lobby.persistedLifetimeLedger.loggedSide[debtorName] = {};
+                }
+                const prevLogged = Number(lobby.persistedLifetimeLedger.loggedSide[debtorName][creditorName]) || 0;
+                const sideDelta = totalSide - prevLogged;
+                if (sideDelta > 0) {
+                    lobby.persistedLifetimeLedger.loggedSide[debtorName][creditorName] = totalSide;
+                    addLedgerHistory(lobby, `🤝 Side Bet: ${debtorName} owes ${creditorName} $${sideDelta}`, 'side');
+                }
+            }
+        }
+    }
+
+    if (!db || typeof db.recordLifetimeDebt !== 'function') return;
 
     const processCategory = (currentLedger, categoryKey) => {
         if (!currentLedger) return;
@@ -621,13 +667,26 @@ function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUse
     recordDebt(ledger, debtorUsername, creditorUsername, amount);
 
     if (!lobby.persistedLifetimeLedger) {
-        lobby.persistedLifetimeLedger = { main: {}, side: {} };
+        lobby.persistedLifetimeLedger = { main: {}, side: {}, loggedSide: {} };
     }
-    const cat = (ledger === lobby.sideBetLedger) ? 'side' : 'main';
+    const isSide = (ledger === lobby.sideBetLedger);
+    const isBot = (ledger === lobby.botBetLedger);
+    const cat = isSide ? 'side' : 'main';
+
+    if (amount > 0) {
+        if (isSide) {
+            addLedgerHistory(lobby, `🤝 Side Bet: ${debtorUsername} owes ${creditorUsername} $${amount}`, 'side');
+        } else if (isBot) {
+            addLedgerHistory(lobby, `🤖 Bot Match: ${debtorUsername} owes ${creditorUsername} $${amount}`, 'bot');
+        } else {
+            addLedgerHistory(lobby, `🏆 Match Pot: ${debtorUsername} owes ${creditorUsername} $${amount}`, 'main');
+        }
+    }
+
     if (!lobby.persistedLifetimeLedger[cat]) lobby.persistedLifetimeLedger[cat] = {};
     if (!lobby.persistedLifetimeLedger[cat][debtorUsername]) lobby.persistedLifetimeLedger[cat][debtorUsername] = {};
 
-    if (db && typeof db.recordLifetimeDebt === 'function') {
+    if (!isBot && db && typeof db.recordLifetimeDebt === 'function') {
         const debtorId = resolveUserId(lobby, debtorUsername);
         const creditorId = resolveUserId(lobby, creditorUsername);
 
@@ -709,6 +768,7 @@ function getSanitizedLobby(lobby, wsId) {
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
         currentTurnUser: allParticipants[lobby.turnIndex]?.username || '',
+        turnDeadline: lobby.turnDeadline || null,
         phaseMessage: lobby.phaseMessage,
         canKnock: lobby.turnsTakenThisRound >= activeParts.length,
         potTotal: seatedPotTotal + forfeitedPotTotal,
@@ -720,6 +780,8 @@ function getSanitizedLobby(lobby, wsId) {
         sideBetLedger: lobby.sideBetLedger || {},
         mainGameLedger: lobby.mainGameLedger || {},
         botBetLedger: lobby.botBetLedger || {},
+        ledgerHistory: lobby.ledgerHistory || [],
+        lastReaction: lobby.lastReaction || null,
         pendingBetsForMe: myUnrespondedBets,
         globalProposals: lobby.globalProposals || [],
         activeBets: lobby.activeBets || [],
@@ -766,12 +828,14 @@ function getSanitizedLobby(lobby, wsId) {
                 wager: p.wager || 5,
                 cardCount: p.cards ? p.cards.length : 0,
                 ready: p.ready,
+                readyDeadline: p.readyDeadline || null,
                 seat: rotatedSeatIdx !== -1 ? rotatedSeatIdx : p.seat,
                 nextHandReady: p.nextHandReady,
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
                 inVC: !!p.inVC,
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
+                isOffline: Boolean(!p.isBot && !p.id),
                 peekIncoming: (wsId === p.id || isMe) ? mergedIncoming : {},
                 peekAllowed: p.peekAllowed || {},
                 cards: (canSee || specAllowed) ? (p.cards || []) : []
@@ -1680,11 +1744,7 @@ function handleKnock(lobby, wsId) {
 
     const sockName = extractSocketUsername(wsId);
     const isDirectMatch = (p.id === wsId) || (p.idSocket === wsId) || (wsId === p.username);
-    const isSocketNameMatch = Boolean(sockName && p.username && sockName.toLowerCase() === currentPlayerName(p));
-
-    function currentPlayerName(pl) {
-        return (pl.username || '').toLowerCase();
-    }
+    const isSocketNameMatch = Boolean(sockName && p.username && sockName.toLowerCase() === (p.username || '').toLowerCase());
 
     if (!isDirectMatch && !isSocketNameMatch) return;
     if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
@@ -2126,6 +2186,8 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         players: [],
         spectators: [],
         forfeitedPlayers: [],
+        ledgerHistory: [],
+        lastReaction: null,
         deck: [],
         discardPile: [],
         drawPool: [],
@@ -2133,6 +2195,7 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         drawOrderSequence: [],
         turnIndex: 0,
         dealerIndex: 0,
+        turnDeadline: null,
         turnsTakenThisRound: 0,
         finalTurnsRemaining: 0,
         mainGameLedger: {},
@@ -2359,6 +2422,7 @@ module.exports = {
     scheduleBotActions,
     leaveLobby,
     recordForfeitedPlayer,
+    addLedgerHistory,
     resolveUserId,
     recordSessionAndLifetimeDebt,
     syncLifetimeLedgerBalances,
