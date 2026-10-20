@@ -11,7 +11,11 @@ const config = require('./server/config');
 const db = require('./server/db');
 const authRouter = require('./server/auth');
 const { generateLiveKitToken } = require('./server/services/livekit');
-const { handleWebSocketMessage, clearReadyCountdown } = require('./server/game/wsHandler');
+const {
+    handleWebSocketMessage,
+    clearReadyCountdown,
+    resetTurnTimer
+} = require('./server/game/wsHandler');
 const {
     lobbies,
     getPublicLobbiesList,
@@ -176,6 +180,16 @@ wss.on('connection', (ws, req) => {
                     if (!ws.currentUsername && decoded.username) {
                         ws.currentUsername = decoded.username;
                     }
+
+                    // If socket already joined a lobby before AUTH_TOKEN completed, attach userId to their seat
+                    if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode] && ws.userId && !String(ws.userId).startsWith('gst_')) {
+                        const activeLobby = lobbies[ws.currentLobbyCode];
+                        const p = activeLobby.players.find(pl => pl.id === ws);
+                        if (p) p.userId = ws.userId;
+                        const s = (activeLobby.spectators || []).find(sp => sp.idSocket === ws);
+                        if (s) s.userId = ws.userId;
+                    }
+
                     ws.send(JSON.stringify({
                         type: 'AUTH_SUCCESS',
                         user: decoded
@@ -211,14 +225,14 @@ wss.on('connection', (ws, req) => {
                 const targetUsername = parsed.username || ws.currentUsername;
                 if (targetUsername && db && typeof db.findUserByUsername === 'function') {
                     const found = db.findUserByUsername(targetUsername);
-                    if (found && found.id && !found.id.startsWith('gst_')) {
+                    if (found && found.id && !String(found.id).startsWith('gst_')) {
                         uid = found.id;
                         ws.userId = uid;
                     }
                 }
             }
 
-            if (uid && db && typeof db.getLifetimeBalances === 'function') {
+            if (uid && !String(uid).startsWith('gst_') && db && typeof db.getLifetimeBalances === 'function') {
                 const balances = db.getLifetimeBalances(uid);
                 ws.send(JSON.stringify({ 
                     type: 'LIFETIME_LEDGER_DATA', 
@@ -250,7 +264,14 @@ wss.on('connection', (ws, req) => {
                 } catch (e) {}
             }
 
-            const debtorId = parsed.debtorId || (ws.user && (ws.user.id || ws.user.userId)) || ws.userId;
+            let debtorId = parsed.debtorId || (ws.user && (ws.user.id || ws.user.userId)) || ws.userId;
+            if (!debtorId) {
+                const lookupName = parsed.username || ws.currentUsername;
+                if (lookupName && db && typeof db.findUserByUsername === 'function') {
+                    debtorId = db.findUserByUsername(lookupName)?.id || null;
+                }
+            }
+
             const creditorId = parsed.creditorId;
             const amount = Number(parsed.amount);
 
@@ -319,14 +340,27 @@ wss.on('connection', (ws, req) => {
     ws.on('close', () => {
         if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
             const lobby = lobbies[ws.currentLobbyCode];
+            const disconnectedUid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) || ws.userId || null;
 
             const player = lobby.players.find(p => p.id === ws);
             if (player) {
                 if (typeof clearReadyCountdown === 'function') {
                     clearReadyCountdown(player);
                 }
+                if (disconnectedUid && !String(disconnectedUid).startsWith('gst_')) {
+                    player.userId = disconnectedUid;
+                }
                 player.id = null;
                 player.disconnectedAt = Date.now();
+
+                // If it was this player's active turn, switch their turn timer to the 5s offline fast-play AI timer
+                if (
+                    (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') &&
+                    lobby.players[lobby.turnIndex] === player &&
+                    typeof resetTurnTimer === 'function'
+                ) {
+                    resetTurnTimer(lobby);
+                }
 
                 if (lobby.endGameVote) {
                     const seatedHumans = lobby.players.filter(p => !p.isBot && p.id !== null);
@@ -340,6 +374,9 @@ wss.on('connection', (ws, req) => {
 
             const spec = (lobby.spectators || []).find(s => s.idSocket === ws);
             if (spec) {
+                if (disconnectedUid && !String(disconnectedUid).startsWith('gst_')) {
+                    spec.userId = disconnectedUid;
+                }
                 spec.idSocket = null;
                 spec.disconnectedAt = Date.now();
             }
