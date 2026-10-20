@@ -1,6 +1,10 @@
-// public/js/ledger.js - Bilateral Debt Netting, Session & Lifetime Ledgers, Tab Switcher, Debt Transfer & Canvas Exporter
+// public/js/ledger.js - Bilateral Debt Netting, Session & Lifetime Ledgers, Tab Switcher, Credit & Debt Transfer
 
 function sendLedgerSocket(payload) {
+    if (!payload.code) {
+        const activeCode = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+        if (activeCode) payload.code = activeCode;
+    }
     if (typeof window.initSocketAndSend === 'function') {
         window.initSocketAndSend(payload);
     } else if (typeof window.sendSocketMessage === 'function') {
@@ -13,6 +17,11 @@ function sendLedgerSocket(payload) {
 }
 
 function resolveMyUsername() {
+    const lobby = window.appGlobals?.latestLobbySnapshot;
+    if (typeof window.getMyUsername === 'function') {
+        const resolved = window.getMyUsername(lobby);
+        if (resolved) return resolved;
+    }
     const inputVal = document.getElementById('username-input')?.value?.trim();
     if (inputVal) return inputVal;
     if (window.clientState?.username) return window.clientState.username.trim();
@@ -58,33 +67,59 @@ window.switchLedgerTab = function(targetTab) {
     const lifetimeModal = document.getElementById('lifetime-ledger-modal');
 
     if (targetTab === 'lifetime') {
-        if (sessionModal) sessionModal.style.display = 'none';
-        if (lifetimeModal) lifetimeModal.style.display = 'flex';
+        if (sessionModal) {
+            sessionModal.style.display = 'none';
+            sessionModal.classList.add('hidden');
+        }
+        if (lifetimeModal) {
+            lifetimeModal.style.display = 'flex';
+            lifetimeModal.classList.remove('hidden');
+        }
         renderLifetimeLedger(cachedLifetimeRows);
         requestLifetimeLedger();
     } else {
-        if (lifetimeModal) lifetimeModal.style.display = 'none';
-        if (sessionModal) sessionModal.style.display = 'flex';
+        if (lifetimeModal) {
+            lifetimeModal.style.display = 'none';
+            lifetimeModal.classList.add('hidden');
+        }
+        if (sessionModal) {
+            sessionModal.style.display = 'flex';
+            sessionModal.classList.remove('hidden');
+        }
         renderSessionLedger();
     }
 };
 
 // -------------------------------------------------------------
-// 1. BILATERAL DEBT NETTING ENGINE
+// 1. BILATERAL DEBT NETTING ENGINE (CASE-INSENSITIVE)
 // -------------------------------------------------------------
 function calculatePairwiseNet(ledger) {
     const net = {};
     if (!ledger || typeof ledger !== 'object') return net;
 
-    const users = new Set();
+    const canonicalMap = {};
+    const rememberName = (name) => {
+        if (!name) return null;
+        const clean = String(name).trim();
+        if (!clean) return null;
+        const lower = clean.toLowerCase();
+        if (!canonicalMap[lower]) canonicalMap[lower] = clean;
+        return canonicalMap[lower];
+    };
+
+    const normalizedLedger = {};
     for (const d in ledger) {
-        users.add(d);
+        const dCanon = rememberName(d);
+        if (!dCanon) continue;
+        if (!normalizedLedger[dCanon]) normalizedLedger[dCanon] = {};
         for (const c in ledger[d]) {
-            users.add(c);
+            const cCanon = rememberName(c);
+            if (!cCanon) continue;
+            normalizedLedger[dCanon][cCanon] = (normalizedLedger[dCanon][cCanon] || 0) + (Number(ledger[d][c]) || 0);
         }
     }
 
-    const userArr = Array.from(users);
+    const userArr = Object.values(canonicalMap);
     userArr.forEach(u1 => { net[u1] = {}; });
 
     for (let i = 0; i < userArr.length; i++) {
@@ -92,8 +127,8 @@ function calculatePairwiseNet(ledger) {
             const u1 = userArr[i];
             const u2 = userArr[j];
 
-            const u1OwesU2 = Number(ledger[u1]?.[u2]) || 0;
-            const u2OwesU1 = Number(ledger[u2]?.[u1]) || 0;
+            const u1OwesU2 = Number(normalizedLedger[u1]?.[u2]) || 0;
+            const u2OwesU1 = Number(normalizedLedger[u2]?.[u1]) || 0;
             const diff = u2OwesU1 - u1OwesU2; // Positive means u2 owes u1
 
             if (Math.abs(diff) > 0.005) {
@@ -110,16 +145,25 @@ function calculatePairwiseNet(ledger) {
 // -------------------------------------------------------------
 function openSessionLedgerModal() {
     const lifetimeModal = document.getElementById('lifetime-ledger-modal');
-    if (lifetimeModal) lifetimeModal.style.display = 'none';
+    if (lifetimeModal) {
+        lifetimeModal.style.display = 'none';
+        lifetimeModal.classList.add('hidden');
+    }
 
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
-    if (modal) modal.style.display = 'flex';
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+    }
     renderSessionLedger();
 }
 
 function closeSessionLedgerModal() {
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
 }
 
 function formatActivityTime(ts) {
@@ -192,6 +236,7 @@ function renderSessionLedger(lobbyOverride) {
     } else {
         owedToMe.forEach(item => {
             const safeOther = escapeHtml(item.other);
+            const rawAttr = item.other.replace(/'/g, "\\'");
             const canTransfer = iOwe.length > 0;
             html += `
                 <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 6px; border-left: 3px solid #10b981; gap: 8px; flex-wrap: wrap;">
@@ -201,12 +246,12 @@ function renderSessionLedger(lobbyOverride) {
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span style="color: #fbbf24; font-weight: 800; font-size: 1rem;">+$${item.amount.toFixed(2)}</span>
                         ${canTransfer ? `
-                            <button type="button" onclick="openTransferDebtModal('${safeOther.replace(/'/g, "\\'")}', ${item.amount})" style="background: #d97706; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">
+                            <button type="button" onclick="openTransferDebtModal('${rawAttr}',${item.amount})" style="background: #d97706; color: #fff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                                 Transfer
                             </button>
                         ` : ''}
-                        <button type="button" onclick="clearDebtCategory('${safeOther.replace(/'/g, "\\'")}', 'main')" style="background: #059669; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer;">
-                            Clear
+                        <button type="button" class="credit-action-btn" onclick="openSessionCreditDialog('${rawAttr}', ${item.amount})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 4px 9px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                            Credit
                         </button>
                     </div>
                 </div>
@@ -245,10 +290,18 @@ function renderSessionLedger(lobbyOverride) {
         html += `<div style="margin-top: 4px; font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">🤖 Bot Balances</div>`;
         botRows.forEach(r => {
             const isPos = r.amount > 0;
+            const rawBotAttr = r.bot.replace(/'/g, "\\'");
             html += `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.22); padding: 7px 10px; border-radius: 6px; border-left: 3px solid ${isPos ? '#3b82f6' : '#64748b'}; font-size: 0.84rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.22); padding: 7px 10px; border-radius: 6px; border-left: 3px solid ${isPos ? '#3b82f6' : '#64748b'}; font-size: 0.84rem; gap: 8px;">
                     <span>${isPos ? `${escapeHtml(r.bot)} owes You` : `You owe ${escapeHtml(r.bot)}`}</span>
-                    <strong style="color: ${isPos ? '#60a5fa' : '#94a3b8'};">${isPos ? '+' : '-'}$${Math.abs(r.amount).toFixed(2)}</strong>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <strong style="color: ${isPos ? '#60a5fa' : '#94a3b8'};">${isPos ? '+' : '-'}$${Math.abs(r.amount).toFixed(2)}</strong>
+                        ${isPos ? `
+                            <button type="button" class="credit-action-btn" onclick="openSessionCreditDialog('${rawBotAttr}',${r.amount})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 3px 8px; font-size: 0.7rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                                Credit
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
             `;
         });
@@ -290,7 +343,7 @@ function ensureTransferModalDOM() {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'transfer-debt-modal';
-        modal.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.78); display: none; align-items: center; justify-content: center; z-index: 10005; padding: 16px;`;
+        modal.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.78); display: none; align-items: center; justify-content: center; z-index: 100050; padding: 16px;`;
         modal.innerHTML = `
             <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #fbbf24; border-radius: 10px; width: 100%; max-width: 360px; padding: 18px; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.85);">
                 <h3 style="margin: 0 0 8px; color: #fbbf24; text-align: center; font-size: 1.1rem;">🔄 Transfer Debt</h3>
@@ -384,12 +437,16 @@ function openTransferDebtModal(debtorName, maxOwed) {
         confirmBtn.onclick = () => confirmDebtTransfer(debtorName, maxOwed);
     }
 
+    modal.classList.remove('hidden');
     modal.style.display = 'flex';
 }
 
 function closeTransferDebtModal() {
     const modal = document.getElementById('transfer-debt-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
 }
 
 function confirmDebtTransfer(debtorName, maxOwed) {
@@ -576,17 +633,26 @@ function requestLifetimeLedger() {
 
 function openLifetimeLedgerModal() {
     const sessionModal = document.getElementById('session-ledger-modal');
-    if (sessionModal) sessionModal.style.display = 'none';
+    if (sessionModal) {
+        sessionModal.style.display = 'none';
+        sessionModal.classList.add('hidden');
+    }
 
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
-    if (modal) modal.style.display = 'flex';
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+    }
     renderLifetimeLedger(cachedLifetimeRows);
     requestLifetimeLedger();
 }
 
 function closeLifetimeLedgerModal() {
     const modal = document.getElementById('lifetime-ledger-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
 }
 
 let cachedLifetimeRows = [];
@@ -604,7 +670,6 @@ function renderLifetimeLedger(data) {
 
     const activeRows = cachedLifetimeRows.filter(r => Math.abs(Number(r.net_balance ?? r.net ?? r.amount ?? 0)) > 0.005);
 
-    // Only show switcher bar if the player is inside an active room/game view
     const gameView = document.getElementById('game-view');
     const isInGame = Boolean(gameView && gameView.style.display === 'flex');
     let html = isInGame ? buildLedgerSwitcherBarHTML('lifetime') : '';
@@ -642,7 +707,7 @@ function renderLifetimeLedger(data) {
                             +$${net.toFixed(2)}
                         </span>
                         ${canTransferLifetime ? `
-                            <button type="button" onclick="openLifetimeTransferModal('${otherId}', '${rawNameAttr}', ${net})" style="background: #d97706; color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                            <button type="button" onclick="openLifetimeTransferModal('${otherId}', '${rawNameAttr}',${net})" style="background: #d97706; color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                                 Transfer
                             </button>
                         ` : ''}
@@ -724,6 +789,7 @@ function openLifetimeTransferModal(fromDebtorId, debtorName, maxOwed) {
         confirmBtn.onclick = () => confirmLifetimeDebtTransfer(fromDebtorId, maxOwed);
     }
 
+    modal.classList.remove('hidden');
     modal.style.display = 'flex';
 }
 
@@ -759,7 +825,7 @@ function confirmLifetimeDebtTransfer(fromDebtorId, maxOwed) {
 }
 
 // -------------------------------------------------------------
-// 6. CREDIT & SETTLEMENT DIALOG ENGINE
+// 6. CREDIT & SETTLEMENT DIALOG ENGINE (SESSION & LIFETIME)
 // -------------------------------------------------------------
 let activeCreditTarget = null;
 
@@ -768,9 +834,9 @@ function ensureCreditModalDOM() {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'credit-settle-dialog';
-        modal.style.cssText = `position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: none; align-items: center; justify-content: center; z-index: 10000; padding: 16px;`;
+        modal.style.cssText = `position: fixed; inset: 0; background: rgba(0, 0, 0, 0.78); display: none; align-items: center; justify-content: center; z-index: 100050; padding: 16px;`;
         modal.innerHTML = `
-            <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #d97706; border-radius: 10px; width: 100%; max-width: 360px; padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.8); color: #f8fafc; font-family: inherit;">
+            <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #d97706; border-radius: 10px; width: 100%; max-width: 360px; padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.85); color: #f8fafc; font-family: inherit;">
                 <h3 style="margin: 0 0 6px; color: #fbbf24; font-size: 1.15rem; text-align: center; text-transform: uppercase;">Apply Credit / Settle</h3>
                 <p id="credit-dialog-subtitle" style="margin: 0 0 14px; font-size: 0.88rem; text-align: center; color: #cbd5e1;"></p>
                 <div style="display: flex; gap: 8px; margin-bottom: 14px;">
@@ -788,9 +854,10 @@ function ensureCreditModalDOM() {
     return modal;
 }
 
-function openCreditDialog(debtorId, debtorName, maxAmount) {
+function openSessionCreditDialog(debtorName, maxAmount) {
     const modal = ensureCreditModalDOM();
-    activeCreditTarget = { debtorId, debtorName, maxAmount: Number(maxAmount) || 0 };
+    const cleanMax = Number(maxAmount) || 0;
+    activeCreditTarget = { mode: 'session', debtorName, maxAmount: cleanMax };
 
     const subtitle = document.getElementById('credit-dialog-subtitle');
     const input = document.getElementById('credit-dialog-amount');
@@ -798,15 +865,15 @@ function openCreditDialog(debtorId, debtorName, maxAmount) {
     const confirmBtn = document.getElementById('credit-dialog-confirm-btn');
 
     if (subtitle) {
-        subtitle.innerHTML = `Credit debt owed by <b style="color: #fca5a5;">${escapeHtml(debtorName)}</b> (Max: $${Number(maxAmount).toFixed(2)})`;
+        subtitle.innerHTML = `Credit session debt owed by <b style="color: #fca5a5;">${escapeHtml(debtorName)}</b> (Max: $${cleanMax.toFixed(2)})`;
     }
     if (input) {
-        input.value = Number(maxAmount).toFixed(2);
-        input.max = Number(maxAmount);
+        input.value = cleanMax.toFixed(2);
+        input.max = cleanMax;
     }
     if (fullBtn) {
         fullBtn.onclick = () => {
-            if (input) input.value = Number(maxAmount).toFixed(2);
+            if (input) input.value = cleanMax.toFixed(2);
         };
     }
     if (confirmBtn) {
@@ -816,21 +883,83 @@ function openCreditDialog(debtorId, debtorName, maxAmount) {
                 alert('Please enter a valid credit amount.');
                 return;
             }
-            if (entered > maxAmount) {
-                alert(`Credit amount cannot exceed total debt owed ($${Number(maxAmount).toFixed(2)}).`);
+            if (entered > cleanMax + 0.005) {
+                alert(`Credit amount cannot exceed total debt owed ($${cleanMax.toFixed(2)}).`);
                 return;
             }
-            applySettlementCredit(debtorId, entered);
+            applySessionSettlementCredit(debtorName, Math.min(entered, cleanMax));
             closeCreditDialog();
         };
     }
 
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+}
+
+function applySessionSettlementCredit(debtorName, amount) {
+    const cleanAmount = Number(amount);
+    if (!debtorName || !cleanAmount || cleanAmount <= 0) return;
+
+    const myUsername = resolveMyUsername();
+    const roomCode = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room');
+
+    sendLedgerSocket({
+        type: 'APPLY_SESSION_CREDIT',
+        debtor: debtorName,
+        creditor: myUsername,
+        amount: cleanAmount,
+        code: roomCode
+    });
+}
+
+function openCreditDialog(debtorId, debtorName, maxAmount) {
+    const modal = ensureCreditModalDOM();
+    const cleanMax = Number(maxAmount) || 0;
+    activeCreditTarget = { mode: 'lifetime', debtorId, debtorName, maxAmount: cleanMax };
+
+    const subtitle = document.getElementById('credit-dialog-subtitle');
+    const input = document.getElementById('credit-dialog-amount');
+    const fullBtn = document.getElementById('credit-dialog-full-btn');
+    const confirmBtn = document.getElementById('credit-dialog-confirm-btn');
+
+    if (subtitle) {
+        subtitle.innerHTML = `Credit lifetime debt owed by <b style="color: #fca5a5;">${escapeHtml(debtorName)}</b> (Max: $${cleanMax.toFixed(2)})`;
+    }
+    if (input) {
+        input.value = cleanMax.toFixed(2);
+        input.max = cleanMax;
+    }
+    if (fullBtn) {
+        fullBtn.onclick = () => {
+            if (input) input.value = cleanMax.toFixed(2);
+        };
+    }
+    if (confirmBtn) {
+        confirmBtn.onclick = () => {
+            const entered = Number(input.value);
+            if (!entered || entered <= 0) {
+                alert('Please enter a valid credit amount.');
+                return;
+            }
+            if (entered > cleanMax + 0.005) {
+                alert(`Credit amount cannot exceed total debt owed ($${cleanMax.toFixed(2)}).`);
+                return;
+            }
+            applySettlementCredit(debtorId, Math.min(entered, cleanMax));
+            closeCreditDialog();
+        };
+    }
+
+    modal.classList.remove('hidden');
     modal.style.display = 'flex';
 }
 
 function closeCreditDialog() {
     const modal = document.getElementById('credit-settle-dialog');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
     activeCreditTarget = null;
 }
 
@@ -861,6 +990,21 @@ function applySettlementCredit(otherUserId, amount) {
     }
 }
 
+// Legacy fallback so any call to clearDebtCategory opens the Session Credit dialog or credits the balance
+window.clearDebtCategory = function(targetUser, category, amountOverride) {
+    if (amountOverride && Number(amountOverride) > 0) {
+        openSessionCreditDialog(targetUser, Number(amountOverride));
+        return;
+    }
+    sendLedgerSocket({
+        type: 'CLEAR_DEBT',
+        debtor: targetUser,
+        creditor: resolveMyUsername(),
+        ledgerType: category || 'main',
+        code: window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room')
+    });
+};
+
 // -------------------------------------------------------------
 // 7. UTILITIES & GLOBAL EXPORTS
 // -------------------------------------------------------------
@@ -889,6 +1033,8 @@ window.renderLifetimeLedger = renderLifetimeLedger;
 window.handleLifetimeLedgerData = renderLifetimeLedger;
 window.openLifetimeTransferModal = openLifetimeTransferModal;
 window.confirmLifetimeDebtTransfer = confirmLifetimeDebtTransfer;
+window.openSessionCreditDialog = openSessionCreditDialog;
+window.applySessionSettlementCredit = applySessionSettlementCredit;
 window.openCreditDialog = openCreditDialog;
 window.closeCreditDialog = closeCreditDialog;
 window.applySettlementCredit = applySettlementCredit;
