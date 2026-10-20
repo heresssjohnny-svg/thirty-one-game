@@ -448,7 +448,6 @@ if (!window.appGlobals.countdownInterval) {
 
 // Places a compact "😀" button inside the top tools bar so nothing blocks the corner modals
 function ensureQuickReactionBar() {
-    // Remove any old bottom-right bar if it existed
     const oldFloating = document.getElementById('quick-reaction-bar');
     if (oldFloating) oldFloating.remove();
 
@@ -959,6 +958,12 @@ window.updateUIFromLobby = function(lobby) {
 
     window.appGlobals.latestLobbySnapshot = lobby;
 
+    // Remove legacy #next-hand-overlay if present in DOM so its stylesheet rules never create a giant box
+    const legacyOverlay = document.getElementById('next-hand-overlay');
+    if (legacyOverlay) {
+        legacyOverlay.remove();
+    }
+
     const authScreen = document.getElementById('auth-screen');
     const mainMenu = document.getElementById('main-menu');
     const gameView = document.getElementById('game-view');
@@ -1298,61 +1303,64 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 13. NEXT HAND OVERLAY (Compact Centered Popup — Does NOT blur or block the full screen)
-    const nextHandOverlay = document.getElementById('next-hand-overlay');
-    const nextBtn = document.getElementById('next-hand-btn');
-
-    if (nextHandOverlay) {
-        // Strip `.next-hand-banner` class so full-screen blur CSS does not cover the table
-        nextHandOverlay.className = 'next-hand-center-popup';
-        nextHandOverlay.style.cssText = `
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: auto;
-            height: auto;
-            inset: auto;
-            background: rgba(4, 28, 18, 0.95);
-            border: 2px solid #fbbf24;
-            border-radius: 12px;
-            padding: 10px 16px;
-            box-shadow: 0 10px 28px rgba(0,0,0,0.85);
-            backdrop-filter: none;
-            -webkit-backdrop-filter: none;
-            z-index: 1500;
-            align-items: center;
-            justify-content: center;
-        `;
-    }
-
+    // 13. BUILD COMPACT NEXT-HAND POPUP RIGHT OVER THE CENTER DECK (Does not block seats or hands)
+    let nextHandDeckPopupHtml = '';
     if (lobby.gameState === 'roundOver') {
         const myPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
+        let showPopup = false;
+        let btnText = 'Next Hand (Auto in 8s)';
+        let btnDisabled = false;
+
         if (lobby.activeParticipantsCount <= 1) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
-            if (nextBtn) {
-                nextBtn.innerText = 'Returning to Ready Room...';
-                nextBtn.disabled = true;
-            }
+            showPopup = true;
+            btnText = 'Returning to Ready Room...';
+            btnDisabled = true;
         } else if (myPlayer && !isPermanentlyOut) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
-            if (nextBtn) {
-                if (myPlayer.nextHandReady) {
-                    nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
-                    nextBtn.disabled = true;
-                } else {
-                    nextBtn.innerText = 'Next Hand (Auto in 8s)';
-                    nextBtn.disabled = false;
-                }
+            showPopup = true;
+            if (myPlayer.nextHandReady) {
+                btnText = 'Waiting for players...';
+                btnDisabled = true;
+            } else {
+                btnText = 'Next Hand (Auto in 8s)';
+                btnDisabled = false;
             }
-        } else if (nextHandOverlay) {
-            nextHandOverlay.style.display = 'none';
         }
-    } else if (nextHandOverlay) {
-        nextHandOverlay.style.display = 'none';
+
+        if (showPopup) {
+            nextHandDeckPopupHtml = `
+                <div id="deck-next-hand-popup" style="
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 80;
+                    background: rgba(4, 28, 18, 0.96);
+                    border: 2px solid #fbbf24;
+                    border-radius: 10px;
+                    padding: 6px 10px;
+                    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85);
+                    width: max-content;
+                    pointer-events: auto;
+                ">
+                    <button id="next-hand-btn" type="button" onclick="window.clickNextHand()" ${btnDisabled ? 'disabled' : ''} style="
+                        background: ${btnDisabled ? '#475569' : 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)'};
+                        color: ${btnDisabled ? '#cbd5e1' : '#0f172a'};
+                        border: none;
+                        border-radius: 7px;
+                        padding: 8px 14px;
+                        font-weight: 900;
+                        font-size: 0.78rem;
+                        text-transform: uppercase;
+                        letter-spacing: 0.4px;
+                        cursor: ${btnDisabled ? 'default' : 'pointer'};
+                        white-space: nowrap;
+                        margin: 0;
+                    ">${btnText}</button>
+                </div>
+            `;
+        }
     }
 
     // 14. DEALER DRAW & TIE BREAKER MODALS
@@ -1502,12 +1510,13 @@ window.updateUIFromLobby = function(lobby) {
                 <div class="pot-total-display" id="pot-total-banner">Pot: $${mainPotValue}</div>
                 <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
             </div>
-            <div class="deck-center" id="deck-center">
+            <div class="deck-center" id="deck-center" style="position: relative;">
                 <div class="card-slot back" id="deck-pile" onclick="drawCard('deck')">
                     <div class="card-back-inner"></div>
                     <span class="deck-counter-badge" id="deck-count-display">${lobby.deckCount || 0} left</span>
                 </div>
                 ${discardSlotHtml}
+                ${nextHandDeckPopupHtml}
             </div>
         `;
 
