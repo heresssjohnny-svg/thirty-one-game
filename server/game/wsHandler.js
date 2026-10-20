@@ -14,6 +14,7 @@ const {
     handleDiscardAction,
     handleKnock,
     leaveLobby,
+    recordForfeitedPlayer,
     resetLobbyToReadyRoom,
     checkNextHandReady,
     syncLifetimeLedgerBalances,
@@ -30,6 +31,13 @@ try {
     dbModule = require('../db');
 } catch (e) {
     dbModule = null;
+}
+
+function extractSocketUserId(ws) {
+    if (!ws || typeof ws !== 'object') return null;
+    const uid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) || ws.userId || null;
+    if (uid && !String(uid).startsWith('gst_')) return uid;
+    return null;
 }
 
 // Helper to reliably resolve a socket's canonical username in a lobby
@@ -86,6 +94,7 @@ function startReadyCountdown(lobby, player, broadcastLobbyList) {
             if (!alreadySpec) {
                 curLobby.spectators.push({
                     idSocket: target.id,
+                    userId: removed.userId || extractSocketUserId(target.id) || null,
                     username: removed.username,
                     inVC: removed.inVC || false,
                     isMuted: removed.isMuted !== undefined ? removed.isMuted : true,
@@ -261,6 +270,7 @@ function resetTurnTimer(lobby) {
 function attemptGameStart(lobby) {
     const seatedPlayers = lobby.players;
     if (seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready)) {
+        lobby.forfeitedPlayers = [];
         lobby.players.forEach(p => { 
             clearReadyCountdown(p);
             p.ready = false; 
@@ -349,8 +359,10 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 turnsTakenThisRound: 0,
                 livesVote: null,
                 endGameVote: null,
+                forfeitedPlayers: [],
                 players: [{
                     id: ws,
+                    userId: extractSocketUserId(ws),
                     username,
                     lives: 2,
                     wager: 5,
@@ -418,19 +430,23 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             ws.currentUsername = username;
             touchLobbyActivity(lobby, broadcastLobbyList);
 
+            const incomingUid = extractSocketUserId(ws);
             let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
             let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
             if (existingPlayer) {
                 existingPlayer.id = ws;
+                if (incomingUid) existingPlayer.userId = incomingUid;
                 existingPlayer.disconnectedAt = null;
                 if (existingPlayer.eliminated) {
                     if (existingSpec) {
                         existingSpec.idSocket = ws;
+                        if (incomingUid) existingSpec.userId = incomingUid;
                         existingSpec.disconnectedAt = null;
                     } else {
                         lobby.spectators.push({
                             idSocket: ws,
+                            userId: existingPlayer.userId || incomingUid || null,
                             username: existingPlayer.username,
                             inVC: existingPlayer.inVC ?? true,
                             isMuted: existingPlayer.isMuted ?? true,
@@ -445,11 +461,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 }
             } else if (existingSpec) {
                 existingSpec.idSocket = ws;
+                if (incomingUid) existingSpec.userId = incomingUid;
                 existingSpec.disconnectedAt = null;
             } else {
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
                     const newPlayer = {
                         id: ws,
+                        userId: incomingUid,
                         username,
                         lives: lobby.defaultLives || 2,
                         wager: 5,
@@ -470,6 +488,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 } else {
                     lobby.spectators.push({
                         idSocket: ws,
+                        userId: incomingUid,
                         username,
                         inVC: true,
                         isMuted: true,
@@ -497,7 +516,12 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 const player = lobby.players.find(p => p.id === ws);
-                if (player) clearReadyCountdown(player);
+                if (player) {
+                    clearReadyCountdown(player);
+                    if (typeof recordForfeitedPlayer === 'function') {
+                        recordForfeitedPlayer(lobby, player);
+                    }
+                }
 
                 leaveLobby(ws, currentLobbyCode, broadcastLobbyList);
                 ws.currentLobbyCode = null;
@@ -542,6 +566,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 );
                 if (player && lobby.gameState === 'lobby') {
                     player.id = ws;
+                    player.userId = extractSocketUserId(ws) || player.userId || null;
                     player.ready = !!data.ready;
 
                     if (player.ready) {
@@ -582,6 +607,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         if (!alreadySpec) {
                             lobby.spectators.push({
                                 idSocket: ws,
+                                userId: removed.userId || extractSocketUserId(ws) || null,
                                 username: removed.username,
                                 inVC: removed.inVC || false,
                                 isMuted: removed.isMuted !== undefined ? removed.isMuted : true,
@@ -614,17 +640,20 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
 
                     const spec = (sIdx !== -1) ? lobby.spectators.splice(sIdx, 1)[0] : null;
                     const targetUsername = spec?.username || data.username || currentUsername || ws.currentUsername;
+                    const incomingUid = extractSocketUserId(ws) || spec?.userId || null;
 
                     if (targetUsername) {
                         const existingP = lobby.players.find(p => p.username.toLowerCase() === targetUsername.toLowerCase());
                         if (existingP) {
                             existingP.id = ws;
+                            if (incomingUid) existingP.userId = incomingUid;
                             existingP.disconnectedAt = null;
                             startReadyCountdown(lobby, existingP, broadcastLobbyList);
                         } else {
                             const openSeat = findOpenSeat(lobby);
                             const newPlayer = {
                                 id: ws,
+                                userId: incomingUid,
                                 username: targetUsername,
                                 lives: lobby.defaultLives || 2,
                                 wager: 5,
@@ -1546,10 +1575,12 @@ function setupWebSocket(wss, broadcastLobbyList) {
         ws.on('close', () => {
             if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
                 const lobby = lobbies[ws.currentLobbyCode];
+                const disconnectedUid = extractSocketUserId(ws);
                 
                 const player = lobby.players.find(p => p.id === ws);
                 if (player) {
                     clearReadyCountdown(player);
+                    if (disconnectedUid) player.userId = disconnectedUid;
                     player.id = null;
                     player.disconnectedAt = Date.now();
 
@@ -1566,6 +1597,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
                 
                 const spec = lobby.spectators.find(s => s.idSocket === ws);
                 if (spec) {
+                    if (disconnectedUid) spec.userId = disconnectedUid;
                     spec.idSocket = null;
                     spec.disconnectedAt = Date.now();
                 }
