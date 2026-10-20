@@ -36,6 +36,13 @@ function extractSocketUsername(wsId) {
     return (wsId.currentUsername || wsId.user?.username || wsId.username || '').trim() || null;
 }
 
+function extractSocketUserId(ws) {
+    if (!ws || typeof ws !== 'object') return null;
+    const uid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) || ws.userId || null;
+    if (uid && !String(uid).startsWith('gst_')) return uid;
+    return null;
+}
+
 function addSpectatorUnique(lobby, specObj) {
     if (!lobby || !specObj || !specObj.username) return;
     const cleanName = specObj.username.trim().toLowerCase();
@@ -43,13 +50,16 @@ function addSpectatorUnique(lobby, specObj) {
         (specObj.idSocket && s.idSocket === specObj.idSocket) ||
         (s.username && s.username.trim().toLowerCase() === cleanName)
     );
+    const resolvedUid = specObj.userId || extractSocketUserId(specObj.idSocket);
     if (existing) {
         if (specObj.idSocket) existing.idSocket = specObj.idSocket;
+        if (resolvedUid) existing.userId = resolvedUid;
         existing.inVC = specObj.inVC !== undefined ? specObj.inVC : existing.inVC;
         existing.isMuted = specObj.isMuted !== undefined ? specObj.isMuted : existing.isMuted;
     } else {
         lobby.spectators.push({
             idSocket: specObj.idSocket || null,
+            userId: resolvedUid || null,
             username: specObj.username,
             inVC: !!specObj.inVC,
             isMuted: specObj.isMuted !== undefined ? specObj.isMuted : true
@@ -142,6 +152,43 @@ function clearRoundOverTimer(lobby) {
     if (lobby && lobby.roundOverAutoTimer) {
         clearTimeout(lobby.roundOverAutoTimer);
         lobby.roundOverAutoTimer = null;
+    }
+}
+
+// -------------------------------------------------------------
+// MID-GAME FORFEIT TRACKER (KEEPS BUY-IN IN POT & CHARGES LOSER)
+// -------------------------------------------------------------
+
+function recordForfeitedPlayer(lobby, player) {
+    if (!lobby || !player || player.isBot) return;
+    const isGameActive = lobby.gameState !== 'lobby' && lobby.gameState !== 'tournamentEnd';
+    if (!isGameActive) return;
+
+    if (!lobby.forfeitedPlayers) lobby.forfeitedPlayers = [];
+    const cleanName = (player.username || '').trim().toLowerCase();
+    if (!cleanName) return;
+
+    const uid = player.userId || extractSocketUserId(player.id) || resolveUserId(lobby, player.username);
+    const existing = lobby.forfeitedPlayers.find(fp => fp.username && fp.username.toLowerCase() === cleanName);
+
+    if (existing) {
+        existing.wager = Number(player.wager) || existing.wager || 5;
+        if (uid) existing.userId = uid;
+    } else {
+        lobby.forfeitedPlayers.push({
+            username: player.username,
+            userId: uid || null,
+            wager: Number(player.wager) || 5,
+            isBot: false
+        });
+    }
+
+    // Leaving mid-game before elimination counts as losing all lives for "First to Lose" side bets
+    if (!player.eliminated) {
+        player.lives = 0;
+        player.eliminated = true;
+        resolveFirstToLoseBets(lobby, player.username);
+        syncLifetimeLedgerBalances(lobby);
     }
 }
 
@@ -472,17 +519,32 @@ function getFeeder21OutOf31(lobby, winnerPlayer, winningSuit) {
 
 function resolveUserId(lobby, username) {
     if (!username) return null;
-    const p = lobby.players.find(pl => pl.username && pl.username.toLowerCase() === username.toLowerCase());
-    if (p && p.id && p.id.user && !p.id.user.isGuest) {
-        return p.id.user.id || p.id.user.userId;
+    const cleanName = username.trim().toLowerCase();
+
+    const p = lobby.players.find(pl => pl.username && pl.username.toLowerCase() === cleanName);
+    if (p) {
+        if (p.userId && !String(p.userId).startsWith('gst_')) return p.userId;
+        if (p.id && p.id.user && !p.id.user.isGuest) {
+            return p.id.user.id || p.id.user.userId;
+        }
     }
-    const s = lobby.spectators.find(sp => sp.username && sp.username.toLowerCase() === username.toLowerCase());
-    if (s && s.idSocket && s.idSocket.user && !s.idSocket.user.isGuest) {
-        return s.idSocket.user.id || s.idSocket.user.userId;
+
+    const fp = (lobby.forfeitedPlayers || []).find(f => f.username && f.username.toLowerCase() === cleanName);
+    if (fp && fp.userId && !String(fp.userId).startsWith('gst_')) {
+        return fp.userId;
     }
+
+    const s = lobby.spectators.find(sp => sp.username && sp.username.toLowerCase() === cleanName);
+    if (s) {
+        if (s.userId && !String(s.userId).startsWith('gst_')) return s.userId;
+        if (s.idSocket && s.idSocket.user && !s.idSocket.user.isGuest) {
+            return s.idSocket.user.id || s.idSocket.user.userId;
+        }
+    }
+
     if (db && typeof db.findUserByUsername === 'function') {
         const row = db.findUserByUsername(username);
-        if (row && row.id && !row.id.startsWith('gst_')) {
+        if (row && row.id && !String(row.id).startsWith('gst_')) {
             return row.id;
         }
     }
@@ -495,7 +557,7 @@ function sendLifetimeLedger(ws) {
         || ws.userId
         || (typeof db?.findUserByUsername === 'function' && ws.currentUsername && db.findUserByUsername(ws.currentUsername)?.id);
 
-    if (uid && !uid.startsWith('gst_') && db && typeof db.getLifetimeBalances === 'function') {
+    if (uid && !String(uid).startsWith('gst_') && db && typeof db.getLifetimeBalances === 'function') {
         const balances = db.getLifetimeBalances(uid);
         ws.send(JSON.stringify({ 
             type: 'LIFETIME_LEDGER_DATA', 
@@ -630,6 +692,11 @@ function getSanitizedLobby(lobby, wsId) {
         elapsedSeconds = lobby.songPausedAtOffset || 0;
     }
 
+    const seatedPotTotal = allParticipants.reduce((sum, p) => sum + (Number(p.wager) || 5), 0);
+    const forfeitedPotTotal = (lobby.forfeitedPlayers || [])
+        .filter(fp => !allParticipants.some(p => p.username.toLowerCase() === fp.username.toLowerCase()))
+        .reduce((sum, fp) => sum + (Number(fp.wager) || 5), 0);
+
     return {
         code: lobby.code,
         name: lobby.name,
@@ -642,7 +709,7 @@ function getSanitizedLobby(lobby, wsId) {
         currentTurnUser: allParticipants[lobby.turnIndex]?.username || '',
         phaseMessage: lobby.phaseMessage,
         canKnock: lobby.turnsTakenThisRound >= activeParts.length,
-        potTotal: allParticipants.reduce((sum, p) => sum + (p.wager || 5), 0),
+        potTotal: seatedPotTotal + forfeitedPotTotal,
         sidePotTotal: (lobby.activeBets || []).reduce((sum, b) => sum + (b.wagerAmt || 0), 0),
         lastGameWinner: lobby.lastGameWinner || null,
         tournamentWinner: lobby.tournamentWinner || null,
@@ -747,6 +814,7 @@ function broadcastLobbyUpdate(code) {
 function attemptGameStart(lobby) {
     const active = getActiveParticipants(lobby);
     if (active.length >= 2 && active.every(p => p.ready)) {
+        lobby.forfeitedPlayers = [];
         lobby.players.forEach(p => { 
             clearReadyCountdown(p);
             p.ready = false; 
@@ -796,6 +864,7 @@ function handleSitDown(lobby, ws, username) {
 
     if (existingPlayer) {
         existingPlayer.id = ws;
+        existingPlayer.userId = extractSocketUserId(ws) || existingPlayer.userId || null;
         existingPlayer.disconnectedAt = null;
         lobby.spectators = lobby.spectators.filter(s => 
             s.idSocket !== ws && 
@@ -830,6 +899,7 @@ function handleSitDown(lobby, ws, username) {
 
     const newPlayer = {
         id: ws,
+        userId: extractSocketUserId(ws) || spec?.userId || null,
         username: targetUsername,
         lives: lobby.defaultLives || 2,
         wager: 5,
@@ -873,6 +943,7 @@ function handleStandUp(lobby, ws, username) {
 
     addSpectatorUnique(lobby, {
         idSocket: ws || player.id,
+        userId: player.userId || extractSocketUserId(ws || player.id),
         username: player.username,
         inVC: player.inVC || false,
         isMuted: player.isMuted !== undefined ? player.isMuted : true
@@ -920,6 +991,9 @@ function handleAdminKickPlayer(lobby, hostWs, targetUsername, broadcastLobbyList
         kickedName = removedPlayer.username || kickedName;
         targetSocket = removedPlayer.id;
         clearReadyCountdown(removedPlayer);
+
+        // Lock their buy-in into the pot if a game is currently active
+        recordForfeitedPlayer(lobby, removedPlayer);
 
         if (playerIdx === lobby.turnIndex) {
             wasCurrentTurnPlayer = true;
@@ -1282,7 +1356,13 @@ function handlePoolCardSelection(lobby, userOrWs, rawCardIndex) {
                     resolveFirstToLoseBets(lobby, loser.username);
                     syncLifetimeLedgerBalances(lobby);
                     if (loser.id && typeof loser.id === 'object') {
-                        addSpectatorUnique(lobby, { idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
+                        addSpectatorUnique(lobby, {
+                            idSocket: loser.id,
+                            userId: loser.userId || extractSocketUserId(loser.id),
+                            username: loser.username,
+                            inVC: loser.inVC,
+                            isMuted: loser.isMuted
+                        });
                     }
                 }
             }
@@ -1320,6 +1400,7 @@ function handleTurnAction(lobby, wsId, actionType) {
     if (!isDirectMatch && !isSocketNameMatch) return;
     if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
         currentPlayer.id = wsId;
+        currentPlayer.userId = extractSocketUserId(wsId) || currentPlayer.userId || null;
         currentPlayer.disconnectedAt = null;
     }
 
@@ -1393,7 +1474,13 @@ function handleTurnAction(lobby, wsId, actionType) {
             feeder.eliminated = true;
             resolveFirstToLoseBets(lobby, feeder.username);
             if (feeder.id && typeof feeder.id === 'object') {
-                addSpectatorUnique(lobby, { idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
+                addSpectatorUnique(lobby, {
+                    idSocket: feeder.id,
+                    userId: feeder.userId || extractSocketUserId(feeder.id),
+                    username: feeder.username,
+                    inVC: feeder.inVC,
+                    isMuted: feeder.isMuted
+                });
             }
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
@@ -1406,7 +1493,13 @@ function handleTurnAction(lobby, wsId, actionType) {
                         p.eliminated = true;
                         newlyEliminated.push(p);
                         if (p.id && typeof p.id === 'object') {
-                            addSpectatorUnique(lobby, { idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
+                            addSpectatorUnique(lobby, {
+                                idSocket: p.id,
+                                userId: p.userId || extractSocketUserId(p.id),
+                                username: p.username,
+                                inVC: p.inVC,
+                                isMuted: p.isMuted
+                            });
                         }
                     }
                 }
@@ -1451,6 +1544,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
     if (!isDirectMatch && !isSocketNameMatch) return;
     if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
         currentPlayer.id = wsId;
+        currentPlayer.userId = extractSocketUserId(wsId) || currentPlayer.userId || null;
         currentPlayer.disconnectedAt = null;
     }
 
@@ -1517,7 +1611,13 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
             feeder.eliminated = true;
             resolveFirstToLoseBets(lobby, feeder.username);
             if (feeder.id && typeof feeder.id === 'object') {
-                addSpectatorUnique(lobby, { idSocket: feeder.id, username: feeder.username, inVC: feeder.inVC, isMuted: feeder.isMuted });
+                addSpectatorUnique(lobby, {
+                    idSocket: feeder.id,
+                    userId: feeder.userId || extractSocketUserId(feeder.id),
+                    username: feeder.username,
+                    inVC: feeder.inVC,
+                    isMuted: feeder.isMuted
+                });
             }
             lobby.phaseMessage = `💥 21 OUT OF 31 RULE! ${feeder.username} fed ${currentPlayer.username} an Ace and Face card of ${winningSuit}! Only ${feeder.username} loses all lives!`;
         } else {
@@ -1530,7 +1630,13 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
                         p.eliminated = true;
                         newlyEliminated.push(p);
                         if (p.id && typeof p.id === 'object') {
-                            addSpectatorUnique(lobby, { idSocket: p.id, username: p.username, inVC: p.inVC, isMuted: p.isMuted });
+                            addSpectatorUnique(lobby, {
+                                idSocket: p.id,
+                                userId: p.userId || extractSocketUserId(p.id),
+                                username: p.username,
+                                inVC: p.inVC,
+                                isMuted: p.isMuted
+                            });
                         }
                     }
                 }
@@ -1572,6 +1678,7 @@ function handleKnock(lobby, wsId) {
     if (!isDirectMatch && !isSocketNameMatch) return;
     if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
         p.id = wsId;
+        p.userId = extractSocketUserId(wsId) || p.userId || null;
         p.disconnectedAt = null;
     }
 
@@ -1713,7 +1820,13 @@ function resolveRoundEnd(lobby) {
             resolveFirstToLoseBets(lobby, loser.username);
             syncLifetimeLedgerBalances(lobby);
             if (loser.id && typeof loser.id === 'object') {
-                addSpectatorUnique(lobby, { idSocket: loser.id, username: loser.username, inVC: loser.inVC, isMuted: loser.isMuted });
+                addSpectatorUnique(lobby, {
+                    idSocket: loser.id,
+                    userId: loser.userId || extractSocketUserId(loser.id),
+                    username: loser.username,
+                    inVC: loser.inVC,
+                    isMuted: loser.isMuted
+                });
             }
         }
 
@@ -1773,9 +1886,14 @@ function awardTournamentWinner(lobby, winner) {
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
 
     const winnerWager = Number(winner.wager) || 5;
+    const winnerLower = (winner.username || '').toLowerCase();
+    const chargedUsers = new Set();
 
+    // 1. Charge seated players who lost
     lobby.players.forEach(p => {
-        if (p.username !== winner.username) {
+        const lower = (p.username || '').toLowerCase();
+        if (lower && lower !== winnerLower && !chargedUsers.has(lower)) {
+            chargedUsers.add(lower);
             const loserWager = Number(p.wager) || 5;
             // Effective payout is capped at the lower wager between the winner and the loser
             const amt = Math.min(loserWager, winnerWager);
@@ -1783,6 +1901,20 @@ function awardTournamentWinner(lobby, winner) {
             const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
 
             recordSessionAndLifetimeDebt(lobby, targetLedger, p.username, winner.username, amt);
+        }
+    });
+
+    // 2. Charge players who left the table mid-game (their buy-in stayed in the pot)
+    (lobby.forfeitedPlayers || []).forEach(fp => {
+        const lower = (fp.username || '').toLowerCase();
+        if (lower && lower !== winnerLower && !chargedUsers.has(lower)) {
+            chargedUsers.add(lower);
+            const loserWager = Number(fp.wager) || 5;
+            const amt = Math.min(loserWager, winnerWager);
+            const isBotInvolved = fp.isBot || winner.isBot;
+            const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
+
+            recordSessionAndLifetimeDebt(lobby, targetLedger, fp.username, winner.username, amt);
         }
     });
 
@@ -1841,6 +1973,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     lobby.activeBets = [];
     lobby.pendingBets = [];
     lobby.globalProposals = [];
+    lobby.forfeitedPlayers = [];
     lobby.knockedBy = null;
     lobby.finalTurnsTaken = {};
     
@@ -1873,6 +2006,7 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
             const openSeat = findOpenSeat(lobby);
             const recl = {
                 id: spec.idSocket,
+                userId: spec.userId || extractSocketUserId(spec.idSocket) || null,
                 username: spec.username,
                 lives: lobby.defaultLives || 2,
                 wager: 5,
@@ -1980,6 +2114,7 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         gameState: 'lobby',
         players: [],
         spectators: [],
+        forfeitedPlayers: [],
         deck: [],
         discardPile: [],
         drawPool: [],
@@ -2014,6 +2149,7 @@ function joinLobby(ws, code, username) {
     if (!lobby) return { success: false, message: 'Lobby does not exist.' };
 
     const cleanName = (username || '').trim().toLowerCase();
+    const incomingUid = extractSocketUserId(ws);
 
     // 1. Re-attach to existing seated player
     const existingPlayer = lobby.players.find(p => 
@@ -2021,10 +2157,12 @@ function joinLobby(ws, code, username) {
     );
     if (existingPlayer) {
         existingPlayer.id = ws;
+        if (incomingUid) existingPlayer.userId = incomingUid;
         existingPlayer.disconnectedAt = null;
         if (existingPlayer.eliminated) {
             addSpectatorUnique(lobby, {
                 idSocket: ws,
+                userId: existingPlayer.userId,
                 username: existingPlayer.username,
                 inVC: existingPlayer.inVC,
                 isMuted: existingPlayer.isMuted
@@ -2046,6 +2184,7 @@ function joinLobby(ws, code, username) {
     );
     if (existingSpectator) {
         existingSpectator.idSocket = ws;
+        if (incomingUid) existingSpectator.userId = incomingUid;
         existingSpectator.username = username;
         return { success: true, lobby, isSpectator: true };
     }
@@ -2055,6 +2194,7 @@ function joinLobby(ws, code, username) {
         const seat = findOpenSeat(lobby);
         const newPlayer = {
             id: ws,
+            userId: incomingUid,
             username,
             lives: lobby.defaultLives || 2,
             wager: 5,
@@ -2078,6 +2218,7 @@ function joinLobby(ws, code, username) {
     // 4. Fresh spectator join
     addSpectatorUnique(lobby, {
         idSocket: ws,
+        userId: incomingUid,
         username,
         inVC: false,
         isMuted: true
@@ -2095,11 +2236,31 @@ function leaveLobby(ws, code, broadcastLobbyList) {
         ? lobby.players[leavingPlayerIndex].username
         : (leavingSpectator?.username || null);
 
+    let wasCurrentTurnPlayer = false;
+
     if (leavingPlayerIndex !== -1) {
-        clearReadyCountdown(lobby.players[leavingPlayerIndex]);
+        const leavingPlayer = lobby.players[leavingPlayerIndex];
+        clearReadyCountdown(leavingPlayer);
+
+        // Lock their buy-in into the pot if they leave mid-game
+        recordForfeitedPlayer(lobby, leavingPlayer);
+
+        if (leavingPlayerIndex === lobby.turnIndex) {
+            wasCurrentTurnPlayer = true;
+            clearTurnTimer(lobby);
+        } else if (leavingPlayerIndex < lobby.turnIndex) {
+            lobby.turnIndex = Math.max(0, lobby.turnIndex - 1);
+        }
+
+        lobby.players.splice(leavingPlayerIndex, 1);
+
+        if (Array.isArray(lobby.tiedParticipantsList) && leavingUsername) {
+            lobby.tiedParticipantsList = lobby.tiedParticipantsList.filter(
+                u => String(u).trim().toLowerCase() !== leavingUsername.trim().toLowerCase()
+            );
+        }
     }
 
-    lobby.players = lobby.players.filter(p => p.id !== ws);
     lobby.spectators = lobby.spectators.filter(s => s.idSocket !== ws);
 
     const remainingHumans = lobby.players.filter(p => !p.isBot);
@@ -2137,9 +2298,15 @@ function leaveLobby(ws, code, broadcastLobbyList) {
         if (lobby.turnIndex >= lobby.players.length) {
             lobby.turnIndex = 0;
         }
+        while (lobby.players[lobby.turnIndex] && lobby.players[lobby.turnIndex].eliminated) {
+            lobby.turnIndex = (lobby.turnIndex + 1) % lobby.players.length;
+        }
         establishDealer(lobby);
         syncBotReadiness(lobby);
         broadcastLobbyUpdate(code);
+        if (wasCurrentTurnPlayer || lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+            scheduleBotActions(lobby);
+        }
         resetTurnTimer(lobby);
     }
 
@@ -2180,6 +2347,7 @@ module.exports = {
     resetLobbyToReadyRoom,
     scheduleBotActions,
     leaveLobby,
+    recordForfeitedPlayer,
     resolveUserId,
     recordSessionAndLifetimeDebt,
     syncLifetimeLedgerBalances,
