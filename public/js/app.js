@@ -53,7 +53,9 @@ function closeRulesModal() { closeModal('rules-modal'); }
 
 // Spectator List Modal Controls
 function openSpectatorListModal() {
-    const content = document.getElementById('spectators-list') || document.getElementById('spectators-list-content');
+    const content = document.getElementById('spectator-list-body') ||
+                    document.getElementById('spectators-list') ||
+                    document.getElementById('spectators-list-content');
     const specs = (window.clientState && window.clientState.spectatorsList) || [];
     if (content) {
         if (specs.length === 0) {
@@ -76,6 +78,25 @@ function openActiveBetsModal() {
     openModal('active-bets-modal'); 
 }
 function closeActiveBetsModal() { closeModal('active-bets-modal'); }
+
+// Minimize / Restore Controls for Side Bet Modal & Global Sidebar
+function toggleMinimizeBetModal() {
+    const wrap = document.getElementById('bet-modal-content-wrap');
+    const btn = document.getElementById('bet-modal-min-btn');
+    if (!wrap) return;
+    const isCollapsed = wrap.style.display === 'none';
+    wrap.style.display = isCollapsed ? 'block' : 'none';
+    if (btn) btn.textContent = isCollapsed ? '—' : '+';
+}
+
+function toggleMinimizeGlobalSidebar() {
+    const list = document.getElementById('global-side-bets-list');
+    const btn = document.getElementById('global-sidebar-min-btn');
+    if (!list) return;
+    const isCollapsed = list.style.display === 'none';
+    list.style.display = isCollapsed ? 'flex' : 'none';
+    if (btn) btn.textContent = isCollapsed ? '—' : '+';
+}
 
 // Ledger Modal Controls
 function toggleGlobalSidebar() {
@@ -107,9 +128,20 @@ function closeSessionLedgerModal() {
 }
 
 function openLifetimeLedgerModal() {
+    const uid = (window.userSession && (window.userSession.id || window.userSession.userId)) ||
+                (window.clientState && window.clientState.userId) ||
+                localStorage.getItem('blitz31_user_id') ||
+                null;
+    const uname = (window.userSession && window.userSession.username) ||
+                  (window.clientState && window.clientState.username) ||
+                  localStorage.getItem('saved_username') ||
+                  '';
+
     if (typeof window.initSocketAndSend === 'function') {
         window.initSocketAndSend({
             type: 'GET_LIFETIME_LEDGER',
+            userId: uid,
+            username: uname,
             token: getStoredAuthToken()
         });
     }
@@ -165,6 +197,12 @@ window.isSfxEnabled = function() {
     return localStorage.getItem('blitz31_sfx_enabled') !== 'false';
 };
 
+window.isVibrateEnabled = function() {
+    const toggle = document.getElementById('setting-vibrate');
+    if (toggle) return toggle.checked;
+    return localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
+};
+
 window.toggleSoundSetting = function() {
     const toggle = document.getElementById('setting-sfx');
     const enabled = toggle ? toggle.checked : true;
@@ -193,7 +231,7 @@ window.triggerAudioCue = window.playSound;
 window.playYourTurnCue = function() { window.playSound('yourturn'); };
 
 window.triggerVibration = function(pattern) {
-    if (!window.isSfxEnabled()) return;
+    if (!window.isVibrateEnabled()) return;
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try { navigator.vibrate(pattern); } catch (e) {}
     }
@@ -218,7 +256,7 @@ window.renderLobbyList = window.renderLobbyList || function(lobbiesList) {
                     <div style="font-weight:800; color:#fbbf24;">${l.name || 'Table'} <span style="font-size:0.75rem; color:#94a3b8;">[${l.code}]</span></div>
                     <div style="font-size:0.75rem; color:#cbd5e1;">Host: ${l.host || 'Player'} • ${count}/${max} Seated • ${statusLabel}</div>
                 </div>
-                <button class="secondary-btn" style="padding:6px 12px; font-size:0.8rem;" onclick="window.joinLobby('${l.code}')">Join</button>
+                <button class="secondary-btn" style="padding:6px 12px; font-size:0.8rem;" onclick="window.joinLobbyCode('${l.code}')">Join</button>
             </div>
         `;
     }).join('');
@@ -236,6 +274,8 @@ window.openSpectatorListModal = openSpectatorListModal;
 window.closeSpectatorListModal = closeSpectatorListModal;
 window.openActiveBetsModal = openActiveBetsModal;
 window.closeActiveBetsModal = closeActiveBetsModal;
+window.toggleMinimizeBetModal = toggleMinimizeBetModal;
+window.toggleMinimizeGlobalSidebar = toggleMinimizeGlobalSidebar;
 window.toggleGlobalSidebar = toggleGlobalSidebar;
 window.openLedgerModal = openLedgerModal;
 window.closeLedgerModal = closeLedgerModal;
@@ -400,6 +440,10 @@ function updateViewForAuth(user) {
 
     if (window.clientState) {
         window.clientState.username = displayName;
+        if (user.id || user.userId) {
+            window.clientState.userId = user.id || user.userId;
+            localStorage.setItem('blitz31_user_id', window.clientState.userId);
+        }
     }
 
     if (!isGameActive && typeof window.refreshLobbies === 'function') {
@@ -649,10 +693,14 @@ async function submitResetPassword() {
 // 8. SESSION REHYDRATION ON BOOT
 // -------------------------------------------------------------
 async function checkExistingSession() {
-    // Restore SFX checkbox state from localStorage
+    // Restore SFX & Vibration checkbox states from localStorage
     const sfxToggle = document.getElementById('setting-sfx');
     if (sfxToggle) {
         sfxToggle.checked = localStorage.getItem('blitz31_sfx_enabled') !== 'false';
+    }
+    const vibToggle = document.getElementById('setting-vibrate');
+    if (vibToggle) {
+        vibToggle.checked = localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
     }
 
     const token = getStoredAuthToken();
