@@ -16,6 +16,8 @@ window.clientState = window.clientState || {
     username: localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '',
     userId: localStorage.getItem('blitz31_user_id') || null,
     isReady: false,
+    playersList: [],
+    spectatorsList: [],
     mainGameLedger: {},
     sideBetLedger: {},
     botBetLedger: {},
@@ -65,7 +67,6 @@ window.restoreSavedInputs = function() {
             localStorage.setItem('saved_lobby_code', inviteCode);
             localStorage.setItem('blitz31_active_room', inviteCode);
             window.appGlobals.currentJoinedCode = inviteCode;
-            // Clean query string so refreshing later doesn't trap the user
             window.history.replaceState({}, document.title, window.location.pathname);
         }
     } catch (e) {}
@@ -114,10 +115,13 @@ function syncLobbyToClientState(lobby) {
         localStorage.setItem('blitz31_active_room', lobby.code);
     }
 
+    window.clientState.playersList = lobby.players || [];
+    window.clientState.spectatorsList = lobby.spectators || [];
     window.clientState.mainGameLedger = lobby.mainGameLedger || {};
     window.clientState.sideBetLedger = lobby.sideBetLedger || {};
     window.clientState.botBetLedger = lobby.botBetLedger || {};
     window.clientState.ledgerHistory = lobby.ledgerHistory || [];
+    window.clientState.gameState = lobby.gameState || 'lobby';
 
     const myName = (window.clientState.username || '').toLowerCase();
     const me = (lobby.players || []).find(p => p.username && p.username.toLowerCase() === myName);
@@ -190,6 +194,33 @@ window.connectSocket = function() {
             case 'PONG':
                 break;
 
+            case 'AUTH_SUCCESS': {
+                window.userSession = data.user;
+                if (data.user && data.user.username) {
+                    window.clientState.username = data.user.username;
+                    localStorage.setItem('saved_username', data.user.username);
+                    localStorage.setItem('p31_username', data.user.username);
+                    const uIn = document.getElementById('username-input');
+                    if (uIn) uIn.value = data.user.username;
+                }
+                if (data.user && (data.user.id || data.user.userId)) {
+                    window.clientState.userId = data.user.id || data.user.userId;
+                    localStorage.setItem('blitz31_user_id', window.clientState.userId);
+                }
+                if (typeof window.updateViewForAuth === 'function') {
+                    window.updateViewForAuth(data.user);
+                }
+                window.initSocketAndSend({ type: 'GET_LOBBIES' });
+                break;
+            }
+
+            case 'AUTH_ERROR': {
+                localStorage.removeItem('p31_token');
+                localStorage.removeItem('31_jwt');
+                break;
+            }
+
+            case 'LOBBY_LIST':
             case 'LOBBIES_LIST':
             case 'PUBLIC_LOBBIES': {
                 const list = data.lobbies || [];
@@ -230,7 +261,7 @@ window.connectSocket = function() {
                         window.updateUIFromLobby(lobby);
                     }
                     if (typeof window.renderSessionLedger === 'function') {
-                        const sessionModal = document.getElementById('session-ledger-modal');
+                        const sessionModal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
                         if (sessionModal && sessionModal.style.display === 'flex') {
                             window.renderSessionLedger(lobby);
                         }
@@ -303,9 +334,12 @@ window.connectSocket = function() {
             }
 
             case 'ERROR': {
-                if (data.message && data.message.toLowerCase().includes('not found')) {
+                if (data.message && (data.message.toLowerCase().includes('not found') || data.message.toLowerCase().includes('does not exist'))) {
                     window.appGlobals.currentJoinedCode = null;
                     localStorage.removeItem('blitz31_active_room');
+                    if (typeof window.resetToMainMenu === 'function') {
+                        window.resetToMainMenu();
+                    }
                 }
                 if (typeof window.showCenterNotification === 'function') {
                     window.showCenterNotification(data.message || 'An error occurred.');
@@ -678,6 +712,17 @@ window.acceptGlobalProposal = function(proposalId) {
         proposalId,
         betId: proposalId,
         id: proposalId
+    });
+};
+
+window.declineGlobalProposal = function(proposalId) {
+    window.initSocketAndSend({
+        type: 'DECLINE_GLOBAL_PROPOSAL',
+        proposalId,
+        betId: proposalId,
+        id: proposalId,
+        accept: false,
+        confirm: false
     });
 };
 
