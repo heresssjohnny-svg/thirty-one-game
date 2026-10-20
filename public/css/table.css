@@ -731,3 +731,87 @@
     padding: 4px 10px;
     font-size: 0.75rem;
 }
+
+/* ============================================================
+   COMPACT CENTER-DECK NEXT HAND POPUP (OVERRIDES MAIN.CSS)
+   ============================================================ */
+#next-hand-overlay,
+.next-hand-banner,
+.next-hand-center-popup {
+    position: fixed !important;
+    top: 43% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    inset: auto !important;
+    transform: translate(-50%, -50%) !important;
+    width: max-content !important;
+    max-width: 85vw !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 6px 10px !important;
+    margin: 0 !important;
+    background: rgba(4, 28, 18, 0.96) !important;
+    border: 2px solid #fbbf24 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 250 !important;
+    pointer-events: auto !important;
+}
+
+#deck-center #deck-next-hand-popup,
+#table-oval-container #next-hand-overlay,
+#deck-next-hand-popup {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    inset: auto !important;
+    transform: translate(-50%, -50%) !important;
+    width: max-content !important;
+    max-width: 240px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 6px 10px !important;
+    margin: 0 !important;
+    background: rgba(4, 28, 18, 0.96) !important;
+    border: 2px solid #fbbf24 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 250 !important;
+    pointer-events: auto !important;
+}
+
+#next-hand-overlay .showdown-title,
+#next-hand-overlay #showdown-hands-container {
+    display: none !important;
+}
+
+#next-hand-overlay .showdown-modal-box {
+    width: max-content !important;
+    height: auto !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#next-hand-btn {
+    width: auto !important;
+    height: auto !important;
+    padding: 8px 16px !important;
+    margin: 0 !important;
+    font-size: 0.8rem !important;
+    font-weight: 900 !important;
+    white-space: nowrap !important;
+    border-radius: 7px !important;
+}
