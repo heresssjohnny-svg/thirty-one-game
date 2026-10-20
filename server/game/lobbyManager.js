@@ -187,6 +187,8 @@ function recordForfeitedPlayer(lobby, player) {
     if (!player.eliminated) {
         player.lives = 0;
         player.eliminated = true;
+        player.cards = [];
+        player.pickedUpDiscardCard = null;
         resolveFirstToLoseBets(lobby, player.username);
         syncLifetimeLedgerBalances(lobby);
     }
@@ -1168,6 +1170,8 @@ function startDealerDrawPhase(lobby) {
     lobby.fedCardsHistory = {};
     lobby.globalProposals = [];
     lobby.players.forEach(p => {
+        p.cards = [];
+        p.pickedUpDiscardCard = null;
         p.peekAllowed = {};
         p.peekRequests = {};
         p.peekIncoming = {};
@@ -1211,7 +1215,10 @@ function startRound(lobby) {
         return;
     }
 
+    // Clear old hands from all players (including eliminated players) so eliminated players never keep old cards
     lobby.players.forEach(p => {
+        p.cards = [];
+        p.pickedUpDiscardCard = null;
         p.peekAllowed = {};
         p.peekRequests = {};
         p.peekIncoming = {};
@@ -1673,7 +1680,11 @@ function handleKnock(lobby, wsId) {
 
     const sockName = extractSocketUsername(wsId);
     const isDirectMatch = (p.id === wsId) || (p.idSocket === wsId) || (wsId === p.username);
-    const isSocketNameMatch = Boolean(sockName && p.username && sockName.toLowerCase() === p.username.toLowerCase());
+    const isSocketNameMatch = Boolean(sockName && p.username && sockName.toLowerCase() === currentPlayerName(p));
+
+    function currentPlayerName(pl) {
+        return (pl.username || '').toLowerCase();
+    }
 
     if (!isDirectMatch && !isSocketNameMatch) return;
     if (isSocketNameMatch && !isDirectMatch && typeof wsId === 'object' && wsId !== null) {
