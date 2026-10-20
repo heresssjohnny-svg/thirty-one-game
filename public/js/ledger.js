@@ -1,4 +1,4 @@
-// public/js/ledger.js - Bilateral Debt Netting, Session & Lifetime Ledgers, Debt Transfer & Canvas Exporter
+// public/js/ledger.js - Bilateral Debt Netting, Session & Lifetime Ledgers, Tab Switcher, Debt Transfer & Canvas Exporter
 
 function sendLedgerSocket(payload) {
     if (typeof window.initSocketAndSend === 'function') {
@@ -19,6 +19,55 @@ function resolveMyUsername() {
     if (window.userSession?.username) return window.userSession.username.trim();
     return (localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '').trim();
 }
+
+// -------------------------------------------------------------
+// 0. SESSION <-> LIFETIME LEDGER TAB SWITCHER
+// -------------------------------------------------------------
+function buildLedgerSwitcherBarHTML(activeTab) {
+    const isSession = (activeTab === 'session');
+    return `
+        <div style="display: flex; gap: 6px; margin-bottom: 12px; background: rgba(0,0,0,0.4); padding: 4px; border-radius: 8px; border: 1px solid rgba(251,191,36,0.3);">
+            <button type="button" onclick="window.switchLedgerTab('session')" style="
+                flex: 1;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: none;
+                font-weight: 800;
+                font-size: 0.8rem;
+                cursor: pointer;
+                background: ${isSession ? 'linear-gradient(135deg, #d97706, #b45309)' : 'transparent'};
+                color: ${isSession ? '#ffffff' : '#94a3b8'};
+            ">📋 Session Ledger</button>
+            <button type="button" onclick="window.switchLedgerTab('lifetime')" style="
+                flex: 1;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: none;
+                font-weight: 800;
+                font-size: 0.8rem;
+                cursor: pointer;
+                background: ${!isSession ? 'linear-gradient(135deg, #d97706, #b45309)' : 'transparent'};
+                color: ${!isSession ? '#ffffff' : '#94a3b8'};
+            ">📊 Lifetime Ledger</button>
+        </div>
+    `;
+}
+
+window.switchLedgerTab = function(targetTab) {
+    const sessionModal = document.getElementById('session-ledger-modal');
+    const lifetimeModal = document.getElementById('lifetime-ledger-modal');
+
+    if (targetTab === 'lifetime') {
+        if (sessionModal) sessionModal.style.display = 'none';
+        if (lifetimeModal) lifetimeModal.style.display = 'flex';
+        renderLifetimeLedger(cachedLifetimeRows);
+        requestLifetimeLedger();
+    } else {
+        if (lifetimeModal) lifetimeModal.style.display = 'none';
+        if (sessionModal) sessionModal.style.display = 'flex';
+        renderSessionLedger();
+    }
+};
 
 // -------------------------------------------------------------
 // 1. BILATERAL DEBT NETTING ENGINE
@@ -60,6 +109,9 @@ function calculatePairwiseNet(ledger) {
 // 2. SESSION LEDGER MODAL & DEBT NOVATION / TRANSFER
 // -------------------------------------------------------------
 function openSessionLedgerModal() {
+    const lifetimeModal = document.getElementById('lifetime-ledger-modal');
+    if (lifetimeModal) lifetimeModal.style.display = 'none';
+
     const modal = document.getElementById('session-ledger-modal') || document.getElementById('ledger-modal');
     if (modal) modal.style.display = 'flex';
     renderSessionLedger();
@@ -112,8 +164,8 @@ function renderSessionLedger(lobbyOverride) {
     mergeInto(sideLedger);
 
     const netMatrix = calculatePairwiseNet(combinedHuman);
-    const owedToMe = []; // People who owe me
-    const iOwe = [];     // People I owe
+    const owedToMe = [];
+    const iOwe = [];
 
     for (const p1 in netMatrix) {
         if (p1.toLowerCase() !== myLower) continue;
@@ -127,7 +179,8 @@ function renderSessionLedger(lobbyOverride) {
         }
     }
 
-    let html = `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+    let html = buildLedgerSwitcherBarHTML('session');
+    html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
 
     // Section A: Net Human Balances Involving Me
     if (owedToMe.length === 0 && iOwe.length === 0) {
@@ -175,7 +228,7 @@ function renderSessionLedger(lobbyOverride) {
         });
     }
 
-    // Section B: Bot Balances Involving Me (For fun / tracking)
+    // Section B: Bot Balances Involving Me
     const botNet = calculatePairwiseNet(botLedger);
     const botRows = [];
     for (const p1 in botNet) {
@@ -496,7 +549,7 @@ async function shareLedgerSnapshot() {
 // -------------------------------------------------------------
 function getCurrentUserId() {
     try {
-        const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('p31_token');
+        const token = sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('p31_token');
         if (token) {
             const payload = JSON.parse(atob(token.split('.')[1]));
             return payload.id || payload.userId || null;
@@ -512,16 +565,22 @@ function getCurrentUserId() {
 function requestLifetimeLedger() {
     const uid = getCurrentUserId();
     const uname = resolveMyUsername();
+    const token = sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || localStorage.getItem('auth_token') || null;
     sendLedgerSocket({
         type: 'GET_LIFETIME_LEDGER',
         userId: uid,
-        username: uname
+        username: uname,
+        token
     });
 }
 
 function openLifetimeLedgerModal() {
+    const sessionModal = document.getElementById('session-ledger-modal');
+    if (sessionModal) sessionModal.style.display = 'none';
+
     const modal = document.getElementById('lifetime-ledger-modal') || document.getElementById('ledger-modal');
     if (modal) modal.style.display = 'flex';
+    renderLifetimeLedger(cachedLifetimeRows);
     requestLifetimeLedger();
 }
 
@@ -545,18 +604,24 @@ function renderLifetimeLedger(data) {
 
     const activeRows = cachedLifetimeRows.filter(r => Math.abs(Number(r.net_balance ?? r.net ?? r.amount ?? 0)) > 0.005);
 
+    // Only show switcher bar if the player is inside an active room/game view
+    const gameView = document.getElementById('game-view');
+    const isInGame = Boolean(gameView && gameView.style.display === 'flex');
+    let html = isInGame ? buildLedgerSwitcherBarHTML('lifetime') : '';
+
     if (activeRows.length === 0) {
-        container.innerHTML = `
+        html += `
             <div style="text-align: center; color: #a7f3d0; padding: 1.25rem; font-size: 0.92rem;">
                 All lifetime balances settled ($0.00)
             </div>
         `;
+        container.innerHTML = html;
         return;
     }
 
     const iOweRows = activeRows.filter(r => Number(r.net_balance ?? r.net ?? r.amount ?? 0) < -0.005);
 
-    let html = '<div style="display: flex; flex-direction: column; gap: 0.65rem;">';
+    html += '<div style="display: flex; flex-direction: column; gap: 0.65rem;">';
 
     activeRows.forEach(row => {
         const net = Number(row.net_balance ?? row.net ?? row.amount ?? 0);
@@ -565,7 +630,6 @@ function renderLifetimeLedger(data) {
         const otherId = row.other_id || row.userId || row.id;
 
         if (net > 0) {
-            // Other user owes current user (Creditor view -> can credit/settle or transfer)
             const canTransferLifetime = iOweRows.length > 0;
             html += `
                 <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #10b981; flex-wrap: wrap; gap: 0.5rem;">
@@ -578,7 +642,7 @@ function renderLifetimeLedger(data) {
                             +$${net.toFixed(2)}
                         </span>
                         ${canTransferLifetime ? `
-                            <button type="button" onclick="openLifetimeTransferModal('${otherId}', '${rawNameAttr}',${net})" style="background: #d97706; color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                            <button type="button" onclick="openLifetimeTransferModal('${otherId}', '${rawNameAttr}', ${net})" style="background: #d97706; color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                                 Transfer
                             </button>
                         ` : ''}
@@ -589,7 +653,6 @@ function renderLifetimeLedger(data) {
                 </div>
             `;
         } else {
-            // Current user owes other user (Debtor view)
             html += `
                 <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #ef4444; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="font-size: 0.92rem;">
@@ -772,7 +835,7 @@ function closeCreditDialog() {
 }
 
 function applySettlementCredit(otherUserId, amount) {
-    const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('p31_token');
+    const token = sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('p31_token');
     const myId = getCurrentUserId();
     const cleanAmount = Number(amount);
     if (!cleanAmount || cleanAmount <= 0) return;
@@ -788,7 +851,9 @@ function applySettlementCredit(otherUserId, amount) {
 
     const container = document.getElementById('lifetime-ledger-table-container');
     if (container) {
-        container.innerHTML = `
+        const gameView = document.getElementById('game-view');
+        const isInGame = Boolean(gameView && gameView.style.display === 'flex');
+        container.innerHTML = (isInGame ? buildLedgerSwitcherBarHTML('lifetime') : '') + `
             <div class="ledger-loading-msg" style="text-align: center; color: #a7f3d0; padding: 1.5rem 0; font-size: 0.95rem;">
                 Applying credit of $${cleanAmount.toFixed(2)}...
             </div>
