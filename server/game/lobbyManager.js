@@ -663,7 +663,36 @@ function syncLifetimeLedgerBalances(lobby) {
     });
 }
 
-function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUsername, amount) {
+function resolveCanonicalLobbyName(lobby, rawName) {
+    if (!rawName) return null;
+    const clean = String(rawName).trim();
+    if (!clean) return null;
+    const lower = clean.toLowerCase();
+
+    if (lobby) {
+        const p = (lobby.players || []).find(pl => pl.username && pl.username.trim().toLowerCase() === lower);
+        if (p) return p.username;
+
+        const fp = (lobby.forfeitedPlayers || []).find(f => f.username && f.username.trim().toLowerCase() === lower);
+        if (fp) return fp.username;
+
+        const s = (lobby.spectators || []).find(sp => sp.username && sp.username.trim().toLowerCase() === lower);
+        if (s) return s.username;
+
+        for (const ldg of [lobby.mainGameLedger, lobby.sideBetLedger, lobby.botBetLedger]) {
+            if (!ldg) continue;
+            for (const k1 in ldg) {
+                if (k1.trim().toLowerCase() === lower) return k1;
+                for (const k2 in ldg[k1]) {
+                    if (k2.trim().toLowerCase() === lower) return k2;
+                }
+            }
+        }
+    }
+    return clean;
+}
+
+function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUsername, amount, customHistoryText = null) {
     recordDebt(ledger, debtorUsername, creditorUsername, amount);
 
     if (!lobby.persistedLifetimeLedger) {
@@ -674,7 +703,9 @@ function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUse
     const cat = isSide ? 'side' : 'main';
 
     if (amount > 0) {
-        if (isSide) {
+        if (customHistoryText) {
+            addLedgerHistory(lobby, customHistoryText, 'credit');
+        } else if (isSide) {
             addLedgerHistory(lobby, `🤝 Side Bet: ${debtorUsername} owes ${creditorUsername} $${amount}`, 'side');
         } else if (isBot) {
             addLedgerHistory(lobby, `🤖 Bot Match: ${debtorUsername} owes ${creditorUsername} $${amount}`, 'bot');
@@ -704,6 +735,47 @@ function recordSessionAndLifetimeDebt(lobby, ledger, debtorUsername, creditorUse
             });
         }
     }
+}
+
+function applySessionCredit(lobby, creditorRaw, debtorRaw, amount) {
+    if (!lobby || !creditorRaw || !debtorRaw) return false;
+
+    const creditorName = resolveCanonicalLobbyName(lobby, creditorRaw);
+    const debtorName = resolveCanonicalLobbyName(lobby, debtorRaw);
+    if (!creditorName || !debtorName || creditorName.toLowerCase() === debtorName.toLowerCase()) return false;
+
+    if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
+    if (!lobby.sideBetLedger) lobby.sideBetLedger = {};
+    if (!lobby.botBetLedger) lobby.botBetLedger = {};
+
+    const isBot = (lobby.players || []).some(
+        p => p.isBot && (p.username.toLowerCase() === debtorName.toLowerCase() || p.username.toLowerCase() === creditorName.toLowerCase())
+    ) || Boolean(lobby.botBetLedger[debtorName]?.[creditorName] || lobby.botBetLedger[creditorName]?.[debtorName]);
+
+    // Calculate current net owed by debtorName to creditorName if amount is omitted
+    let creditAmt = Number(amount) || 0;
+    if (creditAmt <= 0) {
+        if (isBot) {
+            const dOwesC = Number(lobby.botBetLedger[debtorName]?.[creditorName]) || 0;
+            const cOwesD = Number(lobby.botBetLedger[creditorName]?.[debtorName]) || 0;
+            creditAmt = Math.max(0, dOwesC - cOwesD);
+        } else {
+            const dOwesC = (Number(lobby.mainGameLedger[debtorName]?.[creditorName]) || 0) +
+                           (Number(lobby.sideBetLedger[debtorName]?.[creditorName]) || 0);
+            const cOwesD = (Number(lobby.mainGameLedger[creditorName]?.[debtorName]) || 0) +
+                           (Number(lobby.sideBetLedger[creditorName]?.[debtorName]) || 0);
+            creditAmt = Math.max(0, dOwesC - cOwesD);
+        }
+    }
+
+    if (creditAmt <= 0) return false;
+
+    const historyMsg = `✅ Credit Applied: ${creditorName} credited ${debtorName} $${creditAmt.toFixed(2)}`;
+    const targetLedger = isBot ? lobby.botBetLedger : lobby.mainGameLedger;
+
+    // Record offsetting entry (creditorName -> debtorName) so bilateral net balance decreases by creditAmt
+    recordSessionAndLifetimeDebt(lobby, targetLedger, creditorName, debtorName, creditAmt, historyMsg);
+    return true;
 }
 
 function getSanitizedLobby(lobby, wsId) {
@@ -2425,6 +2497,7 @@ module.exports = {
     addLedgerHistory,
     resolveUserId,
     recordSessionAndLifetimeDebt,
+    applySessionCredit,
     syncLifetimeLedgerBalances,
     sendLifetimeLedger,
     startReadyCountdown,
