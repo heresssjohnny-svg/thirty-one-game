@@ -16,6 +16,7 @@ const {
     leaveLobby,
     recordForfeitedPlayer,
     addLedgerHistory,
+    applySessionCredit,
     resetLobbyToReadyRoom,
     checkNextHandReady,
     syncLifetimeLedgerBalances,
@@ -902,22 +903,42 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        case 'APPLY_SESSION_CREDIT':
         case 'CLEAR_DEBT': {
-            if (currentLobbyCode && lobbies[currentLobbyCode] && data.debtor && data.creditor) {
-                const lobby = lobbies[currentLobbyCode];
+            let code = currentLobbyCode || ws.currentLobbyCode || data.code;
+            let lobby = code ? lobbies[code] : null;
+
+            // Fallback: locate lobby by socket or username if code wasn't attached
+            if (!lobby) {
+                const searchName = (data.creditor || currentUsername || ws.currentUsername || '').trim().toLowerCase();
+                lobby = Object.values(lobbies).find(l =>
+                    (l.players || []).some(p => p.id === ws || (searchName && p.username.toLowerCase() === searchName)) ||
+                    (l.spectators || []).some(s => s.idSocket === ws || (searchName && s.username.toLowerCase() === searchName))
+                ) || null;
+                if (lobby) code = lobby.code;
+            }
+
+            if (lobby && data.debtor) {
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                const isBot = lobby.players.some(p => (p.username === data.debtor || p.username === data.creditor) && p.isBot);
-                const ledger = isBot ? lobby.botBetLedger : (data.ledgerType === 'side' ? lobby.sideBetLedger : lobby.mainGameLedger);
-                clearDebts(ledger, data.debtor, data.creditor);
-                if (typeof addLedgerHistory === 'function') {
-                    addLedgerHistory(
-                        lobby,
-                        `✅ Settled: ${data.debtor} & ${data.creditor} cleared ${data.ledgerType === 'side' ? 'side bet' : 'session'} balance`,
-                        'settle'
-                    );
+                const creditorName = resolveSocketUsername(lobby, ws, data.creditor || currentUsername);
+                const creditAmount = Number(data.amount) || 0;
+
+                if (creditorName && typeof applySessionCredit === 'function') {
+                    applySessionCredit(lobby, creditorName, data.debtor, creditAmount);
                 }
-                syncLifetimeLedgerBalances(lobby);
-                broadcastLobbyUpdate(currentLobbyCode);
+
+                broadcastLobbyUpdate(lobby.code);
+
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'SESSION_LEDGER_DATA',
+                        mainGameLedger: lobby.mainGameLedger || {},
+                        sideBetLedger: lobby.sideBetLedger || {},
+                        botBetLedger: lobby.botBetLedger || {},
+                        ledgerHistory: lobby.ledgerHistory || [],
+                        activeBets: lobby.activeBets || []
+                    }));
+                }
             }
             break;
         }
