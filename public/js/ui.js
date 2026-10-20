@@ -119,7 +119,6 @@ window.safePlaySound = function(cueType) {
     if (localStorage.getItem('blitz31_sfx_enabled') === 'false') return;
 
     try {
-        // 1. Direct targeting of primed DOM tags FIRST (bypasses Android WebSocket blocks)
         const audioEl = document.getElementById(`sound-${cueType}`);
         if (audioEl) {
             try { audioEl.currentTime = 0; } catch (e) {}
@@ -130,13 +129,11 @@ window.safePlaySound = function(cueType) {
             return;
         }
 
-        // 2. Global helper fallback
         if (typeof window.playSound === 'function') {
             window.playSound(cueType);
             return;
         }
 
-        // 3. Dynamic audio fallback
         const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
         fallbackAudio.play().catch(() => {});
     } catch (e) {}
@@ -371,7 +368,7 @@ window.syncChatHistory = function(chatHistory) {
 
 window.openSpectatorListModal = function() {
     const modal = document.getElementById('spectator-list-modal');
-    const body = document.getElementById('spectator-list-body') || document.getElementById('spectator-list-content');
+    const body = document.getElementById('spectator-list-body') || document.getElementById('spectators-list') || document.getElementById('spectator-list-content');
     const specs = window.clientState.spectatorsList || [];
     if (body) {
         if (specs.length === 0) {
@@ -412,7 +409,7 @@ window.openActiveBetsModal = function() {
 };
 
 // -------------------------------------------------------------
-// 5. LIVE COUNTDOWN BARS & QUICK SEAT REACTIONS
+// 5. LIVE COUNTDOWN BARS & NON-BLOCKING REACTION POPOVER
 // -------------------------------------------------------------
 function updateLiveCountdownBars() {
     const lobby = window.appGlobals?.latestLobbySnapshot;
@@ -432,7 +429,6 @@ function updateLiveCountdownBars() {
         bar.style.background = rem <= 6000 ? '#ef4444' : (rem <= 12000 ? '#f59e0b' : '#10b981');
     });
 
-    // Subtle haptic tick during final 5 seconds of local player's turn
     if ((lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') && lobby.turnDeadline) {
         const myName = getActiveUsername().toLowerCase();
         const turnName = (lobby.currentTurnUser || '').toLowerCase();
@@ -450,34 +446,60 @@ if (!window.appGlobals.countdownInterval) {
     window.appGlobals.countdownInterval = setInterval(updateLiveCountdownBars, 200);
 }
 
+// Places a compact "😀" button inside the top tools bar so nothing blocks the corner modals
 function ensureQuickReactionBar() {
-    let bar = document.getElementById('quick-reaction-bar');
-    if (bar) return bar;
+    // Remove any old bottom-right bar if it existed
+    const oldFloating = document.getElementById('quick-reaction-bar');
+    if (oldFloating) oldFloating.remove();
 
-    const gameView = document.getElementById('game-view');
-    if (!gameView) return null;
+    const toolsRow = document.getElementById('in-game-tools-row');
+    if (!toolsRow) return;
 
-    bar = document.createElement('div');
-    bar.id = 'quick-reaction-bar';
-    bar.style.cssText = `
-        position: fixed;
-        bottom: 10px;
-        right: 10px;
-        display: flex;
-        gap: 3px;
-        background: rgba(2, 44, 34, 0.9);
-        border: 1px solid rgba(251, 191, 36, 0.45);
-        border-radius: 999px;
-        padding: 3px 7px;
-        z-index: 950;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    `;
-    const emojis = ['🔥', '💀', '👏', '💸', '👀', '😂'];
-    bar.innerHTML = emojis.map(em => `
-        <button type="button" onclick="sendReaction('${em}')" style="background:transparent; border:none; font-size:1.1rem; padding:2px 4px; cursor:pointer; line-height:1;">${em}</button>
-    `).join('');
-    gameView.appendChild(bar);
-    return bar;
+    if (!document.getElementById('reaction-toggle-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'reaction-toggle-btn';
+        btn.className = 'tool-btn';
+        btn.type = 'button';
+        btn.innerHTML = '😀';
+        btn.title = 'Quick Reactions';
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const pop = document.getElementById('reaction-popover-menu');
+            if (!pop) return;
+            pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
+        };
+        toolsRow.appendChild(btn);
+    }
+
+    if (!document.getElementById('reaction-popover-menu')) {
+        const pop = document.createElement('div');
+        pop.id = 'reaction-popover-menu';
+        pop.style.cssText = `
+            display: none;
+            position: fixed;
+            top: 76px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(4, 28, 18, 0.96);
+            border: 1.5px solid #fbbf24;
+            border-radius: 999px;
+            padding: 4px 10px;
+            gap: 6px;
+            z-index: 9500;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.75);
+        `;
+        const emojis = ['🔥', '💀', '👏', '💸', '👀', '😂'];
+        pop.innerHTML = emojis.map(em => `
+            <button type="button" onclick="sendReaction('${em}'); document.getElementById('reaction-popover-menu').style.display='none';" style="background:transparent; border:none; font-size:1.25rem; padding:3px 5px; cursor:pointer; line-height:1;">${em}</button>
+        `).join('');
+        document.body.appendChild(pop);
+
+        document.addEventListener('click', (ev) => {
+            if (pop.style.display === 'flex' && !pop.contains(ev.target) && ev.target.id !== 'reaction-toggle-btn') {
+                pop.style.display = 'none';
+            }
+        });
+    }
 }
 
 function triggerReactionAnimationIfNew(lobby) {
@@ -1276,22 +1298,47 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 13. NEXT HAND OVERLAY
+    // 13. NEXT HAND OVERLAY (Compact Centered Popup — Does NOT blur or block the full screen)
     const nextHandOverlay = document.getElementById('next-hand-overlay');
     const nextBtn = document.getElementById('next-hand-btn');
+
+    if (nextHandOverlay) {
+        // Strip `.next-hand-banner` class so full-screen blur CSS does not cover the table
+        nextHandOverlay.className = 'next-hand-center-popup';
+        nextHandOverlay.style.cssText = `
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: auto;
+            height: auto;
+            inset: auto;
+            background: rgba(4, 28, 18, 0.95);
+            border: 2px solid #fbbf24;
+            border-radius: 12px;
+            padding: 10px 16px;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.85);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            z-index: 1500;
+            align-items: center;
+            justify-content: center;
+        `;
+    }
 
     if (lobby.gameState === 'roundOver') {
         const myPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
         if (lobby.activeParticipantsCount <= 1) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
             if (nextBtn) {
                 nextBtn.innerText = 'Returning to Ready Room...';
                 nextBtn.disabled = true;
             }
         } else if (myPlayer && !isPermanentlyOut) {
-            if (nextHandOverlay) nextHandOverlay.style.display = 'block';
+            if (nextHandOverlay) nextHandOverlay.style.display = 'flex';
             if (nextBtn) {
                 if (myPlayer.nextHandReady) {
                     nextBtn.innerText = 'Waiting for players (Auto in 8s)...';
@@ -1481,7 +1528,6 @@ window.updateUIFromLobby = function(lobby) {
             const dealerBadgeHtml = isDealer ? `<span class="dealer-badge">D</span>` : '';
             const micIcon = p.inVC ? (p.isMuted ? ' 🔇' : ' 🎙️') : '';
 
-            // Countdown Progress Bar (Active Turn OR Waiting Room 30s Ready Timer)
             let countdownBarHtml = '';
             if (isCurrent && lobby.turnDeadline) {
                 const dur = p.isOffline ? 5000 : 25000;
@@ -1521,7 +1567,6 @@ window.updateUIFromLobby = function(lobby) {
         });
 
         tableContainer.innerHTML = html;
-        if (nextHandOverlay) tableContainer.appendChild(nextHandOverlay);
     }
 
     // 16. LOCAL HAND RENDERING WITH AUTHENTIC PLAYING CARDS
