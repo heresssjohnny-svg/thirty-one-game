@@ -722,15 +722,47 @@ window.knockRound = function() {
 };
 
 // -------------------------------------------------------------
-// 8. SIDE BETS (WITH CUSTOM WAGER INPUT), PEEKING & HOST ADMIN
+// 8. SIDE BETS (SELF BETTING, CUSTOM WAGER INPUT), PEEKING & HOST ADMIN
 // -------------------------------------------------------------
 window.tapSeat = function(targetUsername) {
     const activeUsername = getActiveUsername();
     const lobby = window.appGlobals?.latestLobbySnapshot || {};
-    if (!targetUsername || targetUsername.toLowerCase() === activeUsername.toLowerCase()) return;
+    if (!targetUsername) return;
+
+    const isSelf = targetUsername.trim().toLowerCase() === activeUsername.trim().toLowerCase();
+    const attrTarget = targetUsername.replace(/'/g, "\\'");
+
+    // Tapping your own seat opens the "Bet on Yourself to Win" modal
+    if (isSelf) {
+        if (window.clientState.gameState === 'lobby') {
+            window.showCenterNotification('Start the game first to place a side bet on yourself!');
+            return;
+        }
+        if (window.clientState.isSpectator) return;
+
+        const modalTitle = document.getElementById('bet-modal-title');
+        const modalBody = document.getElementById('bet-modal-body');
+        if (modalTitle) modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager amount to bet on yourself winning this hand:</p>
+                <div style="display:flex; gap:6px; margin-bottom:8px;">
+                    <button style="flex:1;" onclick="submitGlobalProposal('${attrTarget}', 5)">$5</button>
+                    <button style="flex:1;" onclick="submitGlobalProposal('${attrTarget}', 10)">$10</button>
+                    <button style="flex:1;" onclick="submitGlobalProposal('${attrTarget}', 20)">$20</button>
+                </div>
+                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                    <input type="number" id="custom-bet-wager-input" min="1" step="1" placeholder="Custom $" style="flex:1; padding:7px; border-radius:6px; border:1px solid #d97706; background:rgba(0,0,0,0.4); color:#fff;" />
+                    <button style="background:#d97706;" onclick="const v=parseInt(document.getElementById('custom-bet-wager-input')?.value,10); if(v>0) submitGlobalProposal('${attrTarget}', v);">Bet Custom</button>
+                </div>
+                <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
+            `;
+        }
+        window.toggleModal('bet-modal', true);
+        return;
+    }
 
     const isHost = Boolean(lobby.host && lobby.host.toLowerCase() === activeUsername.toLowerCase());
-    const attrTarget = targetUsername.replace(/'/g, "\\'");
 
     const hostAdminHtml = isHost ? `
         <div style="display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.15);">
@@ -763,9 +795,7 @@ window.tapSeat = function(targetUsername) {
         if (modalTitle) modalTitle.innerText = `Actions for ${targetUsername}`;
         if (modalBody) {
             let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${attrTarget}')">🔍 Peek Hand</button>`;
-            if (activeCount === 2) {
-                actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${attrTarget}')">🤝 Bet on ${escapeHtmlUI(targetUsername)}</button>`;
-            }
+            actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${attrTarget}')">🤝 Bet on ${escapeHtmlUI(targetUsername)} to Win</button>`;
             actionsHtml += hostAdminHtml;
             actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal', false)" style="margin-top:6px;">Cancel</button>`;
             modalBody.innerHTML = actionsHtml;
@@ -777,25 +807,33 @@ window.tapSeat = function(targetUsername) {
     if (activeCount >= 3) {
         const modalTitle = document.getElementById('bet-modal-title');
         const modalBody = document.getElementById('bet-modal-body');
-        if (modalTitle) modalTitle.innerText = `First to Lose Bet on ${targetUsername}`;
+        if (modalTitle) modalTitle.innerText = `Side Bets on ${targetUsername}`;
         if (modalBody) {
             modalBody.innerHTML = `
-                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Select wager that ${escapeHtmlUI(targetUsername)} is eliminated before you:</p>
+                <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px;"><b>First to Lose:</b> Bet ${escapeHtmlUI(targetUsername)} is eliminated before you:</p>
                 <div style="display:flex; gap:6px; margin-bottom:8px;">
                     <button style="flex:1;" onclick="submitEliminationProposal('${attrTarget}', 5)">$5</button>
                     <button style="flex:1;" onclick="submitEliminationProposal('${attrTarget}', 10)">$10</button>
                     <button style="flex:1;" onclick="submitEliminationProposal('${attrTarget}', 20)">$20</button>
                 </div>
-                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <div style="display:flex; gap:6px; margin-bottom:10px;">
                     <input type="number" id="custom-bet-wager-input" min="1" step="1" placeholder="Custom $" style="flex:1; padding:7px; border-radius:6px; border:1px solid #d97706; background:rgba(0,0,0,0.4); color:#fff;" />
                     <button style="background:#d97706;" onclick="const v=parseInt(document.getElementById('custom-bet-wager-input')?.value,10); if(v>0) submitEliminationProposal('${attrTarget}', v);">Bet Custom</button>
+                </div>
+                <div style="border-top:1px solid rgba(255,255,255,0.12); padding-top:8px; margin-bottom:6px;">
+                    <p style="font-size:0.8rem; color:#93c5fd; margin:0 0 6px;"><b>Or Table Bet:</b> I like ${escapeHtmlUI(targetUsername)} to win this hand:</p>
+                    <div style="display:flex; gap:6px;">
+                        <button style="flex:1; background:#2563eb;" onclick="submitGlobalProposal('${attrTarget}', 5)">$5</button>
+                        <button style="flex:1; background:#2563eb;" onclick="submitGlobalProposal('${attrTarget}', 10)">$10</button>
+                        <button style="flex:1; background:#2563eb;" onclick="submitGlobalProposal('${attrTarget}', 20)">$20</button>
+                    </div>
                 </div>
                 ${hostAdminHtml}
                 <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
             `;
         }
         window.toggleModal('bet-modal', true);
-    } else if (activeCount === 2) {
+    } else {
         const modalTitle = document.getElementById('bet-modal-title');
         const modalBody = document.getElementById('bet-modal-body');
         if (modalTitle) modalTitle.innerText = `Global Side Bet: I like ${targetUsername} to win!`;
@@ -1229,8 +1267,8 @@ window.updateUIFromLobby = function(lobby) {
         if (sidebar) sidebar.style.display = 'flex';
         let sidebarHtml = '';
         globalProps.forEach(gp => {
-            const isMyProp = (gp.proposer === activeUsername);
-            const alreadyAccepted = gp.acceptedBy && gp.acceptedBy.includes(activeUsername);
+            const isMyProp = Boolean(gp.proposer && gp.proposer.toLowerCase() === activeUsername.toLowerCase());
+            const alreadyAccepted = Boolean(gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === activeUsername.toLowerCase()));
 
             let actionHtml = '';
             if (isMyProp) {
@@ -1510,7 +1548,7 @@ window.updateUIFromLobby = function(lobby) {
                 <div class="pot-total-display" id="pot-total-banner">Pot: $${mainPotValue}</div>
                 <div class="side-pot-total-display" id="side-pot-total-banner" style="display:${lobby.sidePotTotal && lobby.sidePotTotal > 0 ? 'block' : 'none'};">Side Pots: $${lobby.sidePotTotal || 0}</div>
             </div>
-            <div class="deck-center" id="deck-center" style="position: relative;">
+            <div class="deck-center" id="deck-center">
                 <div class="card-slot back" id="deck-pile" onclick="drawCard('deck')">
                     <div class="card-back-inner"></div>
                     <span class="deck-counter-badge" id="deck-count-display">${lobby.deckCount || 0} left</span>
