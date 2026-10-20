@@ -35,7 +35,7 @@
 }
 
 /* =============================================================
-   CENTER POTS & DECK LAYOUT (Fixes Floating Top-Left Issue)
+   CENTER POTS & DECK LAYOUT
    ============================================================= */
 .pots-container {
     position: absolute;
@@ -73,10 +73,10 @@
 }
 
 .deck-center, .table-center-area {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -612,14 +612,14 @@
 .corner-modal .mini-card.red-suit span,
 .corner-modal .mini-card.card-red,
 .corner-modal .mini-card.card-red span {
-    color: #dc2626 !important; /* Authentic Red */
+    color: #dc2626 !important;
 }
 
 .corner-modal .mini-card.black-suit,
 .corner-modal .mini-card.black-suit span,
 .corner-modal .mini-card.card-black,
 .corner-modal .mini-card.card-black span {
-    color: #111827 !important; /* Deep Black */
+    color: #111827 !important;
 }
 
 .corner-modal .mini-card .mini-val {
@@ -710,7 +710,7 @@
     flex-wrap: wrap;
     gap: 14px;
     position: relative;
-    z-index: 600; /* Keeps it above the oval table */
+    z-index: 600;
     margin: 6px 0;
     font-size: 0.8rem;
     color: #e2e8f0;
@@ -738,32 +738,10 @@
 #next-hand-overlay,
 .next-hand-banner,
 .next-hand-center-popup {
-    position: fixed !important;
-    top: 43% !important;
-    left: 50% !important;
-    right: auto !important;
-    bottom: auto !important;
-    inset: auto !important;
-    transform: translate(-50%, -50%) !important;
-    width: max-content !important;
-    max-width: 85vw !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    padding: 6px 10px !important;
-    margin: 0 !important;
-    background: rgba(4, 28, 18, 0.96) !important;
-    border: 2px solid #fbbf24 !important;
-    border-radius: 10px !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    z-index: 250 !important;
-    pointer-events: auto !important;
+    display: none !important;
 }
 
 #deck-center #deck-next-hand-popup,
-#table-oval-container #next-hand-overlay,
 #deck-next-hand-popup {
     position: absolute !important;
     top: 50% !important;
@@ -787,22 +765,6 @@
     -webkit-backdrop-filter: none !important;
     z-index: 250 !important;
     pointer-events: auto !important;
-}
-
-#next-hand-overlay .showdown-title,
-#next-hand-overlay #showdown-hands-container {
-    display: none !important;
-}
-
-#next-hand-overlay .showdown-modal-box {
-    width: max-content !important;
-    height: auto !important;
-    max-width: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
 }
 
 #next-hand-btn {
