@@ -15,6 +15,7 @@ const {
     handleKnock,
     leaveLobby,
     recordForfeitedPlayer,
+    addLedgerHistory,
     resetLobbyToReadyRoom,
     checkNextHandReady,
     syncLifetimeLedgerBalances,
@@ -63,16 +64,19 @@ function resolveSocketUsername(lobby, ws, fallbackUsername) {
 // -------------------------------------------------------------
 
 function clearReadyCountdown(player) {
-    if (player && player.readyTimeout) {
+    if (!player) return;
+    if (player.readyTimeout) {
         clearTimeout(player.readyTimeout);
         player.readyTimeout = null;
     }
+    player.readyDeadline = null;
 }
 
 function startReadyCountdown(lobby, player, broadcastLobbyList) {
     if (!lobby || lobby.gameState !== 'lobby' || !player || player.isBot) return;
 
     clearReadyCountdown(player);
+    player.readyDeadline = Date.now() + 30000;
 
     player.readyTimeout = setTimeout(() => {
         const curLobby = lobbies[lobby.code];
@@ -233,10 +237,12 @@ function executeLevel8AITurn(lobby, player) {
 }
 
 function clearTurnTimer(lobby) {
-    if (lobby && lobby.turnTimeoutTimer) {
+    if (!lobby) return;
+    if (lobby.turnTimeoutTimer) {
         clearTimeout(lobby.turnTimeoutTimer);
         lobby.turnTimeoutTimer = null;
     }
+    lobby.turnDeadline = null;
 }
 
 function resetTurnTimer(lobby) {
@@ -248,17 +254,24 @@ function resetTurnTimer(lobby) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated) return;
 
+    // 5-second fast-play AI if player is disconnected, 25 seconds if connected
     if (!currentPlayer.isBot) {
+        const isDisconnected = !currentPlayer.id || (typeof currentPlayer.id === 'object' && currentPlayer.id.readyState !== WebSocket.OPEN);
+        const timeoutMs = isDisconnected ? 5000 : 25000;
+        lobby.turnDeadline = Date.now() + timeoutMs;
+
         lobby.turnTimeoutTimer = setTimeout(() => {
             const curLobby = lobbies[lobby.code];
             if (!curLobby || (curLobby.gameState !== 'playing' && curLobby.gameState !== 'finalTurn')) return;
             const p = curLobby.players[curLobby.turnIndex];
             if (!p || p.username !== currentPlayer.username) return;
 
-            curLobby.phaseMessage = `🤖 ${p.username} ran out of time! AI Level 8 played for them.`;
+            curLobby.phaseMessage = isDisconnected
+                ? `🤖 ${p.username} is offline — AI Level 8 played their turn.`
+                : `🤖 ${p.username} ran out of time! AI Level 8 played for them.`;
             executeLevel8AITurn(curLobby, p);
             broadcastLobbyUpdate(curLobby.code);
-        }, 25000); // 25 seconds turn timeout
+        }, timeoutMs);
     }
 }
 
@@ -355,11 +368,14 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 discardPile: [],
                 turnIndex: 0,
                 dealerIndex: 0,
+                turnDeadline: null,
                 phaseMessage: 'Waiting for players to ready up...',
                 turnsTakenThisRound: 0,
                 livesVote: null,
                 endGameVote: null,
                 forfeitedPlayers: [],
+                ledgerHistory: [],
+                lastReaction: null,
                 players: [{
                     id: ws,
                     userId: extractSocketUserId(ws),
@@ -368,6 +384,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     wager: 5,
                     cards: [],
                     ready: false,
+                    readyDeadline: null,
                     seat: 0,
                     eliminated: false,
                     isBot: false,
@@ -435,6 +452,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
 
             if (existingPlayer) {
+                const wasOffline = !existingPlayer.id;
                 existingPlayer.id = ws;
                 if (incomingUid) existingPlayer.userId = incomingUid;
                 existingPlayer.disconnectedAt = null;
@@ -457,6 +475,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     lobby.spectators = lobby.spectators.filter(s => s.username.toLowerCase() !== username.toLowerCase());
                     if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
                         startReadyCountdown(lobby, existingPlayer, broadcastLobbyList);
+                    } else if (wasOffline && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') && lobby.players[lobby.turnIndex] === existingPlayer) {
+                        // Restore full 25s turn timer if they reconnected on their turn
+                        resetTurnTimer(lobby);
                     }
                 }
             } else if (existingSpec) {
@@ -473,6 +494,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         wager: 5,
                         cards: [],
                         ready: false,
+                        readyDeadline: null,
                         seat: findOpenSeat(lobby),
                         eliminated: false,
                         isBot: false,
@@ -659,6 +681,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                                 wager: 5,
                                 cards: [],
                                 ready: false,
+                                readyDeadline: null,
                                 seat: openSeat !== -1 ? openSeat : lobby.players.length,
                                 eliminated: false,
                                 isBot: false,
@@ -783,6 +806,14 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 // 3. Debtor now owes target creditor directly
                 recordDebt(lobby.mainGameLedger, fromDebtor, toCreditor, transferAmt);
 
+                if (typeof addLedgerHistory === 'function') {
+                    addLedgerHistory(
+                        lobby,
+                        `🔄 Debt Transfer: ${fromDebtor} moved $${transferAmt} (via ${myUsername}) to ${toCreditor}`,
+                        'transfer'
+                    );
+                }
+
                 if (typeof syncLifetimeLedgerBalances === 'function') {
                     syncLifetimeLedgerBalances(lobby);
                 }
@@ -878,6 +909,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const isBot = lobby.players.some(p => (p.username === data.debtor || p.username === data.creditor) && p.isBot);
                 const ledger = isBot ? lobby.botBetLedger : (data.ledgerType === 'side' ? lobby.sideBetLedger : lobby.mainGameLedger);
                 clearDebts(ledger, data.debtor, data.creditor);
+                if (typeof addLedgerHistory === 'function') {
+                    addLedgerHistory(
+                        lobby,
+                        `✅ Settled: ${data.debtor} & ${data.creditor} cleared ${data.ledgerType === 'side' ? 'side bet' : 'session'} balance`,
+                        'settle'
+                    );
+                }
                 syncLifetimeLedgerBalances(lobby);
                 broadcastLobbyUpdate(currentLobbyCode);
             }
@@ -893,6 +931,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     mainGameLedger: lobby.mainGameLedger || {},
                     sideBetLedger: lobby.sideBetLedger || {},
                     botBetLedger: lobby.botBetLedger || {},
+                    ledgerHistory: lobby.ledgerHistory || [],
                     activeBets: lobby.activeBets || []
                 }));
             }
@@ -995,6 +1034,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         wager: 5,
                         cards: [],
                         ready: false,
+                        readyDeadline: null,
                         seat: findOpenSeat(lobby),
                         eliminated: false,
                         isBot: true,
@@ -1422,6 +1462,28 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
+        case 'SEND_REACTION':
+        case 'QUICK_REACTION': {
+            if (currentLobbyCode && lobbies[currentLobbyCode] && data.emoji) {
+                const lobby = lobbies[currentLobbyCode];
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const senderName = resolveSocketUsername(lobby, ws, currentUsername);
+                if (!senderName) break;
+
+                const cleanEmoji = String(data.emoji).trim().slice(0, 8);
+                if (!cleanEmoji) break;
+
+                lobby.lastReaction = {
+                    id: `rx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                    username: senderName,
+                    emoji: cleanEmoji,
+                    timestamp: Date.now()
+                };
+                broadcastLobbyUpdate(currentLobbyCode);
+            }
+            break;
+        }
+
         // ---------------------------------------------------------
         // 5. END GAME VOTE ENGINE
         // ---------------------------------------------------------
@@ -1583,6 +1645,11 @@ function setupWebSocket(wss, broadcastLobbyList) {
                     if (disconnectedUid) player.userId = disconnectedUid;
                     player.id = null;
                     player.disconnectedAt = Date.now();
+
+                    // If it was this player's active turn, switch their remaining timer to the 5s fast-play AI timer
+                    if ((lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') && lobby.players[lobby.turnIndex] === player) {
+                        resetTurnTimer(lobby);
+                    }
 
                     // If an end game vote is active and this player drops, check if threshold is resolved
                     if (lobby.endGameVote) {
