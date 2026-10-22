@@ -21,7 +21,7 @@ const mailTransporter = nodemailer.createTransport({
     secure: true,
     auth: {
         user: SMTP_EMAIL,
-        pass: SMTP_PASSWORD.replace(/\s+/g, '') // Strips spaces automatically -> ybsgsbmtdctcsoqj
+        pass: SMTP_PASSWORD.replace(/\s+/g, '')
     }
 });
 
@@ -99,7 +99,6 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid username/email or password.' });
         }
 
-        // Token lifetime: 30 days if Remember Me is checked, otherwise 1 day
         const tokenDuration = rememberMe ? '30d' : '1d';
         const token = jwt.sign(
             { userId: user.id, username: user.username, isGuest: false },
@@ -121,62 +120,86 @@ router.post('/login', async (req, res) => {
 // 3. PASSWORD RECOVERY: REQUEST RESET CODE (WITH EMAIL SENDER)
 // -------------------------------------------------------------
 router.post('/forgot-password', async (req, res) => {
-    const { identifier } = req.body;
-    if (!identifier) {
-        return res.status(400).json({ error: 'Please enter your username or registered email.' });
-    }
-
-    const user = db.findUserByIdentifier(identifier.trim());
-    if (!user) {
-        // Obscure user enumeration for security
-        return res.json({ message: 'If an account exists with that identifier, a recovery code has been sent to the registered email.' });
-    }
-
-    // Generate 6-digit numeric recovery code valid for 15 minutes
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = Date.now() + 15 * 60 * 1000;
-
-    db.setResetToken(user.id, resetCode, expiry);
-
-    // Logs the reset PIN to the terminal / PM2 logs as a backup
-    console.log(`\n======================================================`);
-    console.log(`[PASSWORD RECOVERY CODE] User: ${user.username} | Email: ${user.email}`);
-    console.log(`CODE: ${resetCode} (Expires in 15 minutes)`);
-    console.log(`======================================================\n`);
-
-    if (!user.email) {
-        return res.status(400).json({ error: 'This account does not have a recovery email linked.' });
-    }
-
     try {
-        await mailTransporter.sendMail({
-            from: `"Blitz 31" <${SMTP_EMAIL}>`,
-            to: user.email,
-            subject: 'Your Blitz 31 Password Recovery Code',
-            text: `Hello ${user.username},\n\nYour 6-digit password recovery code is: ${resetCode}\n\nThis code will expire in 15 minutes.\n\nIf you did not request a password reset, you can safely ignore this email.`,
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #061c11; color: #f8fafc; border: 2px solid #d4af37; border-radius: 10px; text-align: center;">
-                    <h2 style="color: #fbbf24; margin-top: 0;">Blitz 31 Password Recovery</h2>
-                    <p style="color: #cbd5e1; font-size: 14px;">Hello <strong>${user.username}</strong>,</p>
-                    <p style="color: #cbd5e1; font-size: 14px;">Enter the 6-digit recovery code below in the game to set a new password:</p>
-                    <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #34d399; margin: 20px 0; padding: 14px; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 8px;">
-                        ${resetCode}
-                    </div>
-                    <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0;">This code expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
-                </div>
-            `
-        });
+        const { identifier } = req.body;
+        const cleanId = (identifier || '').trim();
 
-        console.log(`[Auth] Recovery email successfully sent to ${user.email}`);
-        return res.json({
-            message: 'Recovery code sent! Check your email inbox (and spam folder) for the 6-digit code.',
-            userId: user.id
-        });
-    } catch (mailErr) {
-        console.error('[Auth] Failed to send recovery email:', mailErr.message);
-        return res.status(500).json({
-            error: 'Failed to send recovery email. Please try again shortly.'
-        });
+        if (!cleanId) {
+            return res.status(400).json({ error: 'Please enter your username or registered email.' });
+        }
+
+        let user = null;
+        if (typeof db.findUserByIdentifier === 'function') {
+            user = db.findUserByIdentifier(cleanId);
+        }
+        if (!user && typeof db.findUserByUsername === 'function') {
+            user = db.findUserByUsername(cleanId);
+        }
+        if (!user && typeof db.findUserByEmail === 'function') {
+            user = db.findUserByEmail(cleanId.toLowerCase());
+        }
+
+        if (!user) {
+            return res.status(404).json({ error: 'No account found matching that username or email.' });
+        }
+
+        // Generate 6-digit numeric recovery code valid for 15 minutes
+        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = Date.now() + 15 * 60 * 1000;
+
+        if (typeof db.setResetToken === 'function') {
+            db.setResetToken(user.id, resetCode, expiry);
+        }
+
+        // Print to PM2 logs as a backup
+        console.log(`\n======================================================`);
+        console.log(`[PASSWORD RECOVERY CODE] User: ${user.username} | Email: ${user.email || 'None'}`);
+        console.log(`CODE: ${resetCode} (Expires in 15 minutes)`);
+        console.log(`======================================================\n`);
+
+        const recipientEmail = user.email || (cleanId.includes('@') ? cleanId : null);
+
+        if (recipientEmail) {
+            try {
+                await mailTransporter.sendMail({
+                    from: `"Blitz 31" <${SMTP_EMAIL}>`,
+                    to: recipientEmail,
+                    subject: 'Your Blitz 31 Password Recovery Code',
+                    text: `Hello ${user.username},\n\nYour 6-digit password recovery code is: ${resetCode}\n\nThis code will expire in 15 minutes.`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #061c11; color: #f8fafc; border: 2px solid #d4af37; border-radius: 10px; text-align: center;">
+                            <h2 style="color: #fbbf24; margin-top: 0;">Blitz 31 Password Recovery</h2>
+                            <p style="color: #cbd5e1; font-size: 14px;">Hello <strong>${user.username}</strong>,</p>
+                            <p style="color: #cbd5e1; font-size: 14px;">Enter the 6-digit recovery code below in the game to set a new password:</p>
+                            <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #34d399; margin: 20px 0; padding: 14px; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 8px;">
+                                ${resetCode}
+                            </div>
+                            <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0;">This code expires in 15 minutes.</p>
+                        </div>
+                    `
+                });
+
+                console.log(`[Auth] Recovery email successfully sent to ${recipientEmail}`);
+                return res.json({
+                    message: 'Recovery code sent! Check your email inbox (and spam folder).',
+                    userId: user.id
+                });
+            } catch (mailErr) {
+                console.error('[Auth] Mail transporter failed:', mailErr.message);
+                return res.json({
+                    message: 'Code generated! (Email delivery failed, check server PM2 logs).',
+                    userId: user.id
+                });
+            }
+        } else {
+            return res.json({
+                message: 'Recovery code generated! Check server logs (no recovery email on file).',
+                userId: user.id
+            });
+        }
+    } catch (err) {
+        console.error('[Auth] /forgot-password fatal error:', err);
+        return res.status(500).json({ error: 'Server error processing recovery request.' });
     }
 });
 
@@ -185,8 +208,9 @@ router.post('/forgot-password', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/reset-password', async (req, res) => {
     const { identifier, code, newPassword } = req.body;
+    const cleanId = (identifier || '').trim();
 
-    if (!identifier || !code || !newPassword) {
+    if (!cleanId || !code || !newPassword) {
         return res.status(400).json({ error: 'All fields (account, code, and new password) are required.' });
     }
 
@@ -194,7 +218,17 @@ router.post('/reset-password', async (req, res) => {
         return res.status(400).json({ error: 'New password must be at least 6 characters.' });
     }
 
-    const user = db.findUserByIdentifier(identifier.trim());
+    let user = null;
+    if (typeof db.findUserByIdentifier === 'function') {
+        user = db.findUserByIdentifier(cleanId);
+    }
+    if (!user && typeof db.findUserByUsername === 'function') {
+        user = db.findUserByUsername(cleanId);
+    }
+    if (!user && typeof db.findUserByEmail === 'function') {
+        user = db.findUserByEmail(cleanId.toLowerCase());
+    }
+
     if (!user) {
         return res.status(404).json({ error: 'Account not found.' });
     }
