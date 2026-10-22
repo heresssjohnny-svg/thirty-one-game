@@ -9,23 +9,24 @@ const config = require('./config');
 
 const JWT_SECRET = (config && config.JWT_SECRET) || process.env.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026';
 
-// Built-in memory store for reset codes (guarantees codes work even if db.js lacks reset helpers)
+// Built-in memory store for reset codes
 const memoryResetCodes = new Map();
 
 // -------------------------------------------------------------
-// EMAIL / SMTP CONFIGURATION (Forced IPv4 + Fast Timeouts for Hetzner)
+// EMAIL / SMTP CONFIGURATION (Port 587 STARTTLS - Open on Hetzner)
 // -------------------------------------------------------------
 const SMTP_EMAIL = (config && config.SMTP_EMAIL) || process.env.SMTP_EMAIL || 'heresssjohnny@gmail.com';
 const SMTP_PASSWORD = (config && config.SMTP_PASSWORD) || process.env.SMTP_PASSWORD || 'ybsg sbmt dctc soqj';
 
 const mailTransporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    family: 4, // Forces IPv4 so Hetzner doesn't hang on IPv6 lookup
-    connectionTimeout: 6000,
-    greetingTimeout: 6000,
-    socketTimeout: 8000,
+    port: 587,
+    secure: false, // Must be false for Port 587 (uses STARTTLS)
+    requireTLS: true,
+    family: 4,     // Forces IPv4
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
     auth: {
         user: SMTP_EMAIL,
         pass: SMTP_PASSWORD.replace(/\s+/g, '')
@@ -157,7 +158,7 @@ router.post('/login', async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 3. PASSWORD RECOVERY: REQUEST RESET CODE (WITH EMAIL SENDER)
+// 3. PASSWORD RECOVERY: REQUEST RESET CODE (PORT 587 EMAIL SENDER)
 // -------------------------------------------------------------
 router.post('/forgot-password', async (req, res) => {
     try {
@@ -183,7 +184,7 @@ router.post('/forgot-password', async (req, res) => {
             try { db.setResetToken(user.id, resetCode, expiry); } catch (e) {}
         }
 
-        // Always log to PM2 terminal as an immediate backup
+        // Log to PM2 terminal as backup
         console.log(`\n======================================================`);
         console.log(`[PASSWORD RECOVERY CODE] User: ${user.username} | Email: ${user.email || 'None'}`);
         console.log(`CODE: ${resetCode} (Expires in 15 minutes)`);
@@ -219,14 +220,13 @@ router.post('/forgot-password', async (req, res) => {
 
             console.log(`[Auth] Recovery email successfully sent to ${recipientEmail}`);
             return res.json({
-                message: `Recovery code emailed to ${recipientEmail}!`,
+                message: `Recovery code emailed to ${recipientEmail}! Check your inbox (and spam folder).`,
                 userId: user.id
             });
         } catch (mailErr) {
             console.error('[Auth] Email send error:', mailErr.message);
-            // Still advance the user to Step 2 so they aren't stuck if Hetzner blocks outbound SMTP
             return res.json({
-                message: 'Code generated! (Email blocked by server firewall—check PM2 logs for the 6-digit code).',
+                message: `Code generated! (Email error: ${mailErr.message} — check PM2 logs for the 6-digit code).`,
                 userId: user.id
             });
         }
@@ -258,7 +258,6 @@ router.post('/reset-password', async (req, res) => {
             return res.status(404).json({ error: 'Account not found.' });
         }
 
-        // Check memory store first, then db.verifyResetToken
         let isValid = false;
         const memEntry = memoryResetCodes.get(user.id);
         if (memEntry && memEntry.code === cleanCode && Date.now() < memEntry.expiry) {
