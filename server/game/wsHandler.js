@@ -1483,27 +1483,30 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-        case 'SEND_REACTION':
-        case 'QUICK_REACTION': {
-            if (currentLobbyCode && lobbies[currentLobbyCode] && data.emoji) {
-                const lobby = lobbies[currentLobbyCode];
-                touchLobbyActivity(lobby, broadcastLobbyList);
-                const senderName = resolveSocketUsername(lobby, ws, currentUsername);
-                if (!senderName) break;
+                case 'SEND_REACTION':
+        case 'SEAT_REACTION': {
+            const code = (data.code || currentLobbyCode || ws.currentLobbyCode || '').toUpperCase();
+            const lobby = lobbies[code];
+            if (!lobby) break;
 
-                const cleanEmoji = String(data.emoji).trim().slice(0, 8);
-                if (!cleanEmoji) break;
+            const allowedReactions = [
+                '🔥', '💀', '👏', '💸', '👀', '😂',
+                'sb:horn', 'sb:cash', 'sb:rimshot', 'sb:sad', 'sb:crickets', 'sb:siren'
+            ];
+            const rawEmoji = String(data.emoji || data.reaction || '').trim();
+            if (!allowedReactions.includes(rawEmoji)) break;
 
-                lobby.lastReaction = {
-                    id: `rx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                    username: senderName,
-                    emoji: cleanEmoji,
-                    timestamp: Date.now()
-                };
-                broadcastLobbyUpdate(currentLobbyCode);
-            }
+            const senderName = resolveSocketUsername(lobby, ws, data.username) || 'Player';
+            lobby.lastReaction = {
+                id: `rx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                username: senderName,
+                emoji: rawEmoji,
+                timestamp: Date.now()
+            };
+            broadcastLobbyUpdate(lobby.code);
             break;
         }
+
 
         // ---------------------------------------------------------
         // 5. END GAME VOTE ENGINE
