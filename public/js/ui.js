@@ -531,7 +531,7 @@ window.openActiveBetsModal = function() {
 };
 
 // -------------------------------------------------------------
-// 5. LIVE COUNTDOWN BARS & NON-BLOCKING REACTION POPOVER
+// 5. LIVE COUNTDOWN BARS, EMOJI POPOVER & TABLE SOUNDBOARD
 // -------------------------------------------------------------
 function updateLiveCountdownBars() {
     const lobby = window.appGlobals?.latestLobbySnapshot;
@@ -568,7 +568,173 @@ if (!window.appGlobals.countdownInterval) {
     window.appGlobals.countdownInterval = setInterval(updateLiveCountdownBars, 200);
 }
 
-// Places a compact "😀" button inside the top tools bar so nothing blocks the corner modals
+// Catalog of Soundboard items (sent as "sb:<id>" via SEND_REACTION)
+const SOUNDBOARD_ITEMS = {
+    horn:     { emoji: '📢', label: 'Horn' },
+    cash:     { emoji: '💰', label: 'Cash' },
+    rimshot:  { emoji: '🥁', label: 'Ba-Dum' },
+    sad:      { emoji: '🎺', label: 'Sad' },
+    crickets: { emoji: '🦗', label: 'Crickets' },
+    siren:    { emoji: '🚨', label: 'Hype' }
+};
+
+// Web Audio API Soundboard Synthesizer (Respects Settings SFX Toggle & Volume Slider)
+window.playSoundboardEffect = function(soundId) {
+    const sfxToggle = document.getElementById('setting-sfx');
+    if (sfxToggle && !sfxToggle.checked) return;
+    if (localStorage.getItem('blitz31_sfx_enabled') === 'false') return;
+
+    const vol = (typeof window.getSfxVolume === 'function') ? window.getSfxVolume() : 1.0;
+    if (vol <= 0) return;
+
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!window.audioCtx) window.audioCtx = new AudioCtx();
+        const ctx = window.audioCtx;
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const now = ctx.currentTime;
+
+        if (soundId === 'horn') {
+            // Stadium Airhorn (detuned sawtooth chord)
+            [349.23, 354.0, 440.0, 523.25].forEach(freq => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(0.18 * vol, now);
+                gain.gain.setValueAtTime(0.18 * vol, now + 0.45);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.65);
+            });
+        } else if (soundId === 'cash') {
+            // Ka-Ching! Cash Register Bell
+            const notes = [
+                { f: 1046.50, t: 0,    d: 0.09 },
+                { f: 1318.51, t: 0.08, d: 0.45 },
+                { f: 2637.02, t: 0.08, d: 0.50 }
+            ];
+            notes.forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(n.f, now + n.t);
+                gain.gain.setValueAtTime(0.32 * vol, now + n.t);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + n.t);
+                osc.stop(now + n.t + n.d);
+            });
+        } else if (soundId === 'rimshot') {
+            // Ba-Dum-Tss!
+            const hits = [
+                { fStart: 160, fEnd: 80,  t: 0,    d: 0.11 },
+                { fStart: 120, fEnd: 55,  t: 0.14, d: 0.13 }
+            ];
+            hits.forEach(h => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(h.fStart, now + h.t);
+                osc.frequency.exponentialRampToValueAtTime(h.fEnd, now + h.t + h.d);
+                gain.gain.setValueAtTime(0.5 * vol, now + h.t);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + h.t + h.d);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + h.t);
+                osc.stop(now + h.t + h.d);
+            });
+            // Cymbal "Tss" noise burst
+            const bufferSize = ctx.sampleRate * 0.35;
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(5000, now + 0.30);
+            const nGain = ctx.createGain();
+            nGain.gain.setValueAtTime(0.28 * vol, now + 0.30);
+            nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+            noise.connect(filter);
+            filter.connect(nGain);
+            nGain.connect(ctx.destination);
+            noise.start(now + 0.30);
+            noise.stop(now + 0.65);
+        } else if (soundId === 'sad') {
+            // Wah-Wah-Wah-Waaaah (Sad Trombone)
+            const notes = [
+                { f: 293.66, t: 0.00, d: 0.28 },
+                { f: 277.18, t: 0.30, d: 0.28 },
+                { f: 261.63, t: 0.60, d: 0.28 },
+                { f: 246.94, t: 0.90, d: 0.65, slide: 215.0 }
+            ];
+            notes.forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(n.f, now + n.t);
+                if (n.slide) {
+                    osc.frequency.linearRampToValueAtTime(n.slide, now + n.t + n.d);
+                }
+                gain.gain.setValueAtTime(0.22 * vol, now + n.t);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + n.t);
+                osc.stop(now + n.t + n.d);
+            });
+        } else if (soundId === 'crickets') {
+            // Awkward Crickets Chirp
+            [0, 0.06, 0.12, 0.38, 0.44, 0.50].forEach(offset => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(4200, now + offset);
+                gain.gain.setValueAtTime(0.18 * vol, now + offset);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.045);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + offset);
+                osc.stop(now + offset + 0.045);
+            });
+        } else if (soundId === 'siren') {
+            // Rising/Falling Casino Hype Siren
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.linearRampToValueAtTime(880, now + 0.28);
+            osc.frequency.linearRampToValueAtTime(440, now + 0.56);
+            osc.frequency.linearRampToValueAtTime(880, now + 0.80);
+            gain.gain.setValueAtTime(0.28 * vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.85);
+        }
+    } catch (e) {
+        console.warn('[Soundboard] Playback error:', e);
+    }
+};
+
+window.sendSoundboard = function(soundId) {
+    if (!SOUNDBOARD_ITEMS[soundId]) return;
+    if (typeof window.sendReaction === 'function') {
+        window.sendReaction(`sb:${soundId}`);
+    } else {
+        sendSocket({ type: 'SEND_REACTION', emoji: `sb:${soundId}` });
+    }
+};
+
+// Mounts both the "😀" Emoji Toggle and "📢" Soundboard Toggle inside #in-game-tools-row
 function ensureQuickReactionBar() {
     const oldFloating = document.getElementById('quick-reaction-bar');
     if (oldFloating) oldFloating.remove();
@@ -583,6 +749,7 @@ function ensureQuickReactionBar() {
         chatToggleBtn.onclick = (e) => window.toggleChatWindow(e);
     }
 
+    // 1. Emoji Reaction Toggle Button (😀)
     if (!document.getElementById('reaction-toggle-btn')) {
         const btn = document.createElement('button');
         btn.id = 'reaction-toggle-btn';
@@ -593,12 +760,34 @@ function ensureQuickReactionBar() {
         btn.onclick = (e) => {
             e.stopPropagation();
             const pop = document.getElementById('reaction-popover-menu');
+            const sbPop = document.getElementById('soundboard-popover-menu');
+            if (sbPop) sbPop.style.display = 'none';
             if (!pop) return;
             pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
         };
         toolsRow.appendChild(btn);
     }
 
+    // 2. Soundboard Toggle Button (📢)
+    if (!document.getElementById('soundboard-toggle-btn')) {
+        const sbBtn = document.createElement('button');
+        sbBtn.id = 'soundboard-toggle-btn';
+        sbBtn.className = 'tool-btn';
+        sbBtn.type = 'button';
+        sbBtn.innerHTML = '📢';
+        sbBtn.title = 'Table Soundboard';
+        sbBtn.onclick = (e) => {
+            e.stopPropagation();
+            const sbPop = document.getElementById('soundboard-popover-menu');
+            const emoPop = document.getElementById('reaction-popover-menu');
+            if (emoPop) emoPop.style.display = 'none';
+            if (!sbPop) return;
+            sbPop.style.display = (sbPop.style.display === 'flex') ? 'none' : 'flex';
+        };
+        toolsRow.appendChild(sbBtn);
+    }
+
+    // 3. Emoji Popover Menu
     if (!document.getElementById('reaction-popover-menu')) {
         const pop = document.createElement('div');
         pop.id = 'reaction-popover-menu';
@@ -628,6 +817,42 @@ function ensureQuickReactionBar() {
             }
         });
     }
+
+    // 4. Soundboard Popover Menu
+    if (!document.getElementById('soundboard-popover-menu')) {
+        const sbPop = document.createElement('div');
+        sbPop.id = 'soundboard-popover-menu';
+        sbPop.style.cssText = `
+            display: none;
+            position: fixed;
+            top: 76px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(4, 28, 18, 0.97);
+            border: 1.5px solid #fbbf24;
+            border-radius: 14px;
+            padding: 6px 10px;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 92vw;
+            z-index: 9500;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.8);
+        `;
+        sbPop.innerHTML = Object.entries(SOUNDBOARD_ITEMS).map(([key, item]) => `
+            <button type="button" onclick="sendSoundboard('${key}'); document.getElementById('soundboard-popover-menu').style.display='none';" style="background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.45); border-radius:8px; color:#f8fafc; font-size:0.74rem; font-weight:700; padding:5px 8px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+                <span style="font-size:1rem;">${item.emoji}</span>
+                <span>${item.label}</span>
+            </button>
+        `).join('');
+        document.body.appendChild(sbPop);
+
+        document.addEventListener('click', (ev) => {
+            if (sbPop.style.display === 'flex' && !sbPop.contains(ev.target) && ev.target.id !== 'soundboard-toggle-btn') {
+                sbPop.style.display = 'none';
+            }
+        });
+    }
 }
 
 function triggerReactionAnimationIfNew(lobby) {
@@ -637,6 +862,16 @@ function triggerReactionAnimationIfNew(lobby) {
 
     window.appGlobals.lastRenderedReactionId = rx.id;
 
+    let displayContent = rx.emoji || '';
+    if (typeof displayContent === 'string' && displayContent.startsWith('sb:')) {
+        const soundKey = displayContent.slice(3);
+        const item = SOUNDBOARD_ITEMS[soundKey];
+        if (item) {
+            window.playSoundboardEffect(soundKey);
+            displayContent = `${item.emoji} ${item.label}!`;
+        }
+    }
+
     let targetSeat = null;
     document.querySelectorAll('[data-player-username]').forEach(el => {
         if ((el.getAttribute('data-player-username') || '').toLowerCase() === (rx.username || '').toLowerCase()) {
@@ -645,10 +880,17 @@ function triggerReactionAnimationIfNew(lobby) {
     });
 
     const floater = document.createElement('div');
-    floater.textContent = rx.emoji;
+    floater.textContent = displayContent;
     floater.style.cssText = `
         position: fixed;
-        font-size: 2rem;
+        font-size: ${ String(rx.emoji).startsWith('sb:') ? '1.05rem' : '2rem' };
+        font-weight: 900;
+        color: #fbbf24;
+        background: ${ String(rx.emoji).startsWith('sb:') ? 'rgba(4, 28, 18, 0.92)' : 'transparent' };
+        border: ${ String(rx.emoji).startsWith('sb:') ? '1.5px solid #fbbf24' : 'none' };
+        border-radius: 999px;
+        padding: ${ String(rx.emoji).startsWith('sb:') ? '3px 10px' : '0' };
+        white-space: nowrap;
         z-index: 10025;
         pointer-events: none;
         transition: transform 1.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 1.35s ease;
@@ -668,13 +910,14 @@ function triggerReactionAnimationIfNew(lobby) {
 
     document.body.appendChild(floater);
     requestAnimationFrame(() => {
-        floater.style.transform = 'translate(-50%, -60px) scale(1.35)';
+        floater.style.transform = 'translate(-50%, -60px) scale(1.2)';
         floater.style.opacity = '0';
     });
     setTimeout(() => {
         if (floater.parentNode) floater.parentNode.removeChild(floater);
     }, 1400);
 }
+
 
 // -------------------------------------------------------------
 // 6. IN-GAME ACTIONS, AUDIO & CARD INTERACTIONS
