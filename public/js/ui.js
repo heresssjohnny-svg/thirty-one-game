@@ -119,7 +119,8 @@ window.safePlaySound = function(cueType) {
     if (localStorage.getItem('blitz31_sfx_enabled') === 'false') return;
 
     try {
-        const audioEl = document.getElementById(`sound-${cueType}`);
+        const normalized = (cueType === 'turn') ? 'yourturn' : cueType;
+        const audioEl = document.getElementById(`sound-${normalized}`);
         if (audioEl) {
             try { audioEl.currentTime = 0; } catch (e) {}
             const playPromise = audioEl.play();
@@ -129,12 +130,12 @@ window.safePlaySound = function(cueType) {
             return;
         }
 
-        if (typeof window.playSound === 'function') {
-            window.playSound(cueType);
+        if (typeof window.playSound === 'function' && window.playSound !== window.safePlaySound) {
+            window.playSound(normalized);
             return;
         }
 
-        const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
+        const fallbackAudio = new Audio(`/mp3s/${normalized}.mp3`);
         fallbackAudio.play().catch(() => {});
     } catch (e) {}
 };
@@ -272,17 +273,139 @@ function formatShowdownScoreBadge(cards) {
 }
 
 // -------------------------------------------------------------
-// 4. MODALS, NOTIFICATIONS, LOBBY LIST & CHAT HELPERS
+// 4. MODALS, NOTIFICATIONS, LOBBY LIST & CHAT DRAWER ENGINE
 // -------------------------------------------------------------
 window.toggleModal = function(modalId, forceState) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
-    if (typeof forceState === 'boolean') {
-        modal.style.display = forceState ? 'flex' : 'none';
-        return;
+    const isHidden = window.getComputedStyle(modal).display === 'none' || modal.classList.contains('hidden');
+    const shouldShow = (typeof forceState === 'boolean') ? forceState : isHidden;
+    if (shouldShow) {
+        modal.classList.remove('hidden');
+        modal.style.setProperty('display', 'flex', 'important');
+    } else {
+        modal.classList.add('hidden');
+        modal.style.setProperty('display', 'none', 'important');
     }
-    const isVisible = modal.style.display === 'flex' || modal.style.display === 'block';
-    modal.style.display = isVisible ? 'none' : 'flex';
+};
+
+window.toggleChatWindow = function(e) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
+    const chat = document.getElementById('chat-window') || document.getElementById('chat-drawer');
+    if (!chat) return;
+
+    const computedDisplay = window.getComputedStyle(chat).display;
+    const isHidden = computedDisplay === 'none' || chat.classList.contains('hidden');
+
+    if (isHidden) {
+        chat.classList.remove('hidden', 'minimized');
+        chat.style.setProperty('display', 'flex', 'important');
+        chat.style.setProperty('z-index', '9998', 'important');
+
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.remove('unread');
+            chatBtn.innerText = '💬 Chat';
+        }
+        const box = document.getElementById('chat-messages') || document.getElementById('chat-box');
+        if (box) box.scrollTop = box.scrollHeight;
+        const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
+        if (inp) setTimeout(() => inp.focus(), 80);
+    } else {
+        chat.classList.add('hidden');
+        chat.style.setProperty('display', 'none', 'important');
+    }
+};
+
+window.closeChatWindow = function(e) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
+    const chat = document.getElementById('chat-window') || document.getElementById('chat-drawer');
+    if (chat) {
+        chat.classList.add('hidden');
+        chat.style.setProperty('display', 'none', 'important');
+    }
+};
+
+window.appendChatMessage = function(userOrData, msgText) {
+    const chatBox = document.getElementById('chat-messages') || document.getElementById('chat-box');
+    if (!chatBox) return;
+
+    let sender = 'Player';
+    let text = '';
+
+    if (typeof userOrData === 'object' && userOrData !== null) {
+        sender = userOrData.user || userOrData.username || userOrData.sender || 'Player';
+        text = userOrData.text || userOrData.message || '';
+    } else {
+        sender = userOrData || 'Player';
+        text = msgText || '';
+    }
+
+    if (!text) return;
+
+    const div = document.createElement('div');
+    div.className = 'chat-line';
+    div.style.cssText = 'margin-bottom:4px; font-size:0.8rem;';
+    div.innerHTML = `<strong style="color:#fbbf24;">${escapeHtmlUI(sender)}:</strong> <span style="color:#f8fafc;">${escapeHtmlUI(text)}</span>`;
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    const chatWin = document.getElementById('chat-window') || document.getElementById('chat-drawer');
+    const isVisible = chatWin && window.getComputedStyle(chatWin).display !== 'none' && !chatWin.classList.contains('hidden');
+    if (!isVisible) {
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.add('unread');
+            chatBtn.innerText = '💬 Chat (!)';
+        }
+    }
+};
+
+window.syncChatHistory = function(chatHistory) {
+    const chatBox = document.getElementById('chat-messages') || document.getElementById('chat-box');
+    if (!chatBox || !Array.isArray(chatHistory)) return;
+
+    const lastCount = window.appGlobals.lastChatCount || 0;
+    chatBox.innerHTML = chatHistory.map(msg => {
+        const sender = msg.user || msg.username || 'Player';
+        const text = msg.text || msg.message || '';
+        return `
+            <div class="chat-line" style="margin-bottom:4px; font-size:0.8rem;">
+                <strong style="color:#fbbf24;">${escapeHtmlUI(sender)}:</strong>
+                <span style="color:#f8fafc;">${escapeHtmlUI(text)}</span>
+            </div>
+        `;
+    }).join('');
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    const chatWin = document.getElementById('chat-window') || document.getElementById('chat-drawer');
+    const isVisible = chatWin && window.getComputedStyle(chatWin).display !== 'none' && !chatWin.classList.contains('hidden');
+    if (chatHistory.length > lastCount && !isVisible) {
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.add('unread');
+            chatBtn.innerText = '💬 Chat (!)';
+        }
+    }
+    window.appGlobals.lastChatCount = chatHistory.length;
+};
+
+window.sendChatMessage = function() {
+    const input = document.getElementById('chat-input') || document.getElementById('chat-text-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    sendSocket({
+        type: 'CHAT_MESSAGE',
+        message: text,
+        text: text
+    });
+    input.value = '';
 };
 
 window.showCenterNotification = function(message, durationMs = 3200) {
@@ -353,31 +476,27 @@ window.renderLobbyList = window.renderPublicLobbies = function(lobbiesList) {
     }).join('');
 };
 
-window.syncChatHistory = function(chatHistory) {
-    const chatBox = document.getElementById('chat-messages') || document.getElementById('chat-box');
-    if (!chatBox || !Array.isArray(chatHistory)) return;
-
-    chatBox.innerHTML = chatHistory.map(msg => `
-        <div class="chat-line" style="margin-bottom:4px; font-size:0.8rem;">
-            <strong style="color:#fbbf24;">${escapeHtmlUI(msg.user)}:</strong>
-            <span style="color:#f8fafc;">${escapeHtmlUI(msg.text)}</span>
-        </div>
-    `).join('');
-    chatBox.scrollTop = chatBox.scrollHeight;
-};
-
 window.openSpectatorListModal = function() {
     const modal = document.getElementById('spectator-list-modal');
     const body = document.getElementById('spectator-list-body') || document.getElementById('spectators-list') || document.getElementById('spectator-list-content');
     const specs = window.clientState.spectatorsList || [];
+    const lobby = window.appGlobals?.latestLobbySnapshot;
     if (body) {
         if (specs.length === 0) {
             body.innerHTML = `<div style="color:#94a3b8; text-align:center; padding:10px;">No spectators currently watching.</div>`;
         } else {
-            body.innerHTML = specs.map(s => `<div style="padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.1);">${escapeHtmlUI(s.username || s)}</div>`).join('');
+            body.innerHTML = specs.map(s => {
+                const sObj = (typeof s === 'object' && s !== null) ? s : { username: String(s) };
+                const vcBadge = sObj.inVC ? (sObj.isMuted ? ' 🔇' : ' 🎙️') : '';
+                const adminBtns = window.getHostAdminButtonsHTML(lobby, sObj);
+                return `<div style="padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;"><span><b>${escapeHtmlUI(sObj.username)}</b>${vcBadge}</span>${adminBtns}</div>`;
+            }).join('');
         }
     }
-    if (modal) modal.style.display = 'flex';
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+    }
 };
 
 window.closeSpectatorListModal = function() {
@@ -391,7 +510,7 @@ window.closeSettingsModal = function() {
 };
 
 window.openActiveBetsModal = function() {
-    const modal = document.getElementById('active-bets-modal');
+    const modal = document.getElementById('active-bets-modal') || document.getElementById('bet-modal');
     const list = document.getElementById('active-bets-list');
     const bets = window.clientState.activeBetsList || [];
     if (list) {
@@ -405,7 +524,10 @@ window.openActiveBetsModal = function() {
             `).join('');
         }
     }
-    if (modal) modal.style.display = 'flex';
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+    }
 };
 
 // -------------------------------------------------------------
@@ -453,6 +575,13 @@ function ensureQuickReactionBar() {
 
     const toolsRow = document.getElementById('in-game-tools-row');
     if (!toolsRow) return;
+
+    // Ensure Chat button always triggers window.toggleChatWindow directly
+    const chatToggleBtn = document.getElementById('chat-toggle-btn');
+    if (chatToggleBtn && !chatToggleBtn.dataset.chatBound) {
+        chatToggleBtn.dataset.chatBound = 'true';
+        chatToggleBtn.onclick = (e) => window.toggleChatWindow(e);
+    }
 
     if (!document.getElementById('reaction-toggle-btn')) {
         const btn = document.createElement('button');
@@ -724,6 +853,51 @@ window.knockRound = function() {
 // -------------------------------------------------------------
 // 8. SIDE BETS (SELF BETTING, CUSTOM WAGER INPUT), PEEKING & HOST ADMIN
 // -------------------------------------------------------------
+window.isCurrentUserLobbyHost = function(lobby) {
+    const snap = lobby || window.appGlobals?.latestLobbySnapshot;
+    if (!snap || !snap.host) return false;
+    const myName = getActiveUsername().trim().toLowerCase();
+    return Boolean(myName && snap.host.trim().toLowerCase() === myName);
+};
+
+window.adminKickPlayer = function(targetUsername) {
+    if (!targetUsername) return;
+    if (!confirm(`Kick ${targetUsername} from the room?`)) return;
+    sendSocket({
+        type: 'ADMIN_KICK_PLAYER',
+        requesterUsername: getActiveUsername(),
+        targetUsername: targetUsername
+    });
+    window.toggleModal('seat-action-modal', false);
+    window.toggleModal('bet-modal', false);
+};
+
+window.adminMutePlayer = function(targetUsername) {
+    if (!targetUsername) return;
+    sendSocket({
+        type: 'ADMIN_MUTE_PLAYER',
+        requesterUsername: getActiveUsername(),
+        targetUsername: targetUsername
+    });
+    window.showCenterNotification(`🔇 Muted ${targetUsername}`);
+    window.toggleModal('seat-action-modal', false);
+    window.toggleModal('bet-modal', false);
+};
+
+window.getHostAdminButtonsHTML = function(lobby, targetPlayer) {
+    if (!window.isCurrentUserLobbyHost(lobby) || !targetPlayer) return '';
+    const myName = getActiveUsername().trim().toLowerCase();
+    const targetName = (targetPlayer.username || '').trim();
+    if (!targetName || targetName.toLowerCase() === myName) return '';
+    const attrTarget = targetName.replace(/'/g, "\\'");
+    return `
+        <span style="display:inline-flex; gap:4px; margin-left:6px;">
+            <button type="button" style="font-size:0.65rem; padding:2px 6px; background:#475569;" onclick="adminMutePlayer('${attrTarget}')">🔇</button>
+            <button type="button" class="danger" style="font-size:0.65rem; padding:2px 6px;" onclick="adminKickPlayer('${attrTarget}')">👢</button>
+        </span>
+    `;
+};
+
 window.tapSeat = function(targetUsername) {
     const activeUsername = getActiveUsername();
     const lobby = window.appGlobals?.latestLobbySnapshot || {};
@@ -854,6 +1028,15 @@ window.tapSeat = function(targetUsername) {
             `;
         }
         window.toggleModal('bet-modal', true);
+    }
+};
+
+window.handleSeatClick = function(seatIndex) {
+    const lobby = window.appGlobals?.latestLobbySnapshot;
+    if (!lobby || !Array.isArray(lobby.players)) return;
+    const player = lobby.players.find((p, idx) => (p.seat !== undefined ? p.seat : idx) === seatIndex);
+    if (player && player.username) {
+        window.tapSeat(player.username);
     }
 };
 
