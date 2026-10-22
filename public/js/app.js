@@ -1,31 +1,77 @@
-// public/js/app.js - Auth Handlers, Password Recovery & Session Lifecycle
+// public/js/app.js - Modal Controls, Auth Handlers, Password Recovery & Session Lifecycle
 
 // -------------------------------------------------------------
-// 1. SOCKET AUTHENTICATION HELPER
+// 1. UNIVERSAL MODAL & DRAWER CONTROLLER (SAFE FALLBACKS)
 // -------------------------------------------------------------
-function authenticateActiveSocket(token, user) {
-    if (!token) return;
-    if (typeof window.connectSocket === 'function') {
-        window.connectSocket();
-    }
-    const ws = window.appGlobals?.ws || window.ws || window.gameSocket;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-            ws.send(JSON.stringify({
-                type: 'AUTH_TOKEN',
-                token: token,
-                userId: user?.id,
-                username: user?.username
-            }));
-        } catch (e) {}
+function getModalElement(id) {
+    return document.getElementById(id) || null;
+}
+
+function openModal(id) {
+    const el = getModalElement(id);
+    if (el) {
+        el.style.display = 'flex';
+        el.classList.remove('hidden');
     }
 }
 
+function closeModal(id) {
+    const el = getModalElement(id);
+    if (el) {
+        el.style.display = 'none';
+        el.classList.add('hidden');
+    }
+}
+
+function toggleModal(id, forceState) {
+    const el = getModalElement(id);
+    if (!el) return;
+    const isHidden = !el.style.display || el.style.display === 'none' || el.classList.contains('hidden');
+    const shouldOpen = (typeof forceState === 'boolean') ? forceState : isHidden;
+    if (shouldOpen) {
+        openModal(id);
+    } else {
+        closeModal(id);
+    }
+}
+
+// Dismiss modal overlays when tapping outside the modal box
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.classList && (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-backdrop'))) {
+        if (e.target.id === 'dealer-draw-modal') return; // Never dismiss dealer draw by backdrop tap
+        e.target.style.display = 'none';
+        e.target.classList.add('hidden');
+    }
+});
+
+// Preserve specialized handlers from ui.js and ledger.js if already loaded
+window.openModal = window.openModal || openModal;
+window.closeModal = window.closeModal || closeModal;
+window.toggleModal = window.toggleModal || toggleModal;
+window.openSettingsModal = window.openSettingsModal || function() {
+    if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
+    if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
+    openModal('settings-modal');
+};
+window.closeSettingsModal = window.closeSettingsModal || function() { closeModal('settings-modal'); };
+window.openRulesModal = window.openRulesModal || function() { openModal('rules-modal'); };
+window.closeRulesModal = window.closeRulesModal || function() { closeModal('rules-modal'); };
+window.openSpectatorListModal = window.openSpectatorListModal || function() { openModal('spectator-list-modal'); };
+window.closeSpectatorListModal = window.closeSpectatorListModal || function() { closeModal('spectator-list-modal'); };
+window.openActiveBetsModal = window.openActiveBetsModal || function() { openModal('bet-modal'); };
+window.closeActiveBetsModal = window.closeActiveBetsModal || function() { closeModal('bet-modal'); };
+window.closeSessionLedgerModal = window.closeSessionLedgerModal || function() { closeModal('session-ledger-modal'); };
+window.closeLifetimeLedgerModal = window.closeLifetimeLedgerModal || function() { closeModal('lifetime-ledger-modal'); };
+
 // -------------------------------------------------------------
-// 2. TOKEN & SESSION PERSISTENCE HELPERS
+// 2. TOKEN & SOCKET AUTHENTICATION HELPERS
 // -------------------------------------------------------------
 function getStoredAuthToken() {
-    return sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || null;
+    return sessionStorage.getItem('31_jwt') ||
+           localStorage.getItem('31_jwt') ||
+           localStorage.getItem('auth_token') ||
+           localStorage.getItem('token') ||
+           null;
 }
 
 function saveStoredAuthToken(token, rememberMe = true) {
@@ -41,8 +87,35 @@ function saveStoredAuthToken(token, rememberMe = true) {
 
 function clearStoredAuthToken() {
     localStorage.removeItem('31_jwt');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('jwt');
     sessionStorage.removeItem('31_jwt');
     localStorage.removeItem('blitz31_active_room');
+}
+
+function authenticateActiveSocket(token, user) {
+    if (typeof window.connectSocket === 'function') {
+        window.connectSocket();
+    }
+    const authToken = token || getStoredAuthToken();
+    if (authToken && typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend({
+            type: 'AUTH_TOKEN',
+            token: authToken,
+            userId: user?.id,
+            username: user?.username
+        });
+    }
+    const activeRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room');
+    const myName = (user && user.username) || (window.clientState && window.clientState.username) || localStorage.getItem('saved_username') || 'Player1';
+    if (activeRoom && typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend({
+            type: 'JOIN_LOBBY',
+            code: activeRoom.toUpperCase(),
+            username: myName
+        });
+    }
 }
 
 // -------------------------------------------------------------
@@ -130,16 +203,17 @@ function updateViewForAuth(user) {
     const usernameInput = document.getElementById('username-input');
 
     if (!user) {
-        if (authOverlay) authOverlay.style.display = 'flex';
         if (mainMenu) mainMenu.style.display = 'none';
         if (gameView) gameView.style.display = 'none';
+        if (authOverlay) authOverlay.style.display = 'flex';
         return;
     }
 
     if (authOverlay) authOverlay.style.display = 'none';
-    if (!window.appGlobals?.currentJoinedCode) {
-        if (mainMenu) mainMenu.style.display = 'flex';
-        if (gameView) gameView.style.display = 'none';
+
+    const isGameActive = gameView && gameView.style.display === 'flex';
+    if (!isGameActive && mainMenu) {
+        mainMenu.style.display = 'flex';
     }
 
     const displayName = user.username || 'Player';
@@ -153,7 +227,7 @@ function updateViewForAuth(user) {
         window.clientState.username = displayName;
     }
 
-    if (typeof window.refreshLobbies === 'function') {
+    if (!isGameActive && typeof window.refreshLobbies === 'function') {
         window.refreshLobbies();
     }
 }
@@ -312,7 +386,7 @@ async function submitGuestLogin() {
 }
 
 // -------------------------------------------------------------
-// 7. PASSWORD RECOVERY DISPATCHERS
+// 7. PASSWORD RECOVERY DISPATCHERS (WITH VISUAL FEEDBACK)
 // -------------------------------------------------------------
 async function submitForgotPasswordRequest() {
     clearAuthError();
@@ -321,7 +395,17 @@ async function submitForgotPasswordRequest() {
     const identifier = identifierInput ? identifierInput.value.trim() : '';
 
     if (!identifier) {
-        return showAuthError('Please enter your account username or registered email.');
+        const msg = 'Please enter your account username or registered email.';
+        showAuthError(msg);
+        alert(msg);
+        return;
+    }
+
+    const btn = document.querySelector('#forgot-step-1 button');
+    const originalBtnText = btn ? btn.textContent : 'Send Recovery Code';
+    if (btn) {
+        btn.textContent = 'Sending...';
+        btn.disabled = true;
     }
 
     try {
@@ -331,9 +415,17 @@ async function submitForgotPasswordRequest() {
             body: JSON.stringify({ identifier })
         });
 
-        const data = await res.json();
+        const rawText = await res.text();
+        let data = {};
+        try {
+            data = JSON.parse(rawText);
+        } catch (parseErr) {
+            console.error('[Forgot Password] Non-JSON response:', rawText);
+        }
+
         if (res.ok) {
-            showAuthSuccess(data.message || 'Recovery code sent! Check your email inbox.');
+            const successMsg = data.message || 'Recovery code sent! Check your email inbox (and spam folder).';
+            showAuthSuccess(successMsg);
 
             const step1 = document.getElementById('forgot-step-1');
             const step2 = document.getElementById('forgot-step-2');
@@ -343,10 +435,20 @@ async function submitForgotPasswordRequest() {
             const codeInput = document.getElementById('reset-code');
             if (codeInput) codeInput.focus();
         } else {
-            showAuthError(data.error || 'Failed to process recovery request.');
+            const errMsg = data.error || `Error (${res.status}): Failed to process recovery request.`;
+            showAuthError(errMsg);
+            alert(errMsg);
         }
     } catch (err) {
-        showAuthError('Unable to connect to recovery service.');
+        console.error('[Forgot Password] Request error:', err);
+        const netMsg = 'Unable to connect to recovery service. Please verify the server is online.';
+        showAuthError(netMsg);
+        alert(netMsg);
+    } finally {
+        if (btn) {
+            btn.textContent = originalBtnText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -362,11 +464,24 @@ async function submitResetPassword() {
     const newPassword = newPasswordInput ? newPasswordInput.value : '';
 
     if (!identifier || !code || !newPassword) {
-        return showAuthError('All fields (Account, 6-digit code, new password) are required.');
+        const msg = 'All fields (Account, 6-digit code, new password) are required.';
+        showAuthError(msg);
+        alert(msg);
+        return;
     }
 
     if (newPassword.length < 6) {
-        return showAuthError('New password must be at least 6 characters.');
+        const msg = 'New password must be at least 6 characters.';
+        showAuthError(msg);
+        alert(msg);
+        return;
+    }
+
+    const btn = document.querySelector('#forgot-step-2 button');
+    const originalBtnText = btn ? btn.textContent : 'Set New Password';
+    if (btn) {
+        btn.textContent = 'Updating...';
+        btn.disabled = true;
     }
 
     try {
@@ -376,7 +491,12 @@ async function submitResetPassword() {
             body: JSON.stringify({ identifier, code, newPassword })
         });
 
-        const data = await res.json();
+        const rawText = await res.text();
+        let data = {};
+        try {
+            data = JSON.parse(rawText);
+        } catch (parseErr) {}
+
         if (res.ok) {
             alert(data.message || 'Password updated successfully! Please log in.');
             switchAuthTab('login');
@@ -389,10 +509,19 @@ async function submitResetPassword() {
                 loginPassInput.focus();
             }
         } else {
-            showAuthError(data.error || 'Password reset failed.');
+            const errMsg = data.error || 'Password reset failed.';
+            showAuthError(errMsg);
+            alert(errMsg);
         }
     } catch (err) {
-        showAuthError('Unable to connect to recovery service.');
+        const netMsg = 'Unable to connect to recovery service.';
+        showAuthError(netMsg);
+        alert(netMsg);
+    } finally {
+        if (btn) {
+            btn.textContent = originalBtnText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -501,6 +630,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (regPass) {
         regPass.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitAuthRegister();
+        });
+    }
+    const forgotId = document.getElementById('forgot-identifier');
+    if (forgotId) {
+        forgotId.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitForgotPasswordRequest();
+        });
+    }
+    const resetNewPass = document.getElementById('reset-new-password');
+    if (resetNewPass) {
+        resetNewPass.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitResetPassword();
         });
     }
 });
