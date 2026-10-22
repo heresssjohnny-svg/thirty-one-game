@@ -1,7 +1,7 @@
-// public/js/app.js - Modal Controls, Auth Handlers, Password Recovery & Session Lifecycle
+// public/js/app.js - Modal Controls, Chat Engine, Audio Bridge, Auth & Session Lifecycle
 
 // -------------------------------------------------------------
-// 1. UNIVERSAL MODAL & DRAWER CONTROLLER (SAFE FALLBACKS)
+// 1. UNIVERSAL MODAL & DRAWER CONTROLLER
 // -------------------------------------------------------------
 function getModalElement(id) {
     return document.getElementById(id) || null;
@@ -26,42 +26,355 @@ function closeModal(id) {
 function toggleModal(id, forceState) {
     const el = getModalElement(id);
     if (!el) return;
+    if (typeof forceState === 'boolean') {
+        if (forceState) openModal(id);
+        else closeModal(id);
+        return;
+    }
     const isHidden = !el.style.display || el.style.display === 'none' || el.classList.contains('hidden');
-    const shouldOpen = (typeof forceState === 'boolean') ? forceState : isHidden;
-    if (shouldOpen) {
+    if (isHidden) {
         openModal(id);
     } else {
         closeModal(id);
     }
 }
 
+// Settings Modal: Refreshes LiveKit audio outputs and participants before showing
+function openSettingsModal() {
+    if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
+    if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
+    openModal('settings-modal');
+}
+function closeSettingsModal() {
+    closeModal('settings-modal');
+}
+
+// Rules Modal Controls
+function openRulesModal() { openModal('rules-modal'); }
+function closeRulesModal() { closeModal('rules-modal'); }
+
+// Spectator List Modal Controls
+function openSpectatorListModal() {
+    const content = document.getElementById('spectators-list') || document.getElementById('spectators-list-content');
+    const specs = (window.clientState && window.clientState.spectatorsList) || [];
+    const lobby = window.appGlobals?.latestLobbySnapshot;
+    if (content) {
+        if (specs.length === 0) {
+            content.innerHTML = '<div class="empty-list-notice">No spectators currently watching.</div>';
+        } else {
+            content.innerHTML = '<ul style="padding-left:14px; margin:0; list-style:none;">' +
+                specs.map(s => {
+                    const sObj = (typeof s === 'object' && s !== null) ? s : { username: String(s) };
+                    const vcBadge = sObj.inVC ? (sObj.isMuted ? ' 🔇' : ' 🎙️') : '';
+                    const adminBtns = (typeof window.getHostAdminButtonsHTML === 'function')
+                        ? window.getHostAdminButtonsHTML(lobby, sObj)
+                        : '';
+                    return `<li style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;"><span><b>${sObj.username}</b>${vcBadge}</span>${adminBtns}</li>`;
+                }).join('') + '</ul>';
+        }
+    }
+    openModal('spectator-list-modal');
+}
+function closeSpectatorListModal() {
+    closeModal('spectator-list-modal');
+}
+
+// Active Bets & Side Bets Modal Controls
+function openActiveBetsModal() {
+    if (typeof window.hideAllBetsButtons === 'function') {
+        window.hideAllBetsButtons();
+    }
+    openModal('active-bets-modal');
+}
+function closeActiveBetsModal() {
+    closeModal('active-bets-modal');
+}
+
+function toggleGlobalSidebar() {
+    const sidebar = document.getElementById('global-side-bets-sidebar');
+    if (sidebar) {
+        const isHidden = !sidebar.style.display || sidebar.style.display === 'none' || sidebar.classList.contains('hidden');
+        sidebar.style.display = isHidden ? 'flex' : 'none';
+        sidebar.classList.toggle('hidden', !isHidden);
+        return;
+    }
+    const betModal = getModalElement('bet-modal');
+    if (betModal) {
+        toggleModal('bet-modal');
+        return;
+    }
+    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
+    if (ledger) toggleModal(ledger.id);
+}
+
+function toggleMinimizeBetModal() {
+    const modal = document.getElementById('bet-modal');
+    if (modal) modal.classList.toggle('minimized');
+}
+
+function toggleMinimizeGlobalSidebar() {
+    const sidebar = document.getElementById('global-side-bets-sidebar');
+    if (sidebar) sidebar.classList.toggle('minimized');
+}
+
+// Ledger Modal Controls
+function openLedgerModal() {
+    if (typeof window.toggleSessionLedger === 'function') {
+        window.toggleSessionLedger(true);
+        return;
+    }
+    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
+    if (ledger) openModal(ledger.id);
+}
+function closeLedgerModal() {
+    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
+    if (ledger) closeModal(ledger.id);
+}
+function closeSessionLedgerModal() {
+    closeModal('session-ledger-modal');
+}
+
+function openLifetimeLedgerModal() {
+    const token = getStoredAuthToken();
+    const username = (window.userSession && window.userSession.username) ||
+                     (window.clientState && window.clientState.username) ||
+                     localStorage.getItem('saved_username') || null;
+    const userId = (window.userSession && (window.userSession.id || window.userSession.userId)) || null;
+
+    if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend({
+            type: 'GET_LIFETIME_LEDGER',
+            token,
+            userId,
+            username
+        });
+    }
+    openModal('lifetime-ledger-modal');
+}
+function closeLifetimeLedgerModal() {
+    closeModal('lifetime-ledger-modal');
+}
+
+// -------------------------------------------------------------
+// 1A. TABLE CHAT DRAWER & MESSAGE ENGINE
+// -------------------------------------------------------------
+function toggleChatWindow() {
+    const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
+    if (!chat) return;
+    const isHidden = !chat.style.display || chat.style.display === 'none' || chat.classList.contains('hidden');
+    chat.style.display = isHidden ? 'flex' : 'none';
+    chat.classList.toggle('hidden', !isHidden);
+
+    if (isHidden) {
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.remove('unread');
+            chatBtn.innerText = '💬 Chat';
+        }
+        const box = document.getElementById('chat-messages');
+        if (box) box.scrollTop = box.scrollHeight;
+        const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
+        if (inp) setTimeout(() => inp.focus(), 80);
+    }
+}
+
+function closeChatWindow() {
+    const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
+    if (chat) {
+        chat.style.display = 'none';
+        chat.classList.add('hidden');
+    }
+}
+
+function appendChatMessage(userOrData, msgText) {
+    const box = document.getElementById('chat-messages');
+    if (!box) return;
+
+    let sender = 'Player';
+    let text = '';
+
+    // Support both appendChatMessage(user, msg) and appendChatMessage(dataObj)
+    if (typeof userOrData === 'object' && userOrData !== null) {
+        sender = userOrData.user || userOrData.username || userOrData.sender || 'Player';
+        text = userOrData.text || userOrData.message || '';
+    } else {
+        sender = userOrData || 'Player';
+        text = msgText || '';
+    }
+
+    if (!text) return;
+
+    const div = document.createElement('div');
+    div.style.marginBottom = '4px';
+    div.innerHTML = `<b>${sender}:</b> ${text}`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+
+    const win = getModalElement('chat-window') || getModalElement('chat-drawer');
+    const isVisible = win && win.style.display === 'flex' && !win.classList.contains('hidden');
+    if (!isVisible) {
+        const chatBtn = document.getElementById('chat-toggle-btn');
+        if (chatBtn) {
+            chatBtn.classList.add('unread');
+            chatBtn.innerText = '💬 Chat (!)';
+        }
+    }
+}
+
+function syncChatHistory(history) {
+    if (!Array.isArray(history)) return;
+    const box = document.getElementById('chat-messages');
+    if (!box) return;
+
+    window.appGlobals = window.appGlobals || {};
+    const lastCount = window.appGlobals.lastChatCount || 0;
+
+    if (history.length !== lastCount) {
+        box.innerHTML = history.map(m => {
+            const u = m.user || m.username || 'Player';
+            const t = m.text || m.message || '';
+            return `<div style="margin-bottom:4px;"><b>${u}:</b> ${t}</div>`;
+        }).join('');
+        box.scrollTop = box.scrollHeight;
+
+        const win = getModalElement('chat-window') || getModalElement('chat-drawer');
+        const isVisible = win && win.style.display === 'flex' && !win.classList.contains('hidden');
+        if (history.length > lastCount && !isVisible) {
+            const chatBtn = document.getElementById('chat-toggle-btn');
+            if (chatBtn) {
+                chatBtn.classList.add('unread');
+                chatBtn.innerText = '💬 Chat (!)';
+            }
+        }
+        window.appGlobals.lastChatCount = history.length;
+    }
+}
+
+function sendChatMessage() {
+    const input = document.getElementById('chat-input') || document.getElementById('chat-text-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    const code = (window.appGlobals && window.appGlobals.currentJoinedCode) ||
+                 localStorage.getItem('blitz31_active_room') || '';
+    const username = (window.userSession && window.userSession.username) ||
+                     (window.clientState && window.clientState.username) ||
+                     localStorage.getItem('saved_username') || 'Player';
+
+    const payload = {
+        type: 'CHAT_MESSAGE',
+        message: text,
+        text: text,
+        code: code ? code.toUpperCase() : undefined,
+        username: username
+    };
+
+    if (typeof window.initSocketAndSend === 'function') {
+        window.initSocketAndSend(payload);
+    } else if (typeof window.sendSocketMessage === 'function') {
+        window.sendSocketMessage(payload);
+    } else {
+        const ws = window.appGlobals?.ws || window.ws;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(payload));
+        }
+    }
+
+    input.value = '';
+}
+
 // Dismiss modal overlays when tapping outside the modal box
 document.addEventListener('click', (e) => {
     if (e.target && e.target.classList && (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-backdrop'))) {
-        if (e.target.id === 'dealer-draw-modal') return; // Never dismiss dealer draw by backdrop tap
+        if (e.target.id === 'dealer-draw-modal') return;
         e.target.style.display = 'none';
         e.target.classList.add('hidden');
     }
 });
 
-// Preserve specialized handlers from ui.js and ledger.js if already loaded
-window.openModal = window.openModal || openModal;
-window.closeModal = window.closeModal || closeModal;
-window.toggleModal = window.toggleModal || toggleModal;
-window.openSettingsModal = window.openSettingsModal || function() {
-    if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
-    if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
-    openModal('settings-modal');
+// -------------------------------------------------------------
+// 1B. SOUND EFFECTS, HAPTICS & SETTINGS BRIDGE
+// -------------------------------------------------------------
+window.isSfxEnabled = function() {
+    const toggle = document.getElementById('setting-sfx');
+    if (toggle) return toggle.checked;
+    return localStorage.getItem('blitz31_sfx_enabled') !== 'false';
 };
-window.closeSettingsModal = window.closeSettingsModal || function() { closeModal('settings-modal'); };
-window.openRulesModal = window.openRulesModal || function() { openModal('rules-modal'); };
-window.closeRulesModal = window.closeRulesModal || function() { closeModal('rules-modal'); };
-window.openSpectatorListModal = window.openSpectatorListModal || function() { openModal('spectator-list-modal'); };
-window.closeSpectatorListModal = window.closeSpectatorListModal || function() { closeModal('spectator-list-modal'); };
-window.openActiveBetsModal = window.openActiveBetsModal || function() { openModal('bet-modal'); };
-window.closeActiveBetsModal = window.closeActiveBetsModal || function() { closeModal('bet-modal'); };
-window.closeSessionLedgerModal = window.closeSessionLedgerModal || function() { closeModal('session-ledger-modal'); };
-window.closeLifetimeLedgerModal = window.closeLifetimeLedgerModal || function() { closeModal('lifetime-ledger-modal'); };
+
+window.isVibrateEnabled = function() {
+    const toggle = document.getElementById('setting-vibrate');
+    if (toggle) return toggle.checked;
+    return localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
+};
+
+window.toggleSoundSetting = function() {
+    const toggle = document.getElementById('setting-sfx');
+    const enabled = toggle ? toggle.checked : true;
+    localStorage.setItem('blitz31_sfx_enabled', enabled ? 'true' : 'false');
+};
+
+window.toggleVibrateSetting = function() {
+    const toggle = document.getElementById('setting-vibrate');
+    const enabled = toggle ? toggle.checked : true;
+    localStorage.setItem('blitz31_vibrate_enabled', enabled ? 'true' : 'false');
+};
+
+window.playSound = function(cueType) {
+    if (!window.isSfxEnabled()) return;
+    try {
+        const normalized = (cueType === 'turn') ? 'yourturn' : cueType;
+        const audioEl = document.getElementById(`sound-${normalized}`);
+        if (audioEl) {
+            try { audioEl.currentTime = 0; } catch (e) {}
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(() => {});
+            }
+            return;
+        }
+        const fallbackAudio = new Audio(`/mp3s/${normalized}.mp3`);
+        fallbackAudio.play().catch(() => {});
+    } catch (e) {}
+};
+
+window.safePlaySound = window.playSound;
+window.triggerAudioCue = window.playSound;
+window.playYourTurnCue = function() { window.playSound('yourturn'); };
+
+window.triggerVibration = function(pattern) {
+    if (!window.isVibrateEnabled()) return;
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
+};
+window.safeVibrate = window.triggerVibration;
+
+// Bind modal, chat & utility controllers to window
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.toggleModal = toggleModal;
+window.openSettingsModal = openSettingsModal;
+window.closeSettingsModal = closeSettingsModal;
+window.openRulesModal = openRulesModal;
+window.closeRulesModal = closeRulesModal;
+window.openSpectatorListModal = openSpectatorListModal;
+window.closeSpectatorListModal = closeSpectatorListModal;
+window.openActiveBetsModal = openActiveBetsModal;
+window.closeActiveBetsModal = closeActiveBetsModal;
+window.toggleGlobalSidebar = toggleGlobalSidebar;
+window.toggleMinimizeBetModal = toggleMinimizeBetModal;
+window.toggleMinimizeGlobalSidebar = toggleMinimizeGlobalSidebar;
+window.openLedgerModal = openLedgerModal;
+window.closeLedgerModal = closeLedgerModal;
+window.closeSessionLedgerModal = closeSessionLedgerModal;
+window.openLifetimeLedgerModal = openLifetimeLedgerModal;
+window.closeLifetimeLedgerModal = closeLifetimeLedgerModal;
+window.toggleChatWindow = toggleChatWindow;
+window.closeChatWindow = closeChatWindow;
+window.appendChatMessage = appendChatMessage;
+window.syncChatHistory = syncChatHistory;
+window.sendChatMessage = sendChatMessage;
 
 // -------------------------------------------------------------
 // 2. TOKEN & SOCKET AUTHENTICATION HELPERS
@@ -533,6 +846,10 @@ async function checkExistingSession() {
     if (sfxToggle) {
         sfxToggle.checked = localStorage.getItem('blitz31_sfx_enabled') !== 'false';
     }
+    const vibrateToggle = document.getElementById('setting-vibrate');
+    if (vibrateToggle) {
+        vibrateToggle.checked = localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
+    }
 
     const token = getStoredAuthToken();
     if (!token) {
@@ -642,6 +959,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resetNewPass) {
         resetNewPass.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitResetPassword();
+        });
+    }
+    const chatInput = document.getElementById('chat-input') || document.getElementById('chat-text-input');
+    if (chatInput) {
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendChatMessage();
+            }
         });
     }
 });
