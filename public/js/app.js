@@ -1,299 +1,31 @@
-// public/js/app.js - Modal Controls, Auth Management, Audio Bridge, Session State & Hardware Lifecycle
+// public/js/app.js - Auth Handlers, Password Recovery & Session Lifecycle
 
 // -------------------------------------------------------------
-// 1. UNIVERSAL MODAL & DRAWER CONTROLLER
+// 1. SOCKET AUTHENTICATION HELPER
 // -------------------------------------------------------------
-function getModalElement(id) {
-    return document.getElementById(id) || null;
-}
-
-function openModal(id) {
-    const el = getModalElement(id);
-    if (el) {
-        el.style.display = 'flex';
-        el.classList.remove('hidden');
+function authenticateActiveSocket(token, user) {
+    if (!token) return;
+    if (typeof window.connectSocket === 'function') {
+        window.connectSocket();
+    }
+    const ws = window.appGlobals?.ws || window.ws || window.gameSocket;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            ws.send(JSON.stringify({
+                type: 'AUTH_TOKEN',
+                token: token,
+                userId: user?.id,
+                username: user?.username
+            }));
+        } catch (e) {}
     }
 }
-
-function closeModal(id) {
-    const el = getModalElement(id);
-    if (el) {
-        el.style.display = 'none';
-        el.classList.add('hidden');
-    }
-}
-
-function toggleModal(id, forceState) {
-    const el = getModalElement(id);
-    if (!el) return;
-    if (typeof forceState === 'boolean') {
-        if (forceState) openModal(id);
-        else closeModal(id);
-        return;
-    }
-    const isHidden = !el.style.display || el.style.display === 'none' || el.classList.contains('hidden');
-    if (isHidden) {
-        openModal(id);
-    } else {
-        closeModal(id);
-    }
-}
-
-// Settings Modal: Refreshes LiveKit audio outputs and participants before showing
-function openSettingsModal() { 
-    if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
-    if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
-    openModal('settings-modal'); 
-}
-function closeSettingsModal() { closeModal('settings-modal'); }
-
-// Rules Modal Controls
-function openRulesModal() { openModal('rules-modal'); }
-function closeRulesModal() { closeModal('rules-modal'); }
-
-// Spectator List Modal Controls
-function openSpectatorListModal() {
-    const content = document.getElementById('spectator-list-body') ||
-                    document.getElementById('spectators-list') ||
-                    document.getElementById('spectators-list-content');
-    const specs = (window.clientState && window.clientState.spectatorsList) || [];
-    if (content) {
-        if (specs.length === 0) {
-            content.innerHTML = '<div class="empty-list-notice">No spectators currently watching.</div>';
-        } else {
-            content.innerHTML = '<ul style="padding-left:14px; margin:0;">' +
-                specs.map(s => `<li style="margin-bottom:4px;"><b>${s.username || s}</b>${s.inVC ? (s.isMuted ? ' 🔇' : ' 🎙️') : ''}</li>`).join('') +
-                '</ul>';
-        }
-    }
-    openModal('spectator-list-modal');
-}
-function closeSpectatorListModal() { closeModal('spectator-list-modal'); }
-
-// Active Bets Modal: Respects ui.js button-hiding guard
-function openActiveBetsModal() { 
-    if (typeof window.hideAllBetsButtons === 'function') {
-        window.hideAllBetsButtons();
-    }
-    openModal('active-bets-modal'); 
-}
-function closeActiveBetsModal() { closeModal('active-bets-modal'); }
-
-// Minimize / Restore Controls for Side Bet Modal & Global Sidebar
-function toggleMinimizeBetModal() {
-    const wrap = document.getElementById('bet-modal-content-wrap');
-    const btn = document.getElementById('bet-modal-min-btn');
-    if (!wrap) return;
-    const isCollapsed = wrap.style.display === 'none';
-    wrap.style.display = isCollapsed ? 'block' : 'none';
-    if (btn) btn.textContent = isCollapsed ? '—' : '+';
-}
-
-function toggleMinimizeGlobalSidebar() {
-    const list = document.getElementById('global-side-bets-list');
-    const btn = document.getElementById('global-sidebar-min-btn');
-    if (!list) return;
-    const isCollapsed = list.style.display === 'none';
-    list.style.display = isCollapsed ? 'flex' : 'none';
-    if (btn) btn.textContent = isCollapsed ? '—' : '+';
-}
-
-// Ledger Modal Controls
-function toggleGlobalSidebar() {
-    const sidebar = document.getElementById('global-side-bets-sidebar');
-    if (sidebar) {
-        sidebar.style.display = (sidebar.style.display === 'none') ? 'flex' : 'none';
-        return;
-    }
-    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
-    if (ledger) toggleModal(ledger.id);
-}
-
-function openLedgerModal() {
-    if (typeof window.toggleSessionLedger === 'function') {
-        window.toggleSessionLedger(true);
-        return;
-    }
-    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
-    if (ledger) openModal(ledger.id);
-}
-
-function closeLedgerModal() {
-    const ledger = getModalElement('session-ledger-modal') || getModalElement('ledger-modal');
-    if (ledger) closeModal(ledger.id);
-}
-
-function closeSessionLedgerModal() {
-    closeModal('session-ledger-modal');
-}
-
-function openLifetimeLedgerModal() {
-    const uid = (window.userSession && (window.userSession.id || window.userSession.userId)) ||
-                (window.clientState && window.clientState.userId) ||
-                localStorage.getItem('blitz31_user_id') ||
-                null;
-    const uname = (window.userSession && window.userSession.username) ||
-                  (window.clientState && window.clientState.username) ||
-                  localStorage.getItem('saved_username') ||
-                  '';
-
-    if (typeof window.initSocketAndSend === 'function') {
-        window.initSocketAndSend({
-            type: 'GET_LIFETIME_LEDGER',
-            userId: uid,
-            username: uname,
-            token: getStoredAuthToken()
-        });
-    }
-    openModal('lifetime-ledger-modal');
-}
-
-function closeLifetimeLedgerModal() {
-    closeModal('lifetime-ledger-modal');
-}
-
-// Chat Window Controls
-function toggleChatWindow() {
-    const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
-    if (!chat) return;
-    const isHidden = !chat.style.display || chat.style.display === 'none' || chat.classList.contains('hidden');
-    chat.style.display = isHidden ? 'flex' : 'none';
-    chat.classList.toggle('hidden', !isHidden);
-    if (isHidden) {
-        const chatBtn = document.getElementById('chat-toggle-btn');
-        if (chatBtn) {
-            chatBtn.classList.remove('unread');
-            chatBtn.innerText = '💬 Chat';
-        }
-        const box = document.getElementById('chat-messages');
-        if (box) box.scrollTop = box.scrollHeight;
-        const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
-        if (inp) setTimeout(() => inp.focus(), 80);
-    }
-}
-
-function closeChatWindow() {
-    const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
-    if (chat) {
-        chat.style.display = 'none';
-        chat.classList.add('hidden');
-    }
-}
-
-// Dismiss modal overlays when tapping backdrop
-document.addEventListener('click', (e) => {
-    if (e.target.classList && (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-backdrop'))) {
-        e.target.style.display = 'none';
-        e.target.classList.add('hidden');
-    }
-});
-
-// -------------------------------------------------------------
-// 1B. SOUND EFFECTS, HAPTICS & SETTINGS BRIDGE
-// -------------------------------------------------------------
-window.isSfxEnabled = function() {
-    const toggle = document.getElementById('setting-sfx');
-    if (toggle) return toggle.checked;
-    return localStorage.getItem('blitz31_sfx_enabled') !== 'false';
-};
-
-window.isVibrateEnabled = function() {
-    const toggle = document.getElementById('setting-vibrate');
-    if (toggle) return toggle.checked;
-    return localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
-};
-
-window.toggleSoundSetting = function() {
-    const toggle = document.getElementById('setting-sfx');
-    const enabled = toggle ? toggle.checked : true;
-    localStorage.setItem('blitz31_sfx_enabled', enabled ? 'true' : 'false');
-};
-
-window.playSound = function(cueType) {
-    if (!window.isSfxEnabled()) return;
-    try {
-        const audioEl = document.getElementById(`sound-${cueType}`);
-        if (audioEl) {
-            try { audioEl.currentTime = 0; } catch (e) {}
-            const playPromise = audioEl.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(() => {});
-            }
-            return;
-        }
-        const fallbackAudio = new Audio(`/mp3s/${cueType}.mp3`);
-        fallbackAudio.play().catch(() => {});
-    } catch (e) {}
-};
-
-window.safePlaySound = window.playSound;
-window.triggerAudioCue = window.playSound;
-window.playYourTurnCue = function() { window.playSound('yourturn'); };
-
-window.triggerVibration = function(pattern) {
-    if (!window.isVibrateEnabled()) return;
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-        try { navigator.vibrate(pattern); } catch (e) {}
-    }
-};
-window.safeVibrate = window.triggerVibration;
-
-// Public Lobbies List Renderer Fallback (if not already in ui.js)
-window.renderLobbyList = window.renderLobbyList || function(lobbiesList) {
-    const container = document.getElementById('lobby-list');
-    if (!container) return;
-    if (!Array.isArray(lobbiesList) || lobbiesList.length === 0) {
-        container.innerHTML = '<div class="empty-list-notice">No public tables active. Create one!</div>';
-        return;
-    }
-    container.innerHTML = lobbiesList.map(l => {
-        const count = l.playerCount !== undefined ? l.playerCount : (l.count || 0);
-        const max = l.maxPlayers || 6;
-        const statusLabel = l.gameState === 'lobby' ? 'Waiting' : 'In Progress';
-        return `
-            <div class="lobby-item" style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(212,175,55,0.3); border-radius:8px; margin-bottom:8px;">
-                <div>
-                    <div style="font-weight:800; color:#fbbf24;">${l.name || 'Table'} <span style="font-size:0.75rem; color:#94a3b8;">[${l.code}]</span></div>
-                    <div style="font-size:0.75rem; color:#cbd5e1;">Host: ${l.host || 'Player'} • ${count}/${max} Seated • ${statusLabel}</div>
-                </div>
-                <button class="secondary-btn" style="padding:6px 12px; font-size:0.8rem;" onclick="window.joinLobbyCode('${l.code}')">Join</button>
-            </div>
-        `;
-    }).join('');
-};
-
-// Bind modal & utility controllers to window for inline onclick attributes
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.toggleModal = toggleModal;
-window.openSettingsModal = openSettingsModal;
-window.closeSettingsModal = closeSettingsModal;
-window.openRulesModal = openRulesModal;
-window.closeRulesModal = closeRulesModal;
-window.openSpectatorListModal = openSpectatorListModal;
-window.closeSpectatorListModal = closeSpectatorListModal;
-window.openActiveBetsModal = openActiveBetsModal;
-window.closeActiveBetsModal = closeActiveBetsModal;
-window.toggleMinimizeBetModal = toggleMinimizeBetModal;
-window.toggleMinimizeGlobalSidebar = toggleMinimizeGlobalSidebar;
-window.toggleGlobalSidebar = toggleGlobalSidebar;
-window.openLedgerModal = openLedgerModal;
-window.closeLedgerModal = closeLedgerModal;
-window.closeSessionLedgerModal = closeSessionLedgerModal;
-window.openLifetimeLedgerModal = openLifetimeLedgerModal;
-window.closeLifetimeLedgerModal = closeLifetimeLedgerModal;
-window.toggleChatWindow = toggleChatWindow;
-window.closeChatWindow = closeChatWindow;
 
 // -------------------------------------------------------------
 // 2. TOKEN & SESSION PERSISTENCE HELPERS
 // -------------------------------------------------------------
 function getStoredAuthToken() {
-    return sessionStorage.getItem('31_jwt') ||
-           localStorage.getItem('31_jwt') ||
-           localStorage.getItem('auth_token') ||
-           localStorage.getItem('token') ||
-           null;
+    return sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || null;
 }
 
 function saveStoredAuthToken(token, rememberMe = true) {
@@ -309,30 +41,8 @@ function saveStoredAuthToken(token, rememberMe = true) {
 
 function clearStoredAuthToken() {
     localStorage.removeItem('31_jwt');
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('token');
-    localStorage.removeItem('jwt');
     sessionStorage.removeItem('31_jwt');
     localStorage.removeItem('blitz31_active_room');
-}
-
-function authenticateActiveSocket(token, user) {
-    if (typeof window.connectSocket === 'function') {
-        window.connectSocket();
-    }
-    const authToken = token || getStoredAuthToken();
-    if (authToken && typeof window.initSocketAndSend === 'function') {
-        window.initSocketAndSend({ type: 'AUTH_TOKEN', token: authToken });
-    }
-    const activeRoom = (window.appGlobals && window.appGlobals.currentJoinedCode) || localStorage.getItem('blitz31_active_room');
-    const myName = (user && user.username) || (window.clientState && window.clientState.username) || localStorage.getItem('saved_username') || 'Player1';
-    if (activeRoom && typeof window.initSocketAndSend === 'function') {
-        window.initSocketAndSend({
-            type: 'JOIN_LOBBY',
-            code: activeRoom.toUpperCase(),
-            username: myName
-        });
-    }
 }
 
 // -------------------------------------------------------------
@@ -340,21 +50,24 @@ function authenticateActiveSocket(token, user) {
 // -------------------------------------------------------------
 function showAuthError(msg) {
     const errBox = document.getElementById('auth-error-msg');
-    if (!errBox) {
+    if (errBox) {
+        errBox.textContent = msg;
+        errBox.style.color = '#f87171';
+        errBox.style.display = 'block';
+    } else {
         alert(msg);
-        return;
     }
-    errBox.textContent = msg;
-    errBox.style.color = '#f87171';
-    errBox.style.display = 'block';
 }
 
 function showAuthSuccess(msg) {
     const errBox = document.getElementById('auth-error-msg');
-    if (!errBox) return;
-    errBox.textContent = msg;
-    errBox.style.color = '#34d399';
-    errBox.style.display = 'block';
+    if (errBox) {
+        errBox.textContent = msg;
+        errBox.style.color = '#34d399';
+        errBox.style.display = 'block';
+    } else {
+        alert(msg);
+    }
 }
 
 function clearAuthError() {
@@ -417,21 +130,19 @@ function updateViewForAuth(user) {
     const usernameInput = document.getElementById('username-input');
 
     if (!user) {
+        if (authOverlay) authOverlay.style.display = 'flex';
         if (mainMenu) mainMenu.style.display = 'none';
         if (gameView) gameView.style.display = 'none';
-        if (authOverlay) authOverlay.style.display = 'flex';
         return;
     }
 
     if (authOverlay) authOverlay.style.display = 'none';
-
-    // Only show Main Menu if the user is not already seated inside the Game View
-    const isGameActive = gameView && gameView.style.display === 'flex';
-    if (!isGameActive && mainMenu) {
-        mainMenu.style.display = 'flex';
+    if (!window.appGlobals?.currentJoinedCode) {
+        if (mainMenu) mainMenu.style.display = 'flex';
+        if (gameView) gameView.style.display = 'none';
     }
 
-    const displayName = user?.username || 'Player';
+    const displayName = user.username || 'Player';
     if (userBadge) userBadge.textContent = displayName;
     if (usernameInput) usernameInput.value = displayName;
 
@@ -440,13 +151,9 @@ function updateViewForAuth(user) {
 
     if (window.clientState) {
         window.clientState.username = displayName;
-        if (user.id || user.userId) {
-            window.clientState.userId = user.id || user.userId;
-            localStorage.setItem('blitz31_user_id', window.clientState.userId);
-        }
     }
 
-    if (!isGameActive && typeof window.refreshLobbies === 'function') {
+    if (typeof window.refreshLobbies === 'function') {
         window.refreshLobbies();
     }
 }
@@ -528,7 +235,7 @@ async function submitAuthLogin() {
         const res = await fetch('/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, password, rememberMe })
         });
 
         const data = await res.json();
@@ -626,7 +333,7 @@ async function submitForgotPasswordRequest() {
 
         const data = await res.json();
         if (res.ok) {
-            showAuthSuccess(data.message || 'Recovery code generated. Check server logs.');
+            showAuthSuccess(data.message || 'Recovery code sent! Check your email inbox.');
 
             const step1 = document.getElementById('forgot-step-1');
             const step2 = document.getElementById('forgot-step-2');
@@ -693,14 +400,9 @@ async function submitResetPassword() {
 // 8. SESSION REHYDRATION ON BOOT
 // -------------------------------------------------------------
 async function checkExistingSession() {
-    // Restore SFX & Vibration checkbox states from localStorage
     const sfxToggle = document.getElementById('setting-sfx');
     if (sfxToggle) {
         sfxToggle.checked = localStorage.getItem('blitz31_sfx_enabled') !== 'false';
-    }
-    const vibToggle = document.getElementById('setting-vibrate');
-    if (vibToggle) {
-        vibToggle.checked = localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
     }
 
     const token = getStoredAuthToken();
@@ -738,18 +440,15 @@ async function checkExistingSession() {
 // 9. LOGOUT SESSION (WITH WEBRTC & HARDWARE RELEASE)
 // -------------------------------------------------------------
 function logoutSession() {
-    // 1. Release microphone hardware and drop LiveKit session
     if (typeof window.disconnectLiveKit === 'function') {
         try { window.disconnectLiveKit(); } catch (e) {}
     }
 
-    // 2. Notify server if leaving an active room before closing socket
     const ws = window.gameSocket || window.ws || window.appGlobals?.ws;
     if (ws && ws.readyState === WebSocket.OPEN && window.appGlobals?.currentJoinedCode) {
         try { ws.send(JSON.stringify({ type: 'LEAVE_LOBBY' })); } catch (e) {}
     }
 
-    // 3. Clear credentials and active table cache
     clearStoredAuthToken();
     window.userSession = null;
     if (window.appGlobals) {
@@ -757,12 +456,10 @@ function logoutSession() {
         window.appGlobals.latestLobbySnapshot = null;
     }
 
-    // 4. Close gameplay socket
     if (ws && ws.readyState === WebSocket.OPEN) {
         try { ws.close(); } catch (e) {}
     }
 
-    // 5. Return viewport to authentication screen
     const mainMenu = document.getElementById('main-menu');
     const gameView = document.getElementById('game-view');
     const authScreen = document.getElementById('auth-screen') || document.getElementById('auth-overlay');
@@ -794,7 +491,6 @@ document.addEventListener('DOMContentLoaded', () => {
     checkExistingSession();
     initializeGoogleIdentity();
 
-    // Allow pressing Enter to submit Login or Registration forms
     const loginPass = document.getElementById('login-password');
     if (loginPass) {
         loginPass.addEventListener('keydown', (e) => {
