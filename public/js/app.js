@@ -1,4 +1,4 @@
-// public/js/app.js - Modal Controls, Chat Engine, Audio Bridge, Auth & Session Lifecycle
+// public/js/app.js - Modal Controls, Chat Engine, Audio/Voice Volume Sliders, Auth & Session Lifecycle
 
 // -------------------------------------------------------------
 // 1. UNIVERSAL MODAL & DRAWER CONTROLLER
@@ -10,16 +10,16 @@ function getModalElement(id) {
 function openModal(id) {
     const el = getModalElement(id);
     if (el) {
-        el.style.display = 'flex';
         el.classList.remove('hidden');
+        el.style.setProperty('display', 'flex', 'important');
     }
 }
 
 function closeModal(id) {
     const el = getModalElement(id);
     if (el) {
-        el.style.display = 'none';
         el.classList.add('hidden');
+        el.style.setProperty('display', 'none', 'important');
     }
 }
 
@@ -31,7 +31,7 @@ function toggleModal(id, forceState) {
         else closeModal(id);
         return;
     }
-    const isHidden = !el.style.display || el.style.display === 'none' || el.classList.contains('hidden');
+    const isHidden = window.getComputedStyle(el).display === 'none' || el.classList.contains('hidden');
     if (isHidden) {
         openModal(id);
     } else {
@@ -39,8 +39,71 @@ function toggleModal(id, forceState) {
     }
 }
 
-// Settings Modal: Refreshes LiveKit audio outputs and participants before showing
+// Injects the SFX & Voice Output Volume sliders into #settings-modal if not already in HTML
+function ensureVolumeSlidersInSettings() {
+    const modal = document.getElementById('settings-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.settings-content') || modal.querySelector('.modal-box') || modal;
+
+    if (!document.getElementById('setting-sfx-volume')) {
+        const sfxVol = window.getSfxVolume();
+        const sfxRow = document.createElement('div');
+        sfxRow.className = 'setting-row';
+        sfxRow.style.cssText = 'display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px;';
+        sfxRow.innerHTML = `
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #cbd5e1;">
+                <label for="setting-sfx-volume" style="text-transform: uppercase;">🔊 Sound Effects Volume</label>
+                <span id="sfx-vol-display" style="color: #fbbf24; font-weight: 800;">${Math.round(sfxVol * 100)}%</span>
+            </div>
+            <input type="range" id="setting-sfx-volume" min="0" max="1" step="0.05" value="${sfxVol}"
+                oninput="window.setSfxVolume(this.value)"
+                style="width: 100%; accent-color: #fbbf24; cursor: pointer;">
+        `;
+        const outputRow = document.getElementById('setting-audio-output')?.closest('.setting-row');
+        if (outputRow && outputRow.parentNode === content) {
+            content.insertBefore(sfxRow, outputRow);
+        } else {
+            content.appendChild(sfxRow);
+        }
+    }
+
+    if (!document.getElementById('setting-voice-volume')) {
+        const voiceVol = window.getVoiceOutputVolume();
+        const voiceRow = document.createElement('div');
+        voiceRow.className = 'setting-row';
+        voiceRow.style.cssText = 'display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px;';
+        voiceRow.innerHTML = `
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #cbd5e1;">
+                <label for="setting-voice-volume" style="text-transform: uppercase;">🎙️ Voice Output Volume</label>
+                <span id="lk-vol-display" style="color: #34d399; font-weight: 800;">${Math.round(voiceVol * 100)}%</span>
+            </div>
+            <input type="range" id="setting-voice-volume" min="0" max="1" step="0.05" value="${voiceVol}"
+                oninput="window.setVoiceOutputVolume(this.value)"
+                style="width: 100%; accent-color: #10b981; cursor: pointer;">
+        `;
+        const outputRow = document.getElementById('setting-audio-output')?.closest('.setting-row');
+        if (outputRow && outputRow.parentNode === content) {
+            content.insertBefore(voiceRow, outputRow);
+        } else {
+            content.appendChild(voiceRow);
+        }
+    }
+
+    // Sync slider positions and labels with current saved values
+    const sfxSlider = document.getElementById('setting-sfx-volume');
+    const sfxDisp = document.getElementById('sfx-vol-display');
+    if (sfxSlider) sfxSlider.value = window.getSfxVolume();
+    if (sfxDisp) sfxDisp.innerText = `${Math.round(window.getSfxVolume() * 100)}%`;
+
+    const voiceSlider = document.getElementById('setting-voice-volume');
+    const voiceDisp = document.getElementById('lk-vol-display');
+    if (voiceSlider) voiceSlider.value = window.getVoiceOutputVolume();
+    if (voiceDisp) voiceDisp.innerText = `${Math.round(window.getVoiceOutputVolume() * 100)}%`;
+}
+
+// Settings Modal: Refreshes LiveKit audio outputs, participants, and volume sliders before showing
 function openSettingsModal() {
+    ensureVolumeSlidersInSettings();
     if (typeof window.refreshAudioOutputDevices === 'function') window.refreshAudioOutputDevices();
     if (typeof window.refreshVoiceParticipantsList === 'function') window.refreshVoiceParticipantsList();
     openModal('settings-modal');
@@ -93,9 +156,14 @@ function closeActiveBetsModal() {
 function toggleGlobalSidebar() {
     const sidebar = document.getElementById('global-side-bets-sidebar');
     if (sidebar) {
-        const isHidden = !sidebar.style.display || sidebar.style.display === 'none' || sidebar.classList.contains('hidden');
-        sidebar.style.display = isHidden ? 'flex' : 'none';
-        sidebar.classList.toggle('hidden', !isHidden);
+        const isHidden = window.getComputedStyle(sidebar).display === 'none' || sidebar.classList.contains('hidden');
+        if (isHidden) {
+            sidebar.classList.remove('hidden');
+            sidebar.style.setProperty('display', 'flex', 'important');
+        } else {
+            sidebar.classList.add('hidden');
+            sidebar.style.setProperty('display', 'none', 'important');
+        }
         return;
     }
     const betModal = getModalElement('bet-modal');
@@ -158,42 +226,54 @@ function closeLifetimeLedgerModal() {
 // -------------------------------------------------------------
 // 1A. TABLE CHAT DRAWER & MESSAGE ENGINE
 // -------------------------------------------------------------
-function toggleChatWindow() {
+function toggleChatWindow(e) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
     const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
     if (!chat) return;
-    const isHidden = !chat.style.display || chat.style.display === 'none' || chat.classList.contains('hidden');
-    chat.style.display = isHidden ? 'flex' : 'none';
-    chat.classList.toggle('hidden', !isHidden);
+
+    const computedDisplay = window.getComputedStyle(chat).display;
+    const isHidden = computedDisplay === 'none' || chat.classList.contains('hidden');
 
     if (isHidden) {
+        chat.classList.remove('hidden', 'minimized');
+        chat.style.setProperty('display', 'flex', 'important');
+        chat.style.setProperty('z-index', '9998', 'important');
+
         const chatBtn = document.getElementById('chat-toggle-btn');
         if (chatBtn) {
             chatBtn.classList.remove('unread');
             chatBtn.innerText = '💬 Chat';
         }
-        const box = document.getElementById('chat-messages');
+        const box = document.getElementById('chat-messages') || document.getElementById('chat-box');
         if (box) box.scrollTop = box.scrollHeight;
         const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
         if (inp) setTimeout(() => inp.focus(), 80);
+    } else {
+        chat.classList.add('hidden');
+        chat.style.setProperty('display', 'none', 'important');
     }
 }
 
-function closeChatWindow() {
+function closeChatWindow(e) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
     const chat = getModalElement('chat-window') || getModalElement('chat-drawer');
     if (chat) {
-        chat.style.display = 'none';
         chat.classList.add('hidden');
+        chat.style.setProperty('display', 'none', 'important');
     }
 }
 
 function appendChatMessage(userOrData, msgText) {
-    const box = document.getElementById('chat-messages');
+    const box = document.getElementById('chat-messages') || document.getElementById('chat-box');
     if (!box) return;
 
     let sender = 'Player';
     let text = '';
 
-    // Support both appendChatMessage(user, msg) and appendChatMessage(dataObj)
     if (typeof userOrData === 'object' && userOrData !== null) {
         sender = userOrData.user || userOrData.username || userOrData.sender || 'Player';
         text = userOrData.text || userOrData.message || '';
@@ -206,12 +286,12 @@ function appendChatMessage(userOrData, msgText) {
 
     const div = document.createElement('div');
     div.style.marginBottom = '4px';
-    div.innerHTML = `<b>${sender}:</b> ${text}`;
+    div.innerHTML = `<strong style="color:#fbbf24;">${sender}:</strong> <span style="color:#f8fafc;">${text}</span>`;
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
 
     const win = getModalElement('chat-window') || getModalElement('chat-drawer');
-    const isVisible = win && win.style.display === 'flex' && !win.classList.contains('hidden');
+    const isVisible = win && window.getComputedStyle(win).display !== 'none' && !win.classList.contains('hidden');
     if (!isVisible) {
         const chatBtn = document.getElementById('chat-toggle-btn');
         if (chatBtn) {
@@ -223,7 +303,7 @@ function appendChatMessage(userOrData, msgText) {
 
 function syncChatHistory(history) {
     if (!Array.isArray(history)) return;
-    const box = document.getElementById('chat-messages');
+    const box = document.getElementById('chat-messages') || document.getElementById('chat-box');
     if (!box) return;
 
     window.appGlobals = window.appGlobals || {};
@@ -233,12 +313,12 @@ function syncChatHistory(history) {
         box.innerHTML = history.map(m => {
             const u = m.user || m.username || 'Player';
             const t = m.text || m.message || '';
-            return `<div style="margin-bottom:4px;"><b>${u}:</b> ${t}</div>`;
+            return `<div style="margin-bottom:4px;"><strong style="color:#fbbf24;">${u}:</strong> <span style="color:#f8fafc;">${t}</span></div>`;
         }).join('');
         box.scrollTop = box.scrollHeight;
 
         const win = getModalElement('chat-window') || getModalElement('chat-drawer');
-        const isVisible = win && win.style.display === 'flex' && !win.classList.contains('hidden');
+        const isVisible = win && window.getComputedStyle(win).display !== 'none' && !win.classList.contains('hidden');
         if (history.length > lastCount && !isVisible) {
             const chatBtn = document.getElementById('chat-toggle-btn');
             if (chatBtn) {
@@ -294,8 +374,60 @@ document.addEventListener('click', (e) => {
 });
 
 // -------------------------------------------------------------
-// 1B. SOUND EFFECTS, HAPTICS & SETTINGS BRIDGE
+// 1B. SOUND EFFECTS, VOICE VOLUME SLIDERS & HAPTICS BRIDGE
 // -------------------------------------------------------------
+window.getSfxVolume = function() {
+    const saved = parseFloat(localStorage.getItem('blitz31_sfx_volume'));
+    return isNaN(saved) ? 1.0 : Math.min(1, Math.max(0, saved));
+};
+
+window.setSfxVolume = function(val) {
+    const cleanVal = Math.min(1, Math.max(0, parseFloat(val) || 0));
+    localStorage.setItem('blitz31_sfx_volume', String(cleanVal));
+
+    const disp = document.getElementById('sfx-vol-display');
+    if (disp) disp.innerText = `${Math.round(cleanVal * 100)}%`;
+
+    const slider = document.getElementById('setting-sfx-volume');
+    if (slider && parseFloat(slider.value) !== cleanVal) {
+        slider.value = cleanVal;
+    }
+
+    // Apply immediately to all 4 game sound elements
+    ['sound-knock', 'sound-yourturn', 'sound-card', 'sound-win'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.volume = cleanVal;
+    });
+};
+
+window.getVoiceOutputVolume = function() {
+    const saved = parseFloat(localStorage.getItem('blitz31_voice_volume'));
+    return isNaN(saved) ? 1.0 : Math.min(1, Math.max(0, saved));
+};
+
+window.setVoiceOutputVolume = function(val) {
+    const cleanVal = Math.min(1, Math.max(0, parseFloat(val) || 0));
+    localStorage.setItem('blitz31_voice_volume', String(cleanVal));
+
+    const disp = document.getElementById('lk-vol-display');
+    if (disp) disp.innerText = `${Math.round(cleanVal * 100)}%`;
+
+    const slider = document.getElementById('setting-voice-volume');
+    if (slider && parseFloat(slider.value) !== cleanVal) {
+        slider.value = cleanVal;
+    }
+
+    // Call voice.js handler if available
+    if (typeof window.setVoiceChatVolume === 'function') {
+        window.setVoiceChatVolume(cleanVal);
+    }
+
+    // Apply directly to all LiveKit remote audio elements
+    document.querySelectorAll('.lk-remote-audio').forEach(audioEl => {
+        audioEl.volume = cleanVal;
+    });
+};
+
 window.isSfxEnabled = function() {
     const toggle = document.getElementById('setting-sfx');
     if (toggle) return toggle.checked;
@@ -322,10 +454,14 @@ window.toggleVibrateSetting = function() {
 
 window.playSound = function(cueType) {
     if (!window.isSfxEnabled()) return;
+    const vol = window.getSfxVolume();
+    if (vol <= 0) return;
+
     try {
         const normalized = (cueType === 'turn') ? 'yourturn' : cueType;
         const audioEl = document.getElementById(`sound-${normalized}`);
         if (audioEl) {
+            audioEl.volume = vol;
             try { audioEl.currentTime = 0; } catch (e) {}
             const playPromise = audioEl.play();
             if (playPromise !== undefined) {
@@ -334,6 +470,7 @@ window.playSound = function(cueType) {
             return;
         }
         const fallbackAudio = new Audio(`/mp3s/${normalized}.mp3`);
+        fallbackAudio.volume = vol;
         fallbackAudio.play().catch(() => {});
     } catch (e) {}
 };
@@ -850,6 +987,11 @@ async function checkExistingSession() {
     if (vibrateToggle) {
         vibrateToggle.checked = localStorage.getItem('blitz31_vibrate_enabled') !== 'false';
     }
+
+    // Initialize saved SFX & Voice Output volumes
+    ensureVolumeSlidersInSettings();
+    window.setSfxVolume(window.getSfxVolume());
+    window.setVoiceOutputVolume(window.getVoiceOutputVolume());
 
     const token = getStoredAuthToken();
     if (!token) {
