@@ -49,42 +49,112 @@ function escapeHtmlUI(str) {
         .replace(/'/g, '&#39;');
 }
 
-// Resilient username resolver that checks both players AND spectators
-window.getMyUsername = function(lobby) {
-    let name = '';
+// Returns the permanent login account username for ledger & database linking
+window.getAccountUsername = function() {
     if (window.userSession && window.userSession.username) {
-        name = window.userSession.username.trim();
+        return window.userSession.username.trim();
     }
-    if (!name || name === 'Player1') {
-        const inputVal = (document.getElementById('username-input')?.value || '').trim();
-        if (inputVal && inputVal !== 'Player1') name = inputVal;
+    const badgeElem = document.getElementById('menu-user-badge') || document.getElementById('user-display-name');
+    if (badgeElem && badgeElem.textContent.trim()) {
+        return badgeElem.textContent.trim();
     }
-    if (!name || name === 'Player1') {
+    return (
+        localStorage.getItem('blitz31_username') ||
+        localStorage.getItem('p31_username') ||
+        localStorage.getItem('account_username') ||
+        ''
+    ).trim();
+};
+
+// Resilient player handle resolver (prioritizes custom handle over account login name)
+window.getMyUsername = function(lobby) {
+    let handle = '';
+
+    // 1. Prioritize custom handle typed into #username-input
+    const inputEl = document.getElementById('username-input');
+    const inputVal = (inputEl?.value || '').trim();
+    if (inputVal && inputVal !== 'Player1') {
+        handle = inputVal;
+        if (window.clientState) window.clientState.username = handle;
+        localStorage.setItem('saved_username', handle);
+    }
+
+    // 2. Check active clientState or saved_username handle
+    if (!handle || handle === 'Player1') {
         const stateVal = (window.clientState?.username || '').trim();
-        if (stateVal && stateVal !== 'Player1') name = stateVal;
+        if (stateVal && stateVal !== 'Player1') handle = stateVal;
     }
-    if (!name || name === 'Player1') {
-        name = (localStorage.getItem('saved_username') || localStorage.getItem('blitz31_username') || localStorage.getItem('p31_username') || '').trim();
+    if (!handle || handle === 'Player1') {
+        const savedVal = (localStorage.getItem('saved_username') || '').trim();
+        if (savedVal && savedVal !== 'Player1') handle = savedVal;
     }
 
-    if (lobby && name) {
+    // 3. Fallback to permanent account username
+    const accountName = window.getAccountUsername();
+    if (!handle || handle === 'Player1') {
+        handle = accountName;
+    }
+
+    // 4. Match against lobby players/spectators by isMe, handle, or accountUsername
+    if (lobby) {
+        const hLower = (handle || '').toLowerCase();
+        const aLower = (accountName || '').toLowerCase();
+
         if (Array.isArray(lobby.players)) {
-            const pMatch = lobby.players.find(p => p.username && p.username.toLowerCase() === name.toLowerCase());
-            if (pMatch) return pMatch.username;
+            const pMe = lobby.players.find(p => p.isMe && !p.isBot);
+            if (pMe && pMe.username) {
+                if (!inputVal || inputVal === 'Player1') {
+                    if (window.clientState) window.clientState.username = pMe.username;
+                }
+                return pMe.username;
+            }
+            const pMatch = lobby.players.find(p => {
+                const pName = (p.username || '').toLowerCase();
+                const pAcct = (p.accountUsername || '').toLowerCase();
+                return (hLower && (pName === hLower || pAcct === hLower)) ||
+                       (aLower && (pName === aLower || pAcct === aLower));
+            });
+            if (pMatch && pMatch.username) return pMatch.username;
         }
+
         if (Array.isArray(lobby.spectators)) {
-            const sMatch = lobby.spectators.find(s => s.username && s.username.toLowerCase() === name.toLowerCase());
-            if (sMatch) return sMatch.username;
+            const sMatch = lobby.spectators.find(s => {
+                const sName = (s.username || '').toLowerCase();
+                const sAcct = (s.accountUsername || '').toLowerCase();
+                return (hLower && (sName === hLower || sAcct === hLower)) ||
+                       (aLower && (sName === aLower || sAcct === aLower));
+            });
+            if (sMatch && sMatch.username) return sMatch.username;
         }
     }
 
-    return name || 'Player1';
+    return handle || 'Player1';
 };
 
 function getActiveUsername() {
     return window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
 }
 window.getActiveUsername = getActiveUsername;
+
+// Keep clientState & saved_username synced live when editing #username-input
+function bindUsernameHandleInputSync() {
+    const handleInput = document.getElementById('username-input');
+    if (handleInput && !handleInput.dataset.handleSyncBound) {
+        handleInput.dataset.handleSyncBound = 'true';
+        handleInput.addEventListener('input', () => {
+            const val = handleInput.value.trim();
+            if (val) {
+                if (window.clientState) window.clientState.username = val;
+                localStorage.setItem('saved_username', val);
+            }
+        });
+    }
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindUsernameHandleInputSync);
+} else {
+    bindUsernameHandleInputSync();
+}
 
 function getActiveRoomCode() {
     return (window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || '').toUpperCase();
@@ -98,6 +168,9 @@ function sendSocket(payload) {
     }
     if (!payload.username) {
         payload.username = getActiveUsername();
+    }
+    if (!payload.accountUsername) {
+        payload.accountUsername = window.getAccountUsername() || payload.username;
     }
 
     const sendFunc = window.initSocketAndSend || window.sendSocketMessage;
@@ -597,7 +670,6 @@ window.playSoundboardEffect = function(soundId) {
         const now = ctx.currentTime;
 
         if (soundId === 'horn') {
-            // Stadium Airhorn (detuned sawtooth chord)
             [349.23, 354.0, 440.0, 523.25].forEach(freq => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
@@ -612,7 +684,6 @@ window.playSoundboardEffect = function(soundId) {
                 osc.stop(now + 0.65);
             });
         } else if (soundId === 'cash') {
-            // Ka-Ching! Cash Register Bell
             const notes = [
                 { f: 1046.50, t: 0,    d: 0.09 },
                 { f: 1318.51, t: 0.08, d: 0.45 },
@@ -631,7 +702,6 @@ window.playSoundboardEffect = function(soundId) {
                 osc.stop(now + n.t + n.d);
             });
         } else if (soundId === 'rimshot') {
-            // Ba-Dum-Tss!
             const hits = [
                 { fStart: 160, fEnd: 80,  t: 0,    d: 0.11 },
                 { fStart: 120, fEnd: 55,  t: 0.14, d: 0.13 }
@@ -649,7 +719,6 @@ window.playSoundboardEffect = function(soundId) {
                 osc.start(now + h.t);
                 osc.stop(now + h.t + h.d);
             });
-            // Cymbal "Tss" noise burst
             const bufferSize = ctx.sampleRate * 0.35;
             const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
             const data = buffer.getChannelData(0);
@@ -668,7 +737,6 @@ window.playSoundboardEffect = function(soundId) {
             noise.start(now + 0.30);
             noise.stop(now + 0.65);
         } else if (soundId === 'sad') {
-            // Wah-Wah-Wah-Waaaah (Sad Trombone)
             const notes = [
                 { f: 293.66, t: 0.00, d: 0.28 },
                 { f: 277.18, t: 0.30, d: 0.28 },
@@ -691,7 +759,6 @@ window.playSoundboardEffect = function(soundId) {
                 osc.stop(now + n.t + n.d);
             });
         } else if (soundId === 'crickets') {
-            // Awkward Crickets Chirp
             [0, 0.06, 0.12, 0.38, 0.44, 0.50].forEach(offset => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
@@ -705,7 +772,6 @@ window.playSoundboardEffect = function(soundId) {
                 osc.stop(now + offset + 0.045);
             });
         } else if (soundId === 'siren') {
-            // Rising/Falling Casino Hype Siren
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'triangle';
@@ -734,7 +800,6 @@ window.sendSoundboard = function(soundId) {
     }
 };
 
-// Mounts both the "😀" Emoji Toggle and "📢" Soundboard Toggle inside #in-game-tools-row
 function ensureQuickReactionBar() {
     const oldFloating = document.getElementById('quick-reaction-bar');
     if (oldFloating) oldFloating.remove();
@@ -742,14 +807,12 @@ function ensureQuickReactionBar() {
     const toolsRow = document.getElementById('in-game-tools-row');
     if (!toolsRow) return;
 
-    // Ensure Chat button always triggers window.toggleChatWindow directly
     const chatToggleBtn = document.getElementById('chat-toggle-btn');
     if (chatToggleBtn && !chatToggleBtn.dataset.chatBound) {
         chatToggleBtn.dataset.chatBound = 'true';
         chatToggleBtn.onclick = (e) => window.toggleChatWindow(e);
     }
 
-    // 1. Emoji Reaction Toggle Button (😀)
     if (!document.getElementById('reaction-toggle-btn')) {
         const btn = document.createElement('button');
         btn.id = 'reaction-toggle-btn';
@@ -768,7 +831,6 @@ function ensureQuickReactionBar() {
         toolsRow.appendChild(btn);
     }
 
-    // 2. Soundboard Toggle Button (📢)
     if (!document.getElementById('soundboard-toggle-btn')) {
         const sbBtn = document.createElement('button');
         sbBtn.id = 'soundboard-toggle-btn';
@@ -787,7 +849,6 @@ function ensureQuickReactionBar() {
         toolsRow.appendChild(sbBtn);
     }
 
-    // 3. Emoji Popover Menu
     if (!document.getElementById('reaction-popover-menu')) {
         const pop = document.createElement('div');
         pop.id = 'reaction-popover-menu';
@@ -818,7 +879,6 @@ function ensureQuickReactionBar() {
         });
     }
 
-    // 4. Soundboard Popover Menu
     if (!document.getElementById('soundboard-popover-menu')) {
         const sbPop = document.createElement('div');
         sbPop.id = 'soundboard-popover-menu';
@@ -918,7 +978,6 @@ function triggerReactionAnimationIfNew(lobby) {
     }, 1400);
 }
 
-
 // -------------------------------------------------------------
 // 6. IN-GAME ACTIONS, AUDIO & CARD INTERACTIONS
 // -------------------------------------------------------------
@@ -978,8 +1037,17 @@ window.toggleReady = function() {
     sendSocket({ type: 'SET_READY', ready: window.clientState.isReady });
 };
 
-window.standUp = function() { sendSocket({ type: 'STAND_UP' }); };
-window.sitDown = function() { sendSocket({ type: 'SIT_DOWN' }); };
+window.standUp = function() {
+    const username = getActiveUsername();
+    const accountUsername = window.getAccountUsername() || username;
+    sendSocket({ type: 'STAND_UP', username, accountUsername });
+};
+
+window.sitDown = function() {
+    const username = getActiveUsername();
+    const accountUsername = window.getAccountUsername() || username;
+    sendSocket({ type: 'SIT_DOWN', username, accountUsername });
+};
 
 window.updateWager = function() {
     const sel = document.getElementById('config-wager');
@@ -1066,7 +1134,12 @@ function updateKnockButtonState(lobby, me, isMyTurn) {
 
 window.knockRound = function() {
     const activeUsername = getActiveUsername();
-    const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+    const accountUsername = window.getAccountUsername();
+    const me = window.appGlobals?.latestLobbySnapshot?.players?.find(p =>
+        (p.isMe && !p.isBot) ||
+        (p.username && p.username.toLowerCase() === activeUsername.toLowerCase()) ||
+        (accountUsername && p.accountUsername && p.accountUsername.toLowerCase() === accountUsername.toLowerCase())
+    );
 
     if (!me || !me.cards || me.cards.length !== 3) {
         window.showCenterNotification("You cannot knock after picking up a card!");
@@ -1099,8 +1172,10 @@ window.knockRound = function() {
 window.isCurrentUserLobbyHost = function(lobby) {
     const snap = lobby || window.appGlobals?.latestLobbySnapshot;
     if (!snap || !snap.host) return false;
-    const myName = getActiveUsername().trim().toLowerCase();
-    return Boolean(myName && snap.host.trim().toLowerCase() === myName);
+    const hostLower = snap.host.trim().toLowerCase();
+    const myHandleLower = getActiveUsername().trim().toLowerCase();
+    const myAcctLower = (window.getAccountUsername() || '').trim().toLowerCase();
+    return Boolean((myHandleLower && hostLower === myHandleLower) || (myAcctLower && hostLower === myAcctLower));
 };
 
 window.adminKickPlayer = function(targetUsername) {
@@ -1130,8 +1205,10 @@ window.adminMutePlayer = function(targetUsername) {
 window.getHostAdminButtonsHTML = function(lobby, targetPlayer) {
     if (!window.isCurrentUserLobbyHost(lobby) || !targetPlayer) return '';
     const myName = getActiveUsername().trim().toLowerCase();
+    const myAcct = (window.getAccountUsername() || '').trim().toLowerCase();
     const targetName = (targetPlayer.username || '').trim();
-    if (!targetName || targetName.toLowerCase() === myName) return '';
+    const targetLower = targetName.toLowerCase();
+    if (!targetName || targetLower === myName || (myAcct && targetLower === myAcct)) return '';
     const attrTarget = targetName.replace(/'/g, "\\'");
     return `
         <span style="display:inline-flex; gap:4px; margin-left:6px;">
@@ -1179,7 +1256,7 @@ window.tapSeat = function(targetUsername) {
         return;
     }
 
-    const isHost = Boolean(lobby.host && lobby.host.toLowerCase() === activeUsername.toLowerCase());
+    const isHost = window.isCurrentUserLobbyHost(lobby);
 
     const hostAdminHtml = isHost ? `
         <div style="display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.15);">
@@ -1453,7 +1530,8 @@ window.updateUIFromLobby = function(lobby) {
         window.syncChatHistory(lobby.chatHistory);
     }
 
-    const activeUsername = getActiveUsername();
+    const activeUsername = window.getMyUsername(lobby);
+    const accountUsername = window.getAccountUsername();
 
     // 1. CELEBRATION TRIGGER: HIT 31
     if (lobby.hit31Player) {
@@ -1577,8 +1655,18 @@ window.updateUIFromLobby = function(lobby) {
     const specCount = document.getElementById('spec-count');
     if (specCount) specCount.innerText = window.clientState.spectatorsList.length;
 
-    const me = (lobby.players || []).find(p => p.username.trim().toLowerCase() === activeUsername.toLowerCase());
-    const isSpecUser = (lobby.spectators || []).some(s => s.username.trim().toLowerCase() === activeUsername.toLowerCase());
+    const actLower = activeUsername.toLowerCase();
+    const acctLower = (accountUsername || '').toLowerCase();
+
+    const me = (lobby.players || []).find(p =>
+        (p.isMe && !p.isBot) ||
+        (p.username && p.username.trim().toLowerCase() === actLower) ||
+        (acctLower && p.accountUsername && p.accountUsername.trim().toLowerCase() === acctLower)
+    );
+    const isSpecUser = !me && (lobby.spectators || []).some(s =>
+        (s.username && s.username.trim().toLowerCase() === actLower) ||
+        (acctLower && s.accountUsername && s.accountUsername.trim().toLowerCase() === acctLower)
+    );
     const isEliminated = me && me.eliminated;
     const isSpectatorOnly = !me || isEliminated || isSpecUser;
     window.clientState.isSpectator = isSpectatorOnly;
@@ -1588,7 +1676,7 @@ window.updateUIFromLobby = function(lobby) {
     let activelyPeekingTarget = null;
     if (isSpectatorOnly && lobby.gameState !== 'roundOver' && lobby.gameState !== 'tournamentEnd' && lobby.gameState !== 'lobby') {
         (lobby.players || []).forEach(pl => {
-            if (pl.peekAllowed && Object.keys(pl.peekAllowed).some(k => k.toLowerCase() === activeUsername.toLowerCase())) {
+            if (pl.peekAllowed && Object.keys(pl.peekAllowed).some(k => k.toLowerCase() === actLower || (acctLower && k.toLowerCase() === acctLower))) {
                 activelyPeekingTarget = pl.username;
             }
         });
@@ -1669,7 +1757,7 @@ window.updateUIFromLobby = function(lobby) {
     }
 
     // 10. TURN ACTION & AUDIO CUE TRIGGER
-    const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === activeUsername.toLowerCase()) && 
+    const isMyTurnPlaying = !isSpectatorOnly && ((lobby.currentTurnUser || '').toLowerCase() === actLower) &&
         (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn');
 
     if (isMyTurnPlaying) {
@@ -1693,8 +1781,8 @@ window.updateUIFromLobby = function(lobby) {
         if (sidebar) sidebar.style.display = 'flex';
         let sidebarHtml = '';
         globalProps.forEach(gp => {
-            const isMyProp = Boolean(gp.proposer && gp.proposer.toLowerCase() === activeUsername.toLowerCase());
-            const alreadyAccepted = Boolean(gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === activeUsername.toLowerCase()));
+            const isMyProp = Boolean(gp.proposer && gp.proposer.toLowerCase() === actLower);
+            const alreadyAccepted = Boolean(gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === actLower));
 
             let actionHtml = '';
             if (isMyProp) {
@@ -1746,7 +1834,7 @@ window.updateUIFromLobby = function(lobby) {
         lobby.pendingBetsForMe = [];
     }
 
-    // 12. POTS & CONFIG (Reads server potTotal first so forfeited buy-ins stay in the pot)
+    // 12. POTS & CONFIG
     const configBar = document.getElementById('lobby-config-bar');
     if (configBar) configBar.style.display = (lobby.gameState === 'lobby') ? 'flex' : 'none';
 
@@ -1767,10 +1855,10 @@ window.updateUIFromLobby = function(lobby) {
         }
     }
 
-    // 13. BUILD COMPACT NEXT-HAND POPUP RIGHT OVER THE CENTER DECK (Does not block seats or hands)
+    // 13. BUILD COMPACT NEXT-HAND POPUP RIGHT OVER THE CENTER DECK
     let nextHandDeckPopupHtml = '';
     if (lobby.gameState === 'roundOver') {
-        const myPlayer = (lobby.players || []).find(p => p.username.toLowerCase() === activeUsername.toLowerCase());
+        const myPlayer = me;
         const isPermanentlyOut = myPlayer && myPlayer.eliminated;
 
         let showPopup = false;
@@ -1852,7 +1940,7 @@ window.updateUIFromLobby = function(lobby) {
         showcaseHtml += '<div style="font-size:0.65rem; font-weight:800; color:var(--accent-gold); margin-bottom:2px; text-transform:uppercase;">Players</div>';
         activeParts.forEach(p => {
             const card = lobby.drawResults?.[p.username];
-            const isMe = (p.username.toLowerCase() === activeUsername.toLowerCase());
+            const isMe = (p.username.toLowerCase() === actLower);
             showcaseHtml += `
                 <div class="draw-showcase-item">
                     <span class="draw-picker-badge" style="${isMe ? 'border-color:#38bdf8; color:#38bdf8;' : ''}">${escapeHtmlUI(p.username)}${p.isBot ? ' 🤖' : ''}</span>
@@ -1882,7 +1970,7 @@ window.updateUIFromLobby = function(lobby) {
         if (dealerDrawModal) dealerDrawModal.style.display = 'none';
         if (revealModal) revealModal.style.display = 'flex';
 
-        const isTied = (lobby.tiedParticipantsList || []).includes(activeUsername);
+        const isTied = (lobby.tiedParticipantsList || []).some(u => u.toLowerCase() === actLower);
         const tMsg = document.getElementById('tie-breaker-stream-msg');
         if (tMsg) tMsg.innerText = isTied ? 'You are tied for lowest score! Pick your tie-breaker card:' : 'Watching tied players draw for elimination...';
 
@@ -1890,7 +1978,7 @@ window.updateUIFromLobby = function(lobby) {
         streamHtml += '<div style="font-size:0.65rem; font-weight:800; color:var(--accent-gold); margin-bottom:2px; text-transform:uppercase;">Tied Players</div>';
         (lobby.tiedParticipantsList || []).forEach(uname => {
             const card = lobby.drawResults?.[uname];
-            const isMe = (uname.toLowerCase() === activeUsername.toLowerCase());
+            const isMe = (uname.toLowerCase() === actLower);
             streamHtml += `
                 <div class="draw-showcase-item">
                     <span class="draw-picker-badge" style="${isMe ? 'border-color:#38bdf8; color:#38bdf8;' : ''}">${escapeHtmlUI(uname)}</span>
@@ -2018,7 +2106,7 @@ window.updateUIFromLobby = function(lobby) {
             }
 
             let peekerBadgesHtml = '';
-            if (p.username.toLowerCase() === activeUsername.toLowerCase() && p.peekAllowed) {
+            if (p.username.toLowerCase() === actLower && p.peekAllowed) {
                 const peekers = Object.keys(p.peekAllowed);
                 if (peekers.length > 0) {
                     peekerBadgesHtml = `<div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center; margin-top:2px;">${peekers.map(pk => `<span style="background:#ef4444; color:#fff; padding:1px 3px; border-radius:3px; font-size:0.5rem; cursor:pointer;" onclick="kickPeekerAction('${pk.replace(/'/g, "\\'")}')" title="Click to kick">Kick ${escapeHtmlUI(pk)} ✕</span>`).join('')}</div>`;
