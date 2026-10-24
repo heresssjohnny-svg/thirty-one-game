@@ -150,6 +150,35 @@ function matchesParticipantIdentity(entry, sockProp, ws, incomingUid, handle, ac
     return false;
 }
 
+// Determines whether an incoming username should rename an existing seat's handle.
+// Blocks automatic force-close/rejoin resets ('Player1' or reverting to accountUsername).
+function shouldRenameExistingHandle(oldHandle, newHandle, accountUsername, data) {
+    const cleanOld = (oldHandle || '').trim();
+    const cleanNew = (newHandle || '').trim();
+    const cleanAcct = (accountUsername || '').trim();
+
+    if (!cleanNew || cleanOld === cleanNew) return false;
+
+    const newLower = cleanNew.toLowerCase();
+    const oldLower = cleanOld.toLowerCase();
+    const acctLower = cleanAcct.toLowerCase();
+
+    // 1. Never rename a seat to a generic default placeholder
+    if (newLower === 'player' || newLower === 'player1') return false;
+
+    // 2. Never rename during an automatic reconnect
+    if (data && data.isReconnect) return false;
+
+    // 3. If the player already has a custom handle (different from their login accountUsername),
+    // and the incoming join carries their raw login accountUsername, block the reset
+    // (this happens when force-closing and reopening resets #username-input to the login name).
+    if (acctLower && oldLower && oldLower !== acctLower && newLower === acctLower && !data?.explicitHandleChange) {
+        return false;
+    }
+
+    return true;
+}
+
 // Renames a player's display handle in-place and migrates session ledgers & references
 function renameParticipantHandle(lobby, oldHandle, newHandle, accountUsername, userId) {
     if (!lobby || !newHandle) return;
@@ -522,11 +551,21 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     }
 
     let currentLobbyCode = (ws.currentLobbyCode || data.code || '').trim().toUpperCase() || null;
-    let currentUsername = (data.username || ws.currentUsername || '').trim() || null;
-    let currentAccountUsername = extractAccountUsername(ws, data, currentLobbyCode ? lobbies[currentLobbyCode] : null);
+    const activeLobby = currentLobbyCode ? lobbies[currentLobbyCode] : null;
+    let currentAccountUsername = extractAccountUsername(ws, data, activeLobby);
+
+    // Preserve the socket's seated handle in the lobby so reconnect payloads carrying
+    // the login accountUsername do not clobber ws.currentUsername.
+    const existingSeatHandle = activeLobby
+        ? (activeLobby.players.find(p => p.id === ws)?.username ||
+           activeLobby.spectators.find(s => s.idSocket === ws)?.username ||
+           null)
+        : null;
+
+    let currentUsername = (existingSeatHandle || ws.currentUsername || data.username || '').trim() || null;
 
     if (currentLobbyCode && !ws.currentLobbyCode) ws.currentLobbyCode = currentLobbyCode;
-    if (currentUsername) ws.currentUsername = currentUsername;
+    if (currentUsername && !ws.currentUsername) ws.currentUsername = currentUsername;
     if (currentAccountUsername) ws.accountUsername = currentAccountUsername;
     if (data.userId && !String(data.userId).startsWith('gst_')) ws.userId = data.userId;
 
@@ -659,7 +698,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             const incomingUid = registerLobbyIdentity(lobby, ws, username, accountUsername, extractSocketUserId(ws, data, lobby));
 
             ws.currentLobbyCode = code;
-            ws.currentUsername = username;
             ws.accountUsername = accountUsername;
             touchLobbyActivity(lobby, broadcastLobbyList);
 
@@ -688,12 +726,15 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 if (accountUsername) existingPlayer.accountUsername = accountUsername;
                 existingPlayer.disconnectedAt = null;
 
-                // Update display handle in-place if the user changed it
-                if (username && oldHandle !== username) {
+                // Only rename handle if it's a genuine custom handle change,
+                // never a force-close/rejoin reset to 'Player1' or the raw login accountUsername.
+                if (!wasOffline && shouldRenameExistingHandle(oldHandle, username, accountUsername, data)) {
                     existingPlayer.username = username;
                     renameParticipantHandle(lobby, oldHandle, username, accountUsername, existingPlayer.userId);
-                    registerLobbyIdentity(lobby, ws, username, accountUsername, existingPlayer.userId);
                 }
+
+                ws.currentUsername = existingPlayer.username;
+                registerLobbyIdentity(lobby, ws, existingPlayer.username, accountUsername, existingPlayer.userId);
 
                 if (existingPlayer.eliminated) {
                     if (matchingSpecs.length > 0) {
@@ -721,7 +762,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 } else {
                     // Ensure active seated player is not also listed in spectators
                     lobby.spectators = lobby.spectators.filter(s =>
-                        !matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, username, accountUsername)
+                        !matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, existingPlayer.username, accountUsername)
                     );
                     if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
                         startReadyCountdown(lobby, existingPlayer, broadcastLobbyList);
@@ -731,6 +772,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 }
             } else if (matchingSpecs.length > 0) {
                 const existingSpec = matchingSpecs[0];
+                const wasSpecOffline = !existingSpec.idSocket;
                 const oldHandle = existingSpec.username;
 
                 if (matchingSpecs.length > 1) {
@@ -743,12 +785,15 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 if (accountUsername) existingSpec.accountUsername = accountUsername;
                 existingSpec.disconnectedAt = null;
 
-                if (username && oldHandle !== username) {
+                if (!wasSpecOffline && shouldRenameExistingHandle(oldHandle, username, accountUsername, data)) {
                     existingSpec.username = username;
                     renameParticipantHandle(lobby, oldHandle, username, accountUsername, existingSpec.userId);
-                    registerLobbyIdentity(lobby, ws, username, accountUsername, existingSpec.userId);
                 }
+
+                ws.currentUsername = existingSpec.username;
+                registerLobbyIdentity(lobby, ws, existingSpec.username, accountUsername, existingSpec.userId);
             } else {
+                ws.currentUsername = username;
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
                     const newPlayer = {
                         id: ws,
@@ -785,8 +830,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 }
             }
 
+            const finalLiveKitIdentity = ws.currentUsername || username;
             syncBotReadiness(lobby);
-            generateLiveKitToken(code, username).then(token => {
+            generateLiveKitToken(code, finalLiveKitIdentity).then(token => {
                 ws.send(JSON.stringify({
                     type: 'LOBBY_JOINED',
                     code,
@@ -940,13 +986,14 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         if (accountUsername) existingP.accountUsername = accountUsername;
                         existingP.disconnectedAt = null;
 
-                        if (requestedHandle && oldHandle !== requestedHandle) {
+                        if (shouldRenameExistingHandle(oldHandle, requestedHandle, accountUsername, data)) {
                             existingP.username = requestedHandle;
                             renameParticipantHandle(lobby, oldHandle, requestedHandle, accountUsername, existingP.userId);
                         }
 
+                        ws.currentUsername = existingP.username;
                         lobby.spectators = lobby.spectators.filter(s =>
-                            !matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, requestedHandle, accountUsername)
+                            !matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, existingP.username, accountUsername)
                         );
                         startReadyCountdown(lobby, existingP, broadcastLobbyList);
                         syncBotReadiness(lobby);
@@ -962,7 +1009,10 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         );
 
                         const spec = (sIdx !== -1) ? lobby.spectators.splice(sIdx, 1)[0] : null;
-                        const targetUsername = requestedHandle || spec?.username || currentUsername || ws.currentUsername;
+                        const specHandle = spec?.username || '';
+                        const targetUsername = (specHandle && !shouldRenameExistingHandle(specHandle, requestedHandle, accountUsername, data))
+                            ? specHandle
+                            : (requestedHandle || specHandle || currentUsername || ws.currentUsername);
                         const resolvedUid = incomingUid || spec?.userId || null;
                         const resolvedAcct = accountUsername || spec?.accountUsername || targetUsername;
 
@@ -970,6 +1020,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             if (spec && spec.username && spec.username !== targetUsername) {
                                 renameParticipantHandle(lobby, spec.username, targetUsername, resolvedAcct, resolvedUid);
                             }
+                            ws.currentUsername = targetUsername;
                             lobby.spectators = lobby.spectators.filter(s =>
                                 !matchesParticipantIdentity(s, 'idSocket', ws, resolvedUid, targetUsername, resolvedAcct)
                             );
