@@ -4,7 +4,7 @@
 // 1. STATE & ENVIRONMENT SAFEGUARDS
 // -------------------------------------------------------------
 window.clientState = window.clientState || {
-    username: localStorage.getItem('saved_username') || 'Player1',
+    username: localStorage.getItem('blitz31_player_handle') || localStorage.getItem('saved_username') || 'Player1',
     isReady: false,
     playersList: [],
     spectatorsList: [],
@@ -54,32 +54,72 @@ window.getAccountUsername = function() {
     if (window.userSession && window.userSession.username) {
         return window.userSession.username.trim();
     }
+    if (window.clientState && window.clientState.accountUsername) {
+        return window.clientState.accountUsername.trim();
+    }
     const badgeElem = document.getElementById('menu-user-badge') || document.getElementById('user-display-name');
     if (badgeElem && badgeElem.textContent.trim()) {
         return badgeElem.textContent.trim();
     }
     return (
+        localStorage.getItem('account_username') ||
         localStorage.getItem('blitz31_username') ||
         localStorage.getItem('p31_username') ||
-        localStorage.getItem('account_username') ||
         ''
     ).trim();
 };
 
-// Resilient player handle resolver (prioritizes custom handle over account login name)
+// Resilient player handle resolver (protects custom handle across force-close & rejoin)
 window.getMyUsername = function(lobby) {
-    let handle = '';
-
-    // 1. Prioritize custom handle typed into #username-input
+    const snap = lobby || window.appGlobals?.latestLobbySnapshot;
+    const accountName = window.getAccountUsername();
     const inputEl = document.getElementById('username-input');
     const inputVal = (inputEl?.value || '').trim();
-    if (inputVal && inputVal !== 'Player1') {
+    const dedicatedHandle = (localStorage.getItem('blitz31_player_handle') || '').trim();
+
+    // 1. If the user actively typed into #username-input during this session, prioritize it
+    if (inputEl && inputEl.dataset.userEdited === 'true' && inputVal && inputVal !== 'Player1') {
+        if (window.clientState) window.clientState.username = inputVal;
+        localStorage.setItem('blitz31_player_handle', inputVal);
+        localStorage.setItem('saved_username', inputVal);
+        return inputVal;
+    }
+
+    // 2. If we are seated in an active lobby snapshot with isMe, trust the server's seat handle
+    if (snap && Array.isArray(snap.players)) {
+        const pMe = snap.players.find(p => p.isMe && !p.isBot);
+        if (pMe && pMe.username) {
+            if (window.clientState) window.clientState.username = pMe.username;
+            localStorage.setItem('blitz31_player_handle', pMe.username);
+            localStorage.setItem('saved_username', pMe.username);
+            if (inputEl && document.activeElement !== inputEl) {
+                inputEl.value = pMe.username;
+            }
+            return pMe.username;
+        }
+    }
+
+    let handle = '';
+
+    // 3. If #username-input has a custom handle different from the login account name, save & use it
+    if (inputVal && inputVal !== 'Player1' && inputVal !== accountName) {
         handle = inputVal;
         if (window.clientState) window.clientState.username = handle;
+        localStorage.setItem('blitz31_player_handle', handle);
         localStorage.setItem('saved_username', handle);
     }
 
-    // 2. Check active clientState or saved_username handle
+    // 4. Prioritize dedicated custom player handle (prevents force-close boot auth from resetting handle)
+    if (!handle && dedicatedHandle && dedicatedHandle !== 'Player1') {
+        handle = dedicatedHandle;
+        if (window.clientState) window.clientState.username = handle;
+        localStorage.setItem('saved_username', handle);
+        if (inputEl && document.activeElement !== inputEl && (!inputVal || inputVal === accountName || inputVal === 'Player1')) {
+            inputEl.value = handle;
+        }
+    }
+
+    // 5. Check active clientState or saved_username handle
     if (!handle || handle === 'Player1') {
         const stateVal = (window.clientState?.username || '').trim();
         if (stateVal && stateVal !== 'Player1') handle = stateVal;
@@ -89,42 +129,44 @@ window.getMyUsername = function(lobby) {
         if (savedVal && savedVal !== 'Player1') handle = savedVal;
     }
 
-    // 3. Fallback to permanent account username
-    const accountName = window.getAccountUsername();
+    // 6. Fallback to permanent account username
     if (!handle || handle === 'Player1') {
-        handle = accountName;
+        handle = accountName || inputVal;
     }
 
-    // 4. Match against lobby players/spectators by isMe, handle, or accountUsername
-    if (lobby) {
+    // 7. Match against lobby players/spectators by handle or accountUsername
+    if (snap) {
         const hLower = (handle || '').toLowerCase();
         const aLower = (accountName || '').toLowerCase();
 
-        if (Array.isArray(lobby.players)) {
-            const pMe = lobby.players.find(p => p.isMe && !p.isBot);
-            if (pMe && pMe.username) {
-                if (!inputVal || inputVal === 'Player1') {
-                    if (window.clientState) window.clientState.username = pMe.username;
-                }
-                return pMe.username;
-            }
-            const pMatch = lobby.players.find(p => {
+        if (Array.isArray(snap.players)) {
+            const pMatch = snap.players.find(p => {
                 const pName = (p.username || '').toLowerCase();
                 const pAcct = (p.accountUsername || '').toLowerCase();
                 return (hLower && (pName === hLower || pAcct === hLower)) ||
                        (aLower && (pName === aLower || pAcct === aLower));
             });
-            if (pMatch && pMatch.username) return pMatch.username;
+            if (pMatch && pMatch.username) {
+                if (window.clientState) window.clientState.username = pMatch.username;
+                localStorage.setItem('blitz31_player_handle', pMatch.username);
+                localStorage.setItem('saved_username', pMatch.username);
+                return pMatch.username;
+            }
         }
 
-        if (Array.isArray(lobby.spectators)) {
-            const sMatch = lobby.spectators.find(s => {
+        if (Array.isArray(snap.spectators)) {
+            const sMatch = snap.spectators.find(s => {
                 const sName = (s.username || '').toLowerCase();
                 const sAcct = (s.accountUsername || '').toLowerCase();
                 return (hLower && (sName === hLower || sAcct === hLower)) ||
                        (aLower && (sName === aLower || sAcct === aLower));
             });
-            if (sMatch && sMatch.username) return sMatch.username;
+            if (sMatch && sMatch.username) {
+                if (window.clientState) window.clientState.username = sMatch.username;
+                localStorage.setItem('blitz31_player_handle', sMatch.username);
+                localStorage.setItem('saved_username', sMatch.username);
+                return sMatch.username;
+            }
         }
     }
 
@@ -136,15 +178,25 @@ function getActiveUsername() {
 }
 window.getActiveUsername = getActiveUsername;
 
-// Keep clientState & saved_username synced live when editing #username-input
+// Keep clientState, blitz31_player_handle & saved_username synced live when editing #username-input
 function bindUsernameHandleInputSync() {
     const handleInput = document.getElementById('username-input');
     if (handleInput && !handleInput.dataset.handleSyncBound) {
         handleInput.dataset.handleSyncBound = 'true';
+
+        // Restore custom handle into input on initial load if one was saved
+        const savedCustom = (localStorage.getItem('blitz31_player_handle') || '').trim();
+        if (savedCustom && savedCustom !== 'Player1') {
+            handleInput.value = savedCustom;
+            if (window.clientState) window.clientState.username = savedCustom;
+        }
+
         handleInput.addEventListener('input', () => {
             const val = handleInput.value.trim();
+            handleInput.dataset.userEdited = 'true';
             if (val) {
                 if (window.clientState) window.clientState.username = val;
+                localStorage.setItem('blitz31_player_handle', val);
                 localStorage.setItem('saved_username', val);
             }
         });
@@ -1692,6 +1744,15 @@ window.updateUIFromLobby = function(lobby) {
     }
 
     if (me) {
+        if (me.username) {
+            window.clientState.username = me.username;
+            localStorage.setItem('blitz31_player_handle', me.username);
+            localStorage.setItem('saved_username', me.username);
+            const uIn = document.getElementById('username-input');
+            if (uIn && document.activeElement !== uIn) {
+                uIn.value = me.username;
+            }
+        }
         window.clientState.isReady = me.ready;
         const readyBtn = document.getElementById('ready-btn');
         if (readyBtn) readyBtn.innerText = me.ready ? 'Unready' : 'Ready Up';
