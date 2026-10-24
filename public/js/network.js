@@ -14,6 +14,7 @@ window.appGlobals = window.appGlobals || {
 
 window.clientState = window.clientState || {
     username: localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '',
+    accountUsername: localStorage.getItem('account_username') || localStorage.getItem('blitz31_username') || '',
     userId: localStorage.getItem('blitz31_user_id') || null,
     isReady: false,
     playersList: [],
@@ -24,16 +25,56 @@ window.clientState = window.clientState || {
     ledgerHistory: []
 };
 
+// Returns the permanent login account username for ledger & database linking
+window.getAccountUsername = window.getAccountUsername || function() {
+    if (window.userSession && window.userSession.username) {
+        return window.userSession.username.trim();
+    }
+    if (window.clientState && window.clientState.accountUsername) {
+        return window.clientState.accountUsername.trim();
+    }
+    const badgeElem = document.getElementById('menu-user-badge') || document.getElementById('user-display-name');
+    if (badgeElem && badgeElem.textContent.trim()) {
+        return badgeElem.textContent.trim();
+    }
+    return (
+        localStorage.getItem('account_username') ||
+        localStorage.getItem('blitz31_username') ||
+        localStorage.getItem('p31_username') ||
+        ''
+    ).trim();
+};
+
+// Returns the active player handle to display in the lobby
+function resolveActiveHandle() {
+    const userIn = document.getElementById('username-input');
+    const inputVal = (userIn?.value || '').trim();
+    if (inputVal && inputVal !== 'Player1') {
+        window.clientState.username = inputVal;
+        localStorage.setItem('saved_username', inputVal);
+        return inputVal;
+    }
+    if (typeof window.getMyUsername === 'function') {
+        const fromUI = window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
+        if (fromUI && fromUI !== 'Player1') return fromUI;
+    }
+    return (
+        window.clientState?.username ||
+        localStorage.getItem('saved_username') ||
+        window.getAccountUsername() ||
+        'Player1'
+    ).trim();
+}
+
 window.saveInputs = function() {
     const userIn = document.getElementById('username-input');
     const nameIn = document.getElementById('lobby-name-input');
     const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
 
     if (userIn && userIn.value.trim()) {
-        const cleanUser = userIn.value.trim();
-        window.clientState.username = cleanUser;
-        localStorage.setItem('saved_username', cleanUser);
-        localStorage.setItem('p31_username', cleanUser);
+        const cleanHandle = userIn.value.trim();
+        window.clientState.username = cleanHandle;
+        localStorage.setItem('saved_username', cleanHandle);
     }
     if (nameIn && nameIn.value.trim()) {
         localStorage.setItem('saved_lobby_name', nameIn.value.trim());
@@ -44,7 +85,7 @@ window.saveInputs = function() {
 };
 
 window.restoreSavedInputs = function() {
-    const savedUser = localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '';
+    const savedHandle = localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '';
     const savedLobbyName = localStorage.getItem('saved_lobby_name') || '';
     const savedCode = localStorage.getItem('saved_lobby_code') || '';
 
@@ -52,11 +93,23 @@ window.restoreSavedInputs = function() {
     const nameIn = document.getElementById('lobby-name-input');
     const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
 
-    if (userIn && savedUser && !userIn.value) userIn.value = savedUser;
+    if (userIn && savedHandle && !userIn.value) userIn.value = savedHandle;
     if (nameIn && savedLobbyName && !nameIn.value) nameIn.value = savedLobbyName;
     if (codeIn && savedCode && !codeIn.value) codeIn.value = savedCode;
 
-    if (savedUser) window.clientState.username = savedUser;
+    if (savedHandle) window.clientState.username = savedHandle;
+
+    // Bind live input listener so changing handle immediately updates clientState & saved_username
+    if (userIn && !userIn.dataset.handleSyncBound) {
+        userIn.dataset.handleSyncBound = 'true';
+        userIn.addEventListener('input', () => {
+            const val = userIn.value.trim();
+            if (val) {
+                window.clientState.username = val;
+                localStorage.setItem('saved_username', val);
+            }
+        });
+    }
 
     // Check URL for ?room=CODE or ?code=CODE invite parameter
     try {
@@ -123,10 +176,18 @@ function syncLobbyToClientState(lobby) {
     window.clientState.ledgerHistory = lobby.ledgerHistory || [];
     window.clientState.gameState = lobby.gameState || 'lobby';
 
-    const myName = (window.clientState.username || '').toLowerCase();
-    const me = (lobby.players || []).find(p => p.username && p.username.toLowerCase() === myName);
+    const myHandle = resolveActiveHandle().toLowerCase();
+    const myAcct = (window.getAccountUsername() || '').toLowerCase();
+    const me = (lobby.players || []).find(p =>
+        (p.isMe && !p.isBot) ||
+        (p.username && p.username.toLowerCase() === myHandle) ||
+        (myAcct && p.accountUsername && p.accountUsername.toLowerCase() === myAcct)
+    );
     if (me) {
         window.clientState.isReady = !!me.ready;
+        if (me.username) {
+            window.clientState.username = me.username;
+        }
     }
 }
 
@@ -150,34 +211,43 @@ window.connectSocket = function() {
         startHeartbeat();
 
         // Authenticate socket if JWT token exists
-        const token = localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('p31_token');
+        const token = sessionStorage.getItem('31_jwt') ||
+                      localStorage.getItem('31_jwt') ||
+                      localStorage.getItem('token') ||
+                      localStorage.getItem('auth_token') ||
+                      localStorage.getItem('p31_token');
         if (token) {
             ws.send(JSON.stringify({ type: 'AUTH_TOKEN', token }));
         }
 
-        // Flush any queued outgoing actions
+        // Flush any queued outgoing actions and track if a JOIN_LOBBY or CREATE_LOBBY was already sent
+        let alreadySentJoinOrCreate = false;
         while (window.appGlobals.pendingQueue.length > 0) {
             const msg = window.appGlobals.pendingQueue.shift();
+            if (msg && (msg.type === 'JOIN_LOBBY' || msg.type === 'CREATE_LOBBY')) {
+                alreadySentJoinOrCreate = true;
+            }
             ws.send(JSON.stringify(msg));
         }
 
         // Request public lobbies list
         ws.send(JSON.stringify({ type: 'GET_LOBBIES' }));
 
-        // Auto-rejoin active room (or ?room=CODE invite link) if auth screen is not blocking
+        // Auto-rejoin active room ONLY if not already sent by the pending queue
         const authScreen = document.getElementById('auth-screen');
         const isAuthVisible = authScreen && authScreen.style.display !== 'none';
         const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
 
-        if (!isAuthVisible && activeRoom) {
-            const myName = (document.getElementById('username-input')?.value ||
-                            window.clientState?.username ||
-                            localStorage.getItem('saved_username') ||
-                            'Player1').trim();
+        if (!isAuthVisible && activeRoom && !alreadySentJoinOrCreate) {
+            const myHandle = resolveActiveHandle();
+            const accountUsername = window.getAccountUsername() || myHandle;
+            const userId = window.userSession?.id || window.userSession?.userId || window.clientState?.userId || localStorage.getItem('blitz31_user_id') || null;
             ws.send(JSON.stringify({
                 type: 'JOIN_LOBBY',
                 code: activeRoom.toUpperCase(),
-                username: myName
+                username: myHandle,
+                accountUsername: accountUsername,
+                userId: userId
             }));
         }
     };
@@ -197,11 +267,26 @@ window.connectSocket = function() {
             case 'AUTH_SUCCESS': {
                 window.userSession = data.user;
                 if (data.user && data.user.username) {
-                    window.clientState.username = data.user.username;
-                    localStorage.setItem('saved_username', data.user.username);
-                    localStorage.setItem('p31_username', data.user.username);
+                    const acctName = data.user.username.trim();
+                    window.clientState.accountUsername = acctName;
+                    localStorage.setItem('account_username', acctName);
+                    localStorage.setItem('blitz31_username', acctName);
+                    localStorage.setItem('p31_username', acctName);
+
+                    // Preserve custom player handle if the user already set one
                     const uIn = document.getElementById('username-input');
-                    if (uIn) uIn.value = data.user.username;
+                    const currentInputHandle = (uIn?.value || '').trim();
+                    const savedCustomHandle = (localStorage.getItem('saved_username') || '').trim();
+
+                    if (!currentInputHandle || currentInputHandle === 'Player1') {
+                        const initialHandle = (savedCustomHandle && savedCustomHandle !== 'Player1') ? savedCustomHandle : acctName;
+                        if (uIn) uIn.value = initialHandle;
+                        window.clientState.username = initialHandle;
+                        localStorage.setItem('saved_username', initialHandle);
+                    } else {
+                        window.clientState.username = currentInputHandle;
+                        localStorage.setItem('saved_username', currentInputHandle);
+                    }
                 }
                 if (data.user && (data.user.id || data.user.userId)) {
                     window.clientState.userId = data.user.id || data.user.userId;
@@ -372,15 +457,31 @@ window.connectSocket = function() {
 window.initSocketAndSend = function(payload) {
     if (!payload || typeof payload !== 'object') return;
 
+    const activeHandle = resolveActiveHandle();
+    const accountUsername = window.getAccountUsername() || activeHandle;
+
+    if (!payload.username && payload.type !== 'PING' && payload.type !== 'GET_LOBBIES') {
+        payload.username = activeHandle;
+    }
+    if (!payload.accountUsername && payload.type !== 'PING' && payload.type !== 'GET_LOBBIES') {
+        payload.accountUsername = accountUsername;
+    }
+
     if (window.userSession) {
         payload.userId = window.userSession.id || window.userSession.userId;
         payload.isGuest = !!window.userSession.isGuest;
+    } else if (window.clientState?.userId || localStorage.getItem('blitz31_user_id')) {
+        payload.userId = window.clientState?.userId || localStorage.getItem('blitz31_user_id');
     }
 
     const ws = window.appGlobals?.ws || window.ws;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
     } else {
+        // Deduplicate queued JOIN_LOBBY requests so opening socket never fires twice
+        if (payload.type === 'JOIN_LOBBY') {
+            window.appGlobals.pendingQueue = window.appGlobals.pendingQueue.filter(m => m.type !== 'JOIN_LOBBY');
+        }
         window.appGlobals.pendingQueue.push(payload);
         if (typeof window.connectSocket === 'function') {
             window.connectSocket();
@@ -418,14 +519,11 @@ window.resetToMainMenu = function() {
 window.createLobby = function() {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
-        const userIn = document.getElementById('username-input');
         const nameIn = document.getElementById('lobby-name-input');
         const privIn = document.getElementById('private-lobby-checkbox');
 
-        const username = (userIn?.value || '').trim() || 
-                         (window.clientState && window.clientState.username) || 
-                         localStorage.getItem('saved_username') || 
-                         'Player1';
+        const username = resolveActiveHandle();
+        const accountUsername = window.getAccountUsername() || username;
         const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
         const isPrivate = privIn ? privIn.checked : false;
 
@@ -436,6 +534,7 @@ window.createLobby = function() {
         window.initSocketAndSend({
             type: 'CREATE_LOBBY',
             username,
+            accountUsername,
             lobbyName,
             isPrivate
         });
@@ -447,13 +546,10 @@ window.createLobby = function() {
 window.joinLobby = function() {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
-        const userIn = document.getElementById('username-input');
         const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
 
-        const username = (userIn?.value || '').trim() || 
-                         (window.clientState && window.clientState.username) || 
-                         localStorage.getItem('saved_username') || 
-                         'Player1';
+        const username = resolveActiveHandle();
+        const accountUsername = window.getAccountUsername() || username;
         const code = (codeIn?.value || '').trim().toUpperCase();
 
         if (!code) {
@@ -474,7 +570,8 @@ window.joinLobby = function() {
         window.initSocketAndSend({
             type: 'JOIN_LOBBY',
             code,
-            username
+            username,
+            accountUsername
         });
     } catch (err) {
         console.error("Join Table Error:", err);
@@ -484,13 +581,11 @@ window.joinLobby = function() {
 window.joinLobbyCode = function(code) {
     if (!code) return;
     if (typeof window.saveInputs === 'function') window.saveInputs();
-    const userIn = document.getElementById('username-input');
-    const username = (userIn?.value || '').trim() || 
-                     (window.clientState && window.clientState.username) || 
-                     localStorage.getItem('saved_username') || 
-                     'Player1';
 
+    const username = resolveActiveHandle();
+    const accountUsername = window.getAccountUsername() || username;
     const normalizedCode = code.toUpperCase();
+
     window.clientState = window.clientState || {};
     window.clientState.username = username;
     localStorage.setItem('saved_username', username);
@@ -500,7 +595,8 @@ window.joinLobbyCode = function(code) {
     window.initSocketAndSend({
         type: 'JOIN_LOBBY',
         code: normalizedCode,
-        username
+        username,
+        accountUsername
     });
 };
 
@@ -514,8 +610,13 @@ window.refreshLobbies = function() {
 window.leaveLobby = function(skipConfirm = false) {
     if (!skipConfirm) {
         const lobby = window.appGlobals?.latestLobbySnapshot;
-        const myName = (window.clientState?.username || localStorage.getItem('saved_username') || '').trim().toLowerCase();
-        const me = (lobby?.players || []).find(p => p.username && p.username.toLowerCase() === myName);
+        const myName = resolveActiveHandle().toLowerCase();
+        const myAcct = (window.getAccountUsername() || '').toLowerCase();
+        const me = (lobby?.players || []).find(p =>
+            (p.isMe && !p.isBot) ||
+            (p.username && p.username.toLowerCase() === myName) ||
+            (myAcct && p.accountUsername && p.accountUsername.toLowerCase() === myAcct)
+        );
         const isGameActive = Boolean(lobby && lobby.gameState && lobby.gameState !== 'lobby' && lobby.gameState !== 'tournamentEnd');
 
         if (isGameActive && me && !me.isBot) {
@@ -578,8 +679,17 @@ window.sendReaction = window.sendQuickReaction = function(emoji) {
     });
 };
 
-window.sitDown = function() { window.initSocketAndSend({ type: 'SIT_DOWN' }); };
-window.standUp = function() { window.initSocketAndSend({ type: 'STAND_UP' }); };
+window.sitDown = function() {
+    const username = resolveActiveHandle();
+    const accountUsername = window.getAccountUsername() || username;
+    window.initSocketAndSend({ type: 'SIT_DOWN', username, accountUsername });
+};
+
+window.standUp = function() {
+    const username = resolveActiveHandle();
+    const accountUsername = window.getAccountUsername() || username;
+    window.initSocketAndSend({ type: 'STAND_UP', username, accountUsername });
+};
 
 window.toggleReady = function() {
     const nextState = !window.clientState.isReady;
@@ -765,10 +875,13 @@ window.respondToBet = function(betId, accept) {
 };
 
 window.clearDebtCategory = function(targetUser, category) {
+    const activeHandle = resolveActiveHandle();
+    const accountUsername = window.getAccountUsername() || activeHandle;
     window.initSocketAndSend({
         type: 'CLEAR_DEBT',
         debtor: targetUser,
-        creditor: (window.clientState?.username || 'Player1'),
+        creditor: activeHandle,
+        creditorAccount: accountUsername,
         ledgerType: category
     });
 };
@@ -852,7 +965,20 @@ window.toggleLedgerModal = window.openLedgerModal = window.toggleSessionLedger =
     modal.style.display = nextState ? 'flex' : 'none';
 
     if (nextState) {
-        window.initSocketAndSend({ type: 'GET_LIFETIME_LEDGER' });
+        const accountUsername = window.getAccountUsername();
+        const activeHandle = resolveActiveHandle();
+        const token = sessionStorage.getItem('31_jwt') ||
+                      localStorage.getItem('31_jwt') ||
+                      localStorage.getItem('token') ||
+                      localStorage.getItem('auth_token') ||
+                      localStorage.getItem('p31_token');
+        window.initSocketAndSend({
+            type: 'GET_LIFETIME_LEDGER',
+            token: token || null,
+            username: accountUsername || activeHandle,
+            accountUsername: accountUsername || activeHandle,
+            handle: activeHandle
+        });
         if (typeof window.renderSessionLedger === 'function') {
             window.renderSessionLedger();
         }
@@ -869,10 +995,9 @@ function resyncActiveSession() {
     }
 
     const activeRoom = window.appGlobals.currentJoinedCode || localStorage.getItem('blitz31_active_room');
-    const myName = (document.getElementById('username-input')?.value || 
-                    window.clientState?.username || 
-                    localStorage.getItem('saved_username') || 
-                    'Player1').trim();
+    const myHandle = resolveActiveHandle();
+    const accountUsername = window.getAccountUsername() || myHandle;
+    const userId = window.userSession?.id || window.userSession?.userId || window.clientState?.userId || localStorage.getItem('blitz31_user_id') || null;
     const ws = window.appGlobals.ws;
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -881,7 +1006,9 @@ function resyncActiveSession() {
         ws.send(JSON.stringify({
             type: 'JOIN_LOBBY',
             code: activeRoom.toUpperCase(),
-            username: myName
+            username: myHandle,
+            accountUsername: accountUsername,
+            userId: userId
         }));
     }
 }
