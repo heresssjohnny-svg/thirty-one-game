@@ -13,7 +13,7 @@ window.appGlobals = window.appGlobals || {
 };
 
 window.clientState = window.clientState || {
-    username: localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '',
+    username: localStorage.getItem('blitz31_player_handle') || localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '',
     accountUsername: localStorage.getItem('account_username') || localStorage.getItem('blitz31_username') || '',
     userId: localStorage.getItem('blitz31_user_id') || null,
     isReady: false,
@@ -45,23 +45,60 @@ window.getAccountUsername = window.getAccountUsername || function() {
     ).trim();
 };
 
-// Returns the active player handle to display in the lobby
+// Returns the active player handle to display in the lobby (protected from force-close auth resets)
 function resolveActiveHandle() {
+    const dedicatedHandle = (localStorage.getItem('blitz31_player_handle') || '').trim();
     const userIn = document.getElementById('username-input');
     const inputVal = (userIn?.value || '').trim();
-    if (inputVal && inputVal !== 'Player1') {
+    const acctName = (window.getAccountUsername() || '').trim();
+
+    // 1. If the user manually typed a handle into #username-input during this session, use and persist it
+    if (userIn && userIn.dataset.userEdited === 'true' && inputVal && inputVal !== 'Player1') {
         window.clientState.username = inputVal;
+        localStorage.setItem('blitz31_player_handle', inputVal);
         localStorage.setItem('saved_username', inputVal);
         return inputVal;
     }
-    if (typeof window.getMyUsername === 'function') {
-        const fromUI = window.getMyUsername(window.appGlobals?.latestLobbySnapshot);
-        if (fromUI && fromUI !== 'Player1') return fromUI;
+
+    // 2. If #username-input has a custom value different from the login accountUsername, persist it
+    if (inputVal && inputVal !== 'Player1' && inputVal !== acctName) {
+        window.clientState.username = inputVal;
+        localStorage.setItem('blitz31_player_handle', inputVal);
+        localStorage.setItem('saved_username', inputVal);
+        return inputVal;
     }
+
+    // 3. Prioritize dedicated custom player handle (prevents app.js boot auth from resetting handle)
+    if (dedicatedHandle && dedicatedHandle !== 'Player1') {
+        window.clientState.username = dedicatedHandle;
+        localStorage.setItem('saved_username', dedicatedHandle);
+        if (userIn && (!inputVal || inputVal === acctName || inputVal === 'Player1')) {
+            userIn.value = dedicatedHandle;
+        }
+        return dedicatedHandle;
+    }
+
+    // 4. Check active lobby snapshot if already seated
+    const snap = window.appGlobals?.latestLobbySnapshot;
+    if (snap && Array.isArray(snap.players)) {
+        const myEntry = snap.players.find(p => p.isMe && !p.isBot);
+        if (myEntry && myEntry.username) {
+            window.clientState.username = myEntry.username;
+            localStorage.setItem('blitz31_player_handle', myEntry.username);
+            localStorage.setItem('saved_username', myEntry.username);
+            return myEntry.username;
+        }
+    }
+
+    if (inputVal && inputVal !== 'Player1') {
+        window.clientState.username = inputVal;
+        return inputVal;
+    }
+
     return (
         window.clientState?.username ||
         localStorage.getItem('saved_username') ||
-        window.getAccountUsername() ||
+        acctName ||
         'Player1'
     ).trim();
 }
@@ -74,6 +111,7 @@ window.saveInputs = function() {
     if (userIn && userIn.value.trim()) {
         const cleanHandle = userIn.value.trim();
         window.clientState.username = cleanHandle;
+        localStorage.setItem('blitz31_player_handle', cleanHandle);
         localStorage.setItem('saved_username', cleanHandle);
     }
     if (nameIn && nameIn.value.trim()) {
@@ -85,7 +123,9 @@ window.saveInputs = function() {
 };
 
 window.restoreSavedInputs = function() {
-    const savedHandle = localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '';
+    const savedHandle = localStorage.getItem('blitz31_player_handle') ||
+                        localStorage.getItem('saved_username') ||
+                        localStorage.getItem('p31_username') || '';
     const savedLobbyName = localStorage.getItem('saved_lobby_name') || '';
     const savedCode = localStorage.getItem('saved_lobby_code') || '';
 
@@ -93,19 +133,25 @@ window.restoreSavedInputs = function() {
     const nameIn = document.getElementById('lobby-name-input');
     const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
 
-    if (userIn && savedHandle && !userIn.value) userIn.value = savedHandle;
+    if (userIn && savedHandle) userIn.value = savedHandle;
     if (nameIn && savedLobbyName && !nameIn.value) nameIn.value = savedLobbyName;
     if (codeIn && savedCode && !codeIn.value) codeIn.value = savedCode;
 
-    if (savedHandle) window.clientState.username = savedHandle;
+    if (savedHandle) {
+        window.clientState.username = savedHandle;
+        localStorage.setItem('blitz31_player_handle', savedHandle);
+        localStorage.setItem('saved_username', savedHandle);
+    }
 
-    // Bind live input listener so changing handle immediately updates clientState & saved_username
+    // Bind live input listener so physical edits to #username-input immediately update blitz31_player_handle
     if (userIn && !userIn.dataset.handleSyncBound) {
         userIn.dataset.handleSyncBound = 'true';
         userIn.addEventListener('input', () => {
             const val = userIn.value.trim();
+            userIn.dataset.userEdited = 'true';
             if (val) {
                 window.clientState.username = val;
+                localStorage.setItem('blitz31_player_handle', val);
                 localStorage.setItem('saved_username', val);
             }
         });
@@ -187,6 +233,22 @@ function syncLobbyToClientState(lobby) {
         window.clientState.isReady = !!me.ready;
         if (me.username) {
             window.clientState.username = me.username;
+            localStorage.setItem('blitz31_player_handle', me.username);
+            localStorage.setItem('saved_username', me.username);
+            const uIn = document.getElementById('username-input');
+            if (uIn) uIn.value = me.username;
+        }
+    } else {
+        const mySpec = (lobby.spectators || []).find(s =>
+            (s.username && s.username.toLowerCase() === myHandle) ||
+            (myAcct && s.accountUsername && s.accountUsername.toLowerCase() === myAcct)
+        );
+        if (mySpec && mySpec.username) {
+            window.clientState.username = mySpec.username;
+            localStorage.setItem('blitz31_player_handle', mySpec.username);
+            localStorage.setItem('saved_username', mySpec.username);
+            const uIn = document.getElementById('username-input');
+            if (uIn) uIn.value = mySpec.username;
         }
     }
 }
@@ -247,7 +309,8 @@ window.connectSocket = function() {
                 code: activeRoom.toUpperCase(),
                 username: myHandle,
                 accountUsername: accountUsername,
-                userId: userId
+                userId: userId,
+                isReconnect: true
             }));
         }
     };
@@ -274,19 +337,18 @@ window.connectSocket = function() {
                     localStorage.setItem('p31_username', acctName);
 
                     // Preserve custom player handle if the user already set one
+                    const dedicatedHandle = (localStorage.getItem('blitz31_player_handle') || '').trim();
                     const uIn = document.getElementById('username-input');
                     const currentInputHandle = (uIn?.value || '').trim();
-                    const savedCustomHandle = (localStorage.getItem('saved_username') || '').trim();
 
-                    if (!currentInputHandle || currentInputHandle === 'Player1') {
-                        const initialHandle = (savedCustomHandle && savedCustomHandle !== 'Player1') ? savedCustomHandle : acctName;
-                        if (uIn) uIn.value = initialHandle;
-                        window.clientState.username = initialHandle;
-                        localStorage.setItem('saved_username', initialHandle);
-                    } else {
-                        window.clientState.username = currentInputHandle;
-                        localStorage.setItem('saved_username', currentInputHandle);
-                    }
+                    const preferredHandle = (dedicatedHandle && dedicatedHandle !== 'Player1')
+                        ? dedicatedHandle
+                        : ((currentInputHandle && currentInputHandle !== 'Player1') ? currentInputHandle : acctName);
+
+                    if (uIn) uIn.value = preferredHandle;
+                    window.clientState.username = preferredHandle;
+                    localStorage.setItem('blitz31_player_handle', preferredHandle);
+                    localStorage.setItem('saved_username', preferredHandle);
                 }
                 if (data.user && (data.user.id || data.user.userId)) {
                     window.clientState.userId = data.user.id || data.user.userId;
@@ -508,6 +570,11 @@ window.resetToMainMenu = function() {
     if (authScreen) authScreen.style.display = 'none';
     if (mainMenu) mainMenu.style.display = 'flex';
 
+    // Restore custom player handle into #username-input on main menu return
+    const savedHandle = localStorage.getItem('blitz31_player_handle') || localStorage.getItem('saved_username');
+    const uIn = document.getElementById('username-input');
+    if (uIn && savedHandle) uIn.value = savedHandle;
+
     if (typeof window.disconnectLiveKit === 'function') {
         window.disconnectLiveKit();
     }
@@ -519,16 +586,18 @@ window.resetToMainMenu = function() {
 window.createLobby = function() {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
+        const userIn = document.getElementById('username-input');
         const nameIn = document.getElementById('lobby-name-input');
         const privIn = document.getElementById('private-lobby-checkbox');
 
-        const username = resolveActiveHandle();
+        const username = (userIn?.value || '').trim() || resolveActiveHandle();
         const accountUsername = window.getAccountUsername() || username;
         const lobbyName = (nameIn?.value || '').trim() || `${username}'s Table`;
         const isPrivate = privIn ? privIn.checked : false;
 
         window.clientState = window.clientState || {};
         window.clientState.username = username;
+        localStorage.setItem('blitz31_player_handle', username);
         localStorage.setItem('saved_username', username);
 
         window.initSocketAndSend({
@@ -546,9 +615,10 @@ window.createLobby = function() {
 window.joinLobby = function() {
     try {
         if (typeof window.saveInputs === 'function') window.saveInputs();
+        const userIn = document.getElementById('username-input');
         const codeIn = document.getElementById('lobby-code-input') || document.getElementById('join-code-input');
 
-        const username = resolveActiveHandle();
+        const username = (userIn?.value || '').trim() || resolveActiveHandle();
         const accountUsername = window.getAccountUsername() || username;
         const code = (codeIn?.value || '').trim().toUpperCase();
 
@@ -563,6 +633,7 @@ window.joinLobby = function() {
 
         window.clientState = window.clientState || {};
         window.clientState.username = username;
+        localStorage.setItem('blitz31_player_handle', username);
         localStorage.setItem('saved_username', username);
         if (window.appGlobals) window.appGlobals.currentJoinedCode = code;
         localStorage.setItem('blitz31_active_room', code);
@@ -571,7 +642,9 @@ window.joinLobby = function() {
             type: 'JOIN_LOBBY',
             code,
             username,
-            accountUsername
+            accountUsername,
+            explicitJoin: true,
+            explicitHandleChange: true
         });
     } catch (err) {
         console.error("Join Table Error:", err);
@@ -582,12 +655,14 @@ window.joinLobbyCode = function(code) {
     if (!code) return;
     if (typeof window.saveInputs === 'function') window.saveInputs();
 
-    const username = resolveActiveHandle();
+    const userIn = document.getElementById('username-input');
+    const username = (userIn?.value || '').trim() || resolveActiveHandle();
     const accountUsername = window.getAccountUsername() || username;
     const normalizedCode = code.toUpperCase();
 
     window.clientState = window.clientState || {};
     window.clientState.username = username;
+    localStorage.setItem('blitz31_player_handle', username);
     localStorage.setItem('saved_username', username);
     if (window.appGlobals) window.appGlobals.currentJoinedCode = normalizedCode;
     localStorage.setItem('blitz31_active_room', normalizedCode);
@@ -596,7 +671,9 @@ window.joinLobbyCode = function(code) {
         type: 'JOIN_LOBBY',
         code: normalizedCode,
         username,
-        accountUsername
+        accountUsername,
+        explicitJoin: true,
+        explicitHandleChange: true
     });
 };
 
@@ -1008,7 +1085,8 @@ function resyncActiveSession() {
             code: activeRoom.toUpperCase(),
             username: myHandle,
             accountUsername: accountUsername,
-            userId: userId
+            userId: userId,
+            isReconnect: true
         }));
     }
 }
