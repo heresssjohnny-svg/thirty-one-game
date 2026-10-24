@@ -35,14 +35,213 @@ try {
     dbModule = null;
 }
 
-function extractSocketUserId(ws) {
-    if (!ws || typeof ws !== 'object') return null;
-    const uid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) || ws.userId || null;
-    if (uid && !String(uid).startsWith('gst_')) return uid;
+// -------------------------------------------------------------
+// 0. IDENTITY, HANDLE & ACCOUNT LEDGER RESOLUTION HELPERS
+// -------------------------------------------------------------
+
+function extractAccountUsername(ws, data, lobby) {
+    if (ws && ws.user && !ws.user.isGuest && ws.user.username) {
+        return String(ws.user.username).trim();
+    }
+    if (data && data.accountUsername && String(data.accountUsername).trim()) {
+        return String(data.accountUsername).trim();
+    }
+    if (ws && ws.accountUsername && String(ws.accountUsername).trim()) {
+        return String(ws.accountUsername).trim();
+    }
+    if (lobby && ws) {
+        const p = (lobby.players || []).find(pl => pl.id === ws && pl.accountUsername);
+        if (p) return p.accountUsername;
+        const s = (lobby.spectators || []).find(sp => sp.idSocket === ws && sp.accountUsername);
+        if (s) return s.accountUsername;
+    }
     return null;
 }
 
-// Helper to reliably resolve a socket's canonical username in a lobby
+function extractSocketUserId(ws, data, lobby) {
+    if (!ws || typeof ws !== 'object') return null;
+
+    let uid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) ||
+              ws.userId ||
+              (data && data.userId) ||
+              null;
+
+    if (uid && !String(uid).startsWith('gst_')) {
+        ws.userId = uid;
+        return uid;
+    }
+
+    const acctName = extractAccountUsername(ws, data, lobby);
+    if (acctName && dbModule && typeof dbModule.findUserByUsername === 'function') {
+        const row = dbModule.findUserByUsername(acctName);
+        if (row && row.id && !String(row.id).startsWith('gst_')) {
+            ws.userId = row.id;
+            return row.id;
+        }
+    }
+
+    const handleName = (data?.username || ws.currentUsername || '').trim();
+    if (lobby && lobby.identityMap) {
+        const mapped = (acctName && lobby.identityMap[acctName.toLowerCase()]) ||
+                       (handleName && lobby.identityMap[handleName.toLowerCase()]);
+        if (mapped && mapped.userId && !String(mapped.userId).startsWith('gst_')) {
+            ws.userId = mapped.userId;
+            return mapped.userId;
+        }
+    }
+
+    if (handleName && dbModule && typeof dbModule.findUserByUsername === 'function') {
+        const row = dbModule.findUserByUsername(handleName);
+        if (row && row.id && !String(row.id).startsWith('gst_')) {
+            ws.userId = row.id;
+            return row.id;
+        }
+    }
+
+    return null;
+}
+
+function registerLobbyIdentity(lobby, ws, handle, accountUsername, userId) {
+    if (!lobby) return null;
+    if (!lobby.identityMap) lobby.identityMap = {};
+
+    const cleanHandle = (handle || '').trim();
+    const cleanAcct = (accountUsername || cleanHandle || '').trim();
+    let resolvedUid = userId || extractSocketUserId(ws, { username: cleanHandle, accountUsername: cleanAcct }, lobby);
+
+    if (!resolvedUid && dbModule && typeof dbModule.findUserByUsername === 'function') {
+        const acctRow = cleanAcct ? dbModule.findUserByUsername(cleanAcct) : null;
+        const handleRow = (!acctRow && cleanHandle) ? dbModule.findUserByUsername(cleanHandle) : null;
+        const row = acctRow || handleRow;
+        if (row && row.id && !String(row.id).startsWith('gst_')) {
+            resolvedUid = row.id;
+        }
+    }
+
+    if (ws && typeof ws === 'object') {
+        if (resolvedUid) ws.userId = resolvedUid;
+        if (cleanAcct) ws.accountUsername = cleanAcct;
+    }
+
+    const record = {
+        userId: resolvedUid || null,
+        accountUsername: cleanAcct || cleanHandle,
+        handle: cleanHandle || cleanAcct
+    };
+
+    if (cleanHandle) lobby.identityMap[cleanHandle.toLowerCase()] = record;
+    if (cleanAcct) lobby.identityMap[cleanAcct.toLowerCase()] = record;
+
+    return resolvedUid;
+}
+
+function matchesParticipantIdentity(entry, sockProp, ws, incomingUid, handle, accountUsername) {
+    if (!entry || entry.isBot) return false;
+    if (ws && entry[sockProp] && entry[sockProp] === ws) return true;
+    if (incomingUid && entry.userId && String(entry.userId) === String(incomingUid)) return true;
+
+    const hLower = (handle || '').trim().toLowerCase();
+    const aLower = (accountUsername || '').trim().toLowerCase();
+    const eName = (entry.username || '').trim().toLowerCase();
+    const eAcct = (entry.accountUsername || '').trim().toLowerCase();
+
+    if (aLower && (eAcct === aLower || eName === aLower)) return true;
+    if (hLower && (eName === hLower || (eAcct && eAcct === hLower))) return true;
+    return false;
+}
+
+// Renames a player's display handle in-place and migrates session ledgers & references
+function renameParticipantHandle(lobby, oldHandle, newHandle, accountUsername, userId) {
+    if (!lobby || !newHandle) return;
+    const cleanOld = (oldHandle || '').trim();
+    const cleanNew = (newHandle || '').trim();
+    if (!cleanOld || cleanOld === cleanNew) return;
+
+    const oldLower = cleanOld.toLowerCase();
+
+    const migrateLedgerObject = (ledger) => {
+        if (!ledger || typeof ledger !== 'object') return;
+        for (const debtor of Object.keys(ledger)) {
+            if (debtor.toLowerCase() === oldLower && debtor !== cleanNew) {
+                if (!ledger[cleanNew]) ledger[cleanNew] = {};
+                for (const cred of Object.keys(ledger[debtor] || {})) {
+                    const targetCred = cred.toLowerCase() === oldLower ? cleanNew : cred;
+                    if (targetCred !== cleanNew) {
+                        ledger[cleanNew][targetCred] = (Number(ledger[cleanNew][targetCred]) || 0) + (Number(ledger[debtor][cred]) || 0);
+                    }
+                }
+                delete ledger[debtor];
+            }
+        }
+        for (const debtor of Object.keys(ledger)) {
+            if (!ledger[debtor]) continue;
+            for (const cred of Object.keys(ledger[debtor])) {
+                if (cred.toLowerCase() === oldLower && cred !== cleanNew) {
+                    if (debtor !== cleanNew) {
+                        ledger[debtor][cleanNew] = (Number(ledger[debtor][cleanNew]) || 0) + (Number(ledger[debtor][cred]) || 0);
+                    }
+                    delete ledger[debtor][cred];
+                }
+            }
+        }
+    };
+
+    migrateLedgerObject(lobby.mainGameLedger);
+    migrateLedgerObject(lobby.sideBetLedger);
+    migrateLedgerObject(lobby.botBetLedger);
+    if (lobby.persistedLifetimeLedger) {
+        migrateLedgerObject(lobby.persistedLifetimeLedger.main);
+        migrateLedgerObject(lobby.persistedLifetimeLedger.side);
+        migrateLedgerObject(lobby.persistedLifetimeLedger.loggedSide);
+    }
+
+    if (lobby.host && lobby.host.toLowerCase() === oldLower) lobby.host = cleanNew;
+    if (lobby.dealerName && lobby.dealerName.toLowerCase() === oldLower) lobby.dealerName = cleanNew;
+    if (lobby.lastGameWinner && lobby.lastGameWinner.toLowerCase() === oldLower) lobby.lastGameWinner = cleanNew;
+    if (lobby.knockedBy && lobby.knockedBy.toLowerCase() === oldLower) lobby.knockedBy = cleanNew;
+
+    if (lobby.drawResults && lobby.drawResults[cleanOld] !== undefined) {
+        lobby.drawResults[cleanNew] = lobby.drawResults[cleanOld];
+        delete lobby.drawResults[cleanOld];
+    }
+    if (Array.isArray(lobby.drawPool)) {
+        lobby.drawPool.forEach(slot => {
+            if (slot && slot.chosenBy && slot.chosenBy.toLowerCase() === oldLower) {
+                slot.chosenBy = cleanNew;
+            }
+        });
+    }
+    if (Array.isArray(lobby.tiedParticipantsList)) {
+        lobby.tiedParticipantsList = lobby.tiedParticipantsList.map(u =>
+            (u && u.toLowerCase() === oldLower) ? cleanNew : u
+        );
+    }
+
+    const updateBetParticipants = (list) => {
+        if (!Array.isArray(list)) return;
+        list.forEach(b => {
+            if (!b) return;
+            if (b.proposer && b.proposer.toLowerCase() === oldLower) b.proposer = cleanNew;
+            if (b.bettor && b.bettor.toLowerCase() === oldLower) b.bettor = cleanNew;
+            if (b.creator && b.creator.toLowerCase() === oldLower) b.creator = cleanNew;
+            if (b.target && b.target.toLowerCase() === oldLower) b.target = cleanNew;
+            if (b.pickUser && b.pickUser.toLowerCase() === oldLower) b.pickUser = cleanNew;
+            if (b.targetSurvivor && b.targetSurvivor.toLowerCase() === oldLower) b.targetSurvivor = cleanNew;
+            if (Array.isArray(b.acceptedBy)) {
+                b.acceptedBy = b.acceptedBy.map(u => (u && u.toLowerCase() === oldLower) ? cleanNew : u);
+            }
+            if (Array.isArray(b.deniedBy)) {
+                b.deniedBy = b.deniedBy.map(u => (u && u.toLowerCase() === oldLower) ? cleanNew : u);
+            }
+        });
+    };
+
+    updateBetParticipants(lobby.activeBets);
+    updateBetParticipants(lobby.pendingBets);
+    updateBetParticipants(lobby.globalProposals);
+}
+
+// Helper to reliably resolve a socket's canonical display handle in a lobby
 function resolveSocketUsername(lobby, ws, fallbackUsername) {
     if (lobby) {
         const p = lobby.players.find(pl => pl.id === ws);
@@ -50,11 +249,18 @@ function resolveSocketUsername(lobby, ws, fallbackUsername) {
         const s = (lobby.spectators || []).find(sp => sp.idSocket === ws);
         if (s && s.username) return s.username;
     }
-    const rawFallback = (fallbackUsername || ws?.currentUsername || ws?.user?.username || '').trim();
+    const rawFallback = (fallbackUsername || ws?.currentUsername || ws?.accountUsername || ws?.user?.username || '').trim();
     if (lobby && rawFallback) {
-        const pByName = lobby.players.find(pl => pl.username && pl.username.toLowerCase() === rawFallback.toLowerCase());
+        const lower = rawFallback.toLowerCase();
+        const pByName = lobby.players.find(pl =>
+            (pl.username && pl.username.toLowerCase() === lower) ||
+            (pl.accountUsername && pl.accountUsername.toLowerCase() === lower)
+        );
         if (pByName) return pByName.username;
-        const sByName = (lobby.spectators || []).find(sp => sp.username && sp.username.toLowerCase() === rawFallback.toLowerCase());
+        const sByName = (lobby.spectators || []).find(sp =>
+            (sp.username && sp.username.toLowerCase() === lower) ||
+            (sp.accountUsername && sp.accountUsername.toLowerCase() === lower)
+        );
         if (sByName) return sByName.username;
     }
     return rawFallback || null;
@@ -83,7 +289,10 @@ function startReadyCountdown(lobby, player, broadcastLobbyList) {
         const curLobby = lobbies[lobby.code];
         if (!curLobby || curLobby.gameState !== 'lobby') return;
 
-        const pIdx = curLobby.players.findIndex(p => p.username && p.username.toLowerCase() === (player.username || '').toLowerCase());
+        const pIdx = curLobby.players.findIndex(p =>
+            p === player ||
+            (p.username && p.username.toLowerCase() === (player.username || '').toLowerCase())
+        );
         if (pIdx === -1) return;
 
         const target = curLobby.players[pIdx];
@@ -92,14 +301,14 @@ function startReadyCountdown(lobby, player, broadcastLobbyList) {
             const removed = curLobby.players.splice(pIdx, 1)[0];
 
             const alreadySpec = curLobby.spectators.some(s =>
-                s.idSocket === target.id ||
-                (removed.username && s.username && s.username.toLowerCase() === removed.username.toLowerCase())
+                matchesParticipantIdentity(s, 'idSocket', target.id, removed.userId, removed.username, removed.accountUsername)
             );
 
             if (!alreadySpec) {
                 curLobby.spectators.push({
                     idSocket: target.id,
-                    userId: removed.userId || extractSocketUserId(target.id) || null,
+                    userId: removed.userId || extractSocketUserId(target.id, null, curLobby) || null,
+                    accountUsername: removed.accountUsername || removed.username,
                     username: removed.username,
                     inVC: removed.inVC || false,
                     isMuted: removed.isMuted !== undefined ? removed.isMuted : true,
@@ -113,7 +322,7 @@ function startReadyCountdown(lobby, player, broadcastLobbyList) {
             broadcastLobbyUpdate(curLobby.code);
             if (typeof broadcastLobbyList === 'function') broadcastLobbyList();
         }
-    }, 30000); // 30 seconds
+    }, 30000);
 }
 
 // -------------------------------------------------------------
@@ -154,7 +363,6 @@ function executeLevel8AITurn(lobby, player) {
     const currentScore = calculateHandScore(cards);
     const actorIdentity = player.id || player.username;
 
-    // If player already drew and holds 4 cards: execute best discard
     if (cards.length === 4) {
         let bestDiscardIdx = 0;
         let highestSubScore = -1;
@@ -171,7 +379,6 @@ function executeLevel8AITurn(lobby, player) {
         return;
     }
 
-    // LEVEL 8 KNOCK EVALUATION (Before drawing) - Must be >= 25 in 2-player games to match handleKnock
     const canKnock = lobby.gameState === 'playing' 
         && !lobby.knockedBy 
         && cards.length === 3 
@@ -184,7 +391,6 @@ function executeLevel8AITurn(lobby, player) {
         return;
     }
 
-    // LEVEL 8 DRAW DECISION: Discard vs Deck
     const topDiscard = (lobby.discardPile && lobby.discardPile.length > 0)
         ? lobby.discardPile[lobby.discardPile.length - 1]
         : null;
@@ -201,10 +407,8 @@ function executeLevel8AITurn(lobby, player) {
         }
     }
 
-    // 1. Draw Card
     handleTurnAction(lobby, actorIdentity, shouldDrawDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK');
 
-    // 2. Discard Card (Permutational Evaluation)
     setTimeout(() => {
         const curLobby = lobbies[lobby.code];
         if (!curLobby || (curLobby.gameState !== 'playing' && curLobby.gameState !== 'finalTurn')) return;
@@ -255,7 +459,6 @@ function resetTurnTimer(lobby) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated) return;
 
-    // 5-second fast-play AI if player is disconnected, 25 seconds if connected
     if (!currentPlayer.isBot) {
         const isDisconnected = !currentPlayer.id || (typeof currentPlayer.id === 'object' && currentPlayer.id.readyState !== WebSocket.OPEN);
         const timeoutMs = isDisconnected ? 5000 : 25000;
@@ -275,7 +478,6 @@ function resetTurnTimer(lobby) {
         }, timeoutMs);
     }
 }
-
 
 // -------------------------------------------------------------
 // 3. MASTER WEBSOCKET MESSAGE DISPATCHER
@@ -320,10 +522,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     }
 
     let currentLobbyCode = (ws.currentLobbyCode || data.code || '').trim().toUpperCase() || null;
-    let currentUsername = (ws.currentUsername || data.username || '').trim() || null;
+    let currentUsername = (data.username || ws.currentUsername || '').trim() || null;
+    let currentAccountUsername = extractAccountUsername(ws, data, currentLobbyCode ? lobbies[currentLobbyCode] : null);
 
     if (currentLobbyCode && !ws.currentLobbyCode) ws.currentLobbyCode = currentLobbyCode;
-    if (currentUsername && !ws.currentUsername) ws.currentUsername = currentUsername;
+    if (currentUsername) ws.currentUsername = currentUsername;
+    if (currentAccountUsername) ws.accountUsername = currentAccountUsername;
+    if (data.userId && !String(data.userId).startsWith('gst_')) ws.userId = data.userId;
 
     switch (data.type) {
         case 'PING': {
@@ -341,6 +546,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
 
         case 'CREATE_LOBBY': {
             const username = (data.username || 'Player1').trim();
+            const accountUsername = (currentAccountUsername || username).trim();
             const lobbyName = (data.lobbyName || `${username}'s Room`).trim();
             const isPrivate = !!data.isPrivate;
 
@@ -357,6 +563,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             }
 
             const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const creatorUid = extractSocketUserId(ws, data, null);
 
             const newLobby = {
                 code,
@@ -377,9 +584,11 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 forfeitedPlayers: [],
                 ledgerHistory: [],
                 lastReaction: null,
+                identityMap: {},
                 players: [{
                     id: ws,
-                    userId: extractSocketUserId(ws),
+                    userId: creatorUid,
+                    accountUsername,
                     username,
                     lives: 2,
                     wager: 5,
@@ -412,12 +621,14 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 turnTimeoutTimer: null
             };
 
+            registerLobbyIdentity(newLobby, ws, username, accountUsername, creatorUid);
+
             lobbies[code] = newLobby;
             ws.currentLobbyCode = code;
             ws.currentUsername = username;
+            ws.accountUsername = accountUsername;
             touchLobbyActivity(newLobby, broadcastLobbyList);
 
-            // Arm 30s ready countdown for the lobby creator
             startReadyCountdown(newLobby, newLobby.players[0], broadcastLobbyList);
 
             generateLiveKitToken(code, username).then(token => {
@@ -444,28 +655,63 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 return;
             }
 
+            const accountUsername = (extractAccountUsername(ws, data, lobby) || username).trim();
+            const incomingUid = registerLobbyIdentity(lobby, ws, username, accountUsername, extractSocketUserId(ws, data, lobby));
+
             ws.currentLobbyCode = code;
             ws.currentUsername = username;
+            ws.accountUsername = accountUsername;
             touchLobbyActivity(lobby, broadcastLobbyList);
 
-            const incomingUid = extractSocketUserId(ws);
-            let existingPlayer = lobby.players.find(p => p.username.toLowerCase() === username.toLowerCase());
-            let existingSpec = lobby.spectators.find(s => s.username.toLowerCase() === username.toLowerCase());
+            // Match existing player by socket, userId, accountUsername, or handle
+            const matchingPlayers = lobby.players.filter(p =>
+                matchesParticipantIdentity(p, 'id', ws, incomingUid, username, accountUsername)
+            );
+            const matchingSpecs = lobby.spectators.filter(s =>
+                matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, username, accountUsername)
+            );
 
-            if (existingPlayer) {
+            if (matchingPlayers.length > 0) {
+                const existingPlayer = matchingPlayers[0];
                 const wasOffline = !existingPlayer.id;
+                const oldHandle = existingPlayer.username;
+
+                // Remove any accidental duplicate player seats for this user
+                if (matchingPlayers.length > 1) {
+                    const dupes = new Set(matchingPlayers.slice(1));
+                    lobby.players = lobby.players.filter(p => !dupes.has(p));
+                    lobby.players.forEach((p, idx) => { p.seat = idx; });
+                }
+
                 existingPlayer.id = ws;
                 if (incomingUid) existingPlayer.userId = incomingUid;
+                if (accountUsername) existingPlayer.accountUsername = accountUsername;
                 existingPlayer.disconnectedAt = null;
+
+                // Update display handle in-place if the user changed it
+                if (username && oldHandle !== username) {
+                    existingPlayer.username = username;
+                    renameParticipantHandle(lobby, oldHandle, username, accountUsername, existingPlayer.userId);
+                    registerLobbyIdentity(lobby, ws, username, accountUsername, existingPlayer.userId);
+                }
+
                 if (existingPlayer.eliminated) {
-                    if (existingSpec) {
+                    if (matchingSpecs.length > 0) {
+                        const existingSpec = matchingSpecs[0];
+                        if (matchingSpecs.length > 1) {
+                            const specDupes = new Set(matchingSpecs.slice(1));
+                            lobby.spectators = lobby.spectators.filter(s => !specDupes.has(s));
+                        }
                         existingSpec.idSocket = ws;
                         if (incomingUid) existingSpec.userId = incomingUid;
+                        if (accountUsername) existingSpec.accountUsername = accountUsername;
+                        existingSpec.username = existingPlayer.username;
                         existingSpec.disconnectedAt = null;
                     } else {
                         lobby.spectators.push({
                             idSocket: ws,
                             userId: existingPlayer.userId || incomingUid || null,
+                            accountUsername: existingPlayer.accountUsername || accountUsername,
                             username: existingPlayer.username,
                             inVC: existingPlayer.inVC ?? true,
                             isMuted: existingPlayer.isMuted ?? true,
@@ -473,23 +719,41 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         });
                     }
                 } else {
-                    lobby.spectators = lobby.spectators.filter(s => s.username.toLowerCase() !== username.toLowerCase());
+                    // Ensure active seated player is not also listed in spectators
+                    lobby.spectators = lobby.spectators.filter(s =>
+                        !matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, username, accountUsername)
+                    );
                     if (lobby.gameState === 'lobby' && !existingPlayer.ready) {
                         startReadyCountdown(lobby, existingPlayer, broadcastLobbyList);
                     } else if (wasOffline && (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') && lobby.players[lobby.turnIndex] === existingPlayer) {
-                        // Restore full 25s turn timer if they reconnected on their turn
                         resetTurnTimer(lobby);
                     }
                 }
-            } else if (existingSpec) {
+            } else if (matchingSpecs.length > 0) {
+                const existingSpec = matchingSpecs[0];
+                const oldHandle = existingSpec.username;
+
+                if (matchingSpecs.length > 1) {
+                    const specDupes = new Set(matchingSpecs.slice(1));
+                    lobby.spectators = lobby.spectators.filter(s => !specDupes.has(s));
+                }
+
                 existingSpec.idSocket = ws;
                 if (incomingUid) existingSpec.userId = incomingUid;
+                if (accountUsername) existingSpec.accountUsername = accountUsername;
                 existingSpec.disconnectedAt = null;
+
+                if (username && oldHandle !== username) {
+                    existingSpec.username = username;
+                    renameParticipantHandle(lobby, oldHandle, username, accountUsername, existingSpec.userId);
+                    registerLobbyIdentity(lobby, ws, username, accountUsername, existingSpec.userId);
+                }
             } else {
                 if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
                     const newPlayer = {
                         id: ws,
                         userId: incomingUid,
+                        accountUsername,
                         username,
                         lives: lobby.defaultLives || 2,
                         wager: 5,
@@ -512,6 +776,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     lobby.spectators.push({
                         idSocket: ws,
                         userId: incomingUid,
+                        accountUsername,
                         username,
                         inVC: true,
                         isMuted: true,
@@ -584,12 +849,14 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const player = lobby.players.find(p =>
-                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                    matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (player && lobby.gameState === 'lobby') {
                     player.id = ws;
-                    player.userId = extractSocketUserId(ws) || player.userId || null;
+                    player.userId = incomingUid || player.userId || null;
+                    if (currentAccountUsername) player.accountUsername = currentAccountUsername;
                     player.ready = !!data.ready;
 
                     if (player.ready) {
@@ -612,25 +879,27 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (lobby.gameState === 'lobby') {
-                    const uName = (data.username || currentUsername || ws.currentUsername || '').toLowerCase();
-                    const pIdx = lobby.players.findIndex(p => 
-                        p.id === ws || 
-                        (uName && p.username && p.username.toLowerCase() === uName)
+                    const uName = (data.username || currentUsername || ws.currentUsername || '').trim();
+                    const acctName = extractAccountUsername(ws, data, lobby) || uName;
+                    const incomingUid = extractSocketUserId(ws, data, lobby);
+
+                    const pIdx = lobby.players.findIndex(p =>
+                        matchesParticipantIdentity(p, 'id', ws, incomingUid, uName, acctName)
                     );
 
                     if (pIdx !== -1) {
                         const removed = lobby.players.splice(pIdx, 1)[0];
                         clearReadyCountdown(removed);
 
-                        const alreadySpec = lobby.spectators.some(s => 
-                            s.idSocket === ws || 
-                            (removed.username && s.username && s.username.toLowerCase() === removed.username.toLowerCase())
+                        const alreadySpec = lobby.spectators.some(s =>
+                            matchesParticipantIdentity(s, 'idSocket', ws, incomingUid || removed.userId, removed.username, removed.accountUsername || acctName)
                         );
 
                         if (!alreadySpec) {
                             lobby.spectators.push({
                                 idSocket: ws,
-                                userId: removed.userId || extractSocketUserId(ws) || null,
+                                userId: removed.userId || incomingUid || null,
+                                accountUsername: removed.accountUsername || acctName || removed.username,
                                 username: removed.username,
                                 inVC: removed.inVC || false,
                                 isMuted: removed.isMuted !== undefined ? removed.isMuted : true,
@@ -654,29 +923,62 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (code && lobbies[code]) {
                 const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
-                if (lobby.gameState === 'lobby' && lobby.players.length < 6) {
-                    const uName = (data.username || currentUsername || ws.currentUsername || '').toLowerCase();
-                    const sIdx = lobby.spectators.findIndex(s => 
-                        s.idSocket === ws || 
-                        (uName && s.username && s.username.toLowerCase() === uName)
+                if (lobby.gameState === 'lobby') {
+                    const requestedHandle = (data.username || currentUsername || ws.currentUsername || '').trim();
+                    const accountUsername = (extractAccountUsername(ws, data, lobby) || requestedHandle).trim();
+                    const incomingUid = registerLobbyIdentity(lobby, ws, requestedHandle, accountUsername, extractSocketUserId(ws, data, lobby));
+
+                    // 1. Check if already seated under socket, userId, accountUsername, or handle
+                    const existingP = lobby.players.find(p =>
+                        matchesParticipantIdentity(p, 'id', ws, incomingUid, requestedHandle, accountUsername)
                     );
 
-                    const spec = (sIdx !== -1) ? lobby.spectators.splice(sIdx, 1)[0] : null;
-                    const targetUsername = spec?.username || data.username || currentUsername || ws.currentUsername;
-                    const incomingUid = extractSocketUserId(ws) || spec?.userId || null;
+                    if (existingP) {
+                        const oldHandle = existingP.username;
+                        existingP.id = ws;
+                        if (incomingUid) existingP.userId = incomingUid;
+                        if (accountUsername) existingP.accountUsername = accountUsername;
+                        existingP.disconnectedAt = null;
 
-                    if (targetUsername) {
-                        const existingP = lobby.players.find(p => p.username.toLowerCase() === targetUsername.toLowerCase());
-                        if (existingP) {
-                            existingP.id = ws;
-                            if (incomingUid) existingP.userId = incomingUid;
-                            existingP.disconnectedAt = null;
-                            startReadyCountdown(lobby, existingP, broadcastLobbyList);
-                        } else {
+                        if (requestedHandle && oldHandle !== requestedHandle) {
+                            existingP.username = requestedHandle;
+                            renameParticipantHandle(lobby, oldHandle, requestedHandle, accountUsername, existingP.userId);
+                        }
+
+                        lobby.spectators = lobby.spectators.filter(s =>
+                            !matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, requestedHandle, accountUsername)
+                        );
+                        startReadyCountdown(lobby, existingP, broadcastLobbyList);
+                        syncBotReadiness(lobby);
+                        attemptGameStart(lobby);
+                        broadcastLobbyUpdate(code);
+                        if (broadcastLobbyList) broadcastLobbyList();
+                        break;
+                    }
+
+                    if (lobby.players.length < 6) {
+                        const sIdx = lobby.spectators.findIndex(s =>
+                            matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, requestedHandle, accountUsername)
+                        );
+
+                        const spec = (sIdx !== -1) ? lobby.spectators.splice(sIdx, 1)[0] : null;
+                        const targetUsername = requestedHandle || spec?.username || currentUsername || ws.currentUsername;
+                        const resolvedUid = incomingUid || spec?.userId || null;
+                        const resolvedAcct = accountUsername || spec?.accountUsername || targetUsername;
+
+                        if (targetUsername) {
+                            if (spec && spec.username && spec.username !== targetUsername) {
+                                renameParticipantHandle(lobby, spec.username, targetUsername, resolvedAcct, resolvedUid);
+                            }
+                            lobby.spectators = lobby.spectators.filter(s =>
+                                !matchesParticipantIdentity(s, 'idSocket', ws, resolvedUid, targetUsername, resolvedAcct)
+                            );
+
                             const openSeat = findOpenSeat(lobby);
                             const newPlayer = {
                                 id: ws,
-                                userId: incomingUid,
+                                userId: resolvedUid,
+                                accountUsername: resolvedAcct,
                                 username: targetUsername,
                                 lives: lobby.defaultLives || 2,
                                 wager: 5,
@@ -695,12 +997,12 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             };
                             lobby.players.push(newPlayer);
                             startReadyCountdown(lobby, newPlayer, broadcastLobbyList);
-                        }
 
-                        syncBotReadiness(lobby);
-                        attemptGameStart(lobby);
-                        broadcastLobbyUpdate(code);
-                        if (broadcastLobbyList) broadcastLobbyList();
+                            syncBotReadiness(lobby);
+                            attemptGameStart(lobby);
+                            broadcastLobbyUpdate(code);
+                            if (broadcastLobbyList) broadcastLobbyList();
+                        }
                     }
                 }
             }
@@ -770,8 +1072,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const player = lobby.players.find(p =>
-                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                    matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (player && lobby.gameState === 'roundOver') {
                     player.nextHandReady = true;
@@ -798,13 +1101,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const transferAmt = Number(amount);
                 if (!fromDebtor || !toCreditor || transferAmt <= 0) break;
 
-                // 1. Debtor owes me less -> credit debtor against me
                 recordDebt(lobby.mainGameLedger, myUsername, fromDebtor, transferAmt);
-
-                // 2. I owe target creditor less -> credit me against target creditor
                 recordDebt(lobby.mainGameLedger, toCreditor, myUsername, transferAmt);
-
-                // 3. Debtor now owes target creditor directly
                 recordDebt(lobby.mainGameLedger, fromDebtor, toCreditor, transferAmt);
 
                 if (typeof addLedgerHistory === 'function') {
@@ -825,11 +1123,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'TRANSFER_LIFETIME_DEBT': {
-            const lookupName = ws.currentUsername || data.username || currentUsername;
-            let myUid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || data.myId);
-            if (!myUid && lookupName && dbModule && typeof dbModule.findUserByUsername === 'function') {
-                myUid = dbModule.findUserByUsername(lookupName)?.id || null;
-            }
+            const lobby = currentLobbyCode ? lobbies[currentLobbyCode] : null;
+            const myUid = extractSocketUserId(ws, data, lobby) || data.myId;
             const { fromDebtorId, toCreditorId, amount } = data;
             const transferAmt = Number(amount);
 
@@ -852,16 +1147,12 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'APPLY_CREDIT': {
-            const lookupName = ws.currentUsername || data.username || currentUsername;
-            let myUid = (ws.user && !ws.user.isGuest) ? (ws.user.id || ws.user.userId) : (ws.userId || data.debtorId);
-            if (!myUid && lookupName && dbModule && typeof dbModule.findUserByUsername === 'function') {
-                myUid = dbModule.findUserByUsername(lookupName)?.id || null;
-            }
+            const lobby = currentLobbyCode ? lobbies[currentLobbyCode] : null;
+            const myUid = extractSocketUserId(ws, data, lobby) || data.debtorId;
             const otherId = data.creditorId;
             const creditAmt = Number(data.amount);
 
             if (dbModule && typeof dbModule.recordLifetimeDebt === 'function' && myUid && otherId && creditAmt > 0) {
-                // Creditor (myUid) records an offsetting entry to reduce what otherId owes them
                 dbModule.recordLifetimeDebt(myUid, otherId, creditAmt);
 
                 if (typeof dbModule.getLifetimeBalances === 'function') {
@@ -878,10 +1169,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'GET_LIFETIME_LEDGER': {
-            const lookupName = ws.currentUsername || data.username || currentUsername;
-            let uid = (ws.user && !ws.user.isGuest && (ws.user.id || ws.user.userId)) ||
-                      (lookupName && dbModule?.findUserByUsername?.(lookupName)?.id) ||
-                      data.userId;
+            const lobby = currentLobbyCode ? lobbies[currentLobbyCode] : null;
+            const uid = extractSocketUserId(ws, data, lobby);
 
             if (uid && !String(uid).startsWith('gst_') && dbModule && typeof dbModule.getLifetimeBalances === 'function') {
                 const balances = dbModule.getLifetimeBalances(uid) || [];
@@ -892,7 +1181,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     debts: balances
                 }));
             } else {
-                // Return empty balances array so guest accounts don't hang on the loading spinner
                 ws.send(JSON.stringify({
                     type: 'LIFETIME_LEDGER_DATA',
                     balances: [],
@@ -908,12 +1196,20 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             let code = currentLobbyCode || ws.currentLobbyCode || data.code;
             let lobby = code ? lobbies[code] : null;
 
-            // Fallback: locate lobby by socket or username if code wasn't attached
             if (!lobby) {
                 const searchName = (data.creditor || currentUsername || ws.currentUsername || '').trim().toLowerCase();
+                const searchAcct = (data.creditorAccount || currentAccountUsername || ws.accountUsername || '').trim().toLowerCase();
                 lobby = Object.values(lobbies).find(l =>
-                    (l.players || []).some(p => p.id === ws || (searchName && p.username.toLowerCase() === searchName)) ||
-                    (l.spectators || []).some(s => s.idSocket === ws || (searchName && s.username.toLowerCase() === searchName))
+                    (l.players || []).some(p =>
+                        p.id === ws ||
+                        (searchName && p.username.toLowerCase() === searchName) ||
+                        (searchAcct && p.accountUsername && p.accountUsername.toLowerCase() === searchAcct)
+                    ) ||
+                    (l.spectators || []).some(s =>
+                        s.idSocket === ws ||
+                        (searchName && s.username.toLowerCase() === searchName) ||
+                        (searchAcct && s.accountUsername && s.accountUsername.toLowerCase() === searchAcct)
+                    )
                 ) || null;
                 if (lobby) code = lobby.code;
             }
@@ -963,8 +1259,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const player = lobby.players.find(p =>
-                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                    matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (player && lobby.gameState === 'lobby') {
                     player.wager = Math.max(1, parseInt(data.wager, 10) || 5);
@@ -1012,8 +1309,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (!lobby.livesVote || lobby.gameState !== 'lobby') return;
 
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const seatedHuman = lobby.players.find(p =>
-                    !p.isBot && (p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase()))
+                    !p.isBot && matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (!seatedHuman) return;
 
@@ -1116,7 +1414,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     if (!targetPlayer.peekRequests) targetPlayer.peekRequests = {};
                     if (!targetPlayer.peekAllowed) targetPlayer.peekAllowed = {};
 
-                    // Bots auto-accept peek requests immediately
                     if (targetPlayer.isBot) {
                         lobby.players.forEach(p => {
                             if (p.peekAllowed) {
@@ -1142,8 +1439,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode] && specRaw) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const player = lobby.players.find(p =>
-                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                    matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (player) {
                     const specName = String(specRaw).trim();
@@ -1162,7 +1460,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     }
 
                     if (isAllowed) {
-                        // Clear any previous player this spectator was peeking so they view one hand at a time
                         lobby.players.forEach(p => {
                             if (p.peekAllowed) {
                                 Object.keys(p.peekAllowed).forEach(k => {
@@ -1190,8 +1487,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (currentLobbyCode && lobbies[currentLobbyCode] && targetRaw) {
                 const lobby = lobbies[currentLobbyCode];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const player = lobby.players.find(p =>
-                    p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase())
+                    matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (player && player.peekAllowed) {
                     const targetName = String(targetRaw).trim().toLowerCase();
@@ -1380,7 +1678,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         }
                     } else {
                         if (isAccept) {
-                            // Opponent clicked "You got it"
                             if (!Array.isArray(prop.acceptedBy)) prop.acceptedBy = [];
                             if (!prop.acceptedBy.some(u => u.toLowerCase() === actorName.toLowerCase())) {
                                 prop.acceptedBy.push(actorName);
@@ -1389,7 +1686,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                                 prop.deniedBy = prop.deniedBy.filter(u => u.toLowerCase() !== actorName.toLowerCase());
                             }
                         } else {
-                            // Opponent clicked "Decline"
                             if (!Array.isArray(prop.deniedBy)) prop.deniedBy = [];
                             if (!prop.deniedBy.some(u => u.toLowerCase() === actorName.toLowerCase())) {
                                 prop.deniedBy.push(actorName);
@@ -1483,8 +1779,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             break;
         }
 
-                case 'SEND_REACTION':
-        case 'SEAT_REACTION': {
+        case 'SEND_REACTION':
+        case 'SEAT_REACTION':
+        case 'QUICK_REACTION': {
             const code = (data.code || currentLobbyCode || ws.currentLobbyCode || '').toUpperCase();
             const lobby = lobbies[code];
             if (!lobby) break;
@@ -1496,7 +1793,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             const rawEmoji = String(data.emoji || data.reaction || '').trim();
             if (!allowedReactions.includes(rawEmoji)) break;
 
-            const senderName = resolveSocketUsername(lobby, ws, data.username) || 'Player';
+            const senderName = resolveSocketUsername(lobby, ws, data.username || currentUsername) || 'Player';
             lobby.lastReaction = {
                 id: `rx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
                 username: senderName,
@@ -1506,7 +1803,6 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             broadcastLobbyUpdate(lobby.code);
             break;
         }
-
 
         // ---------------------------------------------------------
         // 5. END GAME VOTE ENGINE
@@ -1545,8 +1841,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 touchLobbyActivity(lobby, broadcastLobbyList);
                 if (!lobby.endGameVote) return;
 
+                const incomingUid = extractSocketUserId(ws, data, lobby);
                 const seatedHuman = lobby.players.find(p =>
-                    !p.isBot && (p.id === ws || (currentUsername && p.username.toLowerCase() === currentUsername.toLowerCase()))
+                    !p.isBot && matchesParticipantIdentity(p, 'id', ws, incomingUid, currentUsername, currentAccountUsername)
                 );
                 if (!seatedHuman) return;
 
@@ -1631,9 +1928,14 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         case 'VC_STATUS_UPDATE': {
             if (currentLobbyCode && lobbies[currentLobbyCode]) {
                 const lobby = lobbies[currentLobbyCode];
-                const uName = (data.username || currentUsername || ws.currentUsername || '').trim().toLowerCase();
-                const player = lobby.players.find(p => p.id === ws || (uName && p.username && p.username.toLowerCase() === uName));
-                const spec = lobby.spectators.find(s => s.idSocket === ws || (uName && s.username && s.username.toLowerCase() === uName));
+                const uName = (data.username || currentUsername || ws.currentUsername || '').trim();
+                const incomingUid = extractSocketUserId(ws, data, lobby);
+                const player = lobby.players.find(p =>
+                    matchesParticipantIdentity(p, 'id', ws, incomingUid, uName, currentAccountUsername)
+                );
+                const spec = lobby.spectators.find(s =>
+                    matchesParticipantIdentity(s, 'idSocket', ws, incomingUid, uName, currentAccountUsername)
+                );
                 if (player) {
                     player.inVC = !!data.inVC;
                     player.isMuted = data.isMuted !== undefined ? !!data.isMuted : true;
@@ -1661,21 +1963,20 @@ function setupWebSocket(wss, broadcastLobbyList) {
         ws.on('close', () => {
             if (ws.currentLobbyCode && lobbies[ws.currentLobbyCode]) {
                 const lobby = lobbies[ws.currentLobbyCode];
-                const disconnectedUid = extractSocketUserId(ws);
+                const disconnectedUid = extractSocketUserId(ws, null, lobby);
                 
                 const player = lobby.players.find(p => p.id === ws);
                 if (player) {
                     clearReadyCountdown(player);
                     if (disconnectedUid) player.userId = disconnectedUid;
+                    if (ws.accountUsername && !player.accountUsername) player.accountUsername = ws.accountUsername;
                     player.id = null;
                     player.disconnectedAt = Date.now();
 
-                    // If it was this player's active turn, switch their remaining timer to the 5s fast-play AI timer
                     if ((lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') && lobby.players[lobby.turnIndex] === player) {
                         resetTurnTimer(lobby);
                     }
 
-                    // If an end game vote is active and this player drops, check if threshold is resolved
                     if (lobby.endGameVote) {
                         const seatedHumans = lobby.players.filter(p => !p.isBot && p.id !== null);
                         if (seatedHumans.length <= 1) {
@@ -1689,6 +1990,7 @@ function setupWebSocket(wss, broadcastLobbyList) {
                 const spec = lobby.spectators.find(s => s.idSocket === ws);
                 if (spec) {
                     if (disconnectedUid) spec.userId = disconnectedUid;
+                    if (ws.accountUsername && !spec.accountUsername) spec.accountUsername = ws.accountUsername;
                     spec.idSocket = null;
                     spec.disconnectedAt = Date.now();
                 }
