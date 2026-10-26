@@ -693,155 +693,94 @@ if (!window.appGlobals.countdownInterval) {
     window.appGlobals.countdownInterval = setInterval(updateLiveCountdownBars, 200);
 }
 
-// Catalog of Soundboard items (sent as "sb:<id>" via SEND_REACTION)
+// Catalog of Soundboard MP3 items (sent as "sb:<id>" via SEND_REACTION)
 const SOUNDBOARD_ITEMS = {
-    horn:     { emoji: '📢', label: 'Horn' },
-    cash:     { emoji: '💰', label: 'Cash' },
-    rimshot:  { emoji: '🥁', label: 'Ba-Dum' },
-    sad:      { emoji: '🎺', label: 'Sad' },
-    crickets: { emoji: '🦗', label: 'Crickets' },
-    siren:    { emoji: '🚨', label: 'Hype' }
+    horn:     { emoji: '📢', label: 'Horn',     file: '/mp3s/Horn.mp3' },
+    cash:     { emoji: '💰', label: 'Cash',     file: '/mp3s/Cash.mp3' },
+    rimshot:  { emoji: '🥁', label: 'Ba-Dum',   file: '/mp3s/Ba-dum.mp3' },
+    sad:      { emoji: '🎺', label: 'Sad',      file: '/mp3s/Sad.mp3' },
+    crickets: { emoji: '🦗', label: 'Crickets', file: '/mp3s/Cricket.mp3' },
+    siren:    { emoji: '🚨', label: 'Hype',     file: '/mp3s/Hype.mp3' }
 };
 
-// Web Audio API Soundboard Synthesizer (Respects Settings SFX Toggle & Volume Slider)
+// Preload & cache <audio> elements so mobile browsers allow incoming WebSocket playback
+const soundboardAudioCache = {};
+
+function getOrCreateSoundboardAudio(soundId) {
+    const item = SOUNDBOARD_ITEMS[soundId];
+    if (!item) return null;
+
+    let audioEl = document.getElementById(`sound-sb-${soundId}`) || soundboardAudioCache[soundId];
+    if (!audioEl) {
+        audioEl = document.createElement('audio');
+        audioEl.id = `sound-sb-${soundId}`;
+        audioEl.src = item.file;
+        audioEl.preload = 'auto';
+        audioEl.style.display = 'none';
+        if (document.body) document.body.appendChild(audioEl);
+        soundboardAudioCache[soundId] = audioEl;
+    }
+    return audioEl;
+}
+
+// Prime soundboard MP3s on first screen tap for Android/iOS autoplay unlock
+function unlockSoundboardOnTap() {
+    Object.keys(SOUNDBOARD_ITEMS).forEach(key => {
+        const el = getOrCreateSoundboardAudio(key);
+        if (el) {
+            el.muted = true;
+            el.play().then(() => {
+                el.pause();
+                el.muted = false;
+                try { el.currentTime = 0; } catch (e) {}
+            }).catch(() => {
+                el.muted = false;
+            });
+        }
+    });
+    document.removeEventListener('touchstart', unlockSoundboardOnTap);
+    document.removeEventListener('click', unlockSoundboardOnTap);
+}
+document.addEventListener('touchstart', unlockSoundboardOnTap, { passive: true });
+document.addEventListener('click', unlockSoundboardOnTap);
+
+// MP3 Soundboard Player (Respects Settings SFX Toggle & Volume Slider)
 window.playSoundboardEffect = function(soundId) {
     const sfxToggle = document.getElementById('setting-sfx');
     if (sfxToggle && !sfxToggle.checked) return;
     if (localStorage.getItem('blitz31_sfx_enabled') === 'false') return;
 
+    const item = SOUNDBOARD_ITEMS[soundId];
+    if (!item) return;
+
     const vol = (typeof window.getSfxVolume === 'function') ? window.getSfxVolume() : 1.0;
     if (vol <= 0) return;
 
     try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        if (!window.audioCtx) window.audioCtx = new AudioCtx();
-        const ctx = window.audioCtx;
-        if (ctx.state === 'suspended') ctx.resume();
-
-        const now = ctx.currentTime;
-
-        if (soundId === 'horn') {
-            [349.23, 354.0, 440.0, 523.25].forEach(freq => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(freq, now);
-                gain.gain.setValueAtTime(0.18 * vol, now);
-                gain.gain.setValueAtTime(0.18 * vol, now + 0.45);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.65);
-            });
-        } else if (soundId === 'cash') {
-            const notes = [
-                { f: 1046.50, t: 0,    d: 0.09 },
-                { f: 1318.51, t: 0.08, d: 0.45 },
-                { f: 2637.02, t: 0.08, d: 0.50 }
-            ];
-            notes.forEach(n => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(n.f, now + n.t);
-                gain.gain.setValueAtTime(0.32 * vol, now + n.t);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now + n.t);
-                osc.stop(now + n.t + n.d);
-            });
-        } else if (soundId === 'rimshot') {
-            const hits = [
-                { fStart: 160, fEnd: 80,  t: 0,    d: 0.11 },
-                { fStart: 120, fEnd: 55,  t: 0.14, d: 0.13 }
-            ];
-            hits.forEach(h => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(h.fStart, now + h.t);
-                osc.frequency.exponentialRampToValueAtTime(h.fEnd, now + h.t + h.d);
-                gain.gain.setValueAtTime(0.5 * vol, now + h.t);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + h.t + h.d);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now + h.t);
-                osc.stop(now + h.t + h.d);
-            });
-            const bufferSize = ctx.sampleRate * 0.35;
-            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-            const noise = ctx.createBufferSource();
-            noise.buffer = buffer;
-            const filter = ctx.createBiquadFilter();
-            filter.type = 'highpass';
-            filter.frequency.setValueAtTime(5000, now + 0.30);
-            const nGain = ctx.createGain();
-            nGain.gain.setValueAtTime(0.28 * vol, now + 0.30);
-            nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-            noise.connect(filter);
-            filter.connect(nGain);
-            nGain.connect(ctx.destination);
-            noise.start(now + 0.30);
-            noise.stop(now + 0.65);
-        } else if (soundId === 'sad') {
-            const notes = [
-                { f: 293.66, t: 0.00, d: 0.28 },
-                { f: 277.18, t: 0.30, d: 0.28 },
-                { f: 261.63, t: 0.60, d: 0.28 },
-                { f: 246.94, t: 0.90, d: 0.65, slide: 215.0 }
-            ];
-            notes.forEach(n => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(n.f, now + n.t);
-                if (n.slide) {
-                    osc.frequency.linearRampToValueAtTime(n.slide, now + n.t + n.d);
-                }
-                gain.gain.setValueAtTime(0.22 * vol, now + n.t);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now + n.t);
-                osc.stop(now + n.t + n.d);
-            });
-        } else if (soundId === 'crickets') {
-            [0, 0.06, 0.12, 0.38, 0.44, 0.50].forEach(offset => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(4200, now + offset);
-                gain.gain.setValueAtTime(0.18 * vol, now + offset);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.045);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now + offset);
-                osc.stop(now + offset + 0.045);
-            });
-        } else if (soundId === 'siren') {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(440, now);
-            osc.frequency.linearRampToValueAtTime(880, now + 0.28);
-            osc.frequency.linearRampToValueAtTime(440, now + 0.56);
-            osc.frequency.linearRampToValueAtTime(880, now + 0.80);
-            gain.gain.setValueAtTime(0.28 * vol, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(now);
-            osc.stop(now + 0.85);
+        const audioEl = getOrCreateSoundboardAudio(soundId);
+        if (audioEl) {
+            audioEl.muted = false;
+            audioEl.volume = Math.min(1, Math.max(0, vol));
+            try { audioEl.currentTime = 0; } catch (e) {}
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(() => {
+                    const fallback = new Audio(item.file);
+                    fallback.volume = Math.min(1, Math.max(0, vol));
+                    fallback.play().catch(err => console.warn('[Soundboard] Playback blocked:', err));
+                });
+            }
+            return;
         }
+
+        const fallback = new Audio(item.file);
+        fallback.volume = Math.min(1, Math.max(0, vol));
+        fallback.play().catch(err => console.warn('[Soundboard] Playback blocked:', err));
     } catch (e) {
         console.warn('[Soundboard] Playback error:', e);
     }
 };
+window.playSoundboardSound = window.playSoundboardEffect;
 
 window.sendSoundboard = function(soundId) {
     if (!SOUNDBOARD_ITEMS[soundId]) return;
