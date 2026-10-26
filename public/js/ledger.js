@@ -1,4 +1,4 @@
-// public/js/ledger.js - Bilateral Debt Netting, Session & Lifetime Ledgers, Tab Switcher, Credit & Debt Transfer
+// public/js/ledger.js - Bilateral Debt Netting, Session & Lifetime Ledgers, Tab Switcher, Credit, Mark Paid & Debt Transfer
 
 function sendLedgerSocket(payload) {
     if (!payload.code) {
@@ -236,7 +236,7 @@ function renderSessionLedger(lobbyOverride) {
     } else {
         owedToMe.forEach(item => {
             const safeOther = escapeHtml(item.other);
-            const rawAttr = item.other.replace(/'/g, "\\'");
+            const rawAttr = String(item.other || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             const canTransfer = iOwe.length > 0;
             html += `
                 <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 6px; border-left: 3px solid #10b981; gap: 8px; flex-wrap: wrap;">
@@ -246,7 +246,7 @@ function renderSessionLedger(lobbyOverride) {
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span style="color: #fbbf24; font-weight: 800; font-size: 1rem;">+$${item.amount.toFixed(2)}</span>
                         ${canTransfer ? `
-                            <button type="button" onclick="openTransferDebtModal('${rawAttr}',${item.amount})" style="background: #d97706; color: #fff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                            <button type="button" onclick="openTransferDebtModal('${rawAttr}', ${item.amount})" style="background: #d97706; color: #fff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                                 Transfer
                             </button>
                         ` : ''}
@@ -260,6 +260,18 @@ function renderSessionLedger(lobbyOverride) {
 
         iOwe.forEach(item => {
             const safeOther = escapeHtml(item.other);
+            const rawAttr = String(item.other || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const isPendingSession = window.pendingMarkedPaid && window.pendingMarkedPaid[`session:::${item.other.toLowerCase()}`];
+            const markPaidBtnHTML = isPendingSession ? `
+                <span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">
+                    ⏳ Pending
+                </span>
+            ` : `
+                <button type="button" class="mark-paid-btn" onclick="openMarkPaidDialog('session', '', '${rawAttr}', ${item.amount})" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; border: 1px solid #60a5fa; border-radius: 4px; padding: 4px 9px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 0.4px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                    💸 Mark Paid
+                </button>
+            `;
+
             html += `
                 <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.35); padding: 10px 12px; border-radius: 6px; border-left: 3px solid #ef4444; gap: 8px; flex-wrap: wrap;">
                     <div style="font-size: 0.9rem;">
@@ -267,6 +279,7 @@ function renderSessionLedger(lobbyOverride) {
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span style="color: #f87171; font-weight: 800; font-size: 1rem;">-$${item.amount.toFixed(2)}</span>
+                        ${markPaidBtnHTML}
                     </div>
                 </div>
             `;
@@ -290,14 +303,14 @@ function renderSessionLedger(lobbyOverride) {
         html += `<div style="margin-top: 4px; font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">🤖 Bot Balances</div>`;
         botRows.forEach(r => {
             const isPos = r.amount > 0;
-            const rawBotAttr = r.bot.replace(/'/g, "\\'");
+            const rawBotAttr = String(r.bot || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             html += `
                 <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.22); padding: 7px 10px; border-radius: 6px; border-left: 3px solid ${isPos ? '#3b82f6' : '#64748b'}; font-size: 0.84rem; gap: 8px;">
                     <span>${isPos ? `${escapeHtml(r.bot)} owes You` : `You owe ${escapeHtml(r.bot)}`}</span>
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <strong style="color: ${isPos ? '#60a5fa' : '#94a3b8'};">${isPos ? '+' : '-'}$${Math.abs(r.amount).toFixed(2)}</strong>
                         ${isPos ? `
-                            <button type="button" class="credit-action-btn" onclick="openSessionCreditDialog('${rawBotAttr}',${r.amount})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 3px 8px; font-size: 0.7rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                            <button type="button" class="credit-action-btn" onclick="openSessionCreditDialog('${rawBotAttr}', ${r.amount})" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 4px; padding: 3px 8px; font-size: 0.7rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                                 Credit
                             </button>
                         ` : ''}
@@ -619,10 +632,19 @@ function getCurrentUserId() {
         || null;
 }
 
+function getLedgerAuthToken() {
+    return sessionStorage.getItem('31_jwt')
+        || localStorage.getItem('31_jwt')
+        || localStorage.getItem('token')
+        || localStorage.getItem('auth_token')
+        || localStorage.getItem('p31_token')
+        || null;
+}
+
 function requestLifetimeLedger() {
     const uid = getCurrentUserId();
     const uname = resolveMyUsername();
-    const token = sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || localStorage.getItem('auth_token') || null;
+    const token = getLedgerAuthToken();
     sendLedgerSocket({
         type: 'GET_LIFETIME_LEDGER',
         userId: uid,
@@ -667,6 +689,7 @@ function renderLifetimeLedger(data) {
         : (data?.balances || data?.ledger || data?.debts || []);
 
     cachedLifetimeRows = Array.isArray(rawList) ? rawList : [];
+    window.cachedLifetimeBalancesList = cachedLifetimeRows;
 
     const activeRows = cachedLifetimeRows.filter(r => Math.abs(Number(r.net_balance ?? r.net ?? r.amount ?? 0)) > 0.005);
 
@@ -689,9 +712,9 @@ function renderLifetimeLedger(data) {
     html += '<div style="display: flex; flex-direction: column; gap: 0.65rem;">';
 
     activeRows.forEach(row => {
-        const net = Number(row.net_balance ?? row.net ?? row.amount ?? 0);
+        const net = Number(row.net_balance ?? r.net ?? row.net ?? row.amount ?? 0);
         const otherName = escapeHtml(row.other_username || row.username || 'Player');
-        const rawNameAttr = (row.other_username || row.username || 'Player').replace(/'/g, "\\'");
+        const rawNameAttr = String(row.other_username || row.username || 'Player').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const otherId = row.other_id || row.userId || row.id;
 
         if (net > 0) {
@@ -707,7 +730,7 @@ function renderLifetimeLedger(data) {
                             +$${net.toFixed(2)}
                         </span>
                         ${canTransferLifetime ? `
-                            <button type="button" onclick="openLifetimeTransferModal('${otherId}', '${rawNameAttr}',${net})" style="background: #d97706; color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
+                            <button type="button" onclick="openLifetimeTransferModal('${otherId}', '${rawNameAttr}', ${net})" style="background: #d97706; color: #ffffff; border: 1px solid #fbbf24; border-radius: 4px; padding: 4px 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer; text-transform: uppercase;">
                                 Transfer
                             </button>
                         ` : ''}
@@ -718,16 +741,29 @@ function renderLifetimeLedger(data) {
                 </div>
             `;
         } else {
+            const absDebt = Math.abs(net);
+            const isPendingLifetime = window.pendingMarkedPaid && window.pendingMarkedPaid[`lifetime:::${otherId}`];
+            const markPaidLifetimeBtn = isPendingLifetime ? `
+                <span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; border-radius: 4px; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">
+                    ⏳ Pending
+                </span>
+            ` : `
+                <button type="button" class="mark-paid-btn" onclick="openMarkPaidDialog('lifetime', '${otherId}', '${rawNameAttr}', ${absDebt})" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; border: 1px solid #60a5fa; border-radius: 4px; padding: 4px 9px; font-size: 0.76rem; font-weight: 700; cursor: pointer; text-transform: uppercase; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                    💸 Mark Paid
+                </button>
+            `;
+
             html += `
                 <div class="lifetime-row-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.35); padding: 0.75rem 0.9rem; border-radius: 6px; border-left: 3px solid #ef4444; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="font-size: 0.92rem;">
                         <span style="color: #f87171; font-weight: 700;">You</span> owe 
                         <span style="color: #86efac; font-weight: 600;">${otherName}</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.55rem;">
                         <span style="font-weight: 700; color: #f87171; font-size: 1.05rem;">
-                            -$${Math.abs(net).toFixed(2)}
+                            -$${absDebt.toFixed(2)}
                         </span>
+                        ${markPaidLifetimeBtn}
                     </div>
                 </div>
             `;
@@ -964,7 +1000,7 @@ function closeCreditDialog() {
 }
 
 function applySettlementCredit(otherUserId, amount) {
-    const token = sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt') || localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('p31_token');
+    const token = getLedgerAuthToken();
     const myId = getCurrentUserId();
     const cleanAmount = Number(amount);
     if (!cleanAmount || cleanAmount <= 0) return;
@@ -1006,6 +1042,236 @@ window.clearDebtCategory = function(targetUser, category, amountOverride) {
 };
 
 // -------------------------------------------------------------
+// 6B. DEBTOR "MARK PAID" & CREDITOR CONFIRMATION ENGINE
+// -------------------------------------------------------------
+window.pendingMarkedPaid = window.pendingMarkedPaid || {};
+window.incomingPayConfirmQueue = window.incomingPayConfirmQueue || [];
+
+function ensureMarkPaidModalDOM() {
+    let modal = document.getElementById('mark-paid-dialog');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'mark-paid-dialog';
+        modal.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.78);
+            display: none; align-items: center; justify-content: center;
+            z-index: 100055; padding: 16px;
+        `;
+        modal.innerHTML = `
+            <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #60a5fa; border-radius: 10px; width: 100%; max-width: 360px; padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.85); color: #f8fafc; font-family: inherit;">
+                <h3 style="margin: 0 0 6px; color: #60a5fa; font-size: 1.15rem; text-align: center; text-transform: uppercase;">💸 Mark Debt as Paid</h3>
+                <p id="mark-paid-subtitle" style="margin: 0 0 14px; font-size: 0.86rem; text-align: center; color: #cbd5e1;"></p>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <label style="font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Amount Paid ($)</label>
+                        <input id="mark-paid-amount" type="number" step="0.5" min="0.5" style="background: #020a06; border: 1.5px solid #60a5fa; border-radius: 5px; color: #fff; padding: 8px 10px; font-size: 1.05rem; font-weight: bold; outline: none; width: 100%; box-sizing: border-box;" />
+                    </div>
+
+                    <div style="display: flex; gap: 6px;">
+                        <button type="button" id="mark-paid-full-btn" style="flex: 1; background: rgba(59, 130, 246, 0.2); border: 1px solid #60a5fa; color: #93c5fd; border-radius: 4px; padding: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer;">
+                            Full Balance
+                        </button>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <button type="button" onclick="closeMarkPaidDialog()" style="flex: 1; background: #334155; color: #e2e8f0; border: none; border-radius: 5px; padding: 9px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                            Cancel
+                        </button>
+                        <button type="button" id="mark-paid-send-btn" style="flex: 1; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; border: 1px solid #60a5fa; border-radius: 5px; padding: 9px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                            Notify Creditor
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function openMarkPaidDialog(scope, creditorId, creditorName, maxAmount) {
+    const modal = ensureMarkPaidModalDOM();
+    const cleanMax = Number(maxAmount) || 0;
+    const subtitle = document.getElementById('mark-paid-subtitle');
+    const input = document.getElementById('mark-paid-amount');
+    const fullBtn = document.getElementById('mark-paid-full-btn');
+    const sendBtn = document.getElementById('mark-paid-send-btn');
+
+    if (subtitle) {
+        subtitle.innerHTML = `Send a confirmation prompt to <b style="color: #86efac;">${escapeHtml(creditorName)}</b> that you paid them (Max: $${cleanMax.toFixed(2)})`;
+    }
+    if (input) {
+        input.value = cleanMax.toFixed(2);
+        input.max = cleanMax;
+    }
+    if (fullBtn) {
+        fullBtn.onclick = () => {
+            if (input) input.value = cleanMax.toFixed(2);
+        };
+    }
+    if (sendBtn) {
+        sendBtn.onclick = () => {
+            const entered = Number(input.value);
+            if (!entered || entered <= 0) {
+                alert('Please enter a valid payment amount.');
+                return;
+            }
+            if (entered > cleanMax + 0.005) {
+                alert(`Amount cannot exceed what you owe ($${cleanMax.toFixed(2)}).`);
+                return;
+            }
+            submitMarkPaidRequest(scope, creditorId, creditorName, Math.min(entered, cleanMax));
+            closeMarkPaidDialog();
+        };
+    }
+
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+}
+
+function closeMarkPaidDialog() {
+    const modal = document.getElementById('mark-paid-dialog');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
+}
+
+function submitMarkPaidRequest(scope, creditorId, creditorName, amount) {
+    const token = getLedgerAuthToken();
+    const myId = getCurrentUserId();
+    const myUsername = resolveMyUsername();
+    const roomCode = window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || null;
+
+    const pendingKey = scope === 'lifetime'
+        ? `lifetime:::${creditorId}`
+        : `session:::${String(creditorName || '').toLowerCase()}`;
+    window.pendingMarkedPaid[pendingKey] = true;
+
+    sendLedgerSocket({
+        type: 'MARK_DEBT_PAID',
+        scope: scope === 'lifetime' ? 'lifetime' : 'session',
+        debtorId: myId,
+        debtorUsername: myUsername,
+        creditorId: creditorId || null,
+        creditorUsername: creditorName || null,
+        amount: Number(amount),
+        code: roomCode,
+        token: token
+    });
+
+    if (typeof window.showCenterNotification === 'function') {
+        window.showCenterNotification(`💸 Sent $${Number(amount).toFixed(2)} paid confirmation to ${creditorName}!`);
+    }
+
+    if (scope === 'lifetime') {
+        renderLifetimeLedger(cachedLifetimeRows);
+    } else {
+        renderSessionLedger();
+    }
+}
+
+function ensureCreditorConfirmModalDOM() {
+    let modal = document.getElementById('creditor-confirm-paid-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'creditor-confirm-paid-modal';
+        modal.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.82);
+            display: none; align-items: center; justify-content: center;
+            z-index: 100060; padding: 16px;
+        `;
+        document.body.appendChild(modal);
+    }
+    return modal;
+}
+
+function handlePaymentConfirmPrompt(payload) {
+    if (!payload || !payload.requestId) return;
+
+    if (!window.incomingPayConfirmQueue.some(r => r.requestId === payload.requestId)) {
+        window.incomingPayConfirmQueue.push(payload);
+    }
+    renderNextCreditorConfirmModal();
+}
+
+function renderNextCreditorConfirmModal() {
+    const modal = ensureCreditorConfirmModalDOM();
+    if (window.incomingPayConfirmQueue.length === 0) {
+        modal.style.display = 'none';
+        return;
+    }
+
+    const req = window.incomingPayConfirmQueue[0];
+    const debtorName = escapeHtml(req.debtorUsername || 'Player');
+    const amtFormatted = Number(req.amount || 0).toFixed(2);
+    const scopeLabel = req.scope === 'lifetime' ? 'Lifetime Ledger' : 'Session Ledger';
+
+    modal.innerHTML = `
+        <div style="background: radial-gradient(circle at 50% 50%, #064e3b 0%, #022c22 100%); border: 2px solid #fbbf24; border-radius: 10px; width: 100%; max-width: 370px; padding: 18px; box-shadow: 0 10px 35px rgba(0,0,0,0.9); color: #f8fafc; font-family: inherit; text-align: center;">
+            <div style="font-size: 0.72rem; color: #fbbf24; text-transform: uppercase; font-weight: 800; letter-spacing: 0.8px; margin-bottom: 4px;">
+                ${scopeLabel} Settlement Request
+            </div>
+            <h3 style="margin: 0 0 10px; color: #ffffff; font-size: 1.15rem;">
+                💸 Confirm Payment Received?
+            </h3>
+            <p style="margin: 0 0 16px; font-size: 0.92rem; color: #e2e8f0; line-height: 1.4;">
+                <strong style="color: #fca5a5;">${debtorName}</strong> marked <strong style="color: #34d399;">$${amtFormatted}</strong> as paid to you.
+            </p>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="respondToMarkPaid('${req.requestId}', false)" style="flex: 1; background: #7f1d1d; color: #fecaca; border: 1px solid #ef4444; border-radius: 6px; padding: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                    ✕ Decline
+                </button>
+                <button type="button" onclick="respondToMarkPaid('${req.requestId}', true)" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border: 1px solid #34d399; border-radius: 6px; padding: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer;">
+                    ✅ Confirm ($${amtFormatted})
+                </button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
+function respondToMarkPaid(requestId, confirmed) {
+    const req = window.incomingPayConfirmQueue.find(r => r.requestId === requestId);
+    window.incomingPayConfirmQueue = window.incomingPayConfirmQueue.filter(r => r.requestId !== requestId);
+    renderNextCreditorConfirmModal();
+
+    const token = getLedgerAuthToken();
+    const roomCode = (req && req.code) || window.appGlobals?.currentJoinedCode || localStorage.getItem('blitz31_active_room') || null;
+
+    sendLedgerSocket({
+        type: 'RESPOND_MARK_PAID',
+        requestId: requestId,
+        confirm: Boolean(confirmed),
+        code: roomCode,
+        token: token
+    });
+}
+
+function handlePaymentConfirmResult(payload) {
+    if (!payload) return;
+    if (payload.creditorId) {
+        delete window.pendingMarkedPaid[`lifetime:::${payload.creditorId}`];
+    }
+    if (payload.creditorUsername) {
+        delete window.pendingMarkedPaid[`session:::${String(payload.creditorUsername).toLowerCase()}`];
+    }
+
+    if (payload.message && typeof window.showCenterNotification === 'function') {
+        window.showCenterNotification(payload.message);
+    } else if (payload.message) {
+        alert(payload.message);
+    }
+
+    if (payload.scope === 'lifetime') {
+        requestLifetimeLedger();
+    } else {
+        renderSessionLedger();
+    }
+}
+
+// -------------------------------------------------------------
 // 7. UTILITIES & GLOBAL EXPORTS
 // -------------------------------------------------------------
 function escapeHtml(str) {
@@ -1038,4 +1304,10 @@ window.applySessionSettlementCredit = applySessionSettlementCredit;
 window.openCreditDialog = openCreditDialog;
 window.closeCreditDialog = closeCreditDialog;
 window.applySettlementCredit = applySettlementCredit;
+window.openMarkPaidDialog = openMarkPaidDialog;
+window.closeMarkPaidDialog = closeMarkPaidDialog;
+window.submitMarkPaidRequest = submitMarkPaidRequest;
+window.handlePaymentConfirmPrompt = handlePaymentConfirmPrompt;
+window.respondToMarkPaid = respondToMarkPaid;
+window.handlePaymentConfirmResult = handlePaymentConfirmResult;
 window.escapeHtml = escapeHtml;
