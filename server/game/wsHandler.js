@@ -35,6 +35,10 @@ try {
     dbModule = null;
 }
 
+// Reference to WebSocketServer instance & pending "Mark Paid" confirmation requests
+let activeWss = null;
+const pendingMarkPaidRequests = new Map();
+
 // -------------------------------------------------------------
 // 0. IDENTITY, HANDLE & ACCOUNT LEDGER RESOLUTION HELPERS
 // -------------------------------------------------------------
@@ -171,7 +175,6 @@ function shouldRenameExistingHandle(oldHandle, newHandle, accountUsername, data)
 
     // 3. If the player already has a custom handle (different from their login accountUsername),
     // and the incoming join carries their raw login accountUsername, block the reset
-    // (this happens when force-closing and reopening resets #username-input to the login name).
     if (acctLower && oldLower && oldLower !== acctLower && newLower === acctLower && !data?.explicitHandleChange) {
         return false;
     }
@@ -293,6 +296,57 @@ function resolveSocketUsername(lobby, ws, fallbackUsername) {
         if (sByName) return sByName.username;
     }
     return rawFallback || null;
+}
+
+// Finds all active WebSocket connections for a target user across lobbies & main menu
+function findTargetSockets(targetUserId, targetUsername, lobbyCode) {
+    const matched = new Set();
+    const cleanName = (targetUsername || '').trim().toLowerCase();
+    const cleanId = targetUserId ? String(targetUserId) : null;
+
+    const inspectLobby = (lob) => {
+        if (!lob) return;
+        (lob.players || []).forEach(p => {
+            if (!p.id || typeof p.id !== 'object' || p.id.readyState !== WebSocket.OPEN) return;
+            const pUid = p.userId || extractSocketUserId(p.id, null, lob);
+            if ((cleanId && pUid && String(pUid) === cleanId) ||
+                (cleanName && ((p.username && p.username.toLowerCase() === cleanName) ||
+                               (p.accountUsername && p.accountUsername.toLowerCase() === cleanName)))) {
+                matched.add(p.id);
+            }
+        });
+        (lob.spectators || []).forEach(s => {
+            if (!s.idSocket || typeof s.idSocket !== 'object' || s.idSocket.readyState !== WebSocket.OPEN) return;
+            const sUid = s.userId || extractSocketUserId(s.idSocket, null, lob);
+            if ((cleanId && sUid && String(sUid) === cleanId) ||
+                (cleanName && ((s.username && s.username.toLowerCase() === cleanName) ||
+                               (s.accountUsername && s.accountUsername.toLowerCase() === cleanName)))) {
+                matched.add(s.idSocket);
+            }
+        });
+    };
+
+    if (lobbyCode && lobbies[lobbyCode]) {
+        inspectLobby(lobbies[lobbyCode]);
+    }
+    Object.values(lobbies).forEach(inspectLobby);
+
+    if (activeWss && activeWss.clients) {
+        activeWss.clients.forEach(client => {
+            if (!client || client.readyState !== WebSocket.OPEN) return;
+            const cUid = (client.user && !client.user.isGuest && (client.user.id || client.user.userId)) || client.userId || null;
+            const cHandle = (client.currentUsername || '').trim().toLowerCase();
+            const cAcct = (client.accountUsername || client.user?.username || '').trim().toLowerCase();
+
+            if (cleanId && cUid && String(cUid) === cleanId) {
+                matched.add(client);
+            } else if (cleanName && (cHandle === cleanName || cAcct === cleanName)) {
+                matched.add(client);
+            }
+        });
+    }
+
+    return Array.from(matched);
 }
 
 // -------------------------------------------------------------
@@ -1138,7 +1192,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         // ---------------------------------------------------------
-        // 4. DEBT TRANSFER / NOVATION & LIFETIME LEDGER HANDLERS
+        // 4. DEBT TRANSFER / NOVATION, CREDIT & MARK PAID HANDLERS
         // ---------------------------------------------------------
         case 'TRANSFER_DEBT': {
             const code = currentLobbyCode || ws.currentLobbyCode || data.code;
@@ -1216,6 +1270,229 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     }));
                 }
             }
+            break;
+        }
+
+        case 'MARK_DEBT_PAID': {
+            const cleanAmount = Number(data.amount);
+            if (!cleanAmount || cleanAmount <= 0) break;
+
+            const scope = data.scope === 'lifetime' ? 'lifetime' : 'session';
+            let roomCode = (data.code || currentLobbyCode || ws.currentLobbyCode || '').trim().toUpperCase() || null;
+            let lobby = roomCode ? lobbies[roomCode] : null;
+
+            if (!lobby && scope === 'session') {
+                const searchName = (data.debtorUsername || currentUsername || ws.currentUsername || '').trim().toLowerCase();
+                lobby = Object.values(lobbies).find(l =>
+                    (l.players || []).some(p => p.id === ws || (searchName && p.username.toLowerCase() === searchName)) ||
+                    (l.spectators || []).some(s => s.idSocket === ws || (searchName && s.username.toLowerCase() === searchName))
+                ) || null;
+                if (lobby) roomCode = lobby.code;
+            }
+
+            let debtorId = extractSocketUserId(ws, data, lobby) || data.debtorId || null;
+            let debtorUsername = resolveSocketUsername(lobby, ws, data.debtorUsername || currentUsername) || 'Player';
+            let creditorId = data.creditorId || null;
+            let creditorUsername = (data.creditorUsername || '').trim();
+
+            if (lobby && creditorUsername) {
+                const cLower = creditorUsername.toLowerCase();
+                const cPlayer = (lobby.players || []).find(p =>
+                    (p.username && p.username.toLowerCase() === cLower) ||
+                    (p.accountUsername && p.accountUsername.toLowerCase() === cLower)
+                );
+                const cSpec = !cPlayer && (lobby.spectators || []).find(s =>
+                    (s.username && s.username.toLowerCase() === cLower) ||
+                    (s.accountUsername && s.accountUsername.toLowerCase() === cLower)
+                );
+                const cEntry = cPlayer || cSpec;
+                if (cEntry) {
+                    creditorUsername = cEntry.username || creditorUsername;
+                    if (!creditorId && cEntry.userId) creditorId = cEntry.userId;
+                }
+            }
+
+            if (!creditorId && creditorUsername && dbModule && typeof dbModule.findUserByUsername === 'function') {
+                const cRow = dbModule.findUserByUsername(creditorUsername);
+                if (cRow && cRow.id && !String(cRow.id).startsWith('gst_')) creditorId = cRow.id;
+            }
+            if (!debtorId && debtorUsername && dbModule && typeof dbModule.findUserByUsername === 'function') {
+                const dRow = dbModule.findUserByUsername(debtorUsername);
+                if (dRow && dRow.id && !String(dRow.id).startsWith('gst_')) debtorId = dRow.id;
+            }
+
+            const requestId = `mp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const reqObj = {
+                requestId,
+                scope,
+                code: roomCode,
+                debtorId,
+                debtorUsername,
+                debtorWs: ws,
+                creditorId,
+                creditorUsername,
+                amount: cleanAmount,
+                createdAt: Date.now()
+            };
+
+            const creditorSockets = findTargetSockets(creditorId, creditorUsername, roomCode);
+            if (creditorSockets.length === 0) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'PAYMENT_CONFIRM_RESULT',
+                        requestId,
+                        confirmed: false,
+                        scope,
+                        creditorId,
+                        creditorUsername,
+                        message: `⚠️ ${creditorUsername || 'Creditor'} is currently offline and could not be prompted.`
+                    }));
+                }
+                break;
+            }
+
+            pendingMarkPaidRequests.set(requestId, reqObj);
+
+            creditorSockets.forEach(cWs => {
+                try {
+                    cWs.send(JSON.stringify({
+                        type: 'PAYMENT_CONFIRM_PROMPT',
+                        requestId,
+                        scope,
+                        code: roomCode,
+                        debtorId,
+                        debtorUsername,
+                        creditorId,
+                        creditorUsername,
+                        amount: cleanAmount
+                    }));
+                } catch (e) {}
+            });
+            break;
+        }
+
+        case 'RESPOND_MARK_PAID': {
+            const req = pendingMarkPaidRequests.get(data.requestId);
+            if (!req) break;
+            pendingMarkPaidRequests.delete(data.requestId);
+
+            const confirmed = Boolean(data.confirm);
+            const debtorSockets = findTargetSockets(req.debtorId, req.debtorUsername, req.code);
+            if (req.debtorWs && req.debtorWs.readyState === WebSocket.OPEN && !debtorSockets.includes(req.debtorWs)) {
+                debtorSockets.push(req.debtorWs);
+            }
+            const creditorSockets = findTargetSockets(req.creditorId, req.creditorUsername, req.code);
+            if (ws.readyState === WebSocket.OPEN && !creditorSockets.includes(ws)) {
+                creditorSockets.push(ws);
+            }
+
+            if (!confirmed) {
+                debtorSockets.forEach(dWs => {
+                    try {
+                        dWs.send(JSON.stringify({
+                            type: 'PAYMENT_CONFIRM_RESULT',
+                            requestId: req.requestId,
+                            confirmed: false,
+                            scope: req.scope,
+                            creditorId: req.creditorId,
+                            creditorUsername: req.creditorUsername,
+                            message: `❌ ${req.creditorUsername || 'Creditor'} declined the $${req.amount.toFixed(2)} paid mark.`
+                        }));
+                    } catch (e) {}
+                });
+                break;
+            }
+
+            const lobby = (req.code && lobbies[req.code]) || (currentLobbyCode && lobbies[currentLobbyCode]) || null;
+
+            if (req.scope === 'session' && lobby) {
+                touchLobbyActivity(lobby, broadcastLobbyList);
+                const canonicalCreditor = resolveSocketUsername(lobby, ws, req.creditorUsername || currentUsername) || req.creditorUsername;
+
+                if (canonicalCreditor && typeof applySessionCredit === 'function') {
+                    // applySessionCredit(lobby, creditor, debtor, amount) offsets session balance & syncs lifetime DB
+                    applySessionCredit(lobby, canonicalCreditor, req.debtorUsername, req.amount);
+                }
+
+                broadcastLobbyUpdate(lobby.code);
+
+                const sessionPayload = JSON.stringify({
+                    type: 'SESSION_LEDGER_DATA',
+                    mainGameLedger: lobby.mainGameLedger || {},
+                    sideBetLedger: lobby.sideBetLedger || {},
+                    botBetLedger: lobby.botBetLedger || {},
+                    ledgerHistory: lobby.ledgerHistory || [],
+                    activeBets: lobby.activeBets || []
+                });
+
+                [...creditorSockets, ...debtorSockets].forEach(sock => {
+                    try {
+                        if (sock.readyState === WebSocket.OPEN) sock.send(sessionPayload);
+                    } catch (e) {}
+                });
+            } else {
+                // Lifetime Ledger scope (or no active session lobby)
+                const creditorUid = req.creditorId || extractSocketUserId(ws, data, lobby);
+                const debtorUid = req.debtorId;
+
+                if (dbModule && typeof dbModule.recordLifetimeDebt === 'function' && creditorUid && debtorUid && req.amount > 0) {
+                    dbModule.recordLifetimeDebt(creditorUid, debtorUid, req.amount);
+
+                    if (typeof dbModule.getLifetimeBalances === 'function') {
+                        const cBalances = dbModule.getLifetimeBalances(creditorUid) || [];
+                        creditorSockets.forEach(cWs => {
+                            try {
+                                cWs.send(JSON.stringify({
+                                    type: 'LIFETIME_LEDGER_DATA',
+                                    balances: cBalances,
+                                    ledger: cBalances,
+                                    debts: cBalances
+                                }));
+                            } catch (e) {}
+                        });
+
+                        const dBalances = dbModule.getLifetimeBalances(debtorUid) || [];
+                        debtorSockets.forEach(dWs => {
+                            try {
+                                dWs.send(JSON.stringify({
+                                    type: 'LIFETIME_LEDGER_DATA',
+                                    balances: dBalances,
+                                    ledger: dBalances,
+                                    debts: dBalances
+                                }));
+                            } catch (e) {}
+                        });
+                    }
+                }
+            }
+
+            debtorSockets.forEach(dWs => {
+                try {
+                    dWs.send(JSON.stringify({
+                        type: 'PAYMENT_CONFIRM_RESULT',
+                        requestId: req.requestId,
+                        confirmed: true,
+                        scope: req.scope,
+                        creditorId: req.creditorId,
+                        creditorUsername: req.creditorUsername,
+                        message: `✅ ${req.creditorUsername || 'Creditor'} confirmed your $${req.amount.toFixed(2)} payment!`
+                    }));
+                } catch (e) {}
+            });
+
+            creditorSockets.forEach(cWs => {
+                try {
+                    cWs.send(JSON.stringify({
+                        type: 'PAYMENT_CONFIRM_RESULT',
+                        requestId: req.requestId,
+                        confirmed: true,
+                        scope: req.scope,
+                        creditorId: req.creditorId,
+                        creditorUsername: req.creditorUsername,
+                        message: `✅ Confirmed $${req.amount.toFixed(2)} paid by ${req.debtorUsername}!`
+                    }));
+                } catch (e) {}
+            });
             break;
         }
 
@@ -2003,6 +2280,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
 }
 
 function setupWebSocket(wss, broadcastLobbyList) {
+    activeWss = wss;
     wss.on('connection', (ws) => {
         ws.isAlive = true;
         ws.on('pong', () => { ws.isAlive = true; });
