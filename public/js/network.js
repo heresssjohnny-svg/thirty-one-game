@@ -435,6 +435,20 @@ window.connectSocket = function() {
                 break;
             }
 
+            case 'PAYMENT_CONFIRM_PROMPT': {
+                if (typeof window.handlePaymentConfirmPrompt === 'function') {
+                    window.handlePaymentConfirmPrompt(data);
+                }
+                break;
+            }
+
+            case 'PAYMENT_CONFIRM_RESULT': {
+                if (typeof window.handlePaymentConfirmResult === 'function') {
+                    window.handlePaymentConfirmResult(data);
+                }
+                break;
+            }
+
             case 'VC_STATUS_UPDATE': {
                 if (typeof window.syncRemoteParticipantMuteState === 'function') {
                     window.syncRemoteParticipantMuteState(data.username, data.inVC, data.isMuted);
@@ -951,7 +965,11 @@ window.respondToBet = function(betId, accept) {
     if (modal) modal.style.display = 'none';
 };
 
-window.clearDebtCategory = function(targetUser, category) {
+window.clearDebtCategory = function(targetUser, category, amountOverride) {
+    if (amountOverride && Number(amountOverride) > 0 && typeof window.openSessionCreditDialog === 'function') {
+        window.openSessionCreditDialog(targetUser, Number(amountOverride));
+        return;
+    }
     const activeHandle = resolveActiveHandle();
     const accountUsername = window.getAccountUsername() || activeHandle;
     window.initSocketAndSend({
