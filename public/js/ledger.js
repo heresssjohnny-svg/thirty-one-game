@@ -29,6 +29,20 @@ function resolveMyUsername() {
     return (localStorage.getItem('saved_username') || localStorage.getItem('p31_username') || '').trim();
 }
 
+function resolveMyAccountUsername() {
+    if (typeof window.getAccountUsername === 'function') {
+        const acct = window.getAccountUsername();
+        if (acct) return acct.trim();
+    }
+    if (window.userSession?.username) return window.userSession.username.trim();
+    if (window.clientState?.accountUsername) return window.clientState.accountUsername.trim();
+    return (
+        localStorage.getItem('account_username') ||
+        localStorage.getItem('blitz31_username') ||
+        resolveMyUsername()
+    ).trim();
+}
+
 // -------------------------------------------------------------
 // 0. SESSION <-> LIFETIME LEDGER TAB SWITCHER
 // -------------------------------------------------------------
@@ -644,11 +658,14 @@ function getLedgerAuthToken() {
 function requestLifetimeLedger() {
     const uid = getCurrentUserId();
     const uname = resolveMyUsername();
+    const acctName = resolveMyAccountUsername();
     const token = getLedgerAuthToken();
     sendLedgerSocket({
         type: 'GET_LIFETIME_LEDGER',
         userId: uid,
-        username: uname,
+        username: acctName || uname,
+        accountUsername: acctName || uname,
+        handle: uname,
         token
     });
 }
@@ -712,7 +729,7 @@ function renderLifetimeLedger(data) {
     html += '<div style="display: flex; flex-direction: column; gap: 0.65rem;">';
 
     activeRows.forEach(row => {
-        const net = Number(row.net_balance ?? r.net ?? row.net ?? row.amount ?? 0);
+        const net = Number(row.net_balance ?? row.net ?? row.amount ?? 0);
         const otherName = escapeHtml(row.other_username || row.username || 'Player');
         const rawNameAttr = String(row.other_username || row.username || 'Player').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const otherId = row.other_id || row.userId || row.id;
@@ -851,7 +868,7 @@ function confirmLifetimeDebtTransfer(fromDebtorId, maxOwed) {
     sendLedgerSocket({
         type: 'TRANSFER_LIFETIME_DEBT',
         myId: getCurrentUserId(),
-        username: resolveMyUsername(),
+        username: resolveMyAccountUsername(),
         fromDebtorId,
         toCreditorId,
         amount
@@ -1009,7 +1026,7 @@ function applySettlementCredit(otherUserId, amount) {
         type: 'APPLY_CREDIT',
         debtorId: myId,
         creditorId: otherUserId,
-        username: resolveMyUsername(),
+        username: resolveMyAccountUsername(),
         amount: cleanAmount,
         token: token || null
     });
