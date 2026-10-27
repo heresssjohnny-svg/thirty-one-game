@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blitz 31 — Developer & Admin Portal</title>
+    <style>
+        :root {
+            --bg-dark: #04120b;
+            --bg-card: rgba(8, 28, 19, 0.96);
+            --bg-input: rgba(2, 12, 8, 0.9);
+            --gold: #fbbf24;
+            --gold-dark: #d97706;
+            --emerald: #10b981;
+            --emerald-light: #34d399;
+            --danger: #ef4444;
+            --blue: #3b82f6;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-gold: rgba(251, 191, 36, 0.35);
+            --border-subtle: rgba(255, 255, 255, 0.1);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(circle at top, #0a2e1d 0%, #030d08 100%);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+        }
+
+        /* LOGIN OVERLAY */
+        #admin-login-screen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: var(--bg-card);
+            border: 2px solid var(--gold-dark);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            padding: 28px 24px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.85);
+        }
+
+        .login-card h1 {
+            margin: 0 0 6px;
+            color: var(--gold);
+            font-size: 1.5rem;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .login-card p {
+            margin: 0 0 20px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        /* DASHBOARD LAYOUT */
+        #admin-dashboard {
+            display: none;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px 16px 60px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-gold);
+            border-radius: 10px;
+            padding: 14px 20px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .topbar-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .topbar-title h2 {
+            margin: 0;
+            color: var(--gold);
+            font-size: 1.3rem;
+        }
+
+        .badge {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--emerald-light);
+            border: 1px solid var(--emerald);
+            padding: 3px 9px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .stat-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-left: 4px solid var(--gold);
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+
+        .stat-label {
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .stat-val {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 4px;
+        }
+
+        /* TABS */
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--gold-dark), #b45309);
+            color: #fff;
+            border-color: var(--gold);
+            box-shadow: 0 3px 10px rgba(217, 119, 6, 0.35);
+        }
+
+        .panel-section {
+            display: none;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .panel-section.active {
+            display: flex;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-gold);
+            border-radius: 10px;
+            padding: 18px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-bottom: 1px solid var(--border-subtle);
+            padding-bottom: 10px;
+        }
+
+        .card-header h3 {
+            margin: 0;
+            color: var(--gold);
+            font-size: 1.05rem;
+        }
+
+        /* FORMS & CONTROLS */
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 10px;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 0.78rem;
+            color: #cbd5e1;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        input, select, textarea {
+            background: var(--bg-input);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 6px;
+            color: #fff;
+            padding: 9px 11px;
+            font-size: 0.9rem;
+            outline: none;
+            width: 100%;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--gold);
+        }
+
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 9px 14px;
+            font-size: 0.84rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-gold { background: linear-gradient(135deg, #d97706, #b45309); color: #fff; border: 1px solid var(--gold); }
+        .btn-green { background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: 1px solid var(--emerald-light); }
+        .btn-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border: 1px solid #60a5fa; }
+        .btn-red { background: linear-gradient(135deg, #dc2626, #991b1b); color: #fff; border: 1px solid #f87171; }
+        .btn-slate { background: #334155; color: #f8fafc; }
+        .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+
+        /* TABLES */
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        th {
+            color: var(--gold);
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #065f46;
+            color: #fff;
+            border: 1.5px solid var(--gold);
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.8);
+            display: none;
+            z-index: 9999;
+        }
+
+        .lobby-card {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-left: 4px solid var(--emerald);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+
+        .code-pill {
+            font-family: monospace;
+            background: rgba(251, 191, 36, 0.15);
+            color: var(--gold);
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 1. ADMIN LOGIN GATE -->
+<div id="admin-login-screen">
+    <form class="login-card" onsubmit="handleAdminLogin(event)">
+        <h1>🛠️ Blitz 31 Admin</h1>
+        <p>Developer & Balance Management Console</p>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+            <label for="admin-user">Secret Admin Username</label>
+            <input type="text" id="admin-user" required placeholder="Enter admin username" autocomplete="username">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 18px;">
+            <label for="admin-pass">Secret Admin Password</label>
+            <input type="password" id="admin-pass" required placeholder="Enter admin password" autocomplete="current-password">
+        </div>
+
+        <div id="login-error" style="color: #f87171; font-size: 0.85rem; text-align: center; margin-bottom: 12px; display: none;"></div>
+
+        <button type="submit" class="btn btn-gold" style="width: 100%; padding: 12px;">Unlock Developer Console</button>
+        <div style="text-align: center; margin-top: 14px;">
+            <a href="/" style="color: var(--text-muted); font-size: 0.82rem; text-decoration: none;">← Return to Blitz 31 Table</a>
+        </div>
+    </form>
+</div>
+
+<!-- 2. MAIN ADMIN DASHBOARD -->
+<div id="admin-dashboard">
+    <header class="topbar">
+        <div class="topbar-title">
+            <h2>🛠️ Blitz 31 Developer Portal</h2>
+            <span class="badge">Root Access</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-green btn-sm" onclick="fetchAdminOverview()">🔄 Refresh All Data</button>
+            <a href="/" class="btn btn-slate btn-sm" style="text-decoration: none;">🎮 Open Game</a>
+            <button class="btn btn-red btn-sm" onclick="adminLogout()">🚪 Lock Console</button>
+        </div>
+    </header>
+
+    <!-- SUMMARY METRICS -->
+    <div class="stats-grid">
+        <div class="stat-box">
+            <div class="stat-label">Registered Accounts</div>
+            <div class="stat-val" id="stat-users-count">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Active Debt Pairs</div>
+            <div class="stat-val" id="stat-ledger-count">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Total Volume Owed</div>
+            <div class="stat-val" id="stat-ledger-volume" style="color: var(--gold);">$0.00</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Live Game Tables</div>
+            <div class="stat-val" id="stat-lobbies-count" style="color: var(--emerald-light);">0</div>
+        </div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchAdminTab('balances', this)">💰 Lifetime Balances</button>
+        <button class="tab-btn" onclick="switchAdminTab('lobbies', this)">🃏 Live Tables & Session Ledgers</button>
+        <button class="tab-btn" onclick="switchAdminTab('users', this)">👥 User Accounts & Passwords</button>
+        <button class="tab-btn" onclick="switchAdminTab('devtools', this)">📢 Broadcast & SQLite Console</button>
+    </div>
+
+    <!-- TAB 1: LIFETIME LEDGER BALANCES -->
+    <div id="tab-balances" class="panel-section active">
+        <div class="card">
+            <div class="card-header">
+                <h3>➕ Set, Add, or Adjust Lifetime Balance Between Players</h3>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Debtor (Player Who Owes)</label>
+                    <select id="bal-debtor-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Creditor (Player Owed)</label>
+                    <select id="bal-creditor-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Amount ($)</label>
+                    <input type="number" id="bal-amount-input" step="0.5" min="0" value="5.00" />
+                </div>
+                <div class="form-group">
+                    <label>Operation Mode</label>
+                    <select id="bal-mode-select">
+                        <option value="set">Set Exact Net Balance ($)</option>
+                        <option value="add">Add / Net Against Existing ($)</option>
+                    </select>
+                </div>
+                <button class="btn btn-green" onclick="submitBalanceUpdate()">💾 Apply Balance</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>📊 All Active Lifetime Ledger Balances</h3>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="text" id="ledger-search" placeholder="Filter by player..." oninput="renderLedgerTable()" style="width: 200px; padding: 6px 10px; font-size: 0.82rem;" />
+                    <button class="btn btn-red btn-sm" onclick="wipeAllLifetimeBalances()">⚠️ Wipe Entire Ledger</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Debtor (Owes)</th>
+                            <th>Creditor (Is Owed)</th>
+                            <th>Net Amount ($)</th>
+                            <th>Updated At</th>
+                            <th>Quick Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ledger-table-body">
+                        <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Loading balances...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: LIVE TABLES & SESSION LEDGERS -->
+    <div id="tab-lobbies" class="panel-section">
+        <div class="card">
+            <div class="card-header">
+                <h3>🃏 Active In-Memory Game Tables</h3>
+                <button class="btn btn-gold btn-sm" onclick="fetchAdminOverview()">🔄 Refresh Tables</button>
+            </div>
+            <div id="live-lobbies-container">
+                <div style="text-align: center; color: var(--text-muted); padding: 20px;">No active tables open.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: REGISTERED USERS -->
+    <div id="tab-users" class="panel-section">
+        <div class="card">
+            <div class="card-header">
+                <h3>👤 Create New User Account</h3>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="new-user-name" placeholder="PlayerUsername" />
+                </div>
+                <div class="form-group">
+                    <label>Recovery Email</label>
+                    <input type="email" id="new-user-email" placeholder="player@example.com" />
+                </div>
+                <div class="form-group">
+                    <label>Initial Password</label>
+                    <input type="text" id="new-user-pass" placeholder="Min. 6 chars" />
+                </div>
+                <button class="btn btn-green" onclick="adminCreateUser()">➕ Create Account</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>👥 Registered Players Directory</h3>
+                <input type="text" id="user-search" placeholder="Search username or email..." oninput="renderUsersTable()" style="width: 240px; padding: 6px 10px; font-size: 0.82rem;" />
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>User ID</th>
+                            <th>Created</th>
+                            <th>Admin Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Loading users...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: BROADCAST & SQLITE CONSOLE -->
+    <div id="tab-devtools" class="panel-section">
+        <div class="card">
+            <div class="card-header">
+                <h3>📢 Global Server Broadcast Banner</h3>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: span 3;">
+                    <label>Announcement Message (Sent to all open tables & players)</label>
+                    <input type="text" id="broadcast-msg" placeholder="e.g., Server restarting in 2 minutes after this hand!" maxlength="180" />
+                </div>
+                <button class="btn btn-gold" onclick="sendGlobalBroadcast()">📣 Broadcast Now</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>🗄️ Direct SQLite Database Console (`data.sqlite`)</h3>
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn btn-slate btn-sm" onclick="setSqlPreset('SELECT * FROM users ORDER BY created_at DESC;')">Users Table</button>
+                    <button class="btn btn-slate btn-sm" onclick="setSqlPreset('SELECT l.debtor_id, u1.username AS debtor, l.creditor_id, u2.username AS creditor, l.amount, l.updated_at FROM lifetime_ledger l LEFT JOIN users u1 ON u1.id = l.debtor_id LEFT JOIN users u2 ON u2.id = l.creditor_id;')">Lifetime Ledger</button>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 10px;">
+                <label>SQL Query (`SELECT`, `UPDATE`, `INSERT`, `DELETE`)</label>
+                <textarea id="sql-query-input" rows="3" style="font-family: monospace; font-size: 0.86rem;">SELECT * FROM lifetime_ledger;</textarea>
+            </div>
+            <button class="btn btn-blue" onclick="runRawSqlQuery()">▶️ Execute SQL</button>
+            <div id="sql-result-box" class="table-wrap" style="margin-top: 14px;"></div>
+        </div>
+    </div>
+</div>
+
+<div id="toast-banner" class="toast"></div>
+
+<script>
+    let adminToken = sessionStorage.getItem('blitz31_admin_token') || '';
+    let stateUsers = [];
+    let stateLedger = [];
+    let stateLobbies = [];
+
+    function showToast(msg, isError = false) {
+        const el = document.getElementById('toast-banner');
+        el.textContent = msg;
+        el.style.background = isError ? '#7f1d1d' : '#065f46';
+        el.style.display = 'block';
+        clearTimeout(window._toastTimer);
+        window._toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function switchAdminTab(tabName, btnEl) {
+        document.querySelectorAll('.panel-section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        const target = document.getElementById('tab-' + tabName);
+        if (target) target.classList.add('active');
+        if (btnEl) btnEl.classList.add('active');
+    }
+
+    async function apiAdmin(endpoint, method = 'GET', bodyObj = null) {
+        const opts = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            }
+        };
+        if (bodyObj) opts.body = JSON.stringify(bodyObj);
+        const res = await fetch(`/auth/admin/${endpoint}`, opts);
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+            adminLogout();
+            throw new Error(data.error || 'Admin session expired.');
+        }
+        if (!res.ok) {
+            throw new Error(data.error || `Request failed (${res.status})`);
+        }
+        return data;
+    }
+
+    async function handleAdminLogin(e) {
+        e.preventDefault();
+        const username = document.getElementById('admin-user').value.trim();
+        const password = document.getElementById('admin-pass').value;
+        const errEl = document.getElementById('login-error');
+        errEl.style.display = 'none';
+
+        try {
+            const res = await fetch('/auth/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.token) {
+                errEl.textContent = data.error || 'Invalid secret admin credentials.';
+                errEl.style.display = 'block';
+                return;
+            }
+            adminToken = data.token;
+            sessionStorage.setItem('blitz31_admin_token', adminToken);
+            document.getElementById('admin-login-screen').style.display = 'none';
+            document.getElementById('admin-dashboard').style.display = 'block';
+            fetchAdminOverview();
+        } catch (err) {
+            errEl.textContent = 'Server error while authenticating.';
+            errEl.style.display = 'block';
+        }
+    }
+
+    function adminLogout() {
+        adminToken = '';
+        sessionStorage.removeItem('blitz31_admin_token');
+        document.getElementById('admin-dashboard').style.display = 'none';
+        document.getElementById('admin-login-screen').style.display = 'flex';
+    }
+
+    async function fetchAdminOverview() {
+        try {
+            const data = await apiAdmin('overview', 'GET');
+            stateUsers = data.users || [];
+            stateLedger = data.ledger || [];
+            stateLobbies = data.lobbies || [];
+
+            document.getElementById('stat-users-count').textContent = stateUsers.length;
+            document.getElementById('stat-ledger-count').textContent = stateLedger.length;
+            const totalVol = stateLedger.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+            document.getElementById('stat-ledger-volume').textContent = `$${totalVol.toFixed(2)}`;
+            document.getElementById('stat-lobbies-count').textContent = stateLobbies.length;
+
+            populatePlayerSelects();
+            renderLedgerTable();
+            renderUsersTable();
+            renderLobbiesList();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    function populatePlayerSelects() {
+        const dSel = document.getElementById('bal-debtor-select');
+        const cSel = document.getElementById('bal-creditor-select');
+        const prevD = dSel.value;
+        const prevC = cSel.value;
+
+        const opts = stateUsers.map(u =>
+            `<option value="${escapeHtml(u.id)}">${escapeHtml(u.username)} (${escapeHtml(u.email || u.id)})</option>`
+        ).join('');
+
+        dSel.innerHTML = opts;
+        cSel.innerHTML = opts;
+        if (prevD) dSel.value = prevD;
+        if (prevC) cSel.value = prevC;
+        else if (stateUsers.length > 1) cSel.selectedIndex = 1;
+    }
+
+    function renderLedgerTable() {
+        const tbody = document.getElementById('ledger-table-body');
+        const filter = (document.getElementById('ledger-search').value || '').trim().toLowerCase();
+
+        const rows = stateLedger.filter(r => {
+            if (!filter) return true;
+            return (r.debtor_name || '').toLowerCase().includes(filter) ||
+                   (r.creditor_name || '').toLowerCase().includes(filter) ||
+                   (r.debtor_id || '').toLowerCase().includes(filter) ||
+                   (r.creditor_id || '').toLowerCase().includes(filter);
+        });
+
+        if (rows.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 18px;">No active lifetime ledger balances found.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = rows.map((r, idx) => {
+            const amt = Number(r.amount || 0).toFixed(2);
+            return `
+                <tr>
+                    <td><strong style="color: #fca5a5;">${escapeHtml(r.debtor_name || r.debtor_id)}</strong></td>
+                    <td><strong style="color: #86efac;">${escapeHtml(r.creditor_name || r.creditor_id)}</strong></td>
+                    <td>
+                        <input type="number" id="row-amt-${idx}" step="0.5" min="0" value="${amt}" style="width: 100px; padding: 5px 8px; color: var(--gold); font-weight: 800;" />
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.8rem;">${escapeHtml(r.updated_at || '')}</td>
+                    <td>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <button class="btn btn-green btn-sm" onclick="saveRowBalance('${r.debtor_id}', '${r.creditor_id}', 'row-amt-${idx}')">💾 Save</button>
+                            <button class="btn btn-blue btn-sm" onclick="flipRowBalance('${r.debtor_id}', '${r.creditor_id}', ${Number(r.amount || 0)})">⇄ Flip</button>
+                            <button class="btn btn-red btn-sm" onclick="deleteRowBalance('${r.debtor_id}', '${r.creditor_id}')">🗑️ Settle ($0)</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function submitBalanceUpdate() {
+        const debtorId = document.getElementById('bal-debtor-select').value;
+        const creditorId = document.getElementById('bal-creditor-select').value;
+        const amount = parseFloat(document.getElementById('bal-amount-input').value);
+        const mode = document.getElementById('bal-mode-select').value;
+
+        if (!debtorId || !creditorId) return showToast('Select both a debtor and creditor.', true);
+        if (debtorId === creditorId) return showToast('Debtor and Creditor must be different players.', true);
+        if (isNaN(amount) || amount < 0) return showToast('Enter a valid dollar amount.', true);
+
+        try {
+            await apiAdmin('balance', 'POST', { debtorId, creditorId, amount, mode });
+            showToast('✅ Lifetime balance updated!');
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function saveRowBalance(debtorId, creditorId, inputId) {
+        const el = document.getElementById(inputId);
+        const amount = parseFloat(el ? el.value : 0);
+        if (isNaN(amount) || amount < 0) return showToast('Invalid amount.', true);
+
+        try {
+            await apiAdmin('balance', 'POST', { debtorId, creditorId, amount, mode: 'set' });
+            showToast('✅ Balance saved!');
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function flipRowBalance(debtorId, creditorId, currentAmt) {
+        try {
+            await apiAdmin('balance', 'POST', {
+                debtorId: creditorId,
+                creditorId: debtorId,
+                amount: currentAmt,
+                mode: 'set'
+            });
+            showToast('⇄ Reversed debtor & creditor!');
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function deleteRowBalance(debtorId, creditorId) {
+        if (!confirm('Settle and remove this debt balance ($0.00)?')) return;
+        try {
+            await apiAdmin('balance', 'POST', { debtorId, creditorId, amount: 0, mode: 'set' });
+            showToast('🗑️ Debt settled to $0.00!');
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function wipeAllLifetimeBalances() {
+        if (!confirm('⚠️ Are you sure you want to WIPE ALL Lifetime Ledger balances for ALL players?')) return;
+        try {
+            await apiAdmin('balance/wipe-all', 'POST', {});
+            showToast('🧹 Entire Lifetime Ledger wiped clean!');
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    function renderUsersTable() {
+        const tbody = document.getElementById('users-table-body');
+        const filter = (document.getElementById('user-search').value || '').trim().toLowerCase();
+
+        const rows = stateUsers.filter(u => {
+            if (!filter) return true;
+            return (u.username || '').toLowerCase().includes(filter) ||
+                   (u.email || '').toLowerCase().includes(filter) ||
+                   (u.id || '').toLowerCase().includes(filter);
+        });
+
+        if (rows.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 18px;">No matching users.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = rows.map(u => `
+            <tr>
+                <td>
+                    <input type="text" id="uname-${u.id}" value="${escapeHtml(u.username)}" style="width: 135px; padding: 5px 8px; font-weight: 700;" />
+                </td>
+                <td>
+                    <input type="email" id="uemail-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="No email" style="width: 190px; padding: 5px 8px;" />
+                </td>
+                <td><span class="code-pill">${escapeHtml(u.id)}</span></td>
+                <td style="color: var(--text-muted); font-size: 0.78rem;">${escapeHtml(u.created_at || '')}</td>
+                <td>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button class="btn btn-green btn-sm" onclick="saveUserProfile('${u.id}')">💾 Save Info</button>
+                        <button class="btn btn-gold btn-sm" onclick="promptResetPassword('${u.id}', '${escapeHtml(u.username)}')">🔑 Set Password</button>
+                        <button class="btn btn-red btn-sm" onclick="deleteUserAccount('${u.id}', '${escapeHtml(u.username)}')">🗑️ Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function saveUserProfile(userId) {
+        const username = document.getElementById(`uname-${userId}`)?.value?.trim();
+        const email = document.getElementById(`uemail-${userId}`)?.value?.trim();
+        if (!username) return showToast('Username cannot be empty.', true);
+
+        try {
+            await apiAdmin('user/update', 'POST', { userId, username, email });
+            showToast('✅ User profile updated!');
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function promptResetPassword(userId, username) {
+        const newPassword = prompt(`Enter a new password for "${username}" (minimum 6 characters):`);
+        if (!newPassword) return;
+        if (newPassword.length < 6) return showToast('Password must be at least 6 characters.', true);
+
+        try {
+            await apiAdmin('user/password', 'POST', { userId, newPassword });
+            showToast(`🔑 Password updated for ${username}!`);
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function adminCreateUser() {
+        const username = document.getElementById('new-user-name').value.trim();
+        const email = document.getElementById('new-user-email').value.trim();
+        const password = document.getElementById('new-user-pass').value;
+
+        if (!username || !password || password.length < 6) {
+            return showToast('Username and password (min 6 chars) required.', true);
+        }
+
+        try {
+            await apiAdmin('user/create', 'POST', { username, email, password });
+            document.getElementById('new-user-name').value = '';
+            document.getElementById('new-user-email').value = '';
+            document.getElementById('new-user-pass').value = '';
+            showToast(`✅ Created account for ${username}!`);
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function deleteUserAccount(userId, username) {
+        if (!confirm(`⚠️ Permanently delete user "${username}" and all of their lifetime ledger records?`)) return;
+        try {
+            await apiAdmin('user/delete', 'POST', { userId });
+            showToast(`🗑️ Deleted user ${username}.`);
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    function renderLobbiesList() {
+        const container = document.getElementById('live-lobbies-container');
+        if (!stateLobbies || stateLobbies.length === 0) {
+            container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">No active tables currently open.</div>`;
+            return;
+        }
+
+        container.innerHTML = stateLobbies.map(lob => {
+            const playersHtml = (lob.players || []).map(p => `
+                <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06); padding: 4px 9px; border-radius: 6px; font-size: 0.82rem;">
+                    <strong>${escapeHtml(p.username)}</strong>
+                    <span style="color: var(--gold);">❤️${p.lives} | $${p.wager}</span>
+                    <span style="color: ${p.online ? '#34d399' : '#f87171'};">●</span>
+                    <button class="btn btn-red btn-sm" style="padding: 2px 6px; font-size: 0.68rem;" onclick="lobbyAction('${lob.code}', 'kick', { targetUsername: '${escapeHtml(p.username)}' })">✕</button>
+                </span>
+            `).join(' ');
+
+            return `
+                <div class="lobby-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <span class="code-pill">${escapeHtml(lob.code)}</span>
+                            <strong style="font-size: 1.05rem; margin-left: 8px;">${escapeHtml(lob.name)}</strong>
+                            <span style="color: var(--text-muted); font-size: 0.82rem; margin-left: 8px;">State: <b style="color: var(--emerald-light);">${escapeHtml(lob.gameState)}</b> | Host: ${escapeHtml(lob.host)}</span>
+                        </div>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <button class="btn btn-blue btn-sm" onclick="lobbyAction('${lob.code}', 'reset')">🔄 Reset to Waiting Room</button>
+                            <button class="btn btn-gold btn-sm" onclick="lobbyAction('${lob.code}', 'clear_session_ledger')">🧹 Clear Session Ledger</button>
+                            <button class="btn btn-red btn-sm" onclick="lobbyAction('${lob.code}', 'close')">🗑️ Close Table</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+                        ${playersHtml || '<span style="color: var(--text-muted); font-size: 0.82rem;">No seated players</span>'}
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">
+                        Spectators: ${(lob.spectators || []).map(s => escapeHtml(s.username)).join(', ') || 'None'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function lobbyAction(code, action, extra = {}) {
+        if (action === 'close' && !confirm(`Close and delete table [${code}]?`)) return;
+        if (action === 'clear_session_ledger' && !confirm(`Clear all in-game session ledger balances for table [${code}]?`)) return;
+
+        try {
+            await apiAdmin('lobby/action', 'POST', { code, action, ...extra });
+            showToast(`✅ Table [${code}] action (${action}) completed!`);
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function sendGlobalBroadcast() {
+        const msg = document.getElementById('broadcast-msg').value.trim();
+        if (!msg) return showToast('Enter a message to broadcast.', true);
+
+        try {
+            await apiAdmin('broadcast', 'POST', { message: msg });
+            document.getElementById('broadcast-msg').value = '';
+            showToast('📣 Broadcast sent to all active tables!');
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    function setSqlPreset(q) {
+        document.getElementById('sql-query-input').value = q;
+    }
+
+    async function runRawSqlQuery() {
+        const sql = document.getElementById('sql-query-input').value.trim();
+        const box = document.getElementById('sql-result-box');
+        if (!sql) return;
+
+        try {
+            const data = await apiAdmin('sql', 'POST', { sql });
+            if (Array.isArray(data.rows)) {
+                if (data.rows.length === 0) {
+                    box.innerHTML = `<div style="color: var(--text-muted); padding: 10px;">Query returned 0 rows.</div>`;
+                    return;
+                }
+                const cols = Object.keys(data.rows[0]);
+                box.innerHTML = `
+                    <table>
+                        <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+                        <tbody>
+                            ${data.rows.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(r[c])}</td>`).join('')}</tr>`).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } else {
+                box.innerHTML = `<div style="color: var(--emerald-light); padding: 10px; font-weight: 700;">✅ Executed! Changes: ${data.changes ?? 0}</div>`;
+                fetchAdminOverview();
+            }
+        } catch (err) {
+            box.innerHTML = `<div style="color: #f87171; padding: 10px; font-weight: 700;">❌ SQL Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    // Auto-unlock if admin token is already in sessionStorage
+    if (adminToken) {
+        document.getElementById('admin-login-screen').style.display = 'none';
+        document.getElementById('admin-dashboard').style.display = 'block';
+        fetchAdminOverview();
+    }
+</script>
+</body>
+</html>
