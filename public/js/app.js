@@ -689,62 +689,7 @@ function updateViewForAuth(user) {
 }
 
 // -------------------------------------------------------------
-// 5. GOOGLE IDENTITY SERVICES INITIALIZATION
-// -------------------------------------------------------------
-function initializeGoogleIdentity() {
-    const clientId = window.GOOGLE_CLIENT_ID || "420400140659-rpsr8gccd88sbbjiibq0dt2196ftgrb9.apps.googleusercontent.com";
-    if (window.google && window.google.accounts && window.google.accounts.id) {
-        try {
-            window.google.accounts.id.initialize({
-                client_id: clientId,
-                callback: handleGoogleCredentialResponse,
-                auto_select: false,
-                cancel_on_tap_outside: true
-            });
-
-            const btnContainer = document.getElementById('google-signin-btn');
-            if (btnContainer) {
-                window.google.accounts.id.renderButton(btnContainer, {
-                    theme: 'outline',
-                    size: 'large',
-                    width: btnContainer.offsetWidth || 280,
-                    text: 'signin_with',
-                    shape: 'pill'
-                });
-            }
-        } catch (e) {
-            console.warn('[GIS] Error initializing Google button:', e);
-        }
-    } else if (document.getElementById('google-signin-btn')) {
-        setTimeout(initializeGoogleIdentity, 300);
-    }
-}
-
-async function handleGoogleCredentialResponse(response) {
-    if (!response || !response.credential) return;
-
-    try {
-        const res = await fetch('/auth/google', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ credential: response.credential })
-        });
-        const data = await res.json();
-        if (res.ok && data.token) {
-            saveStoredAuthToken(data.token, true);
-            window.userSession = data.user;
-            updateViewForAuth(data.user);
-            authenticateActiveSocket(data.token, data.user);
-        } else {
-            showAuthError(data.error || 'Google sign-in failed.');
-        }
-    } catch (err) {
-        showAuthError('Server communication error during Google login.');
-    }
-}
-
-// -------------------------------------------------------------
-// 6. NATIVE AUTHENTICATION FORM DISPATCHERS
+// 5. NATIVE AUTHENTICATION FORM DISPATCHERS
 // -------------------------------------------------------------
 async function submitAuthLogin() {
     clearAuthError();
@@ -818,31 +763,8 @@ async function submitAuthRegister() {
     }
 }
 
-async function submitGuestLogin() {
-    clearAuthError();
-
-    try {
-        const res = await fetch('/auth/guest', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        const data = await res.json();
-        if (res.ok && data.token) {
-            saveStoredAuthToken(data.token, false);
-            window.userSession = data.user;
-            updateViewForAuth(data.user);
-            authenticateActiveSocket(data.token, data.user);
-        } else {
-            showAuthError(data.error || 'Guest login currently unavailable.');
-        }
-    } catch (err) {
-        showAuthError('Unable to initialize guest session.');
-    }
-}
-
 // -------------------------------------------------------------
-// 7. PASSWORD RECOVERY DISPATCHERS (WITH VISUAL FEEDBACK)
+// 6. PASSWORD RECOVERY DISPATCHERS (WITH VISUAL FEEDBACK)
 // -------------------------------------------------------------
 async function submitForgotPasswordRequest() {
     clearAuthError();
@@ -982,7 +904,7 @@ async function submitResetPassword() {
 }
 
 // -------------------------------------------------------------
-// 8. SESSION REHYDRATION ON BOOT
+// 7. SESSION REHYDRATION ON BOOT
 // -------------------------------------------------------------
 async function checkExistingSession() {
     const sfxToggle = document.getElementById('setting-sfx');
@@ -1031,7 +953,7 @@ async function checkExistingSession() {
 }
 
 // -------------------------------------------------------------
-// 9. LOGOUT SESSION (WITH WEBRTC & HARDWARE RELEASE)
+// 8. LOGOUT SESSION (WITH WEBRTC & HARDWARE RELEASE)
 // -------------------------------------------------------------
 function logoutSession() {
     if (typeof window.disconnectLiveKit === 'function') {
@@ -1069,13 +991,12 @@ function logoutSession() {
 }
 
 // -------------------------------------------------------------
-// 10. GLOBAL EXPORTS & LIFECYCLE LISTENERS
+// 9. GLOBAL EXPORTS & LIFECYCLE LISTENERS
 // -------------------------------------------------------------
 window.switchAuthTab = switchAuthTab;
 window.updateViewForAuth = updateViewForAuth;
 window.submitAuthLogin = submitAuthLogin;
 window.submitAuthRegister = submitAuthRegister;
-window.submitGuestLogin = submitGuestLogin;
 window.submitForgotPasswordRequest = submitForgotPasswordRequest;
 window.submitResetPassword = submitResetPassword;
 window.logoutSession = logoutSession;
@@ -1083,7 +1004,6 @@ window.checkExistingSession = checkExistingSession;
 
 document.addEventListener('DOMContentLoaded', () => {
     checkExistingSession();
-    initializeGoogleIdentity();
 
     const loginPass = document.getElementById('login-password');
     if (loginPass) {
