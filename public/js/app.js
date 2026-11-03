@@ -394,7 +394,7 @@ window.setSfxVolume = function(val) {
     }
 
     // Apply immediately to all 4 game sound elements
-    ['sound-knock', 'sound-yourturn', 'sound-card', 'sound-win'].forEach(id => {
+    ['sound-knock', 'sound-yourturn', 'sound-win'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.volume = cleanVal;
     });
@@ -467,6 +467,12 @@ window.playSound = function(cueType) {
             if (playPromise !== undefined) {
                 playPromise.catch(() => {});
             }
+            return;
+        }
+        // No <audio> element for this cue: use the Web Audio synth (card click / ding)
+        if (typeof window.synthSound === 'function' && (normalized === 'card' || normalized === 'ding')) {
+            if (typeof setGameSfxVolume === 'function') setGameSfxVolume(vol);
+            window.synthSound(normalized);
             return;
         }
         const fallbackAudio = new Audio(`/mp3s/${normalized}.mp3`);

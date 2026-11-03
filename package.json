@@ -1,6 +1,6 @@
 {
   "name": "thirty-one-game",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Blitz 31 Authentic Casino Card Game",
   "main": "server.js",
   "scripts": {
@@ -13,10 +13,12 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "google-auth-library": "^9.14.1",
     "jsonwebtoken": "^9.0.2",
     "livekit-server-sdk": "^2.1.2",
+    "nodemailer": "^6.9.14",
     "ws": "^8.17.0"
   }
 }

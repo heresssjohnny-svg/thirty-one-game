@@ -186,7 +186,7 @@ function playSound(type) {
     } catch (e) {}
 }
 
-function triggerVibration(pattern) {
+function rawTriggerVibration(pattern) {
     if ('vibrate' in navigator) {
         try { navigator.vibrate(pattern); } catch (e) {}
     }
@@ -206,6 +206,9 @@ function enableBackgroundAudioKeepAlive() {
     } catch (e) {}
 }
 // Global Window Bindings for ui.js triggers
+// app.js (loaded last) installs its own window.playSound for <audio>-backed cues and
+// falls back to window.synthSound for cues that have no mp3 (e.g. the "card" click).
+window.synthSound = playSound;
 window.playSound = typeof playSound === 'function' ? playSound : function(soundName) {
     console.warn(`[Audio] playSound called for ${soundName} but no function exists.`);
 };

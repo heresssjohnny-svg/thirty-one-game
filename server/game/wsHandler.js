@@ -331,8 +331,11 @@ function findTargetSockets(targetUserId, targetUsername, lobbyCode) {
     }
     Object.values(lobbies).forEach(inspectLobby);
 
-    if (activeWss && activeWss.clients) {
-        activeWss.clients.forEach(client => {
+    // server.js wires the WebSocketServer itself and exposes it as global.blitz31Wss,
+    // so fall back to that when setupWebSocket() was never called.
+    const wssRef = activeWss || global.blitz31Wss || null;
+    if (wssRef && wssRef.clients) {
+        wssRef.clients.forEach(client => {
             if (!client || client.readyState !== WebSocket.OPEN) return;
             const cUid = (client.user && !client.user.isGuest && (client.user.id || client.user.userId)) || client.userId || null;
             const cHandle = (client.currentUsername || '').trim().toLowerCase();
@@ -567,7 +570,7 @@ function resetTurnTimer(lobby) {
 // -------------------------------------------------------------
 
 function attemptGameStart(lobby) {
-    const seatedPlayers = lobby.players;
+    const seatedPlayers = lobby.players.filter(p => !p.eliminated);
     if (seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready)) {
         lobby.forfeitedPlayers = [];
         lobby.players.forEach(p => { 
@@ -691,7 +694,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                     seat: 0,
                     eliminated: false,
                     isBot: false,
-                    inVC: true,
+                    inVC: false,
                     isMuted: true,
                     nextHandReady: false,
                     peekRequests: {},
@@ -808,7 +811,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             userId: existingPlayer.userId || incomingUid || null,
                             accountUsername: existingPlayer.accountUsername || accountUsername,
                             username: existingPlayer.username,
-                            inVC: existingPlayer.inVC ?? true,
+                            inVC: existingPlayer.inVC ?? false,
                             isMuted: existingPlayer.isMuted ?? true,
                             disconnectedAt: null
                         });
@@ -862,7 +865,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         seat: findOpenSeat(lobby),
                         eliminated: false,
                         isBot: false,
-                        inVC: true,
+                        inVC: false,
                         isMuted: true,
                         nextHandReady: false,
                         peekRequests: {},
@@ -877,7 +880,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         userId: incomingUid,
                         accountUsername,
                         username,
-                        inVC: true,
+                        inVC: false,
                         isMuted: true,
                         disconnectedAt: null
                     });
@@ -1093,7 +1096,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                                 seat: openSeat !== -1 ? openSeat : lobby.players.length,
                                 eliminated: false,
                                 isBot: false,
-                                inVC: spec ? spec.inVC : true,
+                                inVC: spec ? spec.inVC : false,
                                 isMuted: spec && spec.isMuted !== undefined ? spec.isMuted : true,
                                 nextHandReady: false,
                                 peekRequests: {},
