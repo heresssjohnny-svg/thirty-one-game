@@ -36,7 +36,12 @@ const config = {
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'Blitz31Admin!2026',
 
     // Inactivity threshold before cleaning up abandoned rooms (5 minutes)
-    INACTIVITY_TIMEOUT_MS: Number(process.env.INACTIVITY_TIMEOUT_MS) || 5 * 60 * 1000
+    INACTIVITY_TIMEOUT_MS: Number(process.env.INACTIVITY_TIMEOUT_MS) || 5 * 60 * 1000,
+
+    // How long the table is "shuffling & dealing" at the start of every hand.
+    // No turn actions, bot moves or turn timers run until this window ends;
+    // the client animation (public/js/dealAnim.js) sizes itself to fit it.
+    DEAL_ANIMATION_MS: Number(process.env.DEAL_ANIMATION_MS) || 16000
 };
 
 // Warn loudly (but keep running) when production is still on fallback secrets
