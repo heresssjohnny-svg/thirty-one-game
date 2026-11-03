@@ -1,0 +1,44 @@
+name: Deploy to Hetzner
+
+# Runs on every push to main (every merged PR) and from the Actions tab.
+# All the deploy logic lives in scripts/deploy.sh so it can be tested and
+# changed without touching this file.
+#
+# Required repository secrets:
+#   HETZNER_HOST         server IPv4 address
+#   HETZNER_USER         SSH username (root)
+#   HETZNER_SSH_KEY_B64  private key, base64 as one line: base64 -w0 ~/.ssh/deploy_key
+#   HETZNER_PORT         (optional) SSH port, defaults to 22
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Decode SSH key
+        env:
+          KEY_B64: ${{ secrets.HETZNER_SSH_KEY_B64 }}
+        run: |
+          if [ -z "$KEY_B64" ]; then echo "HETZNER_SSH_KEY_B64 secret is empty"; exit 1; fi
+          echo "$KEY_B64" | tr -d ' \n\r' | base64 -d > "$HOME/deploy_key"
+          chmod 600 "$HOME/deploy_key"
+          head -c 40 "$HOME/deploy_key" | grep -q "BEGIN OPENSSH PRIVATE KEY" || { echo "Decoded key does not look like an OpenSSH private key"; exit 1; }
+          echo "key decoded OK"
+
+      - name: Pull and deploy on the server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key_path: /home/runner/deploy_key
+          port: ${{ secrets.HETZNER_PORT || 22 }}
+          script: cd ~/thirty-one-game && (git stash -q >/dev/null 2>&1 || true) && git fetch -q origin main && git reset -q --hard origin/main && bash scripts/deploy.sh
