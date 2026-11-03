@@ -22,6 +22,7 @@ const {
     touchLobbyActivity,
     broadcastLobbyUpdate
 } = require('./server/game/lobbyManager');
+const { guardIncoming } = require('./server/game/antiCheat');
 
 const app = express();
 const server = http.createServer(app);
@@ -246,6 +247,12 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
+        // 0. Anti-cheat guard: rate limit, pin identity to the JWT, block seat takeovers,
+        //    and force ledger operations to act only as the authenticated user.
+        const guard = guardIncoming(ws, parsed, lobbies);
+        if (!guard.ok) return;
+        parsed = guard.data;
+
         // 1. Authenticate WebSocket session from stored JWT
         if (parsed.type === 'AUTH_TOKEN') {
             try {
@@ -420,8 +427,8 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        // Forward gameplay commands to room and lobby manager
-        handleWebSocketMessage(ws, message.toString(), broadcastLobbyList);
+        // Forward (sanitized) gameplay commands to room and lobby manager
+        handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);
     });
 
     // Clean up player/spectator state when a socket disconnects
