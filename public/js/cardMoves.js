@@ -18,6 +18,11 @@
 //   REVEAL   entering roundOver: every seat's cards are hidden, then flipped
 //            over one seat at a time (~450 ms apart); players who lost a life in
 //            that hand are revealed last.
+//   PILE     the discard pile looks like a real one: the last few discarded
+//            cards lie under the top card at random (but stable) angles and
+//            offsets, and the top card itself sits slightly askew. The server
+//            only sends the top card, so the pile is tracked here from the
+//            snapshots (reset each hand / when the deck is reshuffled).
 //   TICK     during the last 5 seconds of your own turn a soft tick plays once a
 //            second (ui.js already vibrates on those seconds).
 //
@@ -61,6 +66,8 @@
         .cm-card.cm-face.cm-red { color: #dc2626; }
         .cm-hidden-card { visibility: hidden !important; }
         .cm-reveal-wait { visibility: hidden !important; }
+        .cm-pile { position: absolute; z-index: -1; pointer-events: none; }
+        .cm-pile .card-slot { position: absolute !important; left: 0; top: 0; cursor: default; }
         .cm-reveal-flip { animation: cm-flip ${REVEAL_FLIP_MS}ms ease-out both; transform-origin: center; }
         @keyframes cm-flip {
             0%   { transform: perspective(400px) rotateY(90deg) scale(1.05); opacity: 0.2; }
@@ -92,7 +99,7 @@
     function deckEl() { return document.getElementById('deck-pile'); }
     function discardEl() {
         const area = document.getElementById('deck-center');
-        return area ? area.querySelector('.card-slot:not(#deck-pile)') : null;
+        return area ? area.querySelector(':scope > .card-slot:not(#deck-pile)') : null;
     }
     function seatEl(username) {
         const want = String(username || '').toLowerCase();
@@ -121,6 +128,85 @@
         return Array.isArray(p.cards) ? p.cards.length : 0;
     }
     function dealing() { return document.body.classList.contains('da-hide-cards'); }
+
+    // ---- messy discard pile ---------------------------------------------
+    const PILE_SHOW = 5;      // cards visible under the top card
+    const PILE_KEEP = 12;     // cards remembered (lets pick-ups reveal the one below)
+    let pile = [];            // [{val, suit}] bottom -> top
+    let pileSalt = String(Math.random());
+
+    function sameCard(a, b) { return !!a && !!b && a.val === b.val && normSuit(a.suit) === normSuit(b.suit); }
+    function hash(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    }
+    // Stable position for the card at index i of this hand's pile. A card keeps
+    // the same spot whether it is on top or covered, so picking up the top card
+    // uncovers the one below exactly where it was lying.
+    function pileLook(card, i) {
+        const h = hash(`${pileSalt}|${i}|${card.val}${normSuit(card.suit)}`);
+        const r = (k) => ((h >>> (k * 8)) & 0xff) / 255 - 0.5;
+        return { rot: r(0) * 30, dx: r(1) * 22, dy: r(2) * 16 };
+    }
+    function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+    function faceHtml(card) {
+        const suit = normSuit(card.suit);
+        const cls = isRed(suit) ? 'red-suit' : 'black-suit';
+        const v = esc(card.val), su = esc(suit);
+        return `<div class="card-slot playing-card ${cls}">
+            <div class="card-corner top-left"><span class="corner-val">${v}</span><span class="corner-suit">${su}</span></div>
+            <div class="card-center-pip">${su}</div>
+            <div class="card-corner bottom-right"><span class="corner-val">${v}</span><span class="corner-suit">${su}</span></div>
+        </div>`;
+    }
+
+    function updatePile(lobby, before, newHand) {
+        const top = lobby.discardTop || null;
+        const reshuffled = before && typeof lobby.deckCount === 'number' && typeof before.deckCount === 'number' && lobby.deckCount > before.deckCount + 1;
+        if (!top) { pile = []; return; }
+        if (!before || newHand || reshuffled || !pile.length) {
+            pile = [top];
+            if (newHand || !before) pileSalt = String(Math.random());
+            return;
+        }
+        if (sameCard(pile[pile.length - 1], top)) return;
+        if (pile.length >= 2 && sameCard(pile[pile.length - 2], top)) { pile.pop(); return; }  // picked up
+        pile.push(top);
+        if (pile.length > PILE_KEEP) pile = pile.slice(-PILE_KEEP);
+    }
+
+    function renderPile() {
+        const area = document.getElementById('deck-center');
+        if (!area) return;
+        const old = area.querySelector(':scope > .cm-pile');
+        if (old) old.remove();
+        const slot = discardEl();
+        if (!slot || !pile.length || slot.classList.contains('empty-slot')) return;
+
+        const topIdx = pile.length - 1;
+        const tl = pileLook(pile[topIdx], topIdx);
+        slot.style.rotate = `${tl.rot.toFixed(1)}deg`;
+        slot.style.translate = `${tl.dx.toFixed(1)}px ${tl.dy.toFixed(1)}px`;
+
+        const under = pile.slice(Math.max(0, topIdx - PILE_SHOW), topIdx);
+        if (!under.length) return;
+        const box = document.createElement('div');
+        box.className = 'cm-pile';
+        box.style.left = `${slot.offsetLeft}px`;
+        box.style.top = `${slot.offsetTop}px`;
+        box.style.width = `${slot.offsetWidth}px`;
+        box.style.height = `${slot.offsetHeight}px`;
+        const first = topIdx - under.length;
+        box.innerHTML = under.map(faceHtml).join('');
+        Array.from(box.children).forEach((el, k) => {
+            const lk = pileLook(under[k], first + k);
+            el.style.rotate = `${lk.rot.toFixed(1)}deg`;
+            el.style.translate = `${lk.dx.toFixed(1)}px ${lk.dy.toFixed(1)}px`;
+            el.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.3)', 'important');
+        });
+        area.insertBefore(box, slot);
+    }
 
     // ---- flights --------------------------------------------------------
     function fly(from, to, opts) {
@@ -170,14 +256,16 @@
         return true;
     }
 
-    function animateDraw(p, isMe, me, lobby, prevDiscard) {
+    function animateDraw(p, isMe, me, lobby, prevDiscard, prevTopRot) {
         const fromDiscard = /discard pile/i.test(lobby.phaseMessage || '') &&
             (lobby.phaseMessage || '').toLowerCase().includes(String(p.username).toLowerCase());
         const srcEl = fromDiscard ? discardEl() : deckEl();
         const from = srcEl ? center(srcEl) : null;
         if (!from) return;
-        const size = { w: from.w || 52, h: from.h || 74 };
+        // the card's own size (the discard slot is tilted, so its bounding box is larger)
+        const size = { w: srcEl.offsetWidth || 52, h: srcEl.offsetHeight || 74 };
         const face = fromDiscard && prevDiscard ? prevDiscard : null;
+        const startRot = fromDiscard ? (prevTopRot || 0) : -6;
 
         if (isMe) {
             const els = myCardEls();
@@ -187,7 +275,7 @@
             const to = center(target);
             const newCard = (me.cards && me.cards.length) ? me.cards[me.cards.length - 1] : null;
             fly(from, { x: to.x, y: to.y }, {
-                face: face || newCard, size, fromRot: -6,
+                face: face || newCard, size, fromRot: startRot,
                 onLand: () => target.classList.remove('cm-hidden-card')
             });
             // Safety: never leave the real card hidden
@@ -195,7 +283,7 @@
         } else {
             const to = seatPoint(p.username);
             if (!to) return;
-            fly(from, to, { face, size, toRot: Math.random() * 20 - 10 });
+            fly(from, to, { face, size, fromRot: startRot, toRot: Math.random() * 20 - 10 });
         }
     }
 
@@ -203,7 +291,7 @@
         const pileEl = discardEl();
         if (!pileEl) return;
         const to = center(pileEl);
-        const size = { w: to.w || 52, h: to.h || 74 };
+        const size = { w: pileEl.offsetWidth || 52, h: pileEl.offsetHeight || 74 };
         const face = lobby.discardTop || null;
 
         let from = null;
@@ -221,8 +309,9 @@
         if (!from) return;
 
         pileEl.classList.add('cm-hidden-card');
+        const landRot = pile.length ? pileLook(pile[pile.length - 1], pile.length - 1).rot : 0;
         fly(from, { x: to.x, y: to.y }, {
-            face, size, fromRot: Math.random() * 16 - 8,
+            face, size, fromRot: Math.random() * 16 - 8, toRot: landRot,
             onLand: () => pileEl.classList.remove('cm-hidden-card')
         });
         setTimeout(() => pileEl.classList.remove('cm-hidden-card'), FLIGHT_MS + 600);
@@ -337,7 +426,7 @@
         (lobby.players || []).forEach(p => {
             players[String(p.username).toLowerCase()] = { count: cardCountOf(p), lives: p.lives };
         });
-        return { state: lobby.gameState, players, discardTop: lobby.discardTop || null };
+        return { state: lobby.gameState, players, discardTop: lobby.discardTop || null, deckCount: lobby.deckCount };
     }
 
     function onSnapshot(lobby) {
@@ -347,10 +436,15 @@
         const cur = summarize(lobby);
         const before = prev;
         prev = cur;
-        if (!before) return;
 
         const inPlay = lobby.gameState === 'playing' || lobby.gameState === 'finalTurn';
-        const wasInPlay = before.state === 'playing' || before.state === 'finalTurn';
+        const wasInPlay = !!before && (before.state === 'playing' || before.state === 'finalTurn');
+
+        // Messy discard pile (ui.js re-rendered the table, so re-apply every time)
+        const prevTopRot = pile.length ? pileLook(pile[pile.length - 1], pile.length - 1).rot : 0;
+        updatePile(lobby, before, inPlay && !wasInPlay);
+        renderPile();
+        if (!before) return;
 
         // Round over: staggered reveal, losers last
         if (lobby.gameState === 'roundOver') {
@@ -370,7 +464,7 @@
             const isMe = !!(me && me.username === p.username);
             if (now === b.count + 1) {
                 cardSound();
-                animateDraw(p, isMe, me, lobby, before.discardTop);
+                animateDraw(p, isMe, me, lobby, before.discardTop, prevTopRot);
             } else if (now === b.count - 1 && b.count > 0) {
                 cardSound();
                 animateDiscard(p, isMe, lobby);

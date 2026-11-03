@@ -12,6 +12,9 @@
 //   - a your-turn cue requested shortly after a knock is held until
 //     TURN_AFTER_KNOCK_MS after the knock started (knock first, then your turn)
 //   - a your-turn cue is played at most once per TURN_DEDUPE_MS
+//   - a your-turn cue that arrives while the hand is still being shuffled and
+//     dealt (server dealing window open, or the deal overlay still showing) is
+//     held and played once the turn really starts, if it is still your turn
 // All the aliases ui.js / audio.js use (safePlaySound, triggerAudioCue,
 // speakKnockedCue, playYourTurnCue) are pointed at the same wrapper.
 
@@ -26,6 +29,23 @@
     let lastKnockAt = 0;
     let lastTurnAt = 0;
     let pendingTurnTimer = null;
+    let heldForDeal = null;
+
+    // True while the shuffle & deal is still running for the current hand
+    function dealingNow() {
+        if (document.body && document.body.classList.contains('da-hide-cards')) return true;
+        const s = window.appGlobals && window.appGlobals.latestLobbySnapshot;
+        if (!s || !s.dealingUntil) return false;
+        const skew = (typeof s.serverNow === 'number' && typeof s.__receivedAt === 'number') ? (s.serverNow - s.__receivedAt) : 0;
+        return s.dealingUntil - (Date.now() + skew) > 0;
+    }
+
+    function stillMyTurn() {
+        const s = window.appGlobals && window.appGlobals.latestLobbySnapshot;
+        if (!s || (s.gameState !== 'playing' && s.gameState !== 'finalTurn')) return false;
+        const me = (typeof window.getActiveUsername === 'function') ? String(window.getActiveUsername() || '') : '';
+        return !!me && me.toLowerCase() === String(s.currentTurnUser || '').toLowerCase();
+    }
 
     function install() {
         const base = window.playSound;
@@ -42,6 +62,18 @@
             }
 
             if (type === 'yourturn') {
+                // Hold the cue until the shuffle & deal is over
+                if (dealingNow()) {
+                    if (!heldForDeal) {
+                        heldForDeal = setInterval(() => {
+                            if (dealingNow()) return;
+                            clearInterval(heldForDeal);
+                            heldForDeal = null;
+                            if (stillMyTurn()) wrapped('yourturn');
+                        }, 150);
+                    }
+                    return;
+                }
                 const sinceKnock = now - lastKnockAt;
                 if (sinceKnock >= 0 && sinceKnock < TURN_AFTER_KNOCK_MS) {
                     // Let the knock finish first, then announce the turn
