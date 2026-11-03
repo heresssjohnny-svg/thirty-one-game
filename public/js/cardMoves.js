@@ -29,6 +29,8 @@
 // Skipped while the shuffle & deal overlay is running (body.da-hide-cards).
 // Every flight keeps one size (the table's deck/discard card size) from start to
 // finish: no growing or shrinking between the piles, the seats and your hand.
+// A face-up flying card is a styled copy of the real card it lands on (or left),
+// with every font size copied, so its lettering never changes size mid-flight.
 // Honors the SFX toggle and prefers-reduced-motion (no flights/flips, just sounds).
 
 (function () {
@@ -64,6 +66,8 @@
             font-weight: 800; font-size: 1.05rem; font-family: inherit;
         }
         .cm-card.cm-face.cm-red { color: #dc2626; }
+        .cm-card.cm-clone { background: transparent; border: none; padding: 0; }
+        .cm-card.cm-clone > * { pointer-events: none; }
         .cm-hidden-card { visibility: hidden !important; }
         .cm-reveal-wait { visibility: hidden !important; }
         .cm-pile { position: absolute; z-index: -1; pointer-events: none; }
@@ -147,7 +151,7 @@
     function pileLook(card, i) {
         const h = hash(`${pileSalt}|${i}|${card.val}${normSuit(card.suit)}`);
         const r = (k) => ((h >>> (k * 8)) & 0xff) / 255 - 0.5;
-        return { rot: r(0) * 30, dx: r(1) * 22, dy: r(2) * 16 };
+        return { rot: r(0) * 44, dx: r(1) * 44, dy: r(2) * 30 };
     }
     function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
     function faceHtml(card) {
@@ -208,6 +212,35 @@
         area.insertBefore(box, slot);
     }
 
+    // ---- card visual copies -------------------------------------------
+    // A detached copy of a rendered card with its computed look written inline,
+    // so it looks identical (same fonts, corners, pip) outside its table context.
+    const COPY_PROPS = ['font-size', 'font-weight', 'font-family', 'font-style', 'line-height', 'letter-spacing',
+        'color', 'text-align', 'white-space', 'display', 'flex-direction', 'align-items', 'justify-content', 'gap',
+        'position', 'top', 'left', 'right', 'bottom', 'transform', 'padding', 'margin', 'width', 'height',
+        'box-sizing', 'background', 'border', 'border-radius', 'opacity'];
+    function copyStyles(src, dst) {
+        const cs = getComputedStyle(src);
+        COPY_PROPS.forEach(prop => dst.style.setProperty(prop, cs.getPropertyValue(prop)));
+        const a = src.children, b = dst.children;
+        for (let i = 0; i < a.length && i < b.length; i++) copyStyles(a[i], b[i]);
+    }
+    function visualOf(el) {
+        if (!el || !el.classList || !el.classList.contains('playing-card')) return null;
+        const copy = el.cloneNode(true);
+        copy.removeAttribute('id');
+        copy.removeAttribute('onclick');
+        copy.querySelectorAll('[id],[onclick]').forEach(n => { n.removeAttribute('id'); n.removeAttribute('onclick'); });
+        copyStyles(el, copy);
+        copy.classList.remove('cm-hidden-card');
+        Object.assign(copy.style, {
+            position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', margin: '0',
+            transform: 'none', rotate: 'none', translate: 'none', visibility: 'visible', boxShadow: 'none'
+        });
+        return copy;
+    }
+    let lastTopVisual = null;   // the discard top as it looked after the previous snapshot
+
     // ---- flights --------------------------------------------------------
     function fly(from, to, opts) {
         opts = opts || {};
@@ -215,7 +248,10 @@
         const l = layer();
         const c = document.createElement('div');
         c.className = 'cm-card';
-        if (opts.face) {
+        if (opts.visual) {
+            c.classList.add('cm-clone');
+            c.appendChild(opts.visual);
+        } else if (opts.face) {
             const suit = normSuit(opts.face.suit);
             c.classList.add('cm-face');
             if (isRed(suit)) c.classList.add('cm-red');
@@ -256,7 +292,8 @@
         return true;
     }
 
-    function animateDraw(p, isMe, me, lobby, prevDiscard, prevTopRot) {
+    function animateDraw(p, isMe, me, lobby, prevDiscard, prevTopRot, prevTopVisual) {
+        const prevVisual = prevTopVisual ? prevTopVisual.cloneNode(true) : null;
         const fromDiscard = /discard pile/i.test(lobby.phaseMessage || '') &&
             (lobby.phaseMessage || '').toLowerCase().includes(String(p.username).toLowerCase());
         const srcEl = fromDiscard ? discardEl() : deckEl();
@@ -275,7 +312,7 @@
             const to = center(target);
             const newCard = (me.cards && me.cards.length) ? me.cards[me.cards.length - 1] : null;
             fly(from, { x: to.x, y: to.y }, {
-                face: face || newCard, size, fromRot: startRot,
+                visual: visualOf(target), face: face || newCard, size, fromRot: startRot,
                 onLand: () => target.classList.remove('cm-hidden-card')
             });
             // Safety: never leave the real card hidden
@@ -283,7 +320,7 @@
         } else {
             const to = seatPoint(p.username);
             if (!to) return;
-            fly(from, to, { face, size, fromRot: startRot, toRot: Math.random() * 20 - 10 });
+            fly(from, to, { visual: fromDiscard ? prevVisual : null, face, size, fromRot: startRot, toRot: Math.random() * 20 - 10 });
         }
     }
 
@@ -311,7 +348,7 @@
         pileEl.classList.add('cm-hidden-card');
         const landRot = pile.length ? pileLook(pile[pile.length - 1], pile.length - 1).rot : 0;
         fly(from, { x: to.x, y: to.y }, {
-            face, size, fromRot: Math.random() * 16 - 8, toRot: landRot,
+            visual: visualOf(pileEl), face, size, fromRot: Math.random() * 16 - 8, toRot: landRot,
             onLand: () => pileEl.classList.remove('cm-hidden-card')
         });
         setTimeout(() => pileEl.classList.remove('cm-hidden-card'), FLIGHT_MS + 600);
@@ -442,8 +479,10 @@
 
         // Messy discard pile (ui.js re-rendered the table, so re-apply every time)
         const prevTopRot = pile.length ? pileLook(pile[pile.length - 1], pile.length - 1).rot : 0;
+        const prevTopVisual = lastTopVisual;
         updatePile(lobby, before, inPlay && !wasInPlay);
         renderPile();
+        try { lastTopVisual = visualOf(discardEl()); } catch (e) { lastTopVisual = null; }
         if (!before) return;
 
         // Round over: staggered reveal, losers last
@@ -464,7 +503,7 @@
             const isMe = !!(me && me.username === p.username);
             if (now === b.count + 1) {
                 cardSound();
-                animateDraw(p, isMe, me, lobby, before.discardTop, prevTopRot);
+                animateDraw(p, isMe, me, lobby, before.discardTop, prevTopRot, prevTopVisual);
             } else if (now === b.count - 1 && b.count > 0) {
                 cardSound();
                 animateDiscard(p, isMe, lobby);
