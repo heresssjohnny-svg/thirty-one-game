@@ -251,7 +251,7 @@ wss.on('connection', (ws, req) => {
             try {
                 const token = parsed.token;
                 if (token) {
-                    const decoded = jwt.verify(token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
+                    const decoded = jwt.verify(token, config.JWT_SECRET);
                     ws.user = decoded;
                     ws.userId = decoded.id || decoded.userId;
                     if (decoded.username) {
@@ -297,7 +297,7 @@ wss.on('connection', (ws, req) => {
 
             if (!uid && parsed.token) {
                 try {
-                    const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
+                    const decoded = jwt.verify(parsed.token, config.JWT_SECRET);
                     ws.user = decoded;
                     uid = decoded.id || decoded.userId;
                     ws.userId = uid;
@@ -342,7 +342,7 @@ wss.on('connection', (ws, req) => {
         if (parsed.type === 'APPLY_CREDIT') {
             if (!ws.user && parsed.token) {
                 try {
-                    const decoded = jwt.verify(parsed.token, config.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026');
+                    const decoded = jwt.verify(parsed.token, config.JWT_SECRET);
                     ws.user = decoded;
                     ws.userId = decoded.id || decoded.userId;
                     if (decoded.username) {
@@ -483,7 +483,7 @@ wss.on('connection', (ws, req) => {
 // -------------------------------------------------------------
 // 3. SERVER BOOT & BINDING
 // -------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
+const PORT = config.PORT;
 server.listen(PORT, () => {
     console.log(`[Blitz 31] HTTP & WebSocket Server running on port ${PORT}`);
 });

@@ -9,7 +9,8 @@ const db = require('./db');
 const config = require('./config');
 const { lobbies, broadcastLobbyUpdate, resetLobbyToReadyRoom } = require('./game/lobbyManager');
 
-const JWT_SECRET = (config && config.JWT_SECRET) || process.env.JWT_SECRET || 'blitz31_fallback_super_secret_jwt_key_2026';
+// All credentials come from server/config.js (which reads .env / process.env)
+const JWT_SECRET = config.JWT_SECRET;
 
 // Helper to access raw better-sqlite3 instance safely
 const sqlDb = typeof db.prepare === 'function' ? db : db.db;
@@ -17,8 +18,8 @@ const sqlDb = typeof db.prepare === 'function' ? db : db.db;
 // -------------------------------------------------------------
 // EMAIL / SMTP CONFIGURATION
 // -------------------------------------------------------------
-const SMTP_EMAIL = (config && config.SMTP_EMAIL) || process.env.SMTP_EMAIL || 'heresssjohnny@gmail.com';
-const SMTP_PASSWORD = (config && config.SMTP_PASSWORD) || process.env.SMTP_PASSWORD || 'ybsg sbmt dctc soqj';
+const SMTP_EMAIL = config.SMTP_EMAIL;
+const SMTP_PASSWORD = String(config.SMTP_PASSWORD || '');
 
 const mailTransporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -249,11 +250,61 @@ router.get('/me', (req, res) => {
     }
 });
 
+// -------------------------------------------------------------
+// 5B. ACCOUNT & DATA DELETION REQUEST (/auth/request-delete, used by accdelete.html)
+// -------------------------------------------------------------
+// Records the request in the console and emails the operator so it can be
+// actioned (manually or via the admin portal) within the published 48h window.
+// Deliberately does NOT delete immediately: the page is unauthenticated, so an
+// identifier alone must never be enough to wipe someone else's account.
+router.post('/request-delete', async (req, res) => {
+    const identifier = String(req.body?.identifier || '').trim();
+    const reason = String(req.body?.reason || '').trim().slice(0, 1000);
+
+    if (!identifier) {
+        return res.status(400).json({ error: 'Username or email is required.' });
+    }
+
+    const user = typeof db.findUserByIdentifier === 'function'
+        ? db.findUserByIdentifier(identifier)
+        : db.findUserByUsername(identifier);
+
+    console.log(`\n======================================================`);
+    console.log(`[ACCOUNT DELETION REQUEST] Identifier: ${identifier}`);
+    console.log(`Matched user: ${user ? `${user.username} (${user.id}, ${user.email || 'no email'})` : 'none'}`);
+    if (reason) console.log(`Reason: ${reason}`);
+    console.log(`======================================================\n`);
+
+    try {
+        await mailTransporter.sendMail({
+            from: `"Blitz 31" <${SMTP_EMAIL}>`,
+            to: SMTP_EMAIL,
+            subject: `Blitz 31 account deletion request: ${identifier}`,
+            text: [
+                `A deletion request was submitted from accdelete.html.`,
+                ``,
+                `Identifier entered: ${identifier}`,
+                `Matched account: ${user ? `${user.username} (id ${user.id}, email ${user.email || 'n/a'})` : 'no matching account'}`,
+                `Reason: ${reason || '(none given)'}`,
+                `Submitted: ${new Date().toISOString()}`,
+                ``,
+                `Process via admin.html -> Registered Players -> Delete.`
+            ].join('\n')
+        });
+    } catch (mailErr) {
+        // Email is best-effort; the console log above is the fallback record
+        console.error('[Auth] Failed to email deletion request:', mailErr.message);
+    }
+
+    // Always respond generically so the form can't be used to probe which accounts exist
+    return res.json({ message: 'Deletion request received. Matching records will be removed within 48 hours.' });
+});
+
 // =============================================================
 // 6. DEVELOPER & ADMIN CONTROL PANEL ROUTES (/auth/admin/*)
 // =============================================================
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Blitz31Admin!2026';
+const ADMIN_USERNAME = config.ADMIN_USERNAME;
+const ADMIN_PASSWORD = config.ADMIN_PASSWORD;
 
 function requireAdminAuth(req, res, next) {
     const authHeader = req.headers.authorization;
