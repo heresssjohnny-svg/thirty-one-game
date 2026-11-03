@@ -22,6 +22,8 @@
 //            second (ui.js already vibrates on those seconds).
 //
 // Skipped while the shuffle & deal overlay is running (body.da-hide-cards).
+// Every flight keeps one size (the table's deck/discard card size) from start to
+// finish: no growing or shrinking between the piles, the seats and your hand.
 // Honors the SFX toggle and prefers-reduced-motion (no flights/flips, just sounds).
 
 (function () {
@@ -185,7 +187,7 @@
             const to = center(target);
             const newCard = (me.cards && me.cards.length) ? me.cards[me.cards.length - 1] : null;
             fly(from, { x: to.x, y: to.y }, {
-                face: face || newCard, size, toScale: to.w ? (to.w / size.w) : 1.6, fromRot: -6,
+                face: face || newCard, size, fromRot: -6,
                 onLand: () => target.classList.remove('cm-hidden-card')
             });
             // Safety: never leave the real card hidden
@@ -193,7 +195,7 @@
         } else {
             const to = seatPoint(p.username);
             if (!to) return;
-            fly(from, to, { face, size, toScale: 0.7, toRot: Math.random() * 20 - 10 });
+            fly(from, to, { face, size, toRot: Math.random() * 20 - 10 });
         }
     }
 
@@ -205,14 +207,12 @@
         const face = lobby.discardTop || null;
 
         let from = null;
-        let fromScale = 0.7;
         if (isMe) {
             if (lastTap && Date.now() - lastTap.at < TAP_MEMORY_MS && lastTap.point) {
                 from = lastTap.point;
-                fromScale = lastTap.point.w ? lastTap.point.w / size.w : 1.6;
             } else {
                 const hand = document.getElementById('my-cards-container');
-                if (hand) { from = center(hand); fromScale = 1.4; }
+                if (hand) from = center(hand);
             }
             lastTap = null;
         } else {
@@ -222,7 +222,7 @@
 
         pileEl.classList.add('cm-hidden-card');
         fly(from, { x: to.x, y: to.y }, {
-            face, size, fromScale, toScale: 1, fromRot: Math.random() * 16 - 8,
+            face, size, fromRot: Math.random() * 16 - 8,
             onLand: () => pileEl.classList.remove('cm-hidden-card')
         });
         setTimeout(() => pileEl.classList.remove('cm-hidden-card'), FLIGHT_MS + 600);
