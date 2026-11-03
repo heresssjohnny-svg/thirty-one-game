@@ -23,6 +23,8 @@ const {
     broadcastLobbyUpdate
 } = require('./server/game/lobbyManager');
 const { guardIncoming } = require('./server/game/antiCheat');
+const lobbyManager = require('./server/game/lobbyManager');
+const { startLobbyPersistence } = require('./server/game/persistence');
 
 const app = express();
 const server = http.createServer(app);
@@ -494,3 +496,7 @@ const PORT = config.PORT;
 server.listen(PORT, () => {
     console.log(`[Blitz 31] HTTP & WebSocket Server running on port ${PORT}`);
 });
+
+// Keep tables alive across restarts/deploys: restore the last snapshot now,
+// then save every couple of seconds and on SIGINT/SIGTERM (see persistence.js)
+startLobbyPersistence({ lobbyManager, broadcastLobbyList });

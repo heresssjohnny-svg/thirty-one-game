@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v5';
+const CACHE_NAME = 'thirtyone-cache-v6';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -6,11 +6,9 @@ const ASSETS_TO_CACHE = [
     './css/main.css',
     './css/table.css',
     './css/modals.css',
-    './js/config.js',
     './js/audio.js',
     './js/celebration.js',
     './js/voice.js',
-    './js/music.js',
     './js/ledger.js',
     './js/network.js',
     './js/ui.js',

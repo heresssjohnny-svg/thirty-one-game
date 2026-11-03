@@ -3,3 +3,5 @@ node_modules/
 data.sqlite
 data.sqlite-wal
 data.sqlite-shm
+lobbies-state.json
+lobbies-state.json.tmp
