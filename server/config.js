@@ -41,7 +41,7 @@ const config = {
     // How long the table is "shuffling & dealing" at the start of every hand.
     // No turn actions, bot moves or turn timers run until this window ends;
     // the client animation (public/js/dealAnim.js) sizes itself to fit it.
-    DEAL_ANIMATION_MS: Number(process.env.DEAL_ANIMATION_MS) || 16000
+    DEAL_ANIMATION_MS: Number(process.env.DEAL_ANIMATION_MS) || 11500
 };
 
 // Warn loudly (but keep running) when production is still on fallback secrets

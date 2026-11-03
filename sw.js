@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v4';
+const CACHE_NAME = 'thirtyone-cache-v5';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -15,7 +15,8 @@ const ASSETS_TO_CACHE = [
     './js/network.js',
     './js/ui.js',
     './js/app.js',
-    './js/dealAnim.js'
+    './js/dealAnim.js',
+    './js/audioCues.js'
 ];
 
 self.addEventListener('install', (event) => {

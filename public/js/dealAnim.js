@@ -2,14 +2,16 @@
 //
 // Non-invasive: wraps window.updateUIFromLobby (from ui.js). When a lobby snapshot
 // opens a shuffle & deal window (lobby.dealingUntil in the future, gameState
-// 'playing'), the freshly rendered cards are hidden and a dealer-style shuffle
-// plays over the felt: split the deck, riffle the two halves together, bridge
-// (bow + cascade), square up — repeated for roughly 10-15s — then three rounds
-// of cards are dealt around the table and the real hand is revealed.
+// 'playing'), the freshly rendered cards and the centre piles are hidden and a
+// dealer's riffle shuffle plays where the deck sits: two hands cut the pack,
+// riffle the halves together (cards lying horizontally, thumbs on the inner
+// edges), bridge it (arch + cascade) and square it up — about 8 seconds —
+// then three rounds of cards are dealt around the table and the real hand is
+// revealed.
 //
 // Timing is driven by the server: lobbyManager.startRound() sets dealingUntil
-// (DEAL_ANIMATION_MS, default 16s) and refuses turn actions, holds bots and the
-// turn timer until then, so the first player's clock never starts mid-shuffle.
+// (DEAL_ANIMATION_MS, default 11.5s) and refuses turn actions, holds bots and
+// the turn timer until then, so the first player's clock never starts mid-shuffle.
 // The animation sizes itself to end just before the window closes. If a server
 // without the window is ever hit (no dealingUntil), a short ~3.5s version runs.
 //
@@ -22,11 +24,11 @@
     // ---- timing -------------------------------------------------------
     const FALLBACK_TOTAL_MS = 3500;     // no server window: old quick version
     const END_MARGIN_MS = 450;          // finish this long before dealingUntil
-    const SHUFFLE_CYCLE_MS = 3900;      // split + riffle + bridge + square up
+    const SHUFFLE_CYCLE_MS = 3900;      // cut + riffle + bridge + square up
     const DEAL_STAGGER_MS = 110;
     const CARD_FLIGHT_MS = 420;
     const FLIP_MS = 260;
-    const SHUFFLE_CARDS = 20;           // visual thickness of the deck
+    const SHUFFLE_CARDS = 20;           // visual thickness of the pack
 
     let running = false;
     let lastState = null;
@@ -34,6 +36,8 @@
     let startedWithWindow = false;
 
     // ---- styles -------------------------------------------------------
+    // Card backs copy the table's deck: .card-slot.back in table.css
+    const DECK_BG = 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)';
     const style = document.createElement('style');
     style.id = 'deal-anim-styles';
     style.textContent = `
@@ -42,23 +46,29 @@
         }
         .da-stage {
             position: fixed; width: 0; height: 0;
-            perspective: 520px; transform-style: preserve-3d;
+            perspective: 600px; transform-style: preserve-3d;
         }
         .da-sc {
-            position: absolute; left: 0; top: 0; border-radius: 5px;
-            background:
-                repeating-linear-gradient(45deg, rgba(255,255,255,0.06) 0 4px, transparent 4px 8px),
-                linear-gradient(135deg, #0b3d2a 0%, #062a1c 100%);
-            border: 2px solid #d4af37; box-shadow: 0 2px 5px rgba(0,0,0,0.55);
+            position: absolute; left: 0; top: 0; border-radius: 6px;
+            background: ${DECK_BG};
+            border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.55);
             will-change: transform; backface-visibility: hidden;
             transition: transform 300ms cubic-bezier(0.3, 0.7, 0.3, 1);
         }
+        .da-sc::after, .da-card:not(.da-face)::after {
+            content: ''; position: absolute; left: 9%; top: 9%; width: 82%; height: 82%;
+            border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;
+        }
+        .da-hand {
+            position: absolute; left: 0; top: 0; will-change: transform;
+            transition: transform 320ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity 200ms ease;
+            filter: drop-shadow(0 3px 4px rgba(0,0,0,0.45));
+        }
+        .da-hand svg { display: block; width: 100%; height: 100%; }
         .da-card {
             position: fixed; width: 44px; height: 62px; border-radius: 5px;
-            background:
-                repeating-linear-gradient(45deg, rgba(255,255,255,0.06) 0 4px, transparent 4px 8px),
-                linear-gradient(135deg, #0b3d2a 0%, #062a1c 100%);
-            border: 2px solid #d4af37; box-shadow: 0 3px 8px rgba(0,0,0,0.6);
+            background: ${DECK_BG};
+            border: 2px solid #ffffff; box-shadow: 0 3px 8px rgba(0,0,0,0.6);
             transform: translate(-50%, -50%); will-change: transform, opacity;
             transition: left ${CARD_FLIGHT_MS}ms cubic-bezier(0.22, 0.8, 0.3, 1),
                         top ${CARD_FLIGHT_MS}ms cubic-bezier(0.22, 0.8, 0.3, 1),
@@ -82,10 +92,11 @@
             display: block; font-size: 0.62rem; letter-spacing: 0.5px; text-transform: none;
             color: #cbd5e1; font-weight: 600; margin-top: 2px; text-align: center;
         }
+        /* While shuffling/dealing: hide hands, seat cards and the centre piles */
         .da-hide-cards #my-cards-container,
         .da-hide-cards .seat-cards,
-        .da-hide-cards #deck-center .card-slot.playing-card,
-        .da-hide-cards #discard-top-card {
+        .da-hide-cards #deck-center,
+        .da-hide-cards .table-center-area {
             visibility: hidden !important;
         }
         .da-hide-cards #deck-pile,
@@ -108,10 +119,19 @@
         return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
     }
 
-    function deckOrigin() {
-        const deck = document.getElementById('deck-pile') || document.getElementById('deck-center') || document.getElementById('table-oval-container');
+    // Centre of the deck/discard area (hidden while we run; layout is kept)
+    function tableOrigin() {
+        const area = document.getElementById('deck-center') || document.querySelector('.table-center-area');
+        const deck = document.getElementById('deck-pile');
+        if (area) {
+            const c = center(area);
+            const d = deck ? center(deck) : null;
+            return { x: c.x, y: c.y, w: d ? d.w : 90, h: d ? d.h : 126 };
+        }
         if (deck) return center(deck);
-        return { x: window.innerWidth / 2, y: window.innerHeight / 2, w: 50, h: 70 };
+        const table = document.getElementById('table-oval-container');
+        if (table) { const c = center(table); return { x: c.x, y: c.y, w: 90, h: 126 }; }
+        return { x: window.innerWidth / 2, y: window.innerHeight / 2, w: 90, h: 126 };
     }
 
     function seatTarget(username) {
@@ -194,10 +214,27 @@
         return lobby.dealingUntil - (Date.now() + skew);
     }
 
-    // ---- the shuffle --------------------------------------------------
-    // A stage div sits at the deck's centre; SHUFFLE_CARDS card backs are
-    // positioned inside it with transforms, so rotateX in the bridge reads as
-    // real bending thanks to the stage's perspective.
+    // ---- the shuffle stage ----------------------------------------------
+    // Top-down view. Cards lie horizontally (long edge left-right). Two hands
+    // hold the halves from the outside: fingers over the far edge, thumbs on
+    // the inner edges where the cards are released during the riffle.
+    function handSvg(side) {
+        // Right hand (fingers pointing up/away, thumb toward the centre on the left);
+        // the left hand is the mirror image.
+        const flip = side === 'left' ? 'transform="scale(-1,1) translate(-100,0)"' : '';
+        return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <g ${flip} fill="#e9b78f" stroke="#b8805a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+                <rect x="30" y="4" width="12" height="46" rx="6"/>
+                <rect x="45" y="0" width="12" height="50" rx="6"/>
+                <rect x="60" y="2" width="12" height="48" rx="6"/>
+                <rect x="75" y="8" width="12" height="42" rx="6"/>
+                <path d="M28 44 Q27 70 42 86 Q60 96 80 86 Q92 76 90 48 Z"/>
+                <path d="M30 52 Q14 60 6 78 Q4 90 14 90 Q24 88 34 70 Z"/>
+                <path d="M36 92 Q58 100 82 90" fill="none" stroke="#b8805a" stroke-width="2"/>
+            </g>
+        </svg>`;
+    }
+
     function buildShuffleStage(l, origin) {
         const stage = document.createElement('div');
         stage.className = 'da-stage';
@@ -205,114 +242,165 @@
         stage.style.top = `${origin.y}px`;
         l.appendChild(stage);
 
-        const w = Math.max(40, Math.min(60, Math.round((origin.w || 50) * 0.95)));
-        const h = Math.round(w * 1.42);
+        // Landscape cards sized from the deck slot
+        const cw = Math.max(64, Math.min(96, Math.round((origin.h || 126) * 0.72)));
+        const ch = Math.round(cw * 0.68);
         const cards = [];
         for (let i = 0; i < SHUFFLE_CARDS; i++) {
             const c = document.createElement('div');
             c.className = 'da-sc';
-            c.style.width = `${w}px`;
-            c.style.height = `${h}px`;
-            c.style.marginLeft = `${-w / 2}px`;
-            c.style.marginTop = `${-h / 2}px`;
-            c.__st = { x: 0, y: -i * 0.6, rot: 0, rx: 0, z: i };
+            c.style.width = `${cw}px`;
+            c.style.height = `${ch}px`;
+            c.style.marginLeft = `${-cw / 2}px`;
+            c.style.marginTop = `${-ch / 2}px`;
+            c.__st = { x: 0, y: -i * 0.5, rot: 0, ry: 0, z: i };
             stage.appendChild(c);
             cards.push(c);
         }
-        cards.forEach(c => apply(c, c.__st, 0));
-        return { stage, cards, w, h };
+        cards.forEach(c => applyCard(c, c.__st, 0));
+
+        const hs = Math.round(ch * 1.45);
+        const hands = {};
+        ['left', 'right'].forEach(side => {
+            const h = document.createElement('div');
+            h.className = 'da-hand';
+            h.style.width = `${hs}px`;
+            h.style.height = `${hs}px`;
+            h.style.marginLeft = `${-hs / 2}px`;
+            h.style.marginTop = `${-hs / 2}px`;
+            h.style.zIndex = '200';
+            h.innerHTML = handSvg(side);
+            const sign = side === 'left' ? -1 : 1;
+            h.__st = { x: sign * (cw * 0.62), y: ch * 0.12, rot: sign * 8 };
+            stage.appendChild(h);
+            hands[side] = h;
+            applyHand(h, h.__st, 0);
+        });
+
+        return { stage, cards, hands, cw, ch };
     }
 
-    function apply(c, st, dur, ease) {
+    function applyCard(c, st, dur, ease) {
         Object.assign(c.__st, st);
         const s = c.__st;
         c.style.transition = dur ? `transform ${dur}ms ${ease || 'cubic-bezier(0.3, 0.7, 0.3, 1)'}` : 'none';
-        c.style.transform = `translate(${s.x}px, ${s.y}px) rotateX(${s.rx}deg) rotate(${s.rot}deg)`;
+        c.style.transform = `translate(${s.x}px, ${s.y}px) rotateY(${s.ry}deg) rotate(${s.rot}deg)`;
         if (typeof s.z === 'number') c.style.zIndex = String(10 + s.z);
     }
 
-    // One full dealer cycle: split → riffle → bridge → square up.
+    function applyHand(h, st, dur, ease) {
+        Object.assign(h.__st, st);
+        const s = h.__st;
+        h.style.transition = dur ? `transform ${dur}ms ${ease || 'cubic-bezier(0.3, 0.7, 0.3, 1)'}` : 'none';
+        h.style.transform = `translate(${s.x}px, ${s.y}px) rotate(${s.rot}deg)`;
+    }
+
+    // One dealer cycle: cut → riffle → bridge → square up.
     function shuffleCycle(stageObj, t0, cycleMs) {
-        const { cards, w } = stageObj;
+        const { cards, hands, cw, ch } = stageObj;
         const n = cards.length;
-        // Keep the hands moving at a believable speed: at most ±15% stretch;
-        // any extra time in the slot is spent with the pack resting squared up.
+        // Believable hand speed: at most ±15% stretch; leftover time rests squared up.
         const k = Math.max(0.85, Math.min(1.15, cycleMs / SHUFFLE_CYCLE_MS));
         const T = (ms) => Math.round(ms * k);
-        const half = Math.round(w * 0.85);
+        const half = Math.round(cw * 0.56);
+        const L = hands.left, R = hands.right;
 
-        // 1. SPLIT: cut the deck in two, halves tilt toward each other, inner edge lifted
+        // 1. CUT: hands pull the two halves apart; inner edges lift toward each other
         later(() => {
             cards.forEach((c, i) => {
                 const left = i % 2 === 0;
-                const idxInHalf = Math.floor(i / 2);
-                apply(c, {
+                const j = Math.floor(i / 2);
+                applyCard(c, {
                     x: left ? -half : half,
-                    y: -idxInHalf * 1.1,
-                    rot: left ? -9 : 9,
-                    rx: 22,
-                    z: idxInHalf
+                    y: -j * 1.0,
+                    rot: left ? -3 : 3,
+                    ry: left ? -22 : 22,
+                    z: j
                 }, T(420), 'cubic-bezier(0.4, 0, 0.2, 1)');
             });
+            applyHand(L, { x: -(half + cw * 0.34), y: ch * 0.12, rot: -10 }, T(420));
+            applyHand(R, { x: (half + cw * 0.34), y: ch * 0.12, rot: 10 }, T(420));
             playCardSound();
         }, t0);
 
-        // 2. RIFFLE: thumbs release cards alternately left/right into the centre, bottom-up
-        const riffleStart = t0 + T(650);
-        const riffleStep = T(58);
+        // 2. RIFFLE: thumbs release cards alternately from each half into the centre, bottom-up
+        const riffleStart = t0 + T(620);
+        const riffleStep = T(56);
         const order = [];
         for (let i = 0; i < n / 2; i++) { order.push(i * 2); order.push(i * 2 + 1); }
+        later(() => {
+            // Hands lean in so the thumbs meet over the centre
+            applyHand(L, { x: -(half + cw * 0.22), y: ch * 0.16, rot: -5 }, T(300));
+            applyHand(R, { x: (half + cw * 0.22), y: ch * 0.16, rot: 5 }, T(300));
+        }, riffleStart - T(120));
         order.forEach((ci, j) => {
             later(() => {
-                apply(cards[ci], {
+                applyCard(cards[ci], {
                     x: (Math.random() - 0.5) * 4,
-                    y: -j * 0.6 + (Math.random() - 0.5) * 2,
-                    rot: (Math.random() - 0.5) * 5,
-                    rx: 0,
+                    y: -j * 0.5 + (Math.random() - 0.5) * 2,
+                    rot: (Math.random() - 0.5) * 4,
+                    ry: 0,
                     z: j
-                }, T(230), 'cubic-bezier(0.2, 0.9, 0.3, 1)');
+                }, T(220), 'cubic-bezier(0.2, 0.9, 0.3, 1)');
+                // thumb flick: tiny nudge of the hand that just released a card
+                const h = (ci % 2 === 0) ? L : R;
+                applyHand(h, { y: h.__st.y - 3 }, T(60));
+                later(() => applyHand(h, { y: ch * 0.16 }, T(90)), T(70));
                 if (j % 4 === 0) playCardSound();
             }, riffleStart + j * riffleStep);
         });
-        const riffleEnd = riffleStart + n * riffleStep + T(240);
+        const riffleEnd = riffleStart + n * riffleStep + T(230);
 
-        // 3. BRIDGE: bend the interleaved pack into an arch (cards bow back and
-        //    stair upward so the thickness shows), hold, then let it cascade
-        //    flat from the top card down like a waterfall.
-        const bowStart = riffleEnd + T(90);
+        // 3. BRIDGE: hands push the ends together so the pack arches up along its
+        //    length, then let go: the cards waterfall down from the top card.
+        const bowStart = riffleEnd + T(80);
         later(() => {
             const sorted = cards.slice().sort((a, b) => a.__st.z - b.__st.z);
             sorted.forEach((c, j) => {
                 const f = j / (sorted.length - 1);
-                apply(c, {
-                    rx: 58 + f * 14,
-                    y: -6 - f * 30,
-                    x: (f - 0.5) * 6,
-                    rot: (f - 0.5) * 6
+                applyCard(c, {
+                    ry: -62 + f * 10,
+                    x: (f - 0.5) * cw * 0.55,
+                    y: -4 - Math.sin(f * Math.PI) * 10 - f * 6,
+                    rot: (f - 0.5) * 4
                 }, T(420), 'cubic-bezier(0.3, 0.6, 0.3, 1)');
             });
+            applyHand(L, { x: -(cw * 0.66), y: ch * 0.1, rot: -14 }, T(420));
+            applyHand(R, { x: (cw * 0.66), y: ch * 0.1, rot: 14 }, T(420));
             playCardSound();
         }, bowStart);
-        const cascadeStart = bowStart + T(620);
+        const cascadeStart = bowStart + T(600);
         later(() => {
             const sorted = cards.slice().sort((a, b) => b.__st.z - a.__st.z); // top card first
             sorted.forEach((c, j) => {
                 later(() => {
-                    apply(c, {
-                        rx: 0,
-                        y: -c.__st.z * 0.6 + 2,
-                        rot: (Math.random() - 0.5) * 4,
-                        x: (Math.random() - 0.5) * 4
+                    applyCard(c, {
+                        ry: 0,
+                        x: (Math.random() - 0.5) * 4,
+                        y: -c.__st.z * 0.5 + 1,
+                        rot: (Math.random() - 0.5) * 3
                     }, T(240), 'cubic-bezier(0.5, 0.05, 0.3, 1)');
                     if (j % 5 === 0) playCardSound();
-                }, j * T(42));
+                }, j * T(40));
             });
+            // hands ease outward as the pack settles
+            applyHand(L, { x: -(half + cw * 0.26), y: ch * 0.12, rot: -8 }, T(n * 40 + 200));
+            applyHand(R, { x: (half + cw * 0.26), y: ch * 0.12, rot: 8 }, T(n * 40 + 200));
         }, cascadeStart);
-        const cascadeEnd = cascadeStart + n * T(42) + T(260);
+        const cascadeEnd = cascadeStart + n * T(40) + T(260);
 
-        // 4. SQUARE UP: tap the pack neat
-        later(() => { cards.forEach(c => apply(c, { x: 3, rot: c.__st.rot + 1.5 }, T(130), 'ease-out')); }, cascadeEnd + T(40));
-        later(() => { cards.forEach(c => apply(c, { x: 0, rot: 0, y: -c.__st.z * 0.6 }, T(170), 'ease-in-out')); playCardSound(); }, cascadeEnd + T(190));
+        // 4. SQUARE UP: hands tap the pack neat from both sides
+        later(() => {
+            cards.forEach(c => applyCard(c, { x: 3, rot: c.__st.rot + 1 }, T(130), 'ease-out'));
+            applyHand(L, { x: -(cw * 0.6), rot: -3 }, T(130));
+            applyHand(R, { x: (cw * 0.68), rot: 3 }, T(130));
+        }, cascadeEnd + T(40));
+        later(() => {
+            cards.forEach(c => applyCard(c, { x: 0, rot: 0, y: -c.__st.z * 0.5 }, T(170), 'ease-in-out'));
+            applyHand(L, { x: -(cw * 0.62), y: ch * 0.12, rot: -8 }, T(170));
+            applyHand(R, { x: (cw * 0.62), y: ch * 0.12, rot: 8 }, T(170));
+            playCardSound();
+        }, cascadeEnd + T(190));
     }
 
     // ---- the deal -----------------------------------------------------
@@ -398,11 +486,11 @@
         later(cleanup, total + 1500);
 
         const l = layer();
-        const origin = deckOrigin();
+        const origin = tableOrigin();
 
         const banner = document.createElement('div');
         banner.className = 'da-banner';
-        banner.style.top = `${Math.max(8, origin.y - 78)}px`;
+        banner.style.top = `${Math.max(8, origin.y - (origin.h || 126) * 0.85 - 36)}px`;
         banner.innerHTML = 'Shuffling…';
         l.appendChild(banner);
         requestAnimationFrame(() => { banner.style.opacity = '1'; });
@@ -410,11 +498,14 @@
         let stageObj = null;
         if (!reduce) {
             stageObj = buildShuffleStage(l, origin);
-            // As many cycles as fit at a natural pace (3–4 for the default 16s window);
-            // each cycle gets an equal slot and rests squared-up for any leftover time.
+            // Two cycles for the default window (~8s); more if the window is longer.
             const cycles = Math.max(1, Math.min(5, Math.round(shuffleMs / SHUFFLE_CYCLE_MS)));
             const cycleMs = Math.floor(shuffleMs / cycles);
             for (let i = 0; i < cycles; i++) shuffleCycle(stageObj, 120 + i * cycleMs, cycleMs - 60);
+            // hands leave just before the deal
+            later(() => {
+                Object.values(stageObj.hands).forEach(h => { h.style.opacity = '0'; });
+            }, Math.max(0, shuffleMs - 260));
         } else if (startedWithWindow) {
             banner.innerHTML = 'Shuffling…<small>Dealing in a moment</small>';
         }
