@@ -389,11 +389,11 @@ window.connectSocket = function() {
                         window.updateUIFromLobby(lobby);
                     }
                 }
-                if (data.livekitToken && typeof window.connectToLiveKitRoom === 'function') {
+                // Auto-join the table's voice room (mic stays muted until the player
+                // presses the Voice button; voice.js honours the saved mic state).
+                if (data.livekitToken && typeof window.connectToLiveKit === 'function') {
                     const lkHost = data.livekitHost || lobby?.livekitHost;
-                    window.connectToLiveKitRoom(lkHost, data.livekitToken, data.code || lobby?.code);
-                } else if (data.livekitToken && typeof window.initVoiceChat === 'function') {
-                    window.initVoiceChat(data.livekitToken, data.livekitHost || lobby?.livekitHost);
+                    window.connectToLiveKit(lkHost, data.livekitToken, data.code || lobby?.code);
                 }
                 break;
             }
@@ -450,15 +450,16 @@ window.connectSocket = function() {
             }
 
             case 'VC_STATUS_UPDATE': {
-                if (typeof window.syncRemoteParticipantMuteState === 'function') {
-                    window.syncRemoteParticipantMuteState(data.username, data.inVC, data.isMuted);
+                // voice.js expects a LiveKit-style participant object; wrap the username
+                if (data.username && typeof window.syncRemoteParticipantMuteState === 'function') {
+                    window.syncRemoteParticipantMuteState({ identity: data.username }, data.isMuted !== false, data.inVC !== false);
                 }
                 break;
             }
 
             case 'ADMIN_FORCE_MUTE': {
-                if (typeof window.forceMuteLocalMic === 'function') {
-                    window.forceMuteLocalMic(data.byHost);
+                if (typeof window.forceMuteLocalMicByAdmin === 'function') {
+                    window.forceMuteLocalMicByAdmin(data.byHost);
                 } else if (typeof window.showCenterNotification === 'function') {
                     window.showCenterNotification(`🔇 You were muted by ${data.byHost || 'the host'}.`);
                 }
