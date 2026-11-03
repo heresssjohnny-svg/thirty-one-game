@@ -12,7 +12,8 @@ for (const p of ['../db', '../../db', './db', './server/db']) {
 }
 
 const lobbies = {};
-const INACTIVITY_TIMEOUT_MS = 300000; // 5-minute lobby inactivity protection
+const INACTIVITY_TIMEOUT_MS = config.INACTIVITY_TIMEOUT_MS || 300000; // lobby inactivity protection (default 5 min, see server/config.js)
+const DEAL_ANIMATION_MS = config.DEAL_ANIMATION_MS || 16000; // shuffle & deal window at the start of every hand (see server/config.js)
 
 function getLobbies() {
     return lobbies;
@@ -346,6 +347,27 @@ function clearRoundOverTimer(lobby) {
 }
 
 // -------------------------------------------------------------
+// SHUFFLE & DEAL WINDOW
+// While lobby.dealingUntil is in the future the hand is being shuffled and
+// dealt on every client: no draws/discards/knocks are accepted, bots wait,
+// and the first player's turn timer does not start. startRound() opens the
+// window and closes it with a timer; aborting a round clears it.
+// -------------------------------------------------------------
+
+function isDealing(lobby) {
+    return !!(lobby && lobby.dealingUntil && Date.now() < lobby.dealingUntil);
+}
+
+function clearDealingWindow(lobby) {
+    if (!lobby) return;
+    if (lobby.dealingTimer) {
+        clearTimeout(lobby.dealingTimer);
+        lobby.dealingTimer = null;
+    }
+    lobby.dealingUntil = null;
+}
+
+// -------------------------------------------------------------
 // MID-GAME FORFEIT TRACKER (KEEPS BUY-IN IN POT & CHARGES LOSER)
 // -------------------------------------------------------------
 
@@ -448,6 +470,11 @@ function resetTurnTimer(lobby) {
     clearTurnTimer(lobby);
 
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
+    // Shuffle & deal window: the dealing timer in startRound() starts the clock once the deal is
+    // done. (wsHandler's duplicate resetTurnTimer may still arm a 25s timer here; that timer is
+    // cleared and re-armed by the dealing callback, and getSanitizedLobby hides turnDeadline
+    // while dealing, so clients never see a countdown during the shuffle.)
+    if (isDealing(lobby)) return;
 
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated) return;
@@ -1095,7 +1122,9 @@ function getSanitizedLobby(lobby, wsId) {
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
         currentTurnUser: allParticipants[lobby.turnIndex]?.username || '',
-        turnDeadline: lobby.turnDeadline || null,
+        turnDeadline: isDealing(lobby) ? null : (lobby.turnDeadline || null),
+        dealingUntil: isDealing(lobby) ? lobby.dealingUntil : null,
+        serverNow: Date.now(),
         phaseMessage: lobby.phaseMessage,
         canKnock: lobby.turnsTakenThisRound >= activeParts.length,
         potTotal: seatedPotTotal + forfeitedPotTotal,
@@ -1614,6 +1643,7 @@ function startDealerDrawPhase(lobby) {
 function startRound(lobby) {
     clearRoundOverTimer(lobby);
     clearTurnTimer(lobby);
+    clearDealingWindow(lobby);
     lobby.players.forEach(p => clearReadyCountdown(p));
 
     lobby.deck = createDeck();
@@ -1683,10 +1713,27 @@ function startRound(lobby) {
         lobby.turnIndex = (lobby.turnIndex + 1) % lobby.players.length;
     }
 
-    lobby.phaseMessage = `Round started! Turn: ${lobby.players[lobby.turnIndex].username}`;
+    // Open the shuffle & deal window. Clients animate the shuffle/deal until
+    // dealingUntil; the server refuses turn actions and holds the turn timer
+    // and bot moves until then, so the first player gets a full turn.
+    const dealToken = Date.now();
+    lobby.dealingUntil = dealToken + DEAL_ANIMATION_MS;
+    lobby.turnDeadline = null;
+    lobby.phaseMessage = `🂠 Shuffling and dealing…`;
     broadcastLobbyUpdate(lobby.code);
-    scheduleBotActions(lobby);
-    resetTurnTimer(lobby);
+
+    lobby.dealingTimer = setTimeout(() => {
+        const cur = lobbies[lobby.code];
+        if (!cur || cur.dealingUntil !== dealToken + DEAL_ANIMATION_MS) return; // round was aborted/restarted
+        cur.dealingTimer = null;
+        cur.dealingUntil = null;
+        if (cur.gameState !== 'playing') return;
+        const turnPlayer = cur.players[cur.turnIndex];
+        cur.phaseMessage = `Round started! Turn: ${turnPlayer ? turnPlayer.username : ''}`;
+        resetTurnTimer(cur);
+        broadcastLobbyUpdate(cur.code);
+        scheduleBotActions(cur);
+    }, DEAL_ANIMATION_MS);
 }
 
 function advanceDealerToNextActive(lobby) {
@@ -1830,6 +1877,7 @@ function handlePoolCardSelection(lobby, userOrWs, rawCardIndex) {
 // -------------------------------------------------------------
 function handleTurnAction(lobby, wsId, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
+    if (isDealing(lobby)) return; // cards are still being shuffled/dealt
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated || currentPlayer.cards.length >= 4) return;
 
@@ -1979,6 +2027,7 @@ function handleTurnAction(lobby, wsId, actionType) {
 
 function handleDiscardAction(lobby, wsId, cardIndex) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
+    if (isDealing(lobby)) return;
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.cards.length !== 4) return;
 
@@ -2118,6 +2167,7 @@ function handleDiscardAction(lobby, wsId, cardIndex) {
 
 function handleKnock(lobby, wsId) {
     if (lobby.gameState !== 'playing') return;
+    if (isDealing(lobby)) return;
     const p = lobby.players[lobby.turnIndex];
     if (!p || p.eliminated || lobby.knockedBy) return;
 
@@ -2419,6 +2469,7 @@ function checkNextHandReady(lobby) {
 function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     clearRoundOverTimer(lobby);
     clearTurnTimer(lobby);
+    clearDealingWindow(lobby);
 
     lobby.gameState = 'lobby';
     lobby.phaseMessage = msg || "Returned to waiting room.";
@@ -2545,6 +2596,7 @@ function scheduleBotActions(lobby) {
     }
 
     if (lobby.gameState === 'playing' || lobby.gameState === 'finalTurn') {
+        if (isDealing(lobby)) return; // re-scheduled by startRound() when the deal finishes
         const cur = lobby.players[lobby.turnIndex];
         if (!cur || !cur.isBot || cur.eliminated) return;
 
@@ -2836,6 +2888,8 @@ module.exports = {
     handleKickPeeker,
     startDealerDrawPhase,
     startRound,
+    isDealing,
+    clearDealingWindow,
     advanceDealerToNextActive,
     handlePoolCardSelection,
     handleTurnAction,
