@@ -1,15 +1,13 @@
 name: Deploy to Hetzner
 
-# Runs on every push to main (i.e. every merged PR) and can be started by hand
-# from the Actions tab. It SSHes into the server and does exactly what the manual
-# deploy did: git pull, npm install only if package.json changed, pm2 restart.
+# Runs on every push to main (every merged PR) and from the Actions tab.
+# All the deploy logic lives in scripts/deploy.sh so it can be tested and
+# changed without touching this file.
 #
-# Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   HETZNER_HOST         server IP or hostname
-#   HETZNER_USER         SSH username used to log in
-#   HETZNER_SSH_KEY_B64  the private key, base64-encoded as ONE line:
-#                          base64 -w0 ~/.ssh/deploy_key
-#                        (its public half must be in ~/.ssh/authorized_keys on the server)
+# Required repository secrets:
+#   HETZNER_HOST         server IPv4 address
+#   HETZNER_USER         SSH username (root)
+#   HETZNER_SSH_KEY_B64  private key, base64 as one line: base64 -w0 ~/.ssh/deploy_key
 #   HETZNER_PORT         (optional) SSH port, defaults to 22
 
 on:
@@ -34,49 +32,13 @@ jobs:
           echo "$KEY_B64" | tr -d ' \n\r' | base64 -d > "$HOME/deploy_key"
           chmod 600 "$HOME/deploy_key"
           head -c 40 "$HOME/deploy_key" | grep -q "BEGIN OPENSSH PRIVATE KEY" || { echo "Decoded key does not look like an OpenSSH private key"; exit 1; }
-          echo "key decoded OK ($(wc -l < "$HOME/deploy_key") lines)"
+          echo "key decoded OK"
 
-      - name: Pull and restart on the server
+      - name: Pull and deploy on the server
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key_path: /home/runner/deploy_key
           port: ${{ secrets.HETZNER_PORT || 22 }}
-          script_stop: true
-          script: |
-            set -e
-            cd ~/thirty-one-game
-            echo "== before: $(git rev-parse --short HEAD)"
-
-            # Never let local edits block the pull; keep them on the stash just in case
-            if ! git diff --quiet || ! git diff --cached --quiet; then
-              git stash push -m "auto-deploy $(date -u +%FT%TZ)" >/dev/null
-              echo "   stashed local changes"
-            fi
-
-            git fetch origin main
-            git checkout -q main
-            git reset -q --hard origin/main
-            echo "== after:  $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
-
-            # Install deps only when the dependency files changed in this deploy
-            if git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -qE '^(package\.json|package-lock\.json)$'; then
-              echo "== package.json changed: npm install"
-              npm install --omit=dev --no-audit --no-fund
-            else
-              echo "== dependencies unchanged"
-            fi
-
-            pm2 restart blitz31 --update-env
-            sleep 3
-            pm2 describe blitz31 | grep -E "status|restarts" || true
-
-            # Health check: the server must answer on its port
-            if curl -sf -o /dev/null --max-time 10 http://127.0.0.1:3000/; then
-              echo "== health check OK"
-            else
-              echo "!! health check FAILED - last 40 log lines:"
-              pm2 logs blitz31 --lines 40 --nostream || true
-              exit 1
-            fi
+          script: cd ~/thirty-one-game && (git stash -q >/dev/null 2>&1 || true) && git fetch -q origin main && git reset -q --hard origin/main && bash scripts/deploy.sh
