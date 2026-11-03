@@ -15,7 +15,8 @@
 // The animation sizes itself to end just before the window closes. If a server
 // without the window is ever hit (no dealingUntil), a short ~3.5s version runs.
 //
-// Honors prefers-reduced-motion (banner only, quick deal) and the SFX toggle.
+// Honors prefers-reduced-motion (2s static banner, quick deal, then the hand is
+// shown while the server window runs out) and the SFX toggle.
 
 (function () {
     if (window.__dealAnimInstalled) return;
@@ -29,11 +30,13 @@
     const CARD_FLIGHT_MS = 420;
     const FLIP_MS = 260;
     const SHUFFLE_CARDS = 20;           // visual thickness of the pack
+    const REDUCED_SHUFFLE_MS = 2000;    // prefers-reduced-motion: static banner only
 
     let running = false;
     let lastState = null;
     let timers = [];
     let startedWithWindow = false;
+    let animatedUntil = 0;              // dealingUntil of the window already animated
 
     // ---- styles -------------------------------------------------------
     // Card backs copy the table's deck: .card-slot.back in table.css
@@ -469,6 +472,7 @@
     function runShuffleAndDeal(lobby) {
         if (running) return;
         running = true;
+        animatedUntil = lobby.dealingUntil || 0;
         document.body.classList.add('da-hide-cards');
 
         const remaining = windowRemaining(lobby);
@@ -478,9 +482,15 @@
         const order = dealingOrder(lobby);
         const dealMs = dealDurationFor(order, reduce);
 
-        // Total budget: fit inside the server window, or the quick fallback
-        const total = startedWithWindow ? Math.max(1500, remaining - END_MARGIN_MS) : FALLBACK_TOTAL_MS;
-        const shuffleMs = Math.max(reduce ? 300 : 900, total - dealMs - 350);
+        // Total budget: fit inside the server window, or the quick fallback.
+        // Reduced motion: a short static "Shuffling…" (~2s) and a quick deal, then
+        // the hand is shown while the server window runs out (no long blank wait).
+        let total = startedWithWindow ? Math.max(1500, remaining - END_MARGIN_MS) : FALLBACK_TOTAL_MS;
+        let shuffleMs = Math.max(reduce ? 300 : 900, total - dealMs - 350);
+        if (reduce) {
+            shuffleMs = Math.min(shuffleMs, REDUCED_SHUFFLE_MS);
+            total = Math.min(total, shuffleMs + dealMs + 350);
+        }
 
         // Hard stop so the overlay can never outlive the window by much
         later(cleanup, total + 1500);
@@ -541,7 +551,8 @@
                         if (lobby.gameState !== 'playing' || (startedWithWindow && remaining <= 0)) cleanup();
                     } else if (lobby.gameState === 'playing' && hasCards) {
                         const enteredPlaying = prev !== 'playing' && prev !== 'finalTurn' && prev !== null;
-                        const joinedMidDeal = remaining > 3000;   // reload / reconnect while the table is still dealing
+                        // reload / reconnect while the table is still dealing (not a window we already played)
+                        const joinedMidDeal = remaining > 3000 && (lobby.dealingUntil || 0) !== animatedUntil;
                         if (enteredPlaying || joinedMidDeal) runShuffleAndDeal(lobby);
                     }
                 }
