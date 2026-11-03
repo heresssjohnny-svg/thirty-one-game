@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Cache-busted stylesheets -->
-    <link rel="stylesheet" href="/css/main.css?v=44">
-    <link rel="stylesheet" href="/css/table.css?v=44">
-    <link rel="stylesheet" href="/css/modals.css?v=44">
+    <link rel="stylesheet" href="/css/main.css?v=45">
+    <link rel="stylesheet" href="/css/table.css?v=45">
+    <link rel="stylesheet" href="/css/modals.css?v=45">
 
     <!-- LiveKit WebRTC SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
@@ -600,21 +600,21 @@
     <!-- BACKGROUND VOICE KEEP-ALIVE (Matches voice.js selector) -->
     <audio id="lk-keepalive-media" loop playsinline webkit-playsinline preload="auto" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"></audio>
 
-    <!-- SOUND ENGINE AUDIO TAGS (All 4 Game Cues) -->
+    <!-- SOUND ENGINE AUDIO TAGS (knock / your-turn / win; the "card" click is synthesized in audio.js) -->
     <audio id="sound-knock" src="/mp3s/knock.mp3" preload="auto"></audio>
     <audio id="sound-yourturn" src="/mp3s/yourturn.mp3" preload="auto"></audio>
-    <audio id="sound-card" src="/mp3s/card.mp3" preload="auto"></audio>
-    <audio id="sound-win" src="/mp3s/win.mp3" preload="auto"></audio>
+    <audio id="sound-win" src="/mp3s/Hype.mp3" preload="auto"></audio>
 
     <!-- CELEBRATION EFFECT CANVAS -->
     <canvas id="celebration-canvas" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 99999;"></canvas>
 
     <!-- CLIENT SCRIPT PIPELINE (Dependency Order) -->
-    <script src="/js/celebration.js?v=44"></script>
-    <script src="/js/network.js?v=44"></script>
-    <script src="/js/ledger.js?v=44"></script>
-    <script src="/js/voice.js?v=44"></script>
-    <script src="/js/ui.js?v=44"></script>
-    <script src="/js/app.js?v=44"></script>
+    <script src="/js/audio.js?v=45"></script>
+    <script src="/js/celebration.js?v=45"></script>
+    <script src="/js/network.js?v=45"></script>
+    <script src="/js/ledger.js?v=45"></script>
+    <script src="/js/voice.js?v=45"></script>
+    <script src="/js/ui.js?v=45"></script>
+    <script src="/js/app.js?v=45"></script>
 </body>
 </html>
