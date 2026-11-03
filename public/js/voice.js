@@ -420,7 +420,9 @@ function updateVoiceUI() {
     const btnHud = document.getElementById('voice-btn') || document.getElementById('voice-toggle-btn');
     const led = document.getElementById('vc-led');
 
-    const label = isMicActive ? '🎙️ Mic: On' : '🔇 Mic: Off';
+    const label = isMicActive
+        ? '🎙️ Mic: On'
+        : (isLiveKitConnected ? '🔇 Mic: Off (listening)' : '🎙️ Voice: Off');
 
     if (btnMain) {
         btnMain.innerText = label;
@@ -443,21 +445,21 @@ function updateVoiceButtonState(text) {
     if (btnHud) btnHud.innerText = text;
 }
 
-function syncRemoteParticipantMuteState(participant, isMuted) {
+function syncRemoteParticipantMuteState(participant, isMuted, inVC = true) {
     if (!participant) return;
-    const participantName = (participant.identity || participant.name || '').trim();
+    const participantName = (typeof participant === 'string' ? participant : (participant.identity || participant.name || '')).trim();
     if (!participantName) return;
 
     if (window.appGlobals && window.appGlobals.latestLobbySnapshot) {
         const snap = window.appGlobals.latestLobbySnapshot;
         const player = (snap.players || []).find(p => p.username.toLowerCase() === participantName.toLowerCase());
         if (player) {
-            player.inVC = true;
+            player.inVC = Boolean(inVC);
             player.isMuted = Boolean(isMuted);
         }
         const spectator = (snap.spectators || []).find(s => s.username && s.username.toLowerCase() === participantName.toLowerCase());
         if (spectator) {
-            spectator.inVC = true;
+            spectator.inVC = Boolean(inVC);
             spectator.isMuted = Boolean(isMuted);
         }
         if (typeof window.updateUIFromLobby === 'function') {
@@ -757,6 +759,9 @@ window.addEventListener('click', unlockAudioOnFirstTouch);
 // Global Exports
 window.connectLiveKit = connectLiveKit;
 window.connectToLiveKit = connectToLiveKit;
+window.connectToLiveKitRoom = connectToLiveKit;   // legacy alias used by older callers
+window.forceMuteLocalMic = forceMuteLocalMicByAdmin;
+window.syncRemoteParticipantMuteState = syncRemoteParticipantMuteState;
 window.toggleVoiceOnOff = toggleVoiceOnOff;
 window.toggleLiveKitVoice = toggleVoiceOnOff;
 window.forceMuteLocalMicByAdmin = forceMuteLocalMicByAdmin;
