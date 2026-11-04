@@ -394,14 +394,14 @@ function recordForfeitedPlayer(lobby, player) {
     if (existing) {
         existing.username = player.username;
         existing.accountUsername = acctName;
-        existing.wager = wagerOf(player);
+        existing.wager = wagerOf(player, lobby);
         if (uid) existing.userId = uid;
     } else {
         lobby.forfeitedPlayers.push({
             username: player.username,
             accountUsername: acctName,
             userId: uid || null,
-            wager: wagerOf(player),
+            wager: wagerOf(player, lobby),
             isBot: false
         });
     }
@@ -971,9 +971,13 @@ function resolveCanonicalLobbyName(lobby, rawName) {
 
 // A player's table wager. 0 means "Free" (playing for fun: nothing is owed to or
 // from them); anything missing or invalid falls back to the $5 default.
-function wagerOf(entry) {
+// The table type (lobby.wagerMode, set by the room creator) wins over the seat:
+// 'free' = everyone is Free, 'paid' = Free is not allowed ($5 default instead).
+function wagerOf(entry, lobby) {
+    const mode = lobby ? lobby.wagerMode : null;
+    if (mode === 'free') return 0;
     const raw = entry ? entry.wager : undefined;
-    if (raw === 0 || raw === '0') return 0;
+    if (raw === 0 || raw === '0') return mode === 'paid' ? 5 : 0;
     const n = Number(raw);
     return (Number.isFinite(n) && n > 0) ? n : 5;
 }
@@ -1113,13 +1117,13 @@ function getSanitizedLobby(lobby, wsId) {
         elapsedSeconds = lobby.songPausedAtOffset || 0;
     }
 
-    const seatedPotTotal = allParticipants.reduce((sum, p) => sum + wagerOf(p), 0);
+    const seatedPotTotal = allParticipants.reduce((sum, p) => sum + wagerOf(p, lobby), 0);
     const forfeitedPotTotal = (lobby.forfeitedPlayers || [])
         .filter(fp => !allParticipants.some(p =>
             p.username.toLowerCase() === fp.username.toLowerCase() ||
             (fp.accountUsername && p.accountUsername && p.accountUsername.toLowerCase() === fp.accountUsername.toLowerCase())
         ))
-        .reduce((sum, fp) => sum + wagerOf(fp), 0);
+        .reduce((sum, fp) => sum + wagerOf(fp, lobby), 0);
 
     return {
         code: lobby.code,
@@ -1127,6 +1131,7 @@ function getSanitizedLobby(lobby, wsId) {
         host: lobby.host,
         gameState: lobby.gameState,
         defaultLives: lobby.defaultLives || 2,
+        wagerMode: lobby.wagerMode || 'mixed',
         deckCount: lobby.deck ? lobby.deck.length : 0,
         turnIndex: lobby.turnIndex,
         dealerIndex: lobby.dealerIndex,
@@ -1196,7 +1201,7 @@ function getSanitizedLobby(lobby, wsId) {
                 userId: p.userId || null,
                 isMe,
                 lives: Math.max(0, p.lives),
-                wager: wagerOf(p),
+                wager: wagerOf(p, lobby),
                 cardCount: p.cards ? p.cards.length : 0,
                 ready: p.ready,
                 readyDeadline: p.readyDeadline || null,
@@ -2398,7 +2403,7 @@ function awardTournamentWinner(lobby, winner) {
     if (!lobby.mainGameLedger) lobby.mainGameLedger = {};
     if (!lobby.botBetLedger) lobby.botBetLedger = {};
 
-    const winnerWager = wagerOf(winner);
+    const winnerWager = wagerOf(winner, lobby);
     const winnerLower = (winner.username || '').toLowerCase();
     const chargedUsers = new Set();
 
@@ -2407,7 +2412,7 @@ function awardTournamentWinner(lobby, winner) {
         const lower = (p.username || '').toLowerCase();
         if (lower && lower !== winnerLower && !chargedUsers.has(lower)) {
             chargedUsers.add(lower);
-            const loserWager = wagerOf(p);
+            const loserWager = wagerOf(p, lobby);
             // Effective payout is capped at the lower wager between the winner and the loser
             // (a Free player, wager 0, owes and wins nothing)
             const amt = Math.min(loserWager, winnerWager);
@@ -2423,7 +2428,7 @@ function awardTournamentWinner(lobby, winner) {
         const lower = (fp.username || '').toLowerCase();
         if (lower && lower !== winnerLower && !chargedUsers.has(lower)) {
             chargedUsers.add(lower);
-            const loserWager = wagerOf(fp);
+            const loserWager = wagerOf(fp, lobby);
             const amt = Math.min(loserWager, winnerWager);
             const isBotInvolved = fp.isBot || winner.isBot;
             const targetLedger = isBotInvolved ? lobby.botBetLedger : lobby.mainGameLedger;
@@ -2632,6 +2637,7 @@ function createLobby(code, name, hostUsername, isPrivate = false, defaultLives =
         host: hostUsername,
         isPrivate: !!isPrivate,
         defaultLives: defaultLives || 2,
+        wagerMode: 'mixed',
         gameState: 'lobby',
         identityMap: {},
         players: [],
