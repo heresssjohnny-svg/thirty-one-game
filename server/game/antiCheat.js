@@ -213,7 +213,9 @@ function guardIncoming(ws, data, lobbies) {
         for (const key of ['amount', 'wagerAmt', 'wager']) {
             if (clean[key] !== undefined) {
                 const n = Number(clean[key]);
-                if (!Number.isFinite(n) || n <= 0 || n > 100000) {
+                // A table wager of 0 is the "Free" option; every other amount must be positive
+                const freeTable = (key === 'wager' && type === 'UPDATE_WAGER' && n === 0);
+                if (!Number.isFinite(n) || (n <= 0 && !freeTable) || n > 100000) {
                     return { ok: false, reason: `bad_${key}` };
                 }
                 clean[key] = Math.round(n * 100) / 100;

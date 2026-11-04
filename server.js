@@ -429,6 +429,28 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
+        // "Free" table wager (0). wsHandler clamps wagers to at least $1, so the
+        // free option is applied here: find this socket's seat and set wager 0.
+        if (parsed.type === 'UPDATE_WAGER' && Number(parsed.wager) === 0) {
+            const all = lobbyManager.lobbies || {};
+            const codes = Object.keys(all);
+            const findSeat = (match) => {
+                for (const code of codes) {
+                    const seat = (all[code].players || []).find(pl => !pl.isBot && match(pl));
+                    if (seat) return { code, lobby: all[code], seat };
+                }
+                return null;
+            };
+            const hit = findSeat(pl => pl.id && pl.id === ws) ||
+                (parsed.userId ? findSeat(pl => pl.userId && String(pl.userId) === String(parsed.userId)) : null);
+            if (hit && hit.lobby.gameState === 'lobby') {
+                hit.seat.wager = 0;
+                lobbyManager.touchLobbyActivity(hit.lobby, broadcastLobbyList);
+                lobbyManager.broadcastLobbyUpdate(hit.code);
+            }
+            return;
+        }
+
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);
     });
