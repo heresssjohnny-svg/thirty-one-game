@@ -23,6 +23,8 @@
 //            offsets, and the top card itself sits slightly askew. The server
 //            only sends the top card, so the pile is tracked here from the
 //            snapshots (reset each hand / when the deck is reshuffled).
+//            Settings "Messy Discard Pile" off (localStorage blitz31_messy_pile =
+//            'false') gives a neat pile instead: one straight card, nothing under it.
 //   TICK     during the last 5 seconds of your own turn a soft tick plays once a
 //            second (ui.js already vibrates on those seconds).
 //   LOSER    when the reveal has finished, the name of whoever lost a life that
@@ -173,7 +175,11 @@
     // Stable position for the card at index i of this hand's pile. A card keeps
     // the same spot whether it is on top or covered, so picking up the top card
     // uncovers the one below exactly where it was lying.
+    function messyPileOn() {
+        try { return localStorage.getItem('blitz31_messy_pile') !== 'false'; } catch (e) { return true; }
+    }
     function pileLook(card, i) {
+        if (!messyPileOn()) return { rot: 0, dx: 0, dy: 0 };
         const h = hash(`${pileSalt}|${i}|${card.val}${normSuit(card.suit)}`);
         const r = (k) => ((h >>> (k * 8)) & 0xff) / 255 - 0.5;
         return { rot: r(0) * 44, dx: r(1) * 44, dy: r(2) * 30 };
@@ -218,6 +224,7 @@
         slot.style.rotate = `${tl.rot.toFixed(1)}deg`;
         slot.style.translate = `${tl.dx.toFixed(1)}px ${tl.dy.toFixed(1)}px`;
 
+        if (!messyPileOn()) { slot.style.rotate = ''; slot.style.translate = ''; return; }
         const under = pile.slice(Math.max(0, topIdx - PILE_SHOW), topIdx);
         if (!under.length) return;
         const box = document.createElement('div');
@@ -618,6 +625,9 @@
         window.renderLobbyState = wrapped;
         return true;
     }
+
+    // Settings switch calls this so the pile changes look at once
+    window.refreshDiscardPileLook = function () { try { renderPile(); lastTopVisual = visualOf(discardEl()); } catch (e) {} };
 
     let tries = 0;
     const t = setInterval(() => {
