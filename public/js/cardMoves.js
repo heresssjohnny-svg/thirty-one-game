@@ -25,6 +25,9 @@
 //            snapshots (reset each hand / when the deck is reshuffled).
 //   TICK     during the last 5 seconds of your own turn a soft tick plays once a
 //            second (ui.js already vibrates on those seconds).
+//   LOSER    when the reveal has finished, the name of whoever lost a life that
+//            hand (or "is out" when it was their last) is shown in the middle of
+//            the screen and Sad.mp3 plays (SFX toggle + volume respected).
 //
 // Skipped while the shuffle & deal overlay is running (body.da-hide-cards).
 // Every flight keeps one size (the table's deck/discard card size) from start to
@@ -32,6 +35,8 @@
 // A face-up flying card is a styled copy of the real card it lands on (or left),
 // with every font size copied, so its lettering never changes size mid-flight.
 // Honors the SFX toggle and prefers-reduced-motion (no flights/flips, just sounds).
+// Players can turn the draw/discard flights off in Settings ("Card Draw
+// Animation", localStorage blitz31_draw_anim = 'false'): sounds still play.
 
 (function () {
     if (window.__cardMovesInstalled) return;
@@ -72,6 +77,23 @@
         .cm-reveal-wait { visibility: hidden !important; }
         .cm-pile { position: absolute; z-index: -1; pointer-events: none; }
         .cm-pile .card-slot { position: absolute !important; left: 0; top: 0; cursor: default; }
+        #cm-loser-banner {
+            position: fixed; left: 50%; top: 50%; z-index: 9350; pointer-events: none;
+            transform: translate(-50%, -50%) scale(0.85); opacity: 0;
+            transition: opacity 220ms ease, transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1.3);
+            background: rgba(15, 23, 42, 0.93); border: 2px solid #ef4444; border-radius: 16px;
+            padding: 14px 26px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+            max-width: 86vw;
+        }
+        #cm-loser-banner.cm-show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        #cm-loser-banner .cm-loser-name {
+            display: block; color: #fff; font-weight: 900; font-size: clamp(1.4rem, 6vw, 2.4rem);
+            line-height: 1.15; overflow-wrap: anywhere;
+        }
+        #cm-loser-banner .cm-loser-sub {
+            display: block; margin-top: 4px; color: #fca5a5; font-weight: 700;
+            font-size: clamp(0.8rem, 3vw, 1rem); letter-spacing: 1px; text-transform: uppercase;
+        }
         .cm-reveal-flip { animation: cm-flip ${REVEAL_FLIP_MS}ms ease-out both; transform-origin: center; }
         @keyframes cm-flip {
             0%   { transform: perspective(400px) rotateY(90deg) scale(1.05); opacity: 0.2; }
@@ -85,6 +107,9 @@
     const reducedMotion = () =>
         window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    function drawAnimOn() {
+        try { return localStorage.getItem('blitz31_draw_anim') !== 'false'; } catch (e) { return true; }
+    }
     function sfxOn() {
         try { return typeof window.isSfxEnabled !== 'function' || window.isSfxEnabled(); } catch (e) { return true; }
     }
@@ -244,7 +269,7 @@
     // ---- flights --------------------------------------------------------
     function fly(from, to, opts) {
         opts = opts || {};
-        if (reducedMotion()) { if (opts.onLand) opts.onLand(); return; }
+        if (reducedMotion() || !drawAnimOn()) { if (opts.onLand) opts.onLand(); return; }
         const l = layer();
         const c = document.createElement('div');
         c.className = 'cm-card';
@@ -354,6 +379,65 @@
         setTimeout(() => pileEl.classList.remove('cm-hidden-card'), FLIGHT_MS + 600);
     }
 
+    // ---- round-over loser banner + Sad.mp3 ------------------------------
+    const LOSER_SHOW_MS = 3600;
+    let loserTimers = [];
+    let sadAudio = null;
+
+    function hideLoserBanner() {
+        loserTimers.forEach(clearTimeout);
+        loserTimers = [];
+        const b = document.getElementById('cm-loser-banner');
+        if (b) b.remove();
+    }
+    function stopSad() {
+        if (!sadAudio) return;
+        try { sadAudio.pause(); sadAudio.currentTime = 0; } catch (e) {}
+    }
+    function playSad() {
+        if (!sfxOn()) return;
+        try {
+            const vol = (typeof window.getSfxVolume === 'function') ? window.getSfxVolume() : 0.6;
+            if (!(vol > 0)) return;
+            if (!sadAudio) sadAudio = new Audio('/mp3s/Sad.mp3');
+            sadAudio.pause();
+            sadAudio.currentTime = 0;
+            sadAudio.volume = Math.max(0, Math.min(1, vol));
+            const pr = sadAudio.play();
+            if (pr && pr.catch) pr.catch(() => {});
+        } catch (e) {}
+    }
+    function joinNames(names) {
+        if (names.length <= 1) return names[0] || '';
+        return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+    }
+    function showLoserBanner(losers) {
+        hideLoserBanner();
+        if (!losers.length) return;
+        const out = losers.filter(p => p.out);
+        let sub;
+        if (losers.length === 1) sub = losers[0].out ? 'is out!' : 'lost a life';
+        else if (out.length === losers.length) sub = 'are out!';
+        else if (out.length) sub = `lost a life · ${joinNames(out.map(p => p.name))} ${out.length === 1 ? 'is' : 'are'} out!`;
+        else sub = 'lost a life';
+        const b = document.createElement('div');
+        b.id = 'cm-loser-banner';
+        b.innerHTML = `<span class="cm-loser-name">${esc(joinNames(losers.map(p => p.name)))}</span>` +
+            `<span class="cm-loser-sub">${esc(sub)}</span>`;
+        document.body.appendChild(b);
+        requestAnimationFrame(() => requestAnimationFrame(() => b.classList.add('cm-show')));
+        playSad();
+        loserTimers.push(setTimeout(() => b.classList.remove('cm-show'), LOSER_SHOW_MS));
+        loserTimers.push(setTimeout(() => b.remove(), LOSER_SHOW_MS + 300));
+    }
+    // Players whose lives went down between the previous snapshot and this one
+    function losersOf(lobby, prevPlayers) {
+        return (lobby.players || []).filter(p => {
+            const b = prevPlayers[String(p.username).toLowerCase()];
+            return b && typeof b.lives === 'number' && typeof p.lives === 'number' && p.lives < b.lives;
+        }).map(p => ({ name: p.username, out: p.lives <= 0 || !!p.eliminated }));
+    }
+
     // ---- round-over reveal -------------------------------------------
     let reveal = null; // { order: [names], shownUpTo: n, timers: [] }
 
@@ -377,8 +461,13 @@
 
     function startReveal(lobby, prevPlayers) {
         clearReveal();
+        hideLoserBanner();
+        const bannerLosers = losersOf(lobby, prevPlayers);
         const players = (lobby.players || []).filter(p => Array.isArray(p.cards) && p.cards.length > 0);
-        if (players.length < 2) return;
+        if (players.length < 2) {
+            if (bannerLosers.length) loserTimers.push(setTimeout(() => showLoserBanner(bannerLosers), 300));
+            return;
+        }
         const lost = p => {
             const before = prevPlayers[String(p.username).toLowerCase()];
             return before && typeof before.lives === 'number' && typeof p.lives === 'number' && p.lives < before.lives;
@@ -408,6 +497,8 @@
                 if (i === order.length - 1) {
                     const done = setTimeout(() => { reveal = null; }, REVEAL_FLIP_MS + 50);
                     if (reveal) reveal.timers.push(done);
+                    // all cards are face up: show who lost
+                    loserTimers.push(setTimeout(() => showLoserBanner(bannerLosers), REVEAL_FLIP_MS + 250));
                 }
             }, 250 + i * REVEAL_GAP_MS);
             reveal.timers.push(t);
@@ -492,6 +583,8 @@
             return;
         }
         if (reveal) clearReveal();
+        hideLoserBanner();
+        if (inPlay && !wasInPlay) stopSad();   // next hand started
 
         if (!inPlay || !wasInPlay || dealing()) return;
 
