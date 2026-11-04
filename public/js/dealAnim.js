@@ -16,7 +16,9 @@
 // without the window is ever hit (no dealingUntil), a short ~3.5s version runs.
 //
 // Honors prefers-reduced-motion (2s static banner, quick deal, then the hand is
-// shown while the server window runs out) and the SFX toggle.
+// shown while the server window runs out) and the SFX toggle. Players can turn
+// the shuffle off in Settings (localStorage blitz31_shuffle_anim = 'false'):
+// the hand is then shown at once with a "Dealing… Ns" countdown pill.
 
 (function () {
     if (window.__dealAnimInstalled) return;
@@ -532,6 +534,37 @@
         }, shuffleMs);
     }
 
+    // ---- shuffle animation turned off (Settings -> Shuffle Animation) ----
+    // The server still holds the hand for its shuffle & deal window, so the
+    // cards are shown straight away with a small "Dealing… Ns" countdown.
+    function shuffleAnimOn() {
+        try { return localStorage.getItem('blitz31_shuffle_anim') !== 'false'; } catch (e) { return true; }
+    }
+
+    function runQuietDeal(lobby) {
+        if (running) return;
+        const remaining = windowRemaining(lobby);
+        animatedUntil = lobby.dealingUntil || 0;
+        if (remaining <= 0) return;
+        running = true;
+        startedWithWindow = true;
+        const l = layer();
+        const origin = tableOrigin();
+        const banner = document.createElement('div');
+        banner.className = 'da-banner';
+        banner.style.top = `${Math.max(8, origin.y - 22)}px`;   // over the deck (unusable while dealing)
+        l.appendChild(banner);
+        const endAt = Date.now() + remaining;
+        const paint = () => {
+            const secs = Math.max(1, Math.ceil((endAt - Date.now()) / 1000));
+            banner.innerHTML = `Dealing…<small>Play starts in ${secs}s</small>`;
+        };
+        paint();
+        requestAnimationFrame(() => { banner.style.opacity = '1'; });
+        for (let ms = 250; ms < remaining; ms += 250) later(paint, ms);
+        later(cleanup, remaining + 300);
+    }
+
     // ---- hook into the UI render pipeline -----------------------------
     function install() {
         const original = window.updateUIFromLobby;
@@ -553,7 +586,9 @@
                         const enteredPlaying = prev !== 'playing' && prev !== 'finalTurn' && prev !== null;
                         // reload / reconnect while the table is still dealing (not a window we already played)
                         const joinedMidDeal = remaining > 3000 && (lobby.dealingUntil || 0) !== animatedUntil;
-                        if (enteredPlaying || joinedMidDeal) runShuffleAndDeal(lobby);
+                        if (enteredPlaying || joinedMidDeal) {
+                            if (shuffleAnimOn()) runShuffleAndDeal(lobby); else runQuietDeal(lobby);
+                        }
                     }
                 }
             } catch (e) {
