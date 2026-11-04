@@ -26,6 +26,7 @@ const { guardIncoming } = require('./server/game/antiCheat');
 const lobbyManager = require('./server/game/lobbyManager');
 const { startLobbyPersistence } = require('./server/game/persistence');
 const { handleWagerMessage } = require('./server/game/wagerModes');
+const { handleDealSkipMessage } = require('./server/game/dealSkip');
 
 const app = express();
 const server = http.createServer(app);
@@ -433,6 +434,8 @@ wss.on('connection', (ws, req) => {
         // Table type (SET_WAGER_MODE, room creator only) and the Free wager option.
         // See server/game/wagerModes.js; returns true when the message was handled there.
         if (handleWagerMessage(ws, parsed, lobbyManager, broadcastLobbyList)) return;
+        // "Skip" votes for the shuffle & deal window (server/game/dealSkip.js)
+        if (handleDealSkipMessage(ws, parsed, lobbyManager)) return;
 
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);

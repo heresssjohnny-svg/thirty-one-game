@@ -19,6 +19,11 @@
 // shown while the server window runs out) and the SFX toggle. Players can turn
 // the shuffle off in Settings (localStorage blitz31_shuffle_anim = 'false'):
 // the hand is then shown at once with a "Dealing… Ns" countdown pill.
+//
+// SKIP: while the server's window is open, seated players get a "Skip" button.
+// It sends SKIP_DEAL; the server (server/game/dealSkip.js) ends the window early
+// once every connected human player has pressed it, and sends DEAL_SKIP_STATUS
+// after each vote so the button can show the count (e.g. "Skip ⏭ 1/3").
 
 (function () {
     if (window.__dealAnimInstalled) return;
@@ -93,6 +98,16 @@
             letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 4px 14px rgba(0,0,0,0.6);
             opacity: 0; transition: opacity 180ms ease; white-space: nowrap;
         }
+        .da-skip {
+            position: fixed; left: 50%; transform: translateX(-50%); pointer-events: auto;
+            background: rgba(15, 23, 42, 0.92); color: #f8fafc; border: 1.5px solid #94a3b8;
+            border-radius: 999px; padding: 7px 16px; font-weight: 800; font-size: 0.78rem;
+            letter-spacing: 0.6px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+            white-space: nowrap; z-index: 2; opacity: 0; transition: opacity 180ms ease, background 150ms ease;
+            -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+        }
+        .da-skip:active { transform: translateX(-50%) scale(0.96); }
+        .da-skip.da-voted { background: rgba(4, 28, 18, 0.92); border-color: #d4af37; color: #fbbf24; cursor: default; }
         .da-banner small {
             display: block; font-size: 0.62rem; letter-spacing: 0.5px; text-transform: none;
             color: #cbd5e1; font-weight: 600; margin-top: 2px; text-align: center;
@@ -192,6 +207,8 @@
         document.body.classList.remove('da-hide-cards');
         running = false;
         startedWithWindow = false;
+        skipBtn = null;
+        skipCtx = null;
     }
 
     function suitIsRed(s) { return s === '♥' || s === '♦' || s === 'H' || s === 'D'; }
@@ -506,6 +523,7 @@
         banner.innerHTML = 'Shuffling…';
         l.appendChild(banner);
         requestAnimationFrame(() => { banner.style.opacity = '1'; });
+        if (startedWithWindow) addSkipButton(l, lobby, origin.y + (origin.h || 126) * 0.62 + 10);
 
         let stageObj = null;
         if (!reduce) {
@@ -534,6 +552,62 @@
         }, shuffleMs);
     }
 
+    // ---- skip button (all seated players must agree) ------------------------
+    let skipStatus = null;      // last DEAL_SKIP_STATUS for the current window
+    let skipBtn = null;
+    let skipCtx = null;         // { until, me }
+
+    function paintSkip() {
+        if (!skipBtn || !skipCtx) return;
+        const st = (skipStatus && skipStatus.until === skipCtx.until) ? skipStatus : null;
+        const n = st ? st.votes.length : 0;
+        const needed = st ? st.needed : 0;
+        const voted = !!(st && skipCtx.me && st.votes.some(v => String(v).toLowerCase() === skipCtx.me.toLowerCase())) || skipBtn.__clicked;
+        const count = needed ? ` ${n}/${needed}` : '';
+        skipBtn.textContent = voted ? `Waiting for others…${count}` : `Skip ⏭${count}`;
+        skipBtn.classList.toggle('da-voted', voted);
+        skipBtn.disabled = voted;
+    }
+
+    function addSkipButton(l, lobby, top) {
+        const me = (lobby.players || []).find(p => p.isMe && !p.isBot && !p.eliminated);
+        if (!me || !lobby.dealingUntil || windowRemaining(lobby) <= 1200) return;
+        skipCtx = { until: lobby.dealingUntil, me: me.username };
+        skipBtn = document.createElement('button');
+        skipBtn.type = 'button';
+        skipBtn.className = 'da-skip';
+        skipBtn.style.top = `${Math.round(top)}px`;
+        skipBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (skipBtn.__clicked) return;
+            skipBtn.__clicked = true;
+            try { if (typeof window.sendSocket === 'function') window.sendSocket({ type: 'SKIP_DEAL' }); } catch (e) {}
+            paintSkip();
+        });
+        l.appendChild(skipBtn);
+        paintSkip();
+        requestAnimationFrame(() => { if (skipBtn) skipBtn.style.opacity = '1'; });
+    }
+
+    // Listen to the game socket for DEAL_SKIP_STATUS (network.js ignores unknown types)
+    let listenedWs = null;
+    function onSocketMessage(ev) {
+        let data;
+        try { data = JSON.parse(ev.data); } catch (e) { return; }
+        if (!data || data.type !== 'DEAL_SKIP_STATUS') return;
+        if (data.until) skipStatus = data;
+        paintSkip();
+    }
+    function watchSocket() {
+        const ws = (window.appGlobals && window.appGlobals.ws) || window.ws;
+        if (ws && ws !== listenedWs && typeof ws.addEventListener === 'function') {
+            ws.addEventListener('message', onSocketMessage);
+            listenedWs = ws;
+        }
+    }
+    setInterval(watchSocket, 500);
+    window.__dealSkipStatus = (d) => onSocketMessage({ data: JSON.stringify(d) });   // console / tests
+
     // ---- shuffle animation turned off (Settings -> Shuffle Animation) ----
     // The server still holds the hand for its shuffle & deal window, so the
     // cards are shown straight away with a small "Dealing… Ns" countdown.
@@ -561,6 +635,7 @@
         };
         paint();
         requestAnimationFrame(() => { banner.style.opacity = '1'; });
+        addSkipButton(l, lobby, origin.y + 30);
         for (let ms = 250; ms < remaining; ms += 250) later(paint, ms);
         later(cleanup, remaining + 300);
     }
