@@ -476,6 +476,28 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="setting-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span>Shuffle Animation</span>
+                        <label class="switch-toggle">
+                            <input type="checkbox" id="setting-shuffle-anim" checked onchange="localStorage.setItem('blitz31_shuffle_anim', this.checked);">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span>Card Draw Animation</span>
+                        <label class="switch-toggle">
+                            <input type="checkbox" id="setting-draw-anim" checked onchange="localStorage.setItem('blitz31_draw_anim', this.checked);">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <script>
+                        (function () {
+                            try {
+                                document.getElementById('setting-shuffle-anim').checked = localStorage.getItem('blitz31_shuffle_anim') !== 'false';
+                                document.getElementById('setting-draw-anim').checked = localStorage.getItem('blitz31_draw_anim') !== 'false';
+                            } catch (e) {}
+                        })();
+                    </script>
                     <div class="setting-row" style="display: flex; flex-direction: column; gap: 6px;">
                         <label for="setting-audio-output" style="font-size: 0.8rem; color: #cbd5e1; text-transform: uppercase;">Voice Audio Output</label>
                         <select id="setting-audio-output" onchange="if (typeof setAudioOutputDevice === 'function') setAudioOutputDevice(this.value); else if (typeof changeVoiceOutputDevice === 'function') changeVoiceOutputDevice(this.value);" style="background: #04160e; border: 1px solid rgba(212, 175, 55, 0.5); color: #fff; border-radius: 6px; padding: 8px; font-weight: 700;">
@@ -617,9 +639,9 @@
     <script src="/js/voice.js?v=45"></script>
     <script src="/js/ui.js?v=45"></script>
     <script src="/js/app.js?v=45"></script>
-    <script src="/js/dealAnim.js?v=48"></script>
+    <script src="/js/dealAnim.js?v=50"></script>
     <script src="/js/audioCues.js?v=47"></script>
-    <script src="/js/cardMoves.js?v=48"></script>
+    <script src="/js/cardMoves.js?v=50"></script>
     <script src="/js/tableWager.js?v=49"></script>
 </body>
 </html>
