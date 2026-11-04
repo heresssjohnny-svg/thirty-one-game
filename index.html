@@ -490,11 +490,19 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                    <div class="setting-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span>Messy Discard Pile <small style="display: block; font-size: 0.7rem; color: #94a3b8;">Off = neat, straight pile</small></span>
+                        <label class="switch-toggle">
+                            <input type="checkbox" id="setting-messy-pile" checked onchange="localStorage.setItem('blitz31_messy_pile', this.checked); if (typeof window.refreshDiscardPileLook === 'function') window.refreshDiscardPileLook();">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
                     <script>
                         (function () {
                             try {
                                 document.getElementById('setting-shuffle-anim').checked = localStorage.getItem('blitz31_shuffle_anim') !== 'false';
                                 document.getElementById('setting-draw-anim').checked = localStorage.getItem('blitz31_draw_anim') !== 'false';
+                                document.getElementById('setting-messy-pile').checked = localStorage.getItem('blitz31_messy_pile') !== 'false';
                             } catch (e) {}
                         })();
                     </script>
@@ -636,12 +644,12 @@
     <script src="/js/celebration.js?v=45"></script>
     <script src="/js/network.js?v=45"></script>
     <script src="/js/ledger.js?v=45"></script>
-    <script src="/js/voice.js?v=45"></script>
+    <script src="/js/voice.js?v=51"></script>
     <script src="/js/ui.js?v=45"></script>
     <script src="/js/app.js?v=45"></script>
-    <script src="/js/dealAnim.js?v=50"></script>
+    <script src="/js/dealAnim.js?v=51"></script>
     <script src="/js/audioCues.js?v=47"></script>
-    <script src="/js/cardMoves.js?v=50"></script>
+    <script src="/js/cardMoves.js?v=51"></script>
     <script src="/js/tableWager.js?v=49"></script>
 </body>
 </html>
