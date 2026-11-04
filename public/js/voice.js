@@ -145,15 +145,33 @@ async function connectToLiveKit(host, token, roomCode) {
     }
 
     if (livekitRoom && isLiveKitConnected) {
-        if ((livekitRoom.name === targetRoom || latestLiveKitRoom === targetRoom) && latestLiveKitToken === token) {
+        // Already in this table's voice room: keep the call. A fresh token arrives
+        // on every game-socket rejoin (LOBBY_JOINED) and every reconnect attempt;
+        // tearing the room down for it used to start a disconnect -> reconnect
+        // loop that flipped the button between "Mic: Off (listening)" and
+        // "Voice: Off".
+        const sameRoom = livekitRoom.name === targetRoom || latestLiveKitRoom === targetRoom;
+        if (sameRoom && livekitRoom.state !== 'disconnected') {
+            latestLiveKitHost = cleanHost;
+            latestLiveKitToken = token;
+            updateVoiceUI();
             return;
         }
-        try {
-            await livekitRoom.disconnect();
-        } catch (e) {}
-        cleanupRemoteAudioElements();
+        // Switching tables: close the old room on purpose (its Disconnected
+        // handler must not schedule a reconnect)
+        const oldRoom = livekitRoom;
+        oldRoom.__blitzIntentional = true;
         livekitRoom = null;
         isLiveKitConnected = false;
+        try {
+            await oldRoom.disconnect();
+        } catch (e) {}
+        cleanupRemoteAudioElements();
+    } else if (livekitRoom && !isConnectingVoice) {
+        // A half-dead room from an earlier failed attempt: retire it quietly
+        livekitRoom.__blitzIntentional = true;
+        try { livekitRoom.disconnect(); } catch (e) {}
+        livekitRoom = null;
     }
 
     latestLiveKitHost = cleanHost;
@@ -172,7 +190,7 @@ async function connectToLiveKit(host, token, roomCode) {
     try {
         cleanupRemoteAudioElements();
 
-        livekitRoom = new LK.Room({
+        const thisRoom = new LK.Room({
             adaptiveStream: true,
             dynacast: true,
             stopLocalTrackOnUnpublish: false,
@@ -187,6 +205,7 @@ async function connectToLiveKit(host, token, roomCode) {
                 noiseSuppression: true
             }
         });
+        livekitRoom = thisRoom;
 
         // Remote participant audio playback
         livekitRoom.on(LK.RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -253,6 +272,8 @@ async function connectToLiveKit(host, token, roomCode) {
         });
 
         livekitRoom.on(LK.RoomEvent.Disconnected, () => {
+            // Ignore rooms we closed on purpose or that were already replaced
+            if (thisRoom.__blitzIntentional || thisRoom !== livekitRoom) return;
             isLiveKitConnected = false;
             cleanupRemoteAudioElements();
             stopBackgroundKeepAliveOscillator();
@@ -265,7 +286,12 @@ async function connectToLiveKit(host, token, roomCode) {
             }
         });
 
-        await livekitRoom.connect(cleanHost, token);
+        await thisRoom.connect(cleanHost, token);
+        if (thisRoom !== livekitRoom || thisRoom.__blitzIntentional) {
+            // Left the table (or switched) while connecting: drop this room
+            try { thisRoom.disconnect(); } catch (e) {}
+            return;
+        }
         isLiveKitConnected = true;
 
         requestScreenWakeLock();
@@ -558,6 +584,9 @@ async function requestVoiceToken(roomCode) {
 function triggerVoiceReconnect() {
     const targetRoom = getActiveRoomCode();
     if (!targetRoom) return;
+    // Already connected (or a connect / SDK auto-reconnect is under way): nothing to do
+    if (isConnectingVoice) return;
+    if (livekitRoom && isLiveKitConnected && livekitRoom.state !== 'disconnected') return;
     requestVoiceToken(targetRoom);
 }
 
@@ -567,8 +596,10 @@ async function disconnectLiveKit() {
     cleanupRemoteAudioElements();
 
     if (livekitRoom) {
-        try { await livekitRoom.disconnect(); } catch (e) {}
+        const oldRoom = livekitRoom;
+        oldRoom.__blitzIntentional = true;
         livekitRoom = null;
+        try { await oldRoom.disconnect(); } catch (e) {}
     }
     latestLiveKitHost = null;
     latestLiveKitToken = null;
@@ -720,8 +751,10 @@ async function handleScreenResumeVoice() {
     requestScreenWakeLock();
     startBackgroundKeepAliveOscillator();
 
-    // If disconnected while sleeping, reconnect voice with a fresh token
-    if (!isLiveKitConnected || !livekitRoom || livekitRoom.state !== 'connected') {
+    // If disconnected while sleeping, reconnect voice with a fresh token (but let the
+    // SDK finish its own reconnect when it is already 'reconnecting'/'connecting')
+    const lkState = livekitRoom ? livekitRoom.state : 'disconnected';
+    if (!livekitRoom || lkState === 'disconnected' || (!isLiveKitConnected && lkState !== 'reconnecting' && lkState !== 'connecting')) {
         if (!isConnectingVoice) {
             triggerVoiceReconnect();
         }
