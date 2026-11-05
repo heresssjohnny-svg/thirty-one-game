@@ -10,6 +10,24 @@ let latestLiveKitRoom = null;
 let currentVoiceVolume = 1.0;
 let selectedAudioOutputId = 'default';
 
+// Automatic voice reconnect bookkeeping (one place decides what the voice button says)
+let voiceReconnectPending = false;
+let voiceReconnectSafety = null;
+let voiceReconnectTimes = [];
+function setVoiceReconnectPending(on) {
+    voiceReconnectPending = !!on;
+    if (voiceReconnectSafety) { clearTimeout(voiceReconnectSafety); voiceReconnectSafety = null; }
+    if (on) {
+        // never leave the label stuck on "Reconnecting"
+        voiceReconnectSafety = setTimeout(() => {
+            voiceReconnectPending = false;
+            voiceReconnectSafety = null;
+            if (typeof updateVoiceUI === 'function') updateVoiceUI();
+        }, 15000);
+    }
+    if (typeof updateVoiceUI === 'function') updateVoiceUI();
+}
+
 // Background audio keep-alive: Decoded audio element
 let keepAliveAudioElement = null;
 
@@ -271,19 +289,40 @@ async function connectToLiveKit(host, token, roomCode) {
             refreshVoiceParticipantsList();
         });
 
-        livekitRoom.on(LK.RoomEvent.Disconnected, () => {
+        livekitRoom.on(LK.RoomEvent.Disconnected, (reason) => {
             // Ignore rooms we closed on purpose or that were already replaced
             if (thisRoom.__blitzIntentional || thisRoom !== livekitRoom) return;
             isLiveKitConnected = false;
             cleanupRemoteAudioElements();
             stopBackgroundKeepAliveOscillator();
-            updateVoiceUI();
-            refreshVoiceParticipantsList();
+
+            // Kicked because the same player joined voice from another device/tab, or we are
+            // reconnecting in a tight loop: stop, so two sessions do not keep kicking each other
+            // (that fight is what made the button flip between "Voice: Off" and "Mic: Off (listening)")
+            const now = Date.now();
+            voiceReconnectTimes = voiceReconnectTimes.filter(t => now - t < 60000);
+            const dup = !!(LK.DisconnectReason && reason === LK.DisconnectReason.DUPLICATE_IDENTITY);
+            if (dup || voiceReconnectTimes.length >= 4) {
+                setVoiceReconnectPending(false);
+                updateVoiceUI();
+                refreshVoiceParticipantsList();
+                if (typeof window.showCenterNotification === 'function') {
+                    window.showCenterNotification(dup
+                        ? '🎙️ Voice is open on another device or tab. Tap Voice to use it here.'
+                        : '🎙️ Voice keeps disconnecting. Tap Voice to try again.');
+                }
+                return;
+            }
 
             const activeRoom = getActiveRoomCode();
             if (activeRoom && window.clientState && window.clientState.gameState !== 'mainMenu') {
+                voiceReconnectTimes.push(now);
+                setVoiceReconnectPending(true);   // keeps a steady "Reconnecting" label instead of flipping to "Voice: Off"
                 setTimeout(triggerVoiceReconnect, 1500);
+            } else {
+                updateVoiceUI();
             }
+            refreshVoiceParticipantsList();
         });
 
         await thisRoom.connect(cleanHost, token);
@@ -293,6 +332,7 @@ async function connectToLiveKit(host, token, roomCode) {
             return;
         }
         isLiveKitConnected = true;
+        setVoiceReconnectPending(false);
 
         requestScreenWakeLock();
 
@@ -325,6 +365,7 @@ async function connectToLiveKit(host, token, roomCode) {
         console.error("[LiveKit] Connection failed:", error);
         isLiveKitConnected = false;
         isMicActive = false;
+        setVoiceReconnectPending(false);
         updateVoiceUI();
     } finally {
         isConnectingVoice = false;
@@ -335,6 +376,7 @@ async function connectToLiveKit(host, token, roomCode) {
 // 4. MICROPHONE TRANSMISSION, SOFT-MUTE & HOST FORCE-MUTE
 // -------------------------------------------------------------
 async function toggleVoiceOnOff() {
+    voiceReconnectTimes = [];   // a manual tap always gets a fresh start
     startBackgroundKeepAliveOscillator();
 
     // 1. Prevent Race Condition: Let connectToLiveKit handle the initial unmute
@@ -448,7 +490,8 @@ function updateVoiceUI() {
 
     const label = isMicActive
         ? '🎙️ Mic: On'
-        : (isLiveKitConnected ? '🔇 Mic: Off (listening)' : '🎙️ Voice: Off');
+        : (isLiveKitConnected ? '🔇 Mic: Off (listening)'
+            : (voiceReconnectPending ? '⏳ Voice: Reconnecting…' : '🎙️ Voice: Off'));
 
     if (btnMain) {
         btnMain.innerText = label;
@@ -607,6 +650,8 @@ async function disconnectLiveKit() {
     if (window.appGlobals) window.appGlobals.lastConnectedLiveKitRoom = null;
     isLiveKitConnected = false;
     isMicActive = false;
+    voiceReconnectTimes = [];
+    setVoiceReconnectPending(false);
 
     localStorage.removeItem('blitz31_mic_state');
 
