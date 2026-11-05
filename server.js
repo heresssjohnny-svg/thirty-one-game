@@ -28,6 +28,7 @@ const { startLobbyPersistence } = require('./server/game/persistence');
 const { handleWagerMessage } = require('./server/game/wagerModes');
 const { handleDealSkipMessage } = require('./server/game/dealSkip');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
+const { router: seoRouter, serveIndex } = require('./server/seo');
 
 const app = express();
 const server = http.createServer(app);
@@ -52,6 +53,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/auth', authRouter);
 // "Try it vs bots" guest sessions (POST /auth/guest)
 app.use('/auth', guestRouter);
+// /og-image.png and /robots.txt (server/seo.js)
+app.use('/', seoRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -179,7 +182,7 @@ app.get('*', (req, res) => {
     if (req.path.match(/\.(mp3|wav|ogg|m4a|aac|js|css|png|jpg|jpeg|gif|ico|svg|map|html)$/i)) {
         return res.status(404).send('Asset not found');
     }
-    res.sendFile(getIndexHtmlPath());
+    serveIndex(req, res, getIndexHtmlPath());
 });
 
 // -------------------------------------------------------------
