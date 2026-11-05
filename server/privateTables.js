@@ -252,6 +252,21 @@ function sweepRequests() {
     for (const [k, t] of lastAsk) if (now - t > 60000) lastAsk.delete(k);
 }
 
+// Host moves a seated player to the spectators (waiting room only; uses the normal stand-up logic)
+function handleMoveToSpectator(ws, msg, lobbies, lobbyManager) {
+    const lobby = lobbies && ws.currentLobbyCode ? lobbies[ws.currentLobbyCode] : null;
+    if (!lobby) return;
+    if (!lobbyManager.isLobbyHost(lobby, ws, ws.currentUsername)) { sendError(ws, 'Only the table host can move players.'); return; }
+    if (lobby.gameState !== 'lobby') { sendError(ws, 'You can move players to the spectators between games.'); return; }
+    const name = lower(msg.targetUsername);
+    if (!name || name === lower(lobby.host)) return;
+    const p = (lobby.players || []).find(x => lower(x.username) === name);
+    if (!p || p.isBot) { sendError(ws, 'That player is not seated.'); return; }
+    lobbyManager.handleStandUp(lobby, p.id, p.username, p.accountUsername);
+    lobby.phaseMessage = (p.username || 'A player') + ' was moved to the spectators by the host.';
+    if (typeof lobbyManager.broadcastLobbyUpdate === 'function') lobbyManager.broadcastLobbyUpdate(lobby.code);
+}
+
 // Returns true when the message may continue to the game dispatcher.
 function privateGate(ws, msg, lobbies, lobbyManager) {
     if (!msg || typeof msg.type !== 'string') return true;
@@ -262,6 +277,7 @@ function privateGate(ws, msg, lobbies, lobbyManager) {
         sendTo(ws, { type: 'PRIVATE_TABLES', tables: privateTableList(ws, lobbies, lobbyManager), signedIn: !!realUserId(ws) });
         return false;
     }
+    if (type === 'ADMIN_MOVE_TO_SPECTATOR') { handleMoveToSpectator(ws, msg, lobbies, lobbyManager); return false; }
     if (type === 'REQUEST_JOIN') { handleRequestJoin(ws, msg, lobbies, lobbyManager); return false; }
     if (type === 'RESPOND_JOIN_REQUEST') { handleRespondJoin(ws, msg, lobbies, lobbyManager); return false; }
 
