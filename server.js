@@ -27,6 +27,7 @@ const lobbyManager = require('./server/game/lobbyManager');
 const { startLobbyPersistence } = require('./server/game/persistence');
 const { handleWagerMessage } = require('./server/game/wagerModes');
 const { handleDealSkipMessage } = require('./server/game/dealSkip');
+const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 
 const app = express();
 const server = http.createServer(app);
@@ -49,6 +50,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Mount Authentication & Admin Router (/auth/register, /auth/login, /auth/admin/*, etc.)
 app.use('/auth', authRouter);
+// "Try it vs bots" guest sessions (POST /auth/guest)
+app.use('/auth', guestRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -431,6 +434,9 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
+        // Guests: no betting/balances, Free tables only (server/guest.js)
+        if (!guestGate(ws, parsed, lobbies)) return;
+
         // Table type (SET_WAGER_MODE, room creator only) and the Free wager option.
         // See server/game/wagerModes.js; returns true when the message was handled there.
         if (handleWagerMessage(ws, parsed, lobbyManager, broadcastLobbyList)) return;
@@ -439,6 +445,7 @@ wss.on('connection', (ws, req) => {
 
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);
+        afterGuestDispatch(ws, parsed, lobbies, broadcastLobbyUpdate);
     });
 
     // Clean up player/spectator state when a socket disconnects
