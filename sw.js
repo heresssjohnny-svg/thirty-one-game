@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v10';
+const CACHE_NAME = 'thirtyone-cache-v11';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -19,7 +19,8 @@ const ASSETS_TO_CACHE = [
     './js/tableWager.js',
     './js/invite.js',
     './js/pwa.js',
-    './js/stats.js'
+    './js/stats.js',
+    './js/debtWatch.js'
 ];
 
 self.addEventListener('install', (event) => {
