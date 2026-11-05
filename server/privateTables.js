@@ -331,6 +331,16 @@ function afterPrivateDispatch(ws, msg, lobbies, broadcastLobbyUpdate, lobbyManag
         const lobby = lobbies && ws.currentLobbyCode ? lobbies[ws.currentLobbyCode] : null;
         if (!lobby) return;
 
+        // No ready-up timer on private tables: cancel any countdown the dispatcher just started
+        if (lobby.isPrivate) {
+            let cleared = false;
+            (lobby.players || []).forEach(p => {
+                if (p.readyTimeout) { clearTimeout(p.readyTimeout); p.readyTimeout = null; cleared = true; }
+                if (p.readyDeadline) { p.readyDeadline = null; cleared = true; }
+            });
+            if (cleared && typeof broadcastLobbyUpdate === 'function') broadcastLobbyUpdate(lobby.code);
+        }
+
         if (!lobby.isPrivate && lobby.wagerMode !== 'free') {
             lobby.wagerMode = 'free';
             if (typeof broadcastLobbyUpdate === 'function') broadcastLobbyUpdate(lobby.code);
