@@ -334,12 +334,12 @@
         <p>Developer & Balance Management Console</p>
 
         <div class="form-group" style="margin-bottom: 14px;">
-            <label for="admin-user">Secret Admin Username</label>
-            <input type="text" id="admin-user" required placeholder="Enter admin username" autocomplete="username">
+            <label for="admin-user">Admin Username or Email</label>
+            <input type="text" id="admin-user" required placeholder="Admin username or account email" autocomplete="username">
         </div>
 
         <div class="form-group" style="margin-bottom: 18px;">
-            <label for="admin-pass">Secret Admin Password</label>
+            <label for="admin-pass">Password</label>
             <input type="password" id="admin-pass" required placeholder="Enter admin password" autocomplete="current-password">
         </div>
 
@@ -805,6 +805,7 @@
             <tr>
                 <td>
                     <input type="text" id="uname-${u.id}" value="${escapeHtml(u.username)}" style="width: 135px; padding: 5px 8px; font-weight: 700;" />
+                    ${Number(u.is_admin) === 1 ? '<span class="code-pill" style="color: var(--gold); margin-left: 6px;">ADMIN</span>' : ''}
                 </td>
                 <td>
                     <input type="email" id="uemail-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="No email" style="width: 190px; padding: 5px 8px;" />
@@ -815,6 +816,7 @@
                     <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                         <button class="btn btn-green btn-sm" onclick="saveUserProfile('${u.id}')">💾 Save Info</button>
                         <button class="btn btn-gold btn-sm" onclick="promptResetPassword('${u.id}', '${escapeHtml(u.username)}')">🔑 Set Password</button>
+                        <button class="btn btn-gold btn-sm" onclick="toggleUserAdmin('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_admin) === 1 ? 'false' : 'true'})">${Number(u.is_admin) === 1 ? '🚫 Revoke Admin' : '🛡️ Make Admin'}</button>
                         <button class="btn btn-red btn-sm" onclick="deleteUserAccount('${u.id}', '${escapeHtml(u.username)}')">🗑️ Delete</button>
                     </div>
                 </td>
@@ -844,6 +846,20 @@
         try {
             await apiAdmin('user/password', 'POST', { userId, newPassword });
             showToast(`🔑 Password updated for ${username}!`);
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function toggleUserAdmin(userId, username, makeAdmin) {
+        const msg = makeAdmin
+            ? `Give "${username}" full access to this admin panel (balances, passwords, deleting users, SQL console)?`
+            : `Remove admin panel access from "${username}"?`;
+        if (!confirm(msg)) return;
+        try {
+            await apiAdmin('user/admin', 'POST', { userId, isAdmin: makeAdmin });
+            showToast(makeAdmin ? `🛡️ ${username} is now an admin.` : `🚫 ${username} is no longer an admin.`);
+            fetchAdminOverview();
         } catch (err) {
             showToast(err.message, true);
         }

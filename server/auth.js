@@ -317,6 +317,14 @@ function requireAdminAuth(req, res, next) {
         if (!decoded || !decoded.isAdmin) {
             return res.status(403).json({ error: 'Forbidden: Not an admin token.' });
         }
+        // Tokens issued to database accounts are re-checked on every call so that
+        // revoking admin (or deleting the account) takes effect immediately.
+        if (decoded.userId) {
+            const row = sqlDb.prepare('SELECT is_admin FROM users WHERE id = ?').get(decoded.userId);
+            if (!row || Number(row.is_admin) !== 1) {
+                return res.status(403).json({ error: 'Admin access has been revoked for this account.' });
+            }
+        }
         req.admin = decoded;
         next();
     } catch (err) {
@@ -345,17 +353,65 @@ function pushLiveLifetimeUpdate(userId) {
 }
 
 // 6A. Secret Admin Login
-router.post('/admin/login', (req, res) => {
-    const { username, password } = req.body;
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        const token = jwt.sign(
-            { isAdmin: true, username: ADMIN_USERNAME },
-            JWT_SECRET,
-            { expiresIn: '12h' }
-        );
-        return res.json({ token });
+// Two ways in: the secret ADMIN_USERNAME/ADMIN_PASSWORD from .env, or any registered
+// account (username or email + its normal password) whose users.is_admin = 1.
+const adminLoginFails = new Map(); // ip -> { count, resetAt }
+const ADMIN_LOGIN_MAX_FAILS = 10;
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+router.post('/admin/login', async (req, res) => {
+    const { username, password } = req.body || {};
+    const ip = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+    const now = Date.now();
+
+    let rec = adminLoginFails.get(ip);
+    if (rec && now > rec.resetAt) { adminLoginFails.delete(ip); rec = null; }
+    if (rec && rec.count >= ADMIN_LOGIN_MAX_FAILS) {
+        return res.status(429).json({ error: 'Too many failed admin sign-ins. Try again in 15 minutes.' });
     }
-    return res.status(401).json({ error: 'Invalid secret admin username or password.' });
+
+    const identifier = String(username || '').trim();
+    const pass = String(password || '');
+
+    if (identifier && pass) {
+        // 1) Secret .env admin
+        if (identifier === ADMIN_USERNAME && pass === ADMIN_PASSWORD) {
+            adminLoginFails.delete(ip);
+            const token = jwt.sign(
+                { isAdmin: true, username: ADMIN_USERNAME },
+                JWT_SECRET,
+                { expiresIn: '12h' }
+            );
+            return res.json({ token });
+        }
+
+        // 2) Registered account flagged as admin in SQLite
+        try {
+            const user = typeof db.findUserByIdentifier === 'function'
+                ? db.findUserByIdentifier(identifier)
+                : db.findUserByUsername(identifier);
+            if (user && user.password_hash && await bcrypt.compare(pass, user.password_hash)) {
+                const row = sqlDb.prepare('SELECT is_admin FROM users WHERE id = ?').get(user.id);
+                if (row && Number(row.is_admin) === 1) {
+                    adminLoginFails.delete(ip);
+                    const token = jwt.sign(
+                        { isAdmin: true, userId: user.id, username: user.username },
+                        JWT_SECRET,
+                        { expiresIn: '12h' }
+                    );
+                    return res.json({ token });
+                }
+            }
+        } catch (err) {
+            console.error('[Admin Login Error]:', err);
+            return res.status(500).json({ error: 'Internal admin login error.' });
+        }
+    }
+
+    const next = rec || { count: 0, resetAt: now + ADMIN_LOGIN_WINDOW_MS };
+    next.count += 1;
+    adminLoginFails.set(ip, next);
+    return res.status(401).json({ error: 'Invalid admin username/email or password.' });
 });
 
 // 6B. Overview Snapshot (Users, Lifetime Ledger, Live Lobbies)
@@ -363,7 +419,7 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
     try {
         let users = [];
         try {
-            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at FROM users ORDER BY created_at DESC`).all();
+            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin FROM users ORDER BY created_at DESC`).all();
         } catch (e) {
             users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users ORDER BY created_at DESC`).all();
         }
@@ -512,9 +568,30 @@ router.post('/admin/user/create', requireAdminAuth, async (req, res) => {
     }
 });
 
+// Grant or revoke panel access for a registered account
+router.post('/admin/user/admin', requireAdminAuth, (req, res) => {
+    const { userId, isAdmin } = req.body;
+    if (!userId || typeof isAdmin !== 'boolean') {
+        return res.status(400).json({ error: 'userId and isAdmin (true/false) required.' });
+    }
+    if (!isAdmin && req.admin && req.admin.userId === userId) {
+        return res.status(400).json({ error: 'You cannot remove your own admin access.' });
+    }
+    try {
+        const info = sqlDb.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, userId);
+        if (!info.changes) return res.status(404).json({ error: 'User not found.' });
+        return res.json({ success: true });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
 router.post('/admin/user/delete', requireAdminAuth, (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required.' });
+    if (req.admin && req.admin.userId === userId) {
+        return res.status(400).json({ error: 'You cannot delete the account you are signed in with.' });
+    }
 
     try {
         sqlDb.prepare(`DELETE FROM lifetime_ledger WHERE debtor_id = ? OR creditor_id = ?`).run(userId, userId);
