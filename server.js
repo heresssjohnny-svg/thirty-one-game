@@ -30,6 +30,7 @@ const { handleDealSkipMessage } = require('./server/game/dealSkip');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
 const { router: statsRouter, startStatsTracker } = require('./server/stats');
+const { startDebtWatch } = require('./server/debtWatch');
 
 const app = express();
 const server = http.createServer(app);
@@ -524,3 +525,6 @@ startLobbyPersistence({ lobbyManager, broadcastLobbyList });
 
 // Wins, daily streaks and the leaderboard: records each finished match (see stats.js)
 startStatsTracker({ lobbyManager });
+
+// Warns the table host when a player owing more than $50 net lifetime joins (see debtWatch.js)
+startDebtWatch({ lobbyManager });
