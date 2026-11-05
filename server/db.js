@@ -45,6 +45,8 @@ db.exec(`
 try { db.prepare('ALTER TABLE users ADD COLUMN email TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE users ADD COLUMN reset_token TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE users ADD COLUMN reset_expiry INTEGER').run(); } catch (e) {}
+// Accounts with is_admin = 1 may sign in to admin.html with their normal username/email + password
+try { db.prepare('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0').run(); } catch (e) {}
 
 // -------------------------------------------------------------
 // 2. USER LOOKUP, REGISTRATION & PASSWORD RECOVERY
