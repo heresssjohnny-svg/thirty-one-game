@@ -29,6 +29,7 @@ const { handleWagerMessage } = require('./server/game/wagerModes');
 const { handleDealSkipMessage } = require('./server/game/dealSkip');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
+const { router: statsRouter, startStatsTracker } = require('./server/stats');
 
 const app = express();
 const server = http.createServer(app);
@@ -55,6 +56,8 @@ app.use('/auth', authRouter);
 app.use('/auth', guestRouter);
 // /og-image.png and /robots.txt (server/seo.js)
 app.use('/', seoRouter);
+// /api/stats/me and /api/leaderboard (server/stats.js)
+app.use('/api', statsRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -518,3 +521,6 @@ server.listen(PORT, () => {
 // Keep tables alive across restarts/deploys: restore the last snapshot now,
 // then save every couple of seconds and on SIGINT/SIGTERM (see persistence.js)
 startLobbyPersistence({ lobbyManager, broadcastLobbyList });
+
+// Wins, daily streaks and the leaderboard: records each finished match (see stats.js)
+startStatsTracker({ lobbyManager });
