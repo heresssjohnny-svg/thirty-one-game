@@ -1,104 +1,210 @@
 // server/seo.js - search/share basics: /og-image.png, /robots.txt and an index.html that knows its own origin.
 //
-// The share-preview image is embedded below as base64 so it deploys like any other text file
-// (the repo connector can't push binaries). Regenerate it by replacing OG_PNG_BASE64.
+// /og-image.png (1200x630) is drawn in code on first request (pixel font + a hand of A-K-10 of spades)
+// and PNG-encoded with zlib, so there is no binary asset in the repo and no image library to install.
 // index.html uses __ORIGIN__ in its og:/canonical URLs; serveIndex swaps in the real
 // https://host the visitor used (Caddy sends X-Forwarded-Proto / Host), so no domain is hardcoded.
 const fs = require('fs');
+const zlib = require('zlib');
 const express = require('express');
 
 const router = express.Router();
 
-const OG_PNG_BASE64 = `
-iVBORw0KGgoAAAANSUhEUgAABLAAAAJ2CAMAAAB4notuAAAAPFBMVEX///////z8/Pj6+vj6+vX6+vT7vyTl6eqy4svyuiTUrze3
-u7J3bzwtSDUuMDMJMB4JHhUZGR4FGRAPEBRfL/zgAABCPElEQVR42u2di4KjOJJFgbIGOiXhyvL//+sIsM1LAgHife7OzHY70wZj
-czIidBURPRFC6CSKuAQIIYCFEEIACyEEsBBCCGAhhBDAQggBLIQQAlgIIQSwEEIACyGEABZCCAEshBDAQggghgIUQQgALIQSwEEII
-YCGEUEhg/SCE0DoKCyyuJ0LoANCKwBVC6CzIisAVQugsyIr8cUXBDyG0irw5E/m9DlcUIbQJtBYAC1whhDZG1lxggSuE0KGQFY09
-l2uIENoYWTOABa8QQgcj1giwuHwIoe2JNRlY8AohdDRiRfAKIXQWYkXwCiF0FmINAMv+E4UQQqE0EUDRJMBxeRFC6zPLGWJFE/g2
-AESEEJohB1UmAcuKN2iFEFqJWb4hVuQbYIErhNBqyPIMsSLPAAteIYS2I5YjxIr8AixwhRBaFVleIZYfsOAVQmhTYi0AFrxCCG1L
-LG9g9ZJH6lcIoY3rWPYiVkSAhRA6S4jlASx4hRDanFgACyF0dWDBK4TQ9sQCWAghgIUQQscAFrxCCO1ALICFEAJYCCEEsBBCAAtg
-IYQAFkIIASyEEMACWAghgIUQQgALIQSwABZCCGAhhBBAQggBLICFEAJYCCEEsBBCAAtgIYQAFkIIASyEEMACWAghgIUQQgALIQSw
-EEIIYCGEEMBCCAEshBACWAghgAWwEEIACyGEABZCCGABLIQQwEIIIYCFEAJYAAshBLAQQghgIYQAFsBCCAEshBACWAghgAWwEEIA
-CyGEABZCCGABLIQQwEIIIYCFEAJYAAshBLAQQghgIYQAFsBCCAEshBACWAghgIUQQgALIYT2BVZmkX7q8v9/XrL5b7rzu9YX1UqW
-P5RK917AdnTdvhjvJ3+ebX+s95rdg46dlOsMmu+w8buNh6XrEO3jdH+rdyjdfUQ3L6rXlUYIYC0ElpbNW34IWJ8Xa/5EWV7e9ljn
-NfsHHTsp1xl03qF0POxAVus4rd/qH6r3iARYCGBtDCzZfTE3sGT/VZTl5W2PdV7TctCxk3KdQfcdSvvDmfWCS/uT7YfSnUfa/w6w
-EMBaH1gy8wdWHyC2l7cfsvWatoOOnZTjDPpk0vaHbcTqHqcJrIE3qzqwBlgIYA1K2v72u4GlRl6oKv6U1ZwBYKn+fV09VD5Zq/cZ
-2R5rv6b1oGMn5TiDxgvrzPrGtXIR68OrsnhVHkgOvVndeSSzAIu1FASw1gOWzrqlpQFglQdtH1l2nu16rPWa9oOOnZTjDPovLJ0R
-3cibb30qlkPpdtClABYCWNsCS1p/rAcetdSibPGRfrpfU3pFfcqF1275vvGvLmDZX1K6Kv6OQ715+HmObBMNYCGAtTaw7OUW+5NU
-dXvL5l0uLbe8tGKg8ZpjNR7nz21n4AcsbWPT0HnYDvV+yTeP9fdfABYCWJsAS2djcOne3+oTe7RyrZaDyfZYv9Qkn89pJ+U4g35K
-aH3jsl/cHzwP26EaUZd6B1gaYCGANRNYtkUxPbhSpuw3mfXe+967zR9qi2lTDxg5lfugYyflOIN+0f3pCayh
-8xh4s1UNv/oXrZ2rhJALAaw9gfXNjlTz2Mriu7Q9FgJY9jPQdgtE5z2oYWCpzgWyHupDsS62ABYC
-WIcDVieQ0TZiZdr5WABg2c9A2x3ty4BlPdTnn9Wn2q4AFgJYxwRW447v/FTJvvGy/9hyYDnOQNvf4LSU
-sAMs+6F0y6ZbXn+AhQDWIYvujfUy1Vtd019Aaddjy4vujjMY3EvoW3TvAMt+qG+0Jb+HouiOANYR
-bQ06y7y202jXY4ttDa4z+L6wlv3Aa4qtoeds7R7qCyydtf8JYCGAdSzjqMoGtt05j2S3HMwzjrrO
-oEdCPc04qvrAchyqrmd9HwNYCGAdcWuOpUhWvQ3dcwLYHguwNcdxBuG25nTB59jVrT9E0wALAayd
-Nj/r4c3Prqq+LL1Wut5hrO2P2Tc/65HNz82fO9cV+i+sJ25+rjZZ9/xcvUPpdjuLJ8BCAGsVYPl3
-nmoAq/lYp87+LUrb+knJscxtVnsZ1xlY3q2c316msYzZP5R2Fe79rjRC
-AGsxsNwN/JqPdapWqrNe1nq2HK6Nz2zg5zoDGwn17AZ+5W+5DgWwEMDaHVjOFsmNJ2lr0zzVLU/LTtsVu9N9Votk5xm0X1h3yuFT
-WySr58ChABYCWPsDyzWEovEk2a1Z1w+Y5/aGRVgfWzaEwn0GttBNzxlC8VkscB4KYCGAhRBCAAshhAAWQghgIYQQwEIIASyAhRAC
-WAghBLAQQgALYCGEABZCCAEshBDAAlgIIYCFEEIACyEEsAAWQghgIYQQwEIIASyAhRACWAghBLAQQgALYCGEABZCCAEshBDAAlgI
-IYCFEEIACyEEsAAWQghgIYQQwEIIASyEEAJYCCEEsBBCAAshhAAWQghgASyEEMBCCCGAhRACWAALIQSwEEIIYCGEABbAQggBLIQQ
-AlgIIYAFsBBCAAshhAAWQghgASyEEMBCCCGAhRACWAALIQSwEEIIYCGEABbAQsgpeXwBLITQOWh1UmYBLITWwNXj+DojsgAWQuX3
-WEvzH/PfILx6nEPnIxbAQuj51DI1925m/pMtZdZ5cPVGFsBC6GS4KpSlaZy+uTUfWqfCVYUsgDXt2/I/f/1XyBxeGWm9xhH/C/H9
-93/9KW9+tr6fkNriICesOWUyTR+JiJJHHCUVs+YGWqfj1cmIdTJgdW5+Qy4NsADWslvA0CpKYvEQ5j/m/k3iWKTZzEDrhLw6F7FO
-DaxK06EFsABWjSuZikiI9i08N9A6Ja9CEEuby6Q1wPIOtRTAAlgzS+QiEZabeE6gJU8LLLmMVqb+Z8AvN6hnXwNYBQgUwAJYM+Ir
-Gblv5KmB1kl5tSTEMrCSJdbTauFCAazwyAJYAKtOCGMxdCtPCbTkiYElF8EqTaIojdIyzNIAKzSyABbA+tgZRDJ+O/sGWqfl1YwQ
-SytVXA9DKFMCjM1FNCsWcSRKaGmA5V2AB1gAy/9zSr145R1onRpY/2aEVgZWcdy4ggZaSZKumhdeDFj/+9EAC2D5Gxoi4X9TjwVa
-J+bVBGI18sA4ivsvJJLI/FwDLN+0UAMsgOW7qJcm027rwUDr7MD65w0rWRStYscribiIsTTACkcsgAWwqgrWnFvbGWhdG1jNolUr
-D7RcoXS9HYrXA5YHcgAWwCquRpZF8+5ue6B1emD988gDTWV9LCo1WbaJsQBWuMo7wAJYVQkrnn+HfwOtL7MuCqyWecHvgokoW6uM
-dUVgjd47AAtglYARy27yTqB1QWCVsKrywEcU+xf8irVC+fcfwAqTFAIsgGUufSbj5Td6I9DqAyv9/SptRSCq/kGeHgdYLcJo7V20
-smSFogDWX4AV5OYBWACrMjUEude/gZYvsFJ9OF51gTWpaGUFucz0GsS6JrD+A1gAK7ypYSTQ8gXWEXnVBNaMopV1pVABrEB3D8Da
-/G/EZUwNA4GWJ7CavNLp41jAapgXJhWt+lejLGKFJ9ZFgfUDsLYF1n/6eSFTg5h5z/sA65i8Kp3uC4pWlmtorFj//v27GbD6+DCl
-QPWz8O89wCIhLDJCZ7qTPKIZhRsvYB2UV0LK4R03k2WcDXqFEOt0wHpn2WM3kAZYWwLrlPtyxICNqKjIR1F4YB2SV6lZMlhctLIX
-sQDW50n/LbiDDgQsL/03l8zB6j3/hWiScRpTQ5zq1+tlEqR4UqDlAaw0PxqvivXNVpuYYCW9qoj1D2B9zmL+LQSwJurncrwaMjXE
-Qr0MUAyz8jLQSoIB62C8EoWDbJF5YXgRIssBlu9ffYC1Ha/OV3AfNDWISOavN1WKQEsmIhCwWrwSu+eBgYtWliLWCjnheYE1UpAB
-WOG+IxfkldPUYDzaDcwUzNKPJAywmrxS4ghFKxmyaLVNEevEwBq8jwdvZIAVkFcnbebuMjWYJr/q1QJWPtL13RdYB+FVs2gVx8m6
-6w//gueEZwaWAlgbAGvR8sb5TA1JpH5bwCpYEwJY2QF4tW7RyrY7B2D5WgIAViBdb4FwwNRgHpR5G1cmwgqREsrdedUoWq2XB7aK
-WOkKRawzA+sJsNYH1s8leeU0NTQK7h9g/cooQIT1uyuv0joPfERxss1B4zV25wAsgHW3gru7d5+ZWa9eXb68ZBwUWFvzaruilaWI
-FdyJdWpg/QewVgbWRXnlNDVE6hNg1dzKZYiUcB9etYtW8cZxXdViJmyIBbAA1vx96eqkvDKmhsQ2oErIL6deSn8jrJApobpw0WoL
-YwMpIcC62QKh09RgHKO6DqykqoEVLsLayi+arrXjZu/dOVcF1n8YRym4TzQ1FI6Gb6VdRd9oyywoinARltguD9y8aGW5JE+A5fVE
-tubAq2mmBmHigUZCmNbAUkFXCdclllh9x83OLWauahylWwMF94mmhkg2Ku0mkZJfeEWPc6wSrtIm5mBFrDMD6wdgrQissR055+WV
-1dRgtuR8C1iv3JStvgV4E23Fx/dhiSMUrWxFrMC7c666+VkDLBYIJ5kaGqO3ioRQ1Clh/ghQw8pXJNa2O272
-bTFz0fYyp+npflRgXXaB0G5qEHHT0WC2OxdLhu8M8aWTJOzWnKDEOlTRav0WMxdt4KcAFgX3CaaGpqOhSAhFo3vVK8+iAJuf0xWI1WgT8zgcrNYpYp22
-RfLPNeYSHhRYV+ZV39Rg6CF0IyGM47Kv+5dgWSwCt5cJQKz9dtzs2mLmmkMoFMBigXCCqSFu9MB66awIsBp9R32HnU5p4LeMWMct
-Wq3eYuaSY75+ngCLBUJ/U0PSdDTkWVVjT9I3sLzbNYy3SNa/AXq6777jZlqLmcA54RUHqY4GAADrtgV3m6nBOBrqJu6GTkmVJqa/
-EzcTegyhWEqsXdrEBNidA7AW3VAA62YzvYZNDUmqm70ZqoGEIv5S7CVFsDFfS4glzlC0WrvFzAWBpZ4Ai4L7UEaYDDRx/w4kjGuM
-qVAR1iJiiXR5mxjPXZEHbjFzPWCpJ8Bippe/qUH0mox+BhKqr9U9HLDmEystYLWgaGXiRmFCx0SIUxsbLgcs9QRYLBB6mxp6U70a
-gVbtcxBJMGDNI5Yow6s0ng+r4vllOlmU6MR5W8xcDFg/+gmwmOk1wdTQnerVbObeaLonggFrDrFEuTQYxbNAY3wPmSxGAeUv819t
-sLdtlBW2xcy1gKX2Acp1gHXxBcK+qaE11etlR5dvuwZPYM2KsVKZzqo/iaKNqirf2euT7spHJE7bYuZCwPpP6SfAYoFwgqmhmOrV
-yAKVMvfzywIsv1zMF1jNfdaexDLrg7MYI8xip9TtQYumOWG6IbECF7GuA6z/1G5AuQywfi7Pq46poVlwN6WqwuaY95nlOfvZG1ht
-4nkY6U18FSVz4qtH0TSnPweoGLW4GbLCtpi5UkroHWIBrJsW3LumhlYBqxyYasrTmdkH3b7JcxE0JZxOLJnNDIniLLelucX2oy2N
-DTnAougeHlg34FXH1BDLbzxVNu2rl9SagZZvu4Y+sMJYL03FPZ1VJjfPbFhimxCuNnifscXM5WwNPsgCWHdr2Wc3NRhb0xdNL9ko
-7CQGWlLqiXtzVgOWnLntsNGEsLCW6Saz5GYe0rADoK9nHP0PpzsLhP6dGsoc0Cyj5aL3g7q/jHzsF2GJsoI1K8CK0m+5Xcmy+l0X
-7H5ldMrdOewlBFi3Kbg7xk/ERQ5o6+n37S8j90wJU9eY6vZ7EP0xQPEXUDoz/gbzPlW9y1sl8RlbzFwRWLSXgVcTxk9U8VTcqxIl
-jd3Pu6aEmTn80PGTsurWf2PJtwHXq2xBIUQkVKOvanzGFjOXBNbY7QWwbllwd42fcHAiTuuUMNk3whIju26KOlwvChTJp4/8S1e+
-DNEcZWbcZckJd+dcE1j0dKdln0+nhpEK0Dd/UmJHYGXOEpYJrYyNXZduV4sd37p7ux5unW9WxRIBd+dcFFjMJWSB0G/8xEBgIPS0
-dg1rRVhZFltN7EWyWLsv8qR3/t/8T30T3rowZwzvWwErDrg756rAGsxhANYdFwht4yeGd7V87231SPZbJUzlw1bCiqJE6kaX+G5O
-KBolrDr7a1pldXzC3TknHEJRdnX/b0kZC2DdseBuHT8xSKyvR0unPhtjVoqwLHU3YcKntGPI7xWxRFID6ztZ0dSTamvDVnb3kEWs
-084lHJ1EoQAWvPIwNQy3kZIlFvJIiB2L7v2w0HguVN7Zb9PN8OqWqc36Vh139RG34gBomd8dWGOjCYfuM4B1wwXCIVPD2CKcX7uG
-DWtYxsJu2aLd3RLzXTTI673OccPZsFkRK+DunBMDa+xWUwCLBcK5pob2Wlwskh19WJZENmokdq6AqRlL1clfktRPzcX5ilinBtbw
-zfYDsCi4zzU19DfI7AYsWxErSb8bmp0Znoi+KWFzH46Qr+1zwnAtZs4NrOHyiwZY8GquqWEWWNa621OLx+ptTcjqjl7dDC+qFwRb
-RSwrx86yO+fkwNKzbjaAdb+C+0RTw6GAZVkrKItYr6JBe21v/W0HYg0f1q+uI8T4YeXY2rtzQhWxTg6swaTwB2Atnen1vBawxOOM
-wHIUscwosqiY+qWcOaF8WVztSSMnVOnjbC1mzg6sWU8GWLdbIJxhalgRWBMbXGU2Y4MqxlK0tgd2V/3ihqu9VcSa2qz+SC1mzg6s
-WTczwLrLTK+FpoaVgCVyNdXY0MvdimYx3bb0OurkYdqW/DV252yWEoYbAH16YP3MuOEA1u0K7rNNDWsAy4Q4cmkRS/T9ob+/bcNW
-3NiGk9fvPcq+VXcdnc7YcHpgKYDFTK+1TQ1hgZX5jcppGxsGCtoDRay6n3vd0qtRptdbdZgJtzsHYN0WWD+34tXqpgZvYAn9nia9
-rIjVSPFcRaw6lmr8yOxD1PVgs62AFazFzKWB9QOw5i8Q6uflMsL4EMB6B0RyYRHLNluxY11v5YTCYihV2w1UDTUAGmDdFFjqZrya
-YGoQqwJL+s9PbYYnQ9mWduSEScvVLqqOE6JR9NqsS3K4IhbAuiew7rVAOMnUYG7seSOwvIBVb/BTy3bn+BSxHknenZ1qGrunDqfp
-KYpYAOuWwLrZAuEEU4MoWrekqwGrOfJZLmsxY8sJVXc7ofptNhgV5V5uWZewYrEdscIMgL60rQFgzXnFCxbc/U0NwvRfkTNrOz7A
-ks2GMNkiY4O1j0znTUZSN2enmnHPpi3hxGFAx2oxc2njKMBigXCiqUGYxsNFMToRqwBLDnawmrY7
-xxa29XLCZoPRX5mZcRbfgdavPH5sCKxARawrb83B1kDBfZKpoUgHRZlEpdEqEVba6RKqAhWxnMYGkwDWOaj5HaW+4+pfxTzrDYFVQDdAi5mzA+sHYMGrQKYGMxw5eTuX5CqrhEJ3moT6H8fWYsZWxNJRr5eybjZ+b/yzSjflVaAWM1duLwOwbj3Ta7KpQUSfO39eEWsUWOr3dy6xBotYrRYzcWfJ81HPTm3KbHyOHpsqTIuZKzfwY/MzC4TepgZRDnJ/3/ivPJ2xfjYGLGnhhncZa5C4ia2I9d2KYznuy6wQeg3WOFyLmXMDa6R4THsZCu6epgazYSWpN7LMW0AbAZaNV8V2vlV255jhGeLzzoqssBVkvX6Lzn/bJoShWsycGlhz7707A+uWvBo3NdTp4HfIqAgLrG7B/VtKEkF3555jTrya9KM/sZZIzPRUA6lXXcdS8pFsjatALWauO+aLFskU3D1NDa10cH5OOAgsF698lwrTobdQ92n/faXFLEVDpTo5FAUrVJ6XYVZBqyyO4sf2CmJsuO4g1ZnAmi51ImCp/62oI5sahirMRTrYCq9mDpQZApZQv07JoLtzdP4eWdhwOBggx2ZUdCkR7UKrULtzLjuqfggNtwWW/t89gTVkajCl2sap7K2k+U2n9waWdPPKs/Cee+7OsfXsq6BsylpRFD12VIAWMwcHVliQ3B1Y+r/bAmvIJ16VePpxT0BgqUF4eSWFjhYzprV7XBat+u9ARo9jKUQR67rA+nkCrC0TwgMDa8jUYMKrl9VYmWdTieUGlhzmld/MeEsRq1gANOX0l+UdmMfU0YCVBBgAfV1gaYAFsMZMDY50sApQpjob3MAaCbD8Qixbi5lYOmBlhhamUSKORqzlLWYuCyz1BFgAa9jmbu7nLH85K0txqJRQjPHKy9pgHwDdPf9XabOS8W5rgSu3mLkqsH6eAAtgjZkaokbTc0vYEwUClhwF1q+YOQC6Bdxyer2Se68FrlrEuiiwhg2QANYtgOU0NSSRKx/8zJQRWwEr8ytiVO8jVd088Kiw8tRi5qLAUk+ABbDGTA1imCQvGQhYahxYXkUsS6RY7SKMYGUGVsnj0FreYuaawFJPgAWwxkwNwwlhEWLFk7xL6wNLWxGr2BuopUwOWbTqX/KlOeEVgfWfegIsgDVqamj3trM5G6ZtKFySEsqZLWaiTB0+Dwy6O+eCwBrfwAuw7gQsp6khlvnvSE44qWfU2jUs++6c08AqTIuZ6wHrRz8BFsAaNzUkIxlhuWcmCQGsrOth00rk0pyj1d054XEqLW4xczVg/ac2v3MB1qGB5TQ1xKPAMjlhEGA9dCea0qoTdQVoMXMSYC0tYl0LWP+pHe5cgHVoYLlNDbEei7CmNR713JrjkcMta5uRsvaGuI3IPXZZIta1gPWf2uXOBVgHB5Zwzfx7Hz+t0y/dB0N1u8aOIEj5MhEUGOCLGWhAKBdNYDeBw7fzI4+rP5ZwSh1QuxG2gQeJk4vc8/EwX6LDV6PI+L3nbnbghlxcaKaSZUi2bfAbPE93uuh5eE46NMwcgyjFMUJrLiKS8w6jDCxhDnOHbR/yCyHzNYm6Qu1V5CpiIEhE7gZNmIcjgiyZSA09uP/wd6wdz5sY4Q4hpzJOMlKcOCDKwiyRRGgVMlYRRgKzvGrnYxfHhEZw8LKCGVlqXmDHM0NTrp6GKGWPQ4CrDSbtapeLhZ5mQnXMHb25Eyi9d4eEXaouxA0eT1xhrDZXRP+wAZ+Zr3p4ixwHchMVdCLSB8jGq7nyUcPlbR5hSbQ4yGjrFvl71MyEKtwbk4OizZ6SsX1vo9R7NBX9HLzRnc8Hx5Zy8wGEFBsHhz9GwfqzM9+ZSZcFWLoXLCZIEPPW8VTW/qvCWJ0kmatD35lNRQSxGGEV7zwIZSUl9qeCgWgYaZNCxL8hW6WCHcQsC1EbHkMRORgRpRYrzm3d4LKKsMIgqs/jmC/L47XIDHL/mZJFFrwKwSGctWQkOXYBS9Esi7HxkyKCW3MgSxkvhSFmGLdv+fBhTsJEAfrLd7R0RwgSWoyCT4REVfbLBgEzqvrSq4EqpPbYC60QjEz0t80Zus1DgJdkTHKWLtOE9LcFRIxgQWlU2SAy2YoBlBFlZtCGAKzCYjAYlYy6QJPcLZZh3BTWE5N9GaNJGhPE96EHRBgRSjNqFIWjCwuSnClCkbTzFiRfsWRAmRTAKl4aHqmtRX+IOoxAXZEgeJjYYo1UKMkx3bYjUq6wA0ZXbYEEC3sKq+ESGTvFgbYtDPksDFSghBqnWSNoVzbG0AgXx4Z9FQWuRdp0UDvQFbxjUQoj2AkTUdCjYQqdlkXYAHPdr8o0WkGeRQy4UrRSHOUdM0AaJLmGlI/tWbi0y+u91Ej31iE0ZE4HKz4EjYWjqCZbQoTIYjQdsrwDVJ4rA42UKXGFwAjJLP1T4BGAjAyoJk6LCkijCKhZGE20QTn4PJOKFKFxcgUYzWvWr6wTlYmI3zFLUpgrZ0ij4zwx7UgVnIk55BwrEDX3C/AyK2opJqtPlYAbzwR1HLLLO0/+gxLqiO94EZdCWRkMRvx0jdMJAuMwTSCNhWpNgkAYFnJYXXvv8jhnZg9tLDy5dzSvNqmODFnlnsUFVJjzYzJ6uZYzdmGB1KSCmqWmqdOOXm2IIEUOpYfd5zNdl74QHKuFKnU67u/D4AguMWvFIk4t0NUeU2KjIdh7GMPXLN0hBRJqpWFtaxGCjMywV0RKZgELYmL9r2gjYj30SVS9cAk35tmDYXsa4mTpTr0eoU0N5FtpWeGg7xAUb9OjzCppmFBZBtYMpvu2l2ldQz2XJEuvsFvVE3OYpr6WvXg9SBUa0UCBoYmrXlGJIm2YIoWPMGnXowuVWhK1SVYmGmzFdgChpoCW9Gz+gmZBlwxAjOnkkWNmxA4VfYjE1RhFkvqZnS3vIGAFB9GRNRmxsdLQZPcYIDKI2RJUWYfDUhPZkPh9aAxK6CRTXuoNrNs2gpBcyHKKQMPgjjrDIu3UNYi1ndHTIYDVLgSYtvcOsUxx5USsrC11RrNjAT8zjSVUMV8Ur+g69OUm6cpV5amB/dYo8tzaDZERzRlI8/KOAM7kNqyUTOibpJvikhyW13+3N8PY67CCxJHq7R3nq3oTOpiawJlgYcTVoqiVWj/xG7PGaMIHTU0Ahc/V5XywqqNWtuhK/awK4ENRGVrbaxZ4Kvt7MDM2OEewEvu3QWqFLtMajsxo2XXLcE0Nj0WIC7Y2JUp3qxuqY1bKZHr/QEq2yXaXVFyauLMTCl12AspKT6GrO9trbk1w+5DJRVFWGwfPmI9bhi3XI9Qvt0Xj0oT6k3CAmVRNJ+RcxV1QRN7Sfzm87qcBp6s4ISFrYNmo6HArTeKdNWy6Y+ho+QR0fdXpJXV9d8zc0+Cvkdi47fpqPFB7pYxmMu1rsBW2UoW2CJeS6qnwk26AqJA5K7bLWAWiyZ31axfQ43IbX8/cKxL9vFZXJAxLzzOJTL3Jme1MZtbxbmRm2wutCCppcBTohDhtowS4/n7NDsAJ+HdEtVKVhM2nYaWQuhM8VzSZOIKoKIMhh6xK6kT3J01S0I/F4u0KGQiOSz/J6IKKxNNidx1EVvjPVJWrmM8Fj7ZGVNbiDMwq8hhWQM0zr14GMaaJh0pvrmnhZ5kNJuYUyN+z2h0HOBV0OBr8mrEo+DTjZl3aLnT8KmQsy3uP+C+Xh+uGEipuX8XmEi/H/gvx/N+f1cWoQUwDBLHj3wbrp3HOTiGoDtdDI3ik6XXi8iIWmXaP+j0anwnjcQo+FRWNM43XQBMVLZQNMKGcVnFd37+kcuUv43HPS9xfp13YtV2h8hI0e4yjqkgR8d52GhbhrgqzPmMN+/kRDG1pCGOYR+Ocg3zCmDo05ZbfQT4TIuj1MuPmJq0YOGcGgl7p+W1kokFlN5s+gX5CLm1txQy/wz52QyBIFS4gLqUvpQImKrxGh9BXmyW3OrsuJwEHIzp/4iXVo6ZKzXTR+9/2KQQEWOoqkyWmmj3JNh+/WZqMtVFJczoybGGYaCaIA5vl6nhm6Pg/yRSpp/yZKtGBoTYjrqUIL4MGZi0iPVyDZG5X6MXpCoUOFiBZuBP5N5pDIBEqPzJfqMcnaZ7Yw7QKYVZ+n69wEMKIfCnmD+PTjxQEAHLNP0Wzd6SSY6cCh//RqYGhZUHZEuEc/Uv1grhS0gH98OGB1NjDHBn1IaXpiIcLCGRMPb3WMDt46pSmGQi4aQB3Pk6FA0/Sq/Cg+ykfSyW82KC9EyDfZbvL5kRUMCqEbgHlhkJwzKpEQa7XDpNOaybMkwKlVmZkpDUdWjjWi6vVbDAVNKTTvgAk8yJBfcL1rSD7y/gP9FnQUHRiJZhEEUDATuXyCdJO+X7lw1oxCl1NMXIzRM+ALgGtgjUGnVqAKYzmzFBkeemNVmQjmFvpQz/z22Nh2+jRyV2l7hJDgzWFaipfG30Wr7A6mUAcTrkxsRz/e1icNFi9apYS1JxfQtsFwP7vRdY4mqkzi7QxgWgCsMdFD5CQNCvFHeJLTU7bU6ZI0VZpa0Qd3BiTvWlvHT7qwxq8GlwprDK9XQEjQvENIZcLIA/ZFt+HHZDCnh5ybn1KOd7dI2CBRXHVAvFnyAx5qFA5wiHHUIk4nuRkg3zsU+6cI6OkBiL0CVsBdXjPxyjGC4wFQsK6HXHTJGfiYC1FOT7tQUeBVSxTA1jQjQPyGQBEhhsQ8AXTqnQDSwjRQ7RIGVAs/dD2Ql7J20J1dZ3pFHgv8UXXCmWpgLn+SR7IQ6ZXLJwGUQPdYlwyUk1FjNDDsmCrdU2VRU5jMjtREmbHdRtC8zmozAzNL94GsCnKdIuj2MU7Vu8NqQ5TsRSgHHDx0IPyUmKyg0pVcU1CP+xcRN6EsNVoeoDWJ2EpIm8JBB9v6kc5RTlQb+vpq4q0SQOSPVz2uZQsYIdq4OXQN0UzRA1VrSTa6IvqLlqSAgy6tNpR6pHjzWgx+UZApBEc4Q6DUFcMt06eFXG4TGxjBdTiD3ByC6EkRvQwAEHU2wcQLOKjkBFXWRtSKsKU76bZ1Dkr58FvdnKNTYWhRqSsnAJiGBCSSghKWNVGJSsiw7K1tMWeS/pJ2MWL8Zw3Kd8cRyIE9CohZMIzVx5bBJNcZtkoJ3+4rRRPQiPA6ZLDtYPYFAECsa2dSpNUJVQwQ6M+jWwkzomoMTkWAHBNBJAbMEoqj8ZUTiDECKWRTXY2nF0PpZvSDQZRgrJoRVqrDWI3wfJjgDpmqXEGKsDz4fkSTg/CzkHAOgAFl6Kp6MmFXAXkV/NNWFwCpmgd2pqQwlfaiGwMKiHj4A5GFsgnnHEJzZoEUYCmxwBVHhKR9RFilA7YlDJJcvEE4t2QG5bh+8Pf1o9HXi2GoEUTL0AMG3F1gbIcAnu5yFYE3YEEMGEAy50Cj8SvDWvwXGPWLJjiMT2yH3GAEpFnVwuhtTq7qO8PdbiKFgCzMDlAqwKUvu6VZtNVhAXRIOXIABYAqx6oNm8e1stqQvBtQVJ10B/uUgi+gVIG6ssEsd2OKWaVJFAF6sy5ukgugMYOtIX+6X1ayhYe6Z+Xmv1gNUwx9Fiia7/IVgl6YVWZyRBL9jLZLQJgENaOLbtKolaqRYYWQirIv3/nUfqcX0pwRY0vcCl9sXB3XNsADg3mq6NXfsvK6JUjKCZWQDRxmZEchyr3vAqq6hjCyECCKRMRoqNoewK5gVKAGoPwXm//Hsuny12OGbQVmj+Z8Nks26pUkDI1l9pYRddlj3wrNdn+axx5nVlKsqCNMXdNaxjyEIyJrVJTFS5vqmM8BTYKqFpbAX4P5+Eln/+Bi7HDNoKZ5Cx6xPfFvRSo9V43PAwVIl8HqOVnNzRaMgMpRYCK5PpmOnpGDRV4TXlhBy+qQzVxsHiOiqE/6kpnKdbq5+pwj6hWU9Vlt1gzYBKiGq5SHsVuT/mMy0yx2+lPoAOHzfZGcmWEPoCm4EaphaQ3Vw/0YLE5nEw9LdqoGSqiFaSWSBc6lD8KHUUbqkoT/AFgKjWd8d4Mo5Ngy3YySFRVRIfBe9N+pNkZMkMi1zVZwjg5fEPHgTHKEJpYQq1rLTgJ/MQiwD2IwTTZNL+0uAS4GLEQh+HhxnnxjtXaYyq1YHWYWH2nwBe0gD2uAUMBMqE6lZ/iMT3kQJ/F/GG5V1/e4RhYsHdPWxeBsKtJ9NHOd6bZLwWRVAaJhLPPe6jkaZJhwb1k2xhVfS4PJvI1h5nzlRs1zJBJVVTmYVJdXmDZ5GZdc7IPo5Of7F+8dKjMCe8NOYAXqNWl/nGdl3XzUsT6TQgwQmWbG4EKHvf45HHoKrFC9YJdJ7q9N4wpQqfEq4ofLjJ/yg7cKsXzPZPgBFsdUjAUYBmMxuNEuf3C4yGTwtfBN7ZCmFCqU1DRhWNIlOclXwH5QhqEu0UE8bTcEJAHZENSa72Cx5fHMq0GXC7DfmEhlSqXG94VNBJCSF1dJ4G0YR8xDJSYXQqGk0Rb4OVtqlj3mZYxFTCm4yiJfxLfmGiXCDcViHMXkHKdSgjwhFOKbyRR68sDzEhbLaWTBLhg4pIRLkQNOjhzyyAhvQA2HADLyk3DDMi4lXgg28yJoTjQuhD1+d5hLDSX3/vbzfJkuH4YvpdAB8Hon50WXWy7RUMkBCQ5CP+SY5tGFRQjXXQXvEUgR2FDhgxV3sAAAAASUVORK5CYII=
-`.replace(/\s+/g, '');
-const OG_PNG = Buffer.from(OG_PNG_BASE64, 'base64');
+// ---------------------------------------------------------------
+// 1. Tiny raster toolkit
+// ---------------------------------------------------------------
+const W = 1200;
+const H = 630;
 
+const FONT = { // 5x7 pixel font, rows top to bottom
+    A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+    B: ['11110', '10001', '10001', '11110', '10001', '10001', '11110'],
+    C: ['01110', '10001', '10000', '10000', '10000', '10001', '01110'],
+    D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+    E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+    F: ['11111', '10000', '10000', '11110', '10000', '10000', '10000'],
+    G: ['01110', '10001', '10000', '10111', '10001', '10001', '01111'],
+    H: ['10001', '10001', '10001', '11111', '10001', '10001', '10001'],
+    I: ['01110', '00100', '00100', '00100', '00100', '00100', '01110'],
+    K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'],
+    L: ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
+    M: ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
+    N: ['10001', '11001', '10101', '10011', '10001', '10001', '10001'],
+    O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+    P: ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
+    R: ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
+    S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+    T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+    U: ['10001', '10001', '10001', '10001', '10001', '10001', '01110'],
+    W: ['10001', '10001', '10001', '10101', '10101', '11011', '10001'],
+    Y: ['10001', '10001', '01010', '00100', '00100', '00100', '00100'],
+    Z: ['11111', '00001', '00010', '00100', '01000', '10000', '11111'],
+    '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
+    '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
+    '3': ['11110', '00001', '00001', '01110', '00001', '00001', '11110'],
+    ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000']
+};
+
+function crc32(buf) {
+    let c, crc = 0xffffffff;
+    for (let n = 0; n < buf.length; n++) {
+        c = (crc ^ buf[n]) & 0xff;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        crc = (crc >>> 8) ^ c;
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function chunk(type, data) {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+}
+
+function encodePng(rgb) { // rgb: Buffer W*H*3
+    const raw = Buffer.alloc((W * 3 + 1) * H);
+    for (let y = 0; y < H; y++) {
+        raw[y * (W * 3 + 1)] = 0; // filter: none
+        rgb.copy(raw, y * (W * 3 + 1) + 1, y * W * 3, (y + 1) * W * 3);
+    }
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(W, 0);
+    ihdr.writeUInt32BE(H, 4);
+    ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB
+    return Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        chunk('IHDR', ihdr),
+        chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+        chunk('IEND', Buffer.alloc(0))
+    ]);
+}
+
+function renderOgImage() {
+    const px = Buffer.alloc(W * H * 3);
+    const set = (x, y, c, a) => {
+        if (x < 0 || y < 0 || x >= W || y >= H) return;
+        const i = (y * W + x) * 3;
+        if (a === undefined || a >= 1) { px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; return; }
+        px[i] = px[i] + (c[0] - px[i]) * a;
+        px[i + 1] = px[i + 1] + (c[1] - px[i + 1]) * a;
+        px[i + 2] = px[i + 2] + (c[2] - px[i + 2]) * a;
+    };
+    const rect = (x0, y0, x1, y1, c) => {
+        for (let y = Math.max(0, y0); y < Math.min(H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) set(x, y, c);
+    };
+    const GOLD = [212, 175, 55];
+    const FELT = [9, 48, 30];
+
+    rect(0, 0, W, H, FELT);
+    // double gold frame
+    rect(18, 18, W - 18, 22, GOLD); rect(18, H - 22, W - 18, H - 18, GOLD);
+    rect(18, 18, 22, H - 18, GOLD); rect(W - 22, 18, W - 18, H - 18, GOLD);
+    const DIM = [120, 98, 30];
+    rect(32, 32, W - 32, 34, DIM); rect(32, H - 34, W - 32, H - 32, DIM);
+    rect(32, 32, 34, H - 32, DIM); rect(W - 34, 32, W - 32, H - 32, DIM);
+
+    function text(str, x, y, s, c, gap) {
+        let cx = x;
+        for (const ch of str) {
+            const g = FONT[ch] || FONT[' '];
+            for (let r = 0; r < 7; r++) for (let q = 0; q < 5; q++) if (g[r][q] === '1') rect(cx + q * s, y + r * s, cx + (q + 1) * s, y + (r + 1) * s, c);
+            cx += (5 + (gap === undefined ? 1 : gap)) * s;
+        }
+        return cx;
+    }
+    const textWidth = (str, s, gap) => str.length * (5 + (gap === undefined ? 1 : gap)) * s - (gap === undefined ? 1 : gap) * s;
+
+    text('THE CLASSIC CARD GAME', 88, 88, 5, [167, 243, 208]);
+    text('BLITZ', 84, 160, 17, [251, 191, 36]);
+    text('31', 84, 330, 22, [255, 255, 255], 1);
+    text('PLAY FREE WITH FRIENDS OR BOTS', 88, 548, 5, [226, 232, 240]);
+
+    // --- cards: signed-distance rounded rect + spade, 3x3 supersampled, rotated about their centres
+    function spadeCoverage(u, v) { // u,v in [-1,1], y up; heart flipped + stem
+        const x = u * 1.25, y = -v * 1.25 + 0.15; // flipped heart
+        const h = Math.pow(x * x + y * y - 1, 3) - x * x * y * y * y;
+        if (h <= 0) return true;
+        // stem: small triangle under the bowl
+        return v < -0.4 && v > -1 && Math.abs(u) < 0.07 + (-0.4 - v) * 0.4;
+    }
+    function drawCard(cx, cy, angleDeg, rank) {
+        const cw = 190, ch = 270, r = 18;
+        const a = angleDeg * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+        const R = Math.ceil(Math.hypot(cw, ch) / 2) + 14;
+        for (let py = Math.floor(cy - R); py < cy + R; py++) {
+            for (let pxx = Math.floor(cx - R); pxx < cx + R; pxx++) {
+                let cardCov = 0, shadowCov = 0, ink = 0, edge = 0;
+                for (let sy = 0; sy < 3; sy++) for (let sx = 0; sx < 3; sx++) {
+                    const dx = pxx + (sx + 0.5) / 3 - cx, dy = pyy(py, sy) - cy;
+                    // inverse-rotate into card space
+                    const lx = dx * cos + dy * sin, ly = -dx * sin + dy * cos;
+                    const inRR = (x, y) => {
+                        const qx = Math.abs(x) - (cw / 2 - r), qy = Math.abs(y) - (ch / 2 - r);
+                        return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) <= r;
+                    };
+                    if (inRR(lx, ly)) {
+                        cardCov++;
+                        // spade in the centre
+                        if (spadeCoverage(lx / 62, (ly - 18) / -62)) ink++;
+                        // small spade under the rank
+                        const sx2 = (lx + cw / 2 - 40) / 15, sy2 = (-(ly + ch / 2 - 96)) / 15;
+                        if (spadeCoverage(sx2, sy2)) ink++;
+                    } else if (inRR(lx - 5, ly - 7)) shadowCov++;
+                    else if (inRR(lx, ly) === false && false) edge++;
+                }
+                if (shadowCov) set(pxx, py, [4, 22, 14], shadowCov / 9 * 0.7);
+                if (cardCov) {
+                    set(pxx, py, [250, 250, 245], cardCov / 9);
+                    if (ink) set(pxx, py, [25, 25, 30], ink / 9);
+                }
+            }
+        }
+        // rank letters in the card's top-left corner (rotated roughly by drawing axis-aligned blocks is skipped:
+        // draw each font pixel as a small rotated square)
+        const s = 6, gap = 1;
+        let ox = -cw / 2 + 22;
+        for (const chr of rank) {
+            const g = FONT[chr];
+            for (let rr = 0; rr < 7; rr++) for (let q = 0; q < 5; q++) if (g[rr][q] === '1') {
+                for (let yy = 0; yy < s; yy++) for (let xx = 0; xx < s; xx++) {
+                    const lx = ox + q * s + xx, ly = -ch / 2 + 20 + rr * s + yy;
+                    const x = Math.round(cx + lx * cos - ly * sin), y = Math.round(cy + lx * sin + ly * cos);
+                    set(x, y, [25, 25, 30]); set(x + 1, y, [25, 25, 30]);
+                }
+            }
+            ox += (5 + gap) * s;
+        }
+    }
+    function pyy(py, sy) { return py + (sy + 0.5) / 3; }
+    drawCard(790, 340, -16, 'A');
+    drawCard(905, 320, 0, 'K');
+    drawCard(1020, 345, 15, '10');
+
+    return encodePng(px);
+}
+
+let ogPng = null;
 router.get('/og-image.png', (req, res) => {
-    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
-    res.send(OG_PNG);
+    try {
+        if (!ogPng) ogPng = renderOgImage();
+        res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+        res.send(ogPng);
+    } catch (err) {
+        console.error('[SEO] og-image render failed:', err.message);
+        res.status(500).end();
+    }
 });
 
 router.get('/robots.txt', (req, res) => {
     res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin.html\nDisallow: /auth/\n');
 });
 
+// ---------------------------------------------------------------
+// 2. index.html with the visitor's own origin in the og:/canonical URLs
+// ---------------------------------------------------------------
 function originOf(req) {
     const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
@@ -123,4 +229,4 @@ function serveIndex(req, res, indexPath) {
     }
 }
 
-module.exports = { router, serveIndex };
+module.exports = { router, serveIndex, renderOgImage };
