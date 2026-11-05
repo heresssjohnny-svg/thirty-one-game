@@ -2091,7 +2091,7 @@ window.updateUIFromLobby = function(lobby) {
 
             let countdownBarHtml = '';
             if (isCurrent && lobby.turnDeadline) {
-                const dur = p.isOffline ? 5000 : 25000;
+                const dur = p.isOffline ? 20000 : 25000;
                 countdownBarHtml = `
                     <div style="width:100%; height:4px; background:rgba(0,0,0,0.5); border-radius:99px; overflow:hidden; margin-top:3px;">
                         <div class="seat-countdown-fill" data-deadline="${lobby.turnDeadline}" data-duration="${dur}" style="width:100%; height:100%; background:#10b981; transition:width 0.2s linear;"></div>
