@@ -9,6 +9,7 @@ const zlib = require('zlib');
 const express = require('express');
 
 const router = express.Router();
+router.use(require('./pwa').router); // /icon-192.png, /icon-512.png, /icon-maskable-512.png, /apple-touch-icon.png
 
 // ---------------------------------------------------------------
 // 1. Tiny raster toolkit
