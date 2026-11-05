@@ -26,7 +26,7 @@ const WebSocket = require('ws');
 const db = require('./db');
 const config = require('./config');
 const { clientIp, isGuestUserId, isGuestSocket } = require('./guest');
-const { areFriends, befriend } = require('./friends');
+const { areFriends, befriend, nameOf } = require('./friends');
 
 const router = express.Router();
 const sql = typeof db.prepare === 'function' ? db : db.db;
@@ -142,10 +142,128 @@ const BET_TYPES = new Set([
 ]);
 const PUBLIC_MSG = 'Public tables are free play. Wagers and side bets are only on private tables with friends.';
 
+// ---- private table list + "ask the host to let me in" --------------------------------------------
+const REQUEST_MS = 60 * 1000;          // a request waits this long for the host
+const APPROVAL_MS = 5 * 60 * 1000;     // an approval is good for this long
+const DENY_COOLDOWN_MS = 60 * 1000;    // after a "no", the same player cannot ask again for this long
+const ASK_GAP_MS = 3000;               // minimum gap between requests from one player
+const MAX_PENDING_PER_TABLE = 10;
+const pending = new Map();     // requestId -> { id, code, uid, username, ws, at }
+const approvals = new Map();   // "uid|CODE" -> expiresAt
+const denied = new Map();      // "uid|CODE" -> until
+const lastAsk = new Map();     // uid -> timestamp
+let requestSeq = 0;
+const keyOf = (uid, code) => String(uid) + '|' + String(code).toUpperCase();
+
+function hasApproval(uid, code) {
+    const k = keyOf(uid, code), exp = approvals.get(k);
+    if (!exp) return false;
+    if (Date.now() > exp) { approvals.delete(k); return false; }
+    return true;
+}
+
+function hostSockets(lobby, hostUid) {
+    const out = [];
+    for (const p of lobby.players || []) {
+        if (!p.isBot && p.userId && String(p.userId) === hostUid && p.id && p.id.readyState === WebSocket.OPEN) out.push(p.id);
+    }
+    for (const s of lobby.spectators || []) {
+        if (s.userId && String(s.userId) === hostUid && s.idSocket && s.idSocket.readyState === WebSocket.OPEN) out.push(s.idSocket);
+    }
+    return out;
+}
+
+function privateTableList(ws, lobbies, lobbyManager) {
+    const uid = realUserId(ws);
+    if (!uid) return [];
+    const rows = [];
+    for (const l of Object.values(lobbies || {})) {
+        if (!l || !l.isPrivate) continue;
+        const h = hostUserId(l, lobbyManager);
+        if (!h) continue;      // tables hosted by a guest cannot be asked for permission
+        rows.push({
+            code: l.code, name: l.name, host: l.host,
+            count: (l.players || []).length, maxPlayers: 6, state: l.gameState,
+            friend: h === uid || areFriends(uid, h), mine: alreadyAtTable(l, uid)
+        });
+    }
+    return rows;
+}
+
+function handleRequestJoin(ws, msg, lobbies, lobbyManager) {
+    const uid = realUserId(ws);
+    if (!uid) { sendError(ws, 'Log in with an account to join private tables.'); return; }
+    const code = String(msg.code || '').trim().toUpperCase();
+    const lobby = code && lobbies ? lobbies[code] : null;
+    if (!lobby || !lobby.isPrivate) { sendError(ws, 'That private table is no longer open.'); return; }
+    const hostUid = hostUserId(lobby, lobbyManager);
+    if (!hostUid) { sendError(ws, 'That table cannot take join requests.'); return; }
+    if (alreadyAtTable(lobby, uid) || hostUid === uid || areFriends(uid, hostUid)) {
+        sendTo(ws, { type: 'JOIN_APPROVED', code });
+        return;
+    }
+    const now = Date.now(), key = keyOf(uid, code);
+    if ((denied.get(key) || 0) > now) { sendError(ws, 'The host declined your request. Try again in a minute.'); return; }
+    for (const r of pending.values()) {
+        if (r.uid === uid && r.code === code) { sendTo(ws, { type: 'JOIN_REQUEST_SENT', code, host: lobby.host }); return; }
+    }
+    if (now - (lastAsk.get(uid) || 0) < ASK_GAP_MS) { sendError(ws, 'Slow down a little, then ask again.'); return; }
+    let forTable = 0;
+    for (const r of pending.values()) if (r.code === code) forTable += 1;
+    if (forTable >= MAX_PENDING_PER_TABLE) { sendError(ws, 'That table has too many requests waiting. Try again later.'); return; }
+    const hosts = hostSockets(lobby, hostUid);
+    if (!hosts.length) { sendError(ws, 'The host is not online right now.'); return; }
+
+    lastAsk.set(uid, now);
+    const id = 'jr' + (++requestSeq) + '_' + Math.random().toString(36).slice(2, 8);
+    const username = nameOf(uid) || 'A player';
+    pending.set(id, { id, code, uid, username, ws, at: now });
+    hosts.forEach(h => sendTo(h, { type: 'JOIN_REQUEST', requestId: id, code, username }));
+    sendTo(ws, { type: 'JOIN_REQUEST_SENT', code, host: lobby.host });
+}
+
+function handleRespondJoin(ws, msg, lobbies, lobbyManager) {
+    const r = pending.get(String(msg.requestId || ''));
+    if (!r) return;
+    const lobby = lobbies ? lobbies[r.code] : null;
+    if (!lobby || !lobby.isPrivate) { pending.delete(r.id); return; }
+    const hostUid = hostUserId(lobby, lobbyManager);
+    if (!hostUid || realUserId(ws) !== hostUid) { sendError(ws, 'Only the table host can answer join requests.'); return; }
+    pending.delete(r.id);
+    const key = keyOf(r.uid, r.code);
+    if (msg.allow === true) {
+        approvals.set(key, Date.now() + APPROVAL_MS);
+        sendTo(r.ws, { type: 'JOIN_APPROVED', code: r.code });
+    } else {
+        denied.set(key, Date.now() + DENY_COOLDOWN_MS);
+        sendTo(r.ws, { type: 'JOIN_DENIED', code: r.code, host: lobby.host });
+    }
+}
+
+function sweepRequests() {
+    const now = Date.now();
+    for (const [id, r] of pending) {
+        const dead = !r.ws || r.ws.readyState !== WebSocket.OPEN;
+        if (dead) { pending.delete(id); continue; }
+        if (now - r.at > REQUEST_MS) { pending.delete(id); sendTo(r.ws, { type: 'JOIN_DENIED', code: r.code, expired: true }); }
+    }
+    for (const [k, exp] of approvals) if (now > exp) approvals.delete(k);
+    for (const [k, until] of denied) if (now > until) denied.delete(k);
+    for (const [k, t] of lastAsk) if (now - t > 60000) lastAsk.delete(k);
+}
+
 // Returns true when the message may continue to the game dispatcher.
 function privateGate(ws, msg, lobbies, lobbyManager) {
     if (!msg || typeof msg.type !== 'string') return true;
     const type = msg.type;
+
+    // ---- private table list and join permission (real accounts)
+    if (type === 'GET_PRIVATE_TABLES') {
+        sendTo(ws, { type: 'PRIVATE_TABLES', tables: privateTableList(ws, lobbies, lobbyManager), signedIn: !!realUserId(ws) });
+        return false;
+    }
+    if (type === 'REQUEST_JOIN') { handleRequestJoin(ws, msg, lobbies, lobbyManager); return false; }
+    if (type === 'RESPOND_JOIN_REQUEST') { handleRespondJoin(ws, msg, lobbies, lobbyManager); return false; }
 
     // ---- public tables: free play only
     if (BET_TYPES.has(type) || type === 'UPDATE_WAGER' || type === 'SET_WAGER_MODE') {
@@ -177,7 +295,7 @@ function privateGate(ws, msg, lobbies, lobbyManager) {
         if (alreadyAtTable(lobby, uid)) return true;           // reconnecting
 
         const hostUid = hostUserId(lobby, lobbyManager);
-        if (hostUid && hostUid !== uid && !areFriends(uid, hostUid) && msg.viaInvite !== true) {
+        if (hostUid && hostUid !== uid && !areFriends(uid, hostUid) && msg.viaInvite !== true && !hasApproval(uid, code)) {
             sendError(ws, 'This is a private table for friends. Ask the host for an invite link.');
             return false;
         }
@@ -207,10 +325,14 @@ function afterPrivateDispatch(ws, msg, lobbies, broadcastLobbyUpdate, lobbyManag
             sendTo(ws, { type: 'TABLE_INFO', code: lobby.code, isPrivate: !!lobby.isPrivate });
         }
 
-        if (msg.type === 'JOIN_LOBBY' && msg.viaInvite === true && lobby.isPrivate) {
+        if (msg.type === 'JOIN_LOBBY' && lobby.isPrivate) {
             const uid = realUserId(ws);
             const hostUid = hostUserId(lobby, lobbyManager);
-            if (uid && hostUid && uid !== hostUid && alreadyAtTable(lobby, uid)) befriend(uid, hostUid, 'invite');
+            const approved = uid ? hasApproval(uid, lobby.code) : false;
+            if (uid && hostUid && uid !== hostUid && alreadyAtTable(lobby, uid) && (msg.viaInvite === true || approved)) {
+                befriend(uid, hostUid, approved ? 'approved' : 'invite');
+                approvals.delete(keyOf(uid, lobby.code));
+            }
         }
     } catch (err) {
         console.error('[PrivateTables] afterDispatch error:', err.message);
@@ -230,12 +352,12 @@ function enforcePublicFree(lobbyManager) {
 }
 
 function startPrivateTables({ lobbyManager }) {
-    const timer = setInterval(() => { try { enforcePublicFree(lobbyManager); } catch (e) {} }, 1000);
+    const timer = setInterval(() => { try { enforcePublicFree(lobbyManager); sweepRequests(); } catch (e) {} }, 1000);
     if (timer.unref) timer.unref();
     return timer;
 }
 
 module.exports = {
     router, privateGate, afterPrivateDispatch, startPrivateTables, enforcePublicFree,
-    hasAccepted, recordAcceptance, TERMS_VERSION, TERMS_PARAGRAPHS
+    hasAccepted, recordAcceptance, TERMS_VERSION, TERMS_PARAGRAPHS, hasApproval
 };
