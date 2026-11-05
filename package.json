@@ -18,6 +18,7 @@
     "jsonwebtoken": "^9.0.2",
     "livekit-server-sdk": "^2.1.2",
     "nodemailer": "^6.9.14",
+    "web-push": "^3.6.7",
     "ws": "^8.17.0"
   }
 }

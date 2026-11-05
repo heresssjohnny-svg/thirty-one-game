@@ -33,6 +33,8 @@ const { router: statsRouter, startStatsTracker } = require('./server/stats');
 const { startDebtWatch } = require('./server/debtWatch');
 const { router: friendsRouter } = require('./server/friends');
 const { router: termsRouter, privateGate, afterPrivateDispatch, startPrivateTables } = require('./server/privateTables');
+const { router: pushRouter } = require('./server/push');
+const { startRematch } = require('./server/rematch');
 
 const app = express();
 const server = http.createServer(app);
@@ -64,6 +66,8 @@ app.use('/api', statsRouter);
 // /api/friends/* (server/friends.js) and /api/terms (server/privateTables.js)
 app.use('/api', friendsRouter);
 app.use('/api', termsRouter);
+// /api/push/* (server/push.js)
+app.use('/api', pushRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -540,3 +544,6 @@ startDebtWatch({ lobbyManager });
 
 // Keeps public tables on the free table type (see privateTables.js)
 startPrivateTables({ lobbyManager });
+
+// Rematch prompt after a match, plus push notifications for rematches and missed turns (see rematch.js)
+startRematch({ lobbyManager });
