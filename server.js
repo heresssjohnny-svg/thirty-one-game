@@ -31,6 +31,8 @@ const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server
 const { router: seoRouter, serveIndex } = require('./server/seo');
 const { router: statsRouter, startStatsTracker } = require('./server/stats');
 const { startDebtWatch } = require('./server/debtWatch');
+const { router: friendsRouter } = require('./server/friends');
+const { router: termsRouter, privateGate, afterPrivateDispatch, startPrivateTables } = require('./server/privateTables');
 
 const app = express();
 const server = http.createServer(app);
@@ -59,6 +61,9 @@ app.use('/auth', guestRouter);
 app.use('/', seoRouter);
 // /api/stats/me and /api/leaderboard (server/stats.js)
 app.use('/api', statsRouter);
+// /api/friends/* (server/friends.js) and /api/terms (server/privateTables.js)
+app.use('/api', friendsRouter);
+app.use('/api', termsRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -444,6 +449,9 @@ wss.on('connection', (ws, req) => {
         // Guests: no betting/balances, Free tables only (server/guest.js)
         if (!guestGate(ws, parsed, lobbies)) return;
 
+        // Public tables are free play; private tables are friends-only and need the 18+ terms (server/privateTables.js)
+        if (!privateGate(ws, parsed, lobbies, lobbyManager)) return;
+
         // Table type (SET_WAGER_MODE, room creator only) and the Free wager option.
         // See server/game/wagerModes.js; returns true when the message was handled there.
         if (handleWagerMessage(ws, parsed, lobbyManager, broadcastLobbyList)) return;
@@ -453,6 +461,7 @@ wss.on('connection', (ws, req) => {
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);
         afterGuestDispatch(ws, parsed, lobbies, broadcastLobbyUpdate);
+        afterPrivateDispatch(ws, parsed, lobbies, broadcastLobbyUpdate, lobbyManager);
     });
 
     // Clean up player/spectator state when a socket disconnects
@@ -528,3 +537,6 @@ startStatsTracker({ lobbyManager });
 
 // Warns the table host when a player owing more than $50 net lifetime joins (see debtWatch.js)
 startDebtWatch({ lobbyManager });
+
+// Keeps public tables on the free table type (see privateTables.js)
+startPrivateTables({ lobbyManager });
