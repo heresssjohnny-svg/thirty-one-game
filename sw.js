@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v16';
+const CACHE_NAME = 'thirtyone-cache-v17';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -23,7 +23,9 @@ const ASSETS_TO_CACHE = [
     './js/debtWatch.js',
     './js/friends.js',
     './js/privateTables.js',
-    './js/privateTabs.js'
+    './js/privateTabs.js',
+    './js/rematch.js',
+    './js/push.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -74,5 +76,31 @@ self.addEventListener('fetch', (event) => {
             .catch(() => {
                 return caches.match(req).then((hit) => hit || (req.mode === 'navigate' ? caches.match('./') : undefined));
             })
+    );
+});
+
+// ---- web push (server/push.js sends { title, body, url, tag }) ----
+self.addEventListener('push', (event) => {
+    let d = {};
+    try { d = event.data ? event.data.json() : {}; } catch (e) { d = {}; }
+    event.waitUntil(self.registration.showNotification(d.title || 'Blitz 31', {
+        body: d.body || '',
+        tag: d.tag || 'blitz31',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        data: { url: d.url || '/' }
+    }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const url = (event.notification.data && event.notification.data.url) || '/';
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+            for (const c of list) {
+                if ('focus' in c) { return c.focus(); }
+            }
+            return self.clients.openWindow(url);
+        })
     );
 });
