@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 const WebSocket = require('ws');
 const db = require('./db');
 const config = require('./config');
+const { clientIp } = require('./guest');
 const { lobbies, broadcastLobbyUpdate, resetLobbyToReadyRoom } = require('./game/lobbyManager');
 
 // All credentials come from server/config.js (which reads .env / process.env)
@@ -361,7 +362,7 @@ const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
 router.post('/admin/login', async (req, res) => {
     const { username, password } = req.body || {};
-    const ip = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+    const ip = clientIp(req); // behind Caddy req.ip is always 127.0.0.1
     const now = Date.now();
 
     let rec = adminLoginFails.get(ip);
@@ -419,9 +420,9 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
     try {
         let users = [];
         try {
-            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin FROM users ORDER BY created_at DESC`).all();
+            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         } catch (e) {
-            users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users ORDER BY created_at DESC`).all();
+            users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         }
 
         const ledger = sqlDb.prepare(`
