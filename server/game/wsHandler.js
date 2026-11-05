@@ -547,7 +547,7 @@ function resetTurnTimer(lobby) {
 
     if (!currentPlayer.isBot) {
         const isDisconnected = !currentPlayer.id || (typeof currentPlayer.id === 'object' && currentPlayer.id.readyState !== WebSocket.OPEN);
-        const timeoutMs = isDisconnected ? 5000 : 25000;
+        const timeoutMs = isDisconnected ? 20000 : 25000;
         lobby.turnDeadline = Date.now() + timeoutMs;
 
         lobby.turnTimeoutTimer = setTimeout(() => {

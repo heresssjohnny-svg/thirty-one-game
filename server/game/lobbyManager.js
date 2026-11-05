@@ -479,10 +479,10 @@ function resetTurnTimer(lobby) {
     const currentPlayer = lobby.players[lobby.turnIndex];
     if (!currentPlayer || currentPlayer.eliminated) return;
 
-    // Only apply timer to human players (5s fast-play if disconnected, 25s if connected)
+    // Only apply timer to human players (20s grace if disconnected, 25s if connected)
     if (!currentPlayer.isBot) {
         const isDisconnected = !currentPlayer.id || (typeof currentPlayer.id === 'object' && currentPlayer.id.readyState !== WebSocket.OPEN);
-        const timeoutMs = isDisconnected ? 5000 : 25000;
+        const timeoutMs = isDisconnected ? 20000 : 25000;
         lobby.turnDeadline = Date.now() + timeoutMs;
 
         lobby.turnTimeoutTimer = setTimeout(() => {
