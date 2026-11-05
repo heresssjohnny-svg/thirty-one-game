@@ -172,4 +172,37 @@
         }
     }
     setInterval(tidy, 600);
+
+    // ---- host: move a seated player to the spectators (waiting room) -------------------------
+    function wrapTapSeat() {
+        var orig = window.tapSeat;
+        if (typeof orig !== 'function' || orig.__moveWrapped) return;
+        var wrapped = function (name) {
+            var r = orig.apply(this, arguments);
+            try {
+                var cs = window.clientState || {};
+                var body = $('seat-action-body');
+                var modal = $('seat-action-modal');
+                if (cs.gameState === 'lobby' && body && modal && modal.style.display !== 'none' &&
+                    /host controls/i.test(($('seat-action-title') || {}).innerText || '') && !body.querySelector('[data-move-spec]')) {
+                    var b = el('button', 'margin-top:8px;width:100%;font-size:.75rem;padding:6px;background:#475569;', '🪑 Move to spectators');
+                    b.type = 'button';
+                    b.setAttribute('data-move-spec', String(name || ''));
+                    body.insertBefore(b, body.firstChild);
+                }
+            } catch (e) {}
+            return r;
+        };
+        wrapped.__moveWrapped = true;
+        window.tapSeat = wrapped;
+    }
+    document.addEventListener('click', function (ev) {
+        var t = ev.target && ev.target.closest ? ev.target.closest('[data-move-spec]') : null;
+        if (!t) return;
+        var name = t.getAttribute('data-move-spec');
+        if (!name) return;
+        if (typeof window.initSocketAndSend === 'function') window.initSocketAndSend({ type: 'ADMIN_MOVE_TO_SPECTATOR', targetUsername: name });
+        if (typeof window.toggleModal === 'function') window.toggleModal('seat-action-modal', false);
+    });
+    setInterval(wrapTapSeat, 600);
 })();
