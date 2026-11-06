@@ -50,3 +50,58 @@ body[data-dc-state="finalTurn"] .dc-mine .seat-cards {
 @media (prefers-reduced-motion: reduce) {
     body #knock-alert-modal, body #discard-pickup-topleft-modal, body #fed-card-topright-modal { animation-duration: 0.01s; animation-delay: 6s; }
 }
+
+/* 5. Compact in-game header: title row, then "turn banner + End Match/Leave" on ONE row,
+      then ONE row of tools (the three text-only buttons become icons). */
+body #game-view .in-game-header {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 2px 6px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+}
+body #game-view .in-game-header .header-left {
+    flex: 1 0 100% !important;
+    justify-content: center !important;
+}
+body #game-view .in-game-header .header-center {
+    flex: 1 1 auto !important;
+    text-align: left !important;
+    min-width: 0;
+}
+body #game-view .in-game-header .header-right {
+    flex: 0 0 auto !important;
+}
+body #game-view #in-game-top-row-btns {
+    flex-wrap: nowrap !important;
+    width: auto !important;
+    gap: 4px !important;
+}
+body #game-view #in-game-top-row-btns button {
+    padding: 3px 9px !important;
+    font-size: 0.72rem !important;
+    white-space: nowrap;
+}
+body #game-view #in-game-tools-row {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    justify-content: center !important;
+}
+body #game-view #in-game-tools-row .tool-btn {
+    padding: 4px 9px !important;
+    white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* icon-only: hide the word, show the emoji */
+body #chat-toggle-btn, body #board-btn, body #rules-btn { font-size: 0 !important; }
+body #chat-toggle-btn::before { content: '💬'; font-size: 0.95rem; }
+body #board-btn::before { content: '📋'; font-size: 0.95rem; }
+body #rules-btn::before { content: '📜'; font-size: 0.95rem; }
+@media (max-width: 380px) {
+    body #game-view #in-game-tools-row .tool-btn { padding: 4px 6px !important; font-size: 0.68rem !important; }
+}

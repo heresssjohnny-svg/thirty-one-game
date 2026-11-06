@@ -56,7 +56,9 @@
     }
 
     function refresh() {
-        var show = !isStandalone() && (!!deferredPrompt || isIos);
+        // Always offer it in a browser tab: not every phone fires the install prompt (Chrome skips it if the
+        // app was installed before, Samsung/other browsers differ), so the fallback is a short how-to.
+        var show = !isStandalone();
         buttons.forEach(function (b) { b.style.display = show ? '' : 'none'; });
     }
 
@@ -81,7 +83,32 @@
             } catch (e) {}
             return;
         }
-        if (isIos) showIosGuide();
+        if (isIos) showIosGuide(); else showManualGuide();
+    }
+
+    function showManualGuide() {
+        var o = $('manual-install-guide');
+        if (!o) {
+            o = document.createElement('div');
+            o.id = 'manual-install-guide';
+            o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:100000;display:flex;' +
+                'align-items:flex-end;justify-content:center;padding:16px;';
+            o.innerHTML =
+                '<div style="background:#071e13;border:1.5px solid #fbbf24;border-radius:12px;max-width:380px;width:100%;' +
+                'padding:16px 18px;color:#e2e8f0;font-size:.95rem;line-height:1.5;box-shadow:0 10px 30px rgba(0,0,0,.7);">' +
+                '<div style="color:#fbbf24;font-weight:800;font-size:1.05rem;margin-bottom:8px;">Install Blitz 31</div>' +
+                '<ol style="margin:0 0 12px;padding-left:20px;">' +
+                '<li>Open your browser menu (<b>⋮</b> or <b>⋯</b>).</li>' +
+                '<li>Tap <b>Install app</b> or <b>Add to Home screen</b>.</li>' +
+                '<li>Confirm. Blitz 31 then opens full screen from your home screen.</li></ol>' +
+                '<div style="color:#94a3b8;font-size:.8rem;margin-bottom:12px;">Don\'t see it? Make sure you opened the site in Chrome (or Safari on iPhone), not inside another app, and that it isn\'t already installed.</div>' +
+                '<button type="button" class="primary-btn gold-btn" style="width:100%" id="manual-install-close">Got it</button></div>';
+            document.body.appendChild(o);
+            o.addEventListener('click', function (ev) {
+                if (ev.target === o || ev.target.id === 'manual-install-close') o.style.display = 'none';
+            });
+        }
+        o.style.display = 'flex';
     }
 
     function showIosGuide() {
