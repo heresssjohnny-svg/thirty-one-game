@@ -1777,9 +1777,26 @@ window.updateUIFromLobby = function(lobby) {
     const sidebarList = document.getElementById('global-side-bets-list');
     const globalProps = lobby.globalProposals || [];
 
-    if (globalProps.length > 0 && lobby.gameState !== 'lobby') {
+    // First-to-lose proposals aimed at me stay here until I accept or decline (the pop-up only shows once)
+    const myPendingBets = (lobby.pendingBets || []).filter(b => b && b.target && b.target.toLowerCase() === actLower && String(b.proposer || '').toLowerCase() !== actLower);
+
+    if ((globalProps.length > 0 || myPendingBets.length > 0) && lobby.gameState !== 'lobby') {
         if (sidebar) sidebar.style.display = 'flex';
         let sidebarHtml = '';
+        myPendingBets.forEach(bt => {
+            const label = bt.type === 'win'
+                ? `${escapeHtmlUI(bt.proposer)} bets <b>$${bt.wagerAmt}</b> that you win the round`
+                : `${escapeHtmlUI(bt.proposer)} bets <b>$${bt.wagerAmt}</b> that <b>${escapeHtmlUI(bt.pickUser)}</b> is out before <b>${escapeHtmlUI(bt.targetSurvivor || bt.target)}</b>`;
+            sidebarHtml += `
+                <div class="global-bet-item">
+                    <span>First to lose: ${label}</span>
+                    <div style="display:flex; gap:6px; margin-top:4px;">
+                        <button style="font-size:0.7rem; padding:3px 6px; background:#10b981;" onclick="respondToBet('${bt.id}', true)">Accept</button>
+                        <button class="danger" style="font-size:0.7rem; padding:3px 6px; background:#ef4444; color:#fff;" onclick="respondToBet('${bt.id}', false)">Decline</button>
+                    </div>
+                </div>
+            `;
+        });
         globalProps.forEach(gp => {
             const isMyProp = Boolean(gp.proposer && gp.proposer.toLowerCase() === actLower);
             const alreadyAccepted = Boolean(gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === actLower));
@@ -1792,8 +1809,11 @@ window.updateUIFromLobby = function(lobby) {
                     actionHtml = `<span style="color:var(--text-muted); font-size:0.65rem;">Waiting for acceptances...</span>`;
                 }
             } else {
-                if (!alreadyAccepted) {
-                    actionHtml = `<button style="font-size:0.7rem; padding:3px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
+                const alreadyDeclined = Boolean(gp.deniedBy && gp.deniedBy.some(u => u.toLowerCase() === actLower));
+                if (alreadyDeclined) {
+                    actionHtml = `<span style="color:#94a3b8; font-size:0.65rem;">You declined</span> <button style="font-size:0.65rem; padding:2px 6px; background:#10b981; margin-top:4px;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button>`;
+                } else if (!alreadyAccepted) {
+                    actionHtml = `<div style="display:flex; gap:6px; margin-top:4px;"><button style="font-size:0.7rem; padding:3px 6px; background:#10b981;" onclick="acceptGlobalProposal('${gp.id}')">You got it</button><button class="danger" style="font-size:0.7rem; padding:3px 6px; background:#ef4444; color:#fff;" onclick="declineGlobalProposal('${gp.id}')">Decline</button></div>`;
                 } else {
                     actionHtml = `<span style="color:#34d399; font-size:0.65rem;">Accepted ("You got it")</span>`;
                 }
