@@ -587,6 +587,16 @@
         l.appendChild(skipBtn);
         paintSkip();
         requestAnimationFrame(() => { if (skipBtn) skipBtn.style.opacity = '1'; });
+        // "Always skip shuffle" setting: vote to skip as soon as the deal starts
+        if (alwaysSkipOn()) {
+            skipBtn.__clicked = true;
+            try { if (typeof window.sendSocket === 'function') window.sendSocket({ type: 'SKIP_DEAL' }); } catch (e) {}
+            paintSkip();
+        }
+    }
+
+    function alwaysSkipOn() {
+        try { return localStorage.getItem('blitz31_always_skip') === 'true'; } catch (e) { return false; }
     }
 
     // Listen to the game socket for DEAL_SKIP_STATUS (network.js ignores unknown types)
@@ -662,7 +672,7 @@
                         // reload / reconnect while the table is still dealing (not a window we already played)
                         const joinedMidDeal = remaining > 3000 && (lobby.dealingUntil || 0) !== animatedUntil;
                         if (enteredPlaying || joinedMidDeal) {
-                            if (shuffleAnimOn()) runShuffleAndDeal(lobby); else runQuietDeal(lobby);
+                            if (shuffleAnimOn() && !alwaysSkipOn()) runShuffleAndDeal(lobby); else runQuietDeal(lobby);
                         }
                     }
                 }

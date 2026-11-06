@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v17';
+const CACHE_NAME = 'thirtyone-cache-v18';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
