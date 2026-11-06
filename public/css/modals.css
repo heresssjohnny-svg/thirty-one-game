@@ -553,3 +553,18 @@
     pointer-events: none;
     z-index: 99999;
 }
+/* While the dealer-draw or tie-breaker screen is open, keep the status banner and other pop-up
+   notices off the picked cards: park them at the bottom of the screen instead of over the middle. */
+body:has(#dealer-draw-modal[style*="flex"]) #center-notification-banner,
+body:has(#tie-breaker-reveal-modal[style*="flex"]) #center-notification-banner {
+    top: auto !important;
+    bottom: calc(18px + env(safe-area-inset-bottom)) !important;
+    z-index: 10001 !important;
+}
+body:has(#dealer-draw-modal[style*="flex"]) #knock-alert-modal,
+body:has(#tie-breaker-reveal-modal[style*="flex"]) #knock-alert-modal,
+body:has(#dealer-draw-modal[style*="flex"]) #invite-toast,
+body:has(#tie-breaker-reveal-modal[style*="flex"]) #invite-toast {
+    top: auto !important;
+    bottom: calc(70px + env(safe-area-inset-bottom)) !important;
+}
