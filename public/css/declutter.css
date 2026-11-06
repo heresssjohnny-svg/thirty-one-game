@@ -1,0 +1,52 @@
+/* declutter.css - loaded last. Calms the in-game screen (see public/js/declutter.js).
+   --dc-header-bottom / --dc-chip-bottom are set by declutter.js from the real layout. */
+
+/* 1. "X HAS KNOCKED" - a slim pill under the header that fades away (the Knock button keeps saying it) */
+body #knock-alert-modal {
+    top: calc(var(--dc-header-bottom, 108px) + 6px) !important;
+    padding: 3px 14px !important;
+    font-size: 0.78rem !important;
+    letter-spacing: 0.02em;
+    border-radius: 999px !important;
+    pointer-events: none !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5) !important;
+    animation: dc-fade 4s forwards;
+}
+
+/* 2. Status banner: smaller, below the knock pill, never over the header buttons */
+body #center-notification-banner,
+body .notification-pill {
+    top: calc(var(--dc-header-bottom, 108px) + 38px) !important;
+    font-size: 0.72rem !important;
+    padding: 3px 12px !important;
+    opacity: 0.94;
+}
+
+/* 3. "Picked discard" / "took your" chips: compact, sitting just above the hand (not over the cards), fading after a few seconds */
+body #discard-pickup-topleft-modal,
+body #fed-card-topright-modal {
+    bottom: var(--dc-chip-bottom, 200px) !important;
+    padding: 2px 6px !important;
+    gap: 4px !important;
+    animation: dc-fade 7s forwards;
+}
+body #discard-pickup-topleft-modal .modal-label { font-size: 0 !important; flex: 0 0 auto !important; }
+body #discard-pickup-topleft-modal .modal-label::before { content: '📥'; font-size: 0.8rem; }
+body #fed-card-label,
+body #discard-pickup-card-content > span {
+    font-size: 0.62rem !important;
+}
+
+/* 4. My own seat does not repeat my hand while the hand is being played */
+body[data-dc-state="playing"] .dc-mine .seat-cards,
+body[data-dc-state="finalTurn"] .dc-mine .seat-cards {
+    display: none !important;
+}
+
+@keyframes dc-fade {
+    0%, 82% { opacity: 1; }
+    100% { opacity: 0; visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+    body #knock-alert-modal, body #discard-pickup-topleft-modal, body #fed-card-topright-modal { animation-duration: 0.01s; animation-delay: 6s; }
+}
