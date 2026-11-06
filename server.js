@@ -27,6 +27,7 @@ const lobbyManager = require('./server/game/lobbyManager');
 const { startLobbyPersistence } = require('./server/game/persistence');
 const { handleWagerMessage } = require('./server/game/wagerModes');
 const { handleDealSkipMessage } = require('./server/game/dealSkip');
+const { handleMuckMessage } = require('./server/game/muck');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
 const { router: statsRouter, startStatsTracker } = require('./server/stats');
@@ -461,6 +462,8 @@ wss.on('connection', (ws, req) => {
         if (handleWagerMessage(ws, parsed, lobbyManager, broadcastLobbyList)) return;
         // "Skip" votes for the shuffle & deal window (server/game/dealSkip.js)
         if (handleDealSkipMessage(ws, parsed, lobbyManager)) return;
+        // "Muck" after a knock (server/game/muck.js)
+        if (handleMuckMessage(ws, parsed, lobbyManager)) return;
 
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);

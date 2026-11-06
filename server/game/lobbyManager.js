@@ -2295,6 +2295,47 @@ function advanceTurnOrResolve(lobby) {
     resetTurnTimer(lobby);
 }
 
+// MUCK: after someone knocks, a player who has not yet taken their final turn can throw in
+// their hand. The round ends at once; the mucker takes the loss (one life) and nobody else does.
+function handleMuck(lobby, seat) {
+    if (!lobby || lobby.gameState !== 'finalTurn' || !seat) return false;
+    if (seat.eliminated || seat.isBot || seat.username === lobby.knockedBy) return false;
+    if (!getActiveParticipants(lobby).includes(seat)) return false;
+    if (lobby.finalTurnsTaken && lobby.finalTurnsTaken[seat.username]) return false;
+
+    clearTurnTimer(lobby);
+    if (typeof resolveWinSideBets === 'function') {
+        try { resolveWinSideBets(lobby, null); } catch (e) {}
+    }
+    syncLifetimeLedgerBalances(lobby);
+
+    const loser = seat;
+    loser.lives = Math.max(0, loser.lives - 1);
+    if (loser.lives <= 0 && !loser.eliminated) {
+        loser.eliminated = true;
+        resolveFirstToLoseBets(lobby, loser.username);
+        syncLifetimeLedgerBalances(lobby);
+        if (loser.id && typeof loser.id === 'object') {
+            addSpectatorUnique(lobby, {
+                idSocket: loser.id,
+                userId: loser.userId || extractSocketUserId(loser.id),
+                accountUsername: loser.accountUsername || loser.username,
+                username: loser.username,
+                inVC: loser.inVC,
+                isMuted: loser.isMuted
+            });
+        }
+    }
+
+    if (getActiveParticipants(lobby).length <= 1) {
+        awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
+    } else {
+        advanceDealerToNextActive(lobby);
+        triggerRoundOver(lobby, `🗑️ ${loser.username} mucked their hand and lost a life.`);
+    }
+    return true;
+}
+
 function resolveRoundEnd(lobby) {
     clearTurnTimer(lobby);
 
@@ -2937,6 +2978,7 @@ module.exports = {
     handleTurnAction,
     handleDiscardAction,
     handleKnock,
+    handleMuck,
     checkNextHandReady,
     resetLobbyToReadyRoom,
     scheduleBotActions,
