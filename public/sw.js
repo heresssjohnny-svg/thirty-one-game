@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v21';
+const CACHE_NAME = 'thirtyone-cache-v22';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -15,6 +15,8 @@ const ASSETS_TO_CACHE = [
     './js/app.js',
     './js/dealAnim.js',
     './js/muck.js',
+    './js/declutter.js',
+    './css/declutter.css',
     './js/audioCues.js',
     './js/cardMoves.js',
     './js/tableWager.js',
