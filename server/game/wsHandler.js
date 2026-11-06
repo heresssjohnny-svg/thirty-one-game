@@ -599,6 +599,19 @@ function attemptGameStart(lobby) {
     }
 }
 
+// Tell the person who proposed a bet that someone declined it
+function notifyBetDeclined(lobby, proposerName, declinerName) {
+    try {
+        if (!proposerName) return;
+        const low = String(proposerName).toLowerCase();
+        const pl = (lobby.players || []).find(p => p.username && p.username.toLowerCase() === low);
+        const sock = pl ? pl.id : ((lobby.spectators || []).find(sp => sp.username && sp.username.toLowerCase() === low) || {}).idSocket;
+        if (sock && typeof sock === 'object' && sock.readyState === WebSocket.OPEN) {
+            sock.send(JSON.stringify({ type: 'NOTIFICATION', message: `❌ ${declinerName} declined your bet.` }));
+        }
+    } catch (e) {}
+}
+
 function handleWebSocketMessage(ws, message, broadcastLobbyList) {
     let data;
     try {
@@ -2020,6 +2033,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             if (!Array.isArray(prop.deniedBy)) prop.deniedBy = [];
                             if (!prop.deniedBy.some(u => u.toLowerCase() === actorName.toLowerCase())) {
                                 prop.deniedBy.push(actorName);
+                                notifyBetDeclined(lobby, proposerName, actorName);
                             }
                             if (Array.isArray(prop.acceptedBy)) {
                                 prop.acceptedBy = prop.acceptedBy.filter(u => u.toLowerCase() !== actorName.toLowerCase());
@@ -2047,6 +2061,8 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                         if (!lobby.activeBets) lobby.activeBets = [];
                         lobby.activeBets.push(bet);
                         lobby.phaseMessage = `🤝 First-to-Lose Bet Locked In: ${bet.proposer} vs ${bet.target} ($${bet.wagerAmt})!`;
+                    } else {
+                        notifyBetDeclined(lobby, bet.proposer, actorName || bet.target);
                     }
                     broadcastLobbyUpdate(currentLobbyCode);
                 } else if (actorName) {
