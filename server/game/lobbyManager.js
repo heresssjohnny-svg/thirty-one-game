@@ -1889,6 +1889,31 @@ function handlePoolCardSelection(lobby, userOrWs, rawCardIndex) {
 // -------------------------------------------------------------
 // TURN ACTION & DISCARD LOGIC WITH RESILIENT MATCHING
 // -------------------------------------------------------------
+// When the draw pile runs out: reshuffle the discard pile (keeping its top card face-up)
+// and never include a card that is currently in a player's hand. If that still leaves
+// nothing, rebuild from a fresh deck minus every card in hands / on the discard top.
+function refillDeckFromDiscard(lobby) {
+    const key = (c) => c ? `${c.val}${c.suit}` : '';
+    const held = new Set();
+    (lobby.players || []).forEach(p => (p.cards || []).forEach(c => held.add(key(c))));
+    const pile = Array.isArray(lobby.discardPile) ? lobby.discardPile : [];
+    const top = pile.length > 0 ? pile[pile.length - 1] : null;
+    const pool = pile.slice(0, top ? -1 : pile.length).filter(c => !held.has(key(c)));
+    const seen = new Set();
+    let fresh = pool.filter(c => { const k = key(c); if (seen.has(k)) return false; seen.add(k); return true; });
+    if (fresh.length === 0) {
+        const skip = new Set(held);
+        pile.forEach(c => skip.add(key(c)));
+        fresh = createDeck().filter(c => !skip.has(key(c)));
+    }
+    for (let i = fresh.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [fresh[i], fresh[j]] = [fresh[j], fresh[i]];
+    }
+    lobby.discardPile = top ? [top] : [];
+    lobby.deck = fresh;
+}
+
 function handleTurnAction(lobby, wsId, actionType) {
     if (lobby.gameState !== 'playing' && lobby.gameState !== 'finalTurn') return;
     if (isDealing(lobby)) return; // cards are still being shuffled/dealt
@@ -1918,7 +1943,7 @@ function handleTurnAction(lobby, wsId, actionType) {
     const isDeck = !isDiscard && (act === 'DRAW_DECK' || act === 'DECK' || act === 'DRAW_CARD' || act === '');
 
     if (isDeck) {
-        if (lobby.deck.length === 0) lobby.deck = createDeck();
+        if (!lobby.deck || lobby.deck.length === 0) refillDeckFromDiscard(lobby);
         currentPlayer.cards.push(lobby.deck.pop());
         currentPlayer.pickedUpDiscardCard = null;
         lobby.phaseMessage = `📢 ${currentPlayer.username} picked up a card from the deck.`;
