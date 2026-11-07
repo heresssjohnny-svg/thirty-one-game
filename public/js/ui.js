@@ -1224,6 +1224,10 @@ window.tapSeat = function(targetUsername) {
             return;
         }
         if (window.clientState.isSpectator) return;
+        if ((window.clientState.activeParticipantsCount || 3) !== 2) {
+            window.showCenterNotification('Table side bets open when it is heads-up (2 players left).');
+            return;
+        }
 
         const modalTitle = document.getElementById('bet-modal-title');
         const modalBody = document.getElementById('bet-modal-body');
@@ -1280,7 +1284,7 @@ window.tapSeat = function(targetUsername) {
         if (modalTitle) modalTitle.innerText = `Actions for ${targetUsername}`;
         if (modalBody) {
             let actionsHtml = `<button style="background:#2563eb; padding:8px; font-size:0.85rem;" onclick="requestPeekFromModal('${attrTarget}')">🔍 Peek Hand</button>`;
-            actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${attrTarget}')">🤝 Bet on ${escapeHtmlUI(targetUsername)} to Win</button>`;
+            if (activeCount === 2) actionsHtml += `<button style="background:#d97706; padding:8px; font-size:0.85rem; margin-top:6px;" onclick="betOnHimFromModal('${attrTarget}')">🤝 Bet on ${escapeHtmlUI(targetUsername)} to Win</button>`;
             actionsHtml += hostAdminHtml;
             actionsHtml += `<button class="secondary" onclick="toggleModal('seat-action-modal', false)" style="margin-top:6px;">Cancel</button>`;
             modalBody.innerHTML = actionsHtml;
@@ -1304,14 +1308,6 @@ window.tapSeat = function(targetUsername) {
                 <div style="display:flex; gap:6px; margin-bottom:10px;">
                     <input type="number" id="custom-bet-wager-input" min="1" step="1" placeholder="Custom $" style="flex:1; padding:7px; border-radius:6px; border:1px solid #d97706; background:rgba(0,0,0,0.4); color:#fff;" />
                     <button style="background:#d97706;" onclick="const v=parseInt(document.getElementById('custom-bet-wager-input')?.value,10); if(v>0) submitEliminationProposal('${attrTarget}', v);">Bet Custom</button>
-                </div>
-                <div style="border-top:1px solid rgba(255,255,255,0.12); padding-top:8px; margin-bottom:6px;">
-                    <p style="font-size:0.8rem; color:#93c5fd; margin:0 0 6px;"><b>Or Table Bet:</b> I like ${escapeHtmlUI(targetUsername)} to win this hand:</p>
-                    <div style="display:flex; gap:6px;">
-                        <button style="flex:1; background:#2563eb;" onclick="submitGlobalProposal('${attrTarget}', 5)">$5</button>
-                        <button style="flex:1; background:#2563eb;" onclick="submitGlobalProposal('${attrTarget}', 10)">$10</button>
-                        <button style="flex:1; background:#2563eb;" onclick="submitGlobalProposal('${attrTarget}', 20)">$20</button>
-                    </div>
                 </div>
                 ${hostAdminHtml}
                 <button class="secondary" onclick="toggleModal('bet-modal', false)" style="margin-top:4px;">Cancel</button>
@@ -1359,6 +1355,10 @@ window.requestPeekFromModal = function(targetUsername) {
 
 window.betOnHimFromModal = function(targetUsername) {
     window.toggleModal('seat-action-modal', false);
+    if ((window.clientState.activeParticipantsCount || 3) !== 2) {
+        window.showCenterNotification('Table side bets open when it is heads-up (2 players left).');
+        return;
+    }
     const attrTarget = targetUsername.replace(/'/g, "\\'");
     const modalTitle = document.getElementById('bet-modal-title');
     const modalBody = document.getElementById('bet-modal-body');
@@ -1780,7 +1780,14 @@ window.updateUIFromLobby = function(lobby) {
     // First-to-lose proposals aimed at me stay here until I accept or decline (the pop-up only shows once)
     const myPendingBets = (lobby.pendingBets || []).filter(b => b && b.target && b.target.toLowerCase() === actLower && String(b.proposer || '').toLowerCase() !== actLower);
 
-    if ((globalProps.length > 0 || myPendingBets.length > 0) && lobby.gameState !== 'lobby') {
+    // A proposal I declined disappears from my list (the proposer's own offers always show)
+    const visibleProps = globalProps.filter(gp => {
+        const mine = Boolean(gp.proposer && gp.proposer.toLowerCase() === actLower);
+        const declined = Boolean(gp.deniedBy && gp.deniedBy.some(u => u.toLowerCase() === actLower));
+        return mine || !declined;
+    });
+
+    if ((visibleProps.length > 0 || myPendingBets.length > 0) && lobby.gameState !== 'lobby') {
         if (sidebar) sidebar.style.display = 'flex';
         let sidebarHtml = '';
         myPendingBets.forEach(bt => {
@@ -1797,7 +1804,7 @@ window.updateUIFromLobby = function(lobby) {
                 </div>
             `;
         });
-        globalProps.forEach(gp => {
+        visibleProps.forEach(gp => {
             const isMyProp = Boolean(gp.proposer && gp.proposer.toLowerCase() === actLower);
             const alreadyAccepted = Boolean(gp.acceptedBy && gp.acceptedBy.some(u => u.toLowerCase() === actLower));
 

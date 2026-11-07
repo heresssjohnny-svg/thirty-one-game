@@ -1924,6 +1924,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const proposerName = resolveSocketUsername(lobby, ws, currentUsername);
                 if (!proposerName) break;
 
+                // Table (global) side bets open only when the table is heads-up
+                const activeSeated = (lobby.players || []).filter(p => !p.eliminated).length;
+                if (activeSeated !== 2) {
+                    ws.send(JSON.stringify({ type: 'ERROR', message: 'Table side bets are only available when it is heads-up (2 players left).' }));
+                    break;
+                }
+
                 const wagerAmt = Math.max(1, parseInt(data.wagerAmt, 10) || 5);
                 const newProp = {
                     id: data.id || `prop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -2037,6 +2044,17 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             }
                             if (Array.isArray(prop.acceptedBy)) {
                                 prop.acceptedBy = prop.acceptedBy.filter(u => u.toLowerCase() !== actorName.toLowerCase());
+                            }
+                            // Everyone who could take the bet has declined: the offer disappears for the proposer too
+                            const propLow = String(proposerName || '').toLowerCase();
+                            const eligible = [];
+                            (lobby.players || []).forEach(p => { if (p.username && !p.isBot && p.id) eligible.push(p.username); });
+                            (lobby.spectators || []).forEach(sp => { if (sp.username && sp.idSocket) eligible.push(sp.username); });
+                            const others = Array.from(new Set(eligible.map(u => u.toLowerCase()))).filter(u => u !== propLow);
+                            const denied = (prop.deniedBy || []).map(u => u.toLowerCase());
+                            if (others.length > 0 && others.every(u => denied.includes(u))) {
+                                lobby.globalProposals.splice(pIdx, 1);
+                                notifyBetDeclined(lobby, proposerName, 'Everyone');
                             }
                         }
                     }

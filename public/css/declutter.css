@@ -105,3 +105,7 @@ body #rules-btn::before { content: '📜'; font-size: 0.95rem; }
 @media (max-width: 380px) {
     body #game-view #in-game-tools-row .tool-btn { padding: 4px 6px !important; font-size: 0.68rem !important; }
 }
+
+/* 6. Open Side Bets drawer: the minimize button hides the list and leaves just the header */
+body #global-side-bets-sidebar.minimized { height: auto !important; min-height: 0 !important; bottom: auto !important; }
+body #global-side-bets-sidebar.minimized .drawer-body { display: none !important; }
