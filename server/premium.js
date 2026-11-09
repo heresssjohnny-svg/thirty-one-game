@@ -47,7 +47,22 @@ router.get('/premium/me', (req, res) => {
     }
 });
 
+const FREE_SOUNDS = ['horn', 'cash', 'rimshot', 'sad', 'crickets', 'siren'];
+function cleanCelebration(userId, v) {
+    v = String(v || 'default');
+    if (v === 'default' || v === 'none') return v;
+    if (FREE_SOUNDS.includes(v)) return v;
+    if (PREMIUM_SOUNDS.includes(v) && statusFor(userId).premium) return v;
+    return 'default';
+}
+
 function handlePremiumGate(ws, msg) {
+    // The player's chosen celebration sounds (hit 31 / win the match). Stored on the socket and shown to
+    // the whole table in the lobby snapshot (player.celebration), so everyone hears the winner's pick.
+    if (msg && msg.type === 'SET_CELEBRATION') {
+        if (ws) ws.__cel = { hit31: cleanCelebration(ws.userId, msg.hit31), win: cleanCelebration(ws.userId, msg.win) };
+        return true;
+    }
     if (!msg || !['SEND_REACTION', 'SEAT_REACTION', 'QUICK_REACTION'].includes(msg.type)) return false;
     const raw = String(msg.emoji || msg.reaction || '').trim();
     if (!PREMIUM_REACTIONS.includes(raw)) return false;
@@ -58,4 +73,4 @@ function handlePremiumGate(ws, msg) {
     return true;
 }
 
-module.exports = { router, statusFor, handlePremiumGate, PREMIUM_SOUNDS, PREMIUM_REACTIONS };
+module.exports = { router, statusFor, handlePremiumGate, cleanCelebration, PREMIUM_SOUNDS, PREMIUM_REACTIONS };
