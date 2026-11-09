@@ -1,0 +1,37 @@
+/* turnBanner.css - loaded last */
+#pf-turn-banner {
+    position: fixed;
+    transform: translateX(-50%);
+    z-index: 260;
+    display: none;
+    white-space: nowrap;
+    pointer-events: none;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-weight: 900;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+#pf-turn-banner.pf-tb-mine {
+    background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+    border: 1.5px solid #fecaca;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.75), 0 3px 10px rgba(0, 0, 0, 0.55);
+    animation: pf-tb-pulse 1.4s ease-in-out infinite;
+}
+#pf-turn-banner.pf-tb-other {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    color: #fde68a;
+    font-size: 0.78rem;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+@keyframes pf-tb-pulse {
+    0%, 100% { transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) { #pf-turn-banner.pf-tb-mine { animation: none; } }
+/* hide while the deal / tie-breaker draw modals are up */
+body:has(#dealer-draw-modal[style*="flex"]) #pf-turn-banner,
+body:has(#tie-breaker-reveal-modal[style*="flex"]) #pf-turn-banner { display: none !important; }

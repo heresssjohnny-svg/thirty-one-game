@@ -709,7 +709,15 @@ const SOUNDBOARD_ITEMS = {
     doorbell: { emoji: '🔔', label: 'Ding-dong', premium: true, file: '/mp3s/Premium-doorbell.mp3' },
     charge:   { emoji: '📯', label: 'Charge!',   premium: true, file: '/mp3s/Premium-charge.mp3' },
     laser:    { emoji: '👽', label: 'Pew pew',   premium: true, file: '/mp3s/Premium-laser.mp3' },
-    powerup:  { emoji: '⭐', label: 'Power-up',  premium: true, file: '/mp3s/Premium-powerup.mp3' }
+    powerup:  { emoji: '⭐', label: 'Power-up',  premium: true, file: '/mp3s/Premium-powerup.mp3' },
+    machinegun: { emoji: '🔫', label: 'Machine gun', premium: true, file: '/mp3s/Premium-machinegun.mp3' },
+    shotgun: { emoji: '🧨', label: 'Shotgun', premium: true, file: '/mp3s/Premium-shotgun.mp3' },
+    airhorn: { emoji: '📣', label: 'Air horn', premium: true, file: '/mp3s/Premium-airhorn.mp3' },
+    applause: { emoji: '👏', label: 'Applause', premium: true, file: '/mp3s/Premium-applause.mp3' },
+    wahwah: { emoji: '😢', label: 'Wah-wah', premium: true, file: '/mp3s/Premium-wahwah.mp3' },
+    gong: { emoji: '🥁', label: 'Gong', premium: true, file: '/mp3s/Premium-gong.mp3' },
+    dundundun: { emoji: '🎬', label: 'Dun dun dun', premium: true, file: '/mp3s/Premium-dundundun.mp3' },
+    buzzer: { emoji: '❌', label: 'Buzzer', premium: true, file: '/mp3s/Premium-buzzer.mp3' }
 };
 
 // Preload & cache <audio> elements so mobile browsers allow incoming WebSocket playback
@@ -908,15 +916,22 @@ function ensureQuickReactionBar() {
             z-index: 9500;
             box-shadow: 0 6px 18px rgba(0,0,0,0.8);
         `;
-        sbPop.innerHTML = Object.entries(SOUNDBOARD_ITEMS).map(([key, item]) => {
-            const locked = Boolean(item.premium && !window.__isPremium);
-            return `
-            <button type="button" onclick="sendSoundboard('${key}'); document.getElementById('soundboard-popover-menu').style.display='none';" style="background:rgba(251,191,36,0.12); border:1px solid ${item.premium ? 'rgba(167,139,250,0.7)' : 'rgba(251,191,36,0.45)'}; border-radius:8px; color:#f8fafc; font-size:0.74rem; font-weight:700; padding:5px 8px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; ${locked ? 'opacity:0.6;' : ''}">
+        const sbBtn = (key, item, premiumStyle) => `
+            <button type="button" onclick="sendSoundboard('${key}'); document.getElementById('soundboard-popover-menu').style.display='none';" style="background:rgba(251,191,36,0.12); border:1px solid ${premiumStyle ? 'rgba(167,139,250,0.7)' : 'rgba(251,191,36,0.45)'}; border-radius:8px; color:#f8fafc; font-size:0.74rem; font-weight:700; padding:5px 8px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
                 <span style="font-size:1rem;">${item.emoji}</span>
-                <span>${item.label}${locked ? ' 🔒' : (item.premium ? ' 💎' : '')}</span>
-            </button>
-        `;
-        }).join('');
+                <span>${item.label}</span>
+            </button>`;
+        const sbEntries = Object.entries(SOUNDBOARD_ITEMS);
+        const freeHtml = sbEntries.filter(([, it]) => !it.premium).map(([k, it]) => sbBtn(k, it, false)).join('');
+        // Premium sounds live in a sub-menu that only exists for Premium / admin accounts.
+        let premHtml = '';
+        if (window.__isPremium) {
+            const premBtns = sbEntries.filter(([, it]) => it.premium).map(([k, it]) => sbBtn(k, it, true)).join('');
+            premHtml = `
+            <button type="button" id="sb-premium-toggle" onclick="(function(){var m=document.getElementById('sb-premium-menu');var o=m.style.display==='flex';m.style.display=o?'none':'flex';document.getElementById('sb-premium-toggle').setAttribute('data-open',o?'0':'1');})()" style="background:linear-gradient(180deg,#7c3aed,#5b21b6); border:1px solid rgba(196,181,253,0.9); border-radius:8px; color:#fff; font-size:0.74rem; font-weight:800; padding:5px 10px; cursor:pointer;">💎 Premium ▾</button>
+            <div id="sb-premium-menu" style="display:none; flex-basis:100%; flex-wrap:wrap; gap:6px; justify-content:center; padding-top:6px; margin-top:2px; border-top:1px solid rgba(167,139,250,0.45); max-height:42vh; overflow-y:auto;">${premBtns}</div>`;
+        }
+        sbPop.innerHTML = freeHtml + premHtml;
         document.body.appendChild(sbPop);
 
         document.addEventListener('click', (ev) => {
