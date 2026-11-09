@@ -1,0 +1,11 @@
+/* dragDrop.css - loaded last */
+.my-card, #deck-pile, #deck-center > .card-slot:not(#deck-pile) { touch-action: none; -webkit-user-select: none; user-select: none; }
+.dd-ghost {
+    position: fixed; left: 0; top: 0; z-index: 9800; pointer-events: none; margin: 0 !important;
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(251, 191, 36, 0.9);
+    border-radius: 8px; opacity: 0.97; will-change: transform;
+}
+.dd-dragging { opacity: 0.3 !important; }
+.dd-target { outline: 2px dashed rgba(251, 191, 36, 0.85); outline-offset: 4px; border-radius: 10px; transition: outline-color .12s, box-shadow .12s; }
+.dd-over { outline: 3px solid #fbbf24; box-shadow: 0 0 22px 4px rgba(251, 191, 36, 0.75); }
+body.dd-active { cursor: grabbing; }
