@@ -2156,7 +2156,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 'sb:horn', 'sb:cash', 'sb:rimshot', 'sb:sad', 'sb:crickets', 'sb:siren',
                 // Premium sounds (the sender's Premium is checked in server/premium.js before this runs)
                 'sb:tada', 'sb:drumroll', 'sb:boom', 'sb:whoosh', 'sb:doorbell', 'sb:charge', 'sb:laser', 'sb:powerup',
-                'sb:machinegun', 'sb:shotgun', 'sb:airhorn', 'sb:applause', 'sb:wahwah', 'sb:gong', 'sb:dundundun', 'sb:buzzer'
+                'sb:machinegun', 'sb:shotgun', 'sb:applause', 'sb:gong', 'sb:dundundun', 'sb:buzzer'
             ];
             const rawEmoji = String(data.emoji || data.reaction || '').trim();
             if (!allowedReactions.includes(rawEmoji)) break;

@@ -17,7 +17,7 @@ const config = require('./config');
 const sql = typeof db.prepare === 'function' ? db : db.db;
 try { sql.prepare('ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0').run(); } catch (e) {}
 
-const PREMIUM_SOUNDS = ['tada', 'drumroll', 'boom', 'whoosh', 'doorbell', 'charge', 'laser', 'powerup', 'machinegun', 'shotgun', 'airhorn', 'applause', 'wahwah', 'gong', 'dundundun', 'buzzer'];
+const PREMIUM_SOUNDS = ['tada', 'drumroll', 'boom', 'whoosh', 'doorbell', 'charge', 'laser', 'powerup', 'machinegun', 'shotgun', 'applause', 'gong', 'dundundun', 'buzzer'];
 const PREMIUM_REACTIONS = PREMIUM_SOUNDS.map(s => 'sb:' + s);
 
 function statusFor(userId) {
