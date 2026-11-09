@@ -41,7 +41,11 @@
         if (!overlay) {
             overlay = el('div', 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10011;display:flex;align-items:center;justify-content:center;padding:16px;');
             overlay.id = 'rematch-modal';
-            var box = el('div', 'max-width:340px;width:100%;background:#061c11;border:1px solid rgba(212,175,55,0.6);border-radius:10px;padding:16px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.7);');
+            var box = el('div', 'max-width:340px;width:100%;background:#061c11;border:1px solid rgba(212,175,55,0.6);border-radius:10px;padding:16px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.7);position:relative;');
+            var x = el('button', 'position:absolute;top:6px;right:8px;width:30px;height:30px;border-radius:50%;border:1px solid rgba(148,163,184,0.5);background:rgba(15,23,42,0.85);color:#e2e8f0;font-size:1rem;line-height:1;cursor:pointer;', '✕');
+            x.type = 'button'; x.id = 'rematch-close'; x.title = 'Close'; x.setAttribute('aria-label', 'Close');
+            x.onclick = function () { close(); };
+            box.appendChild(x);
             box.appendChild(el('h3', 'margin:0 0 8px;color:#fbbf24;', '🏆 Play again?'));
             var w = el('p', 'margin:0 0 10px;font-size:0.92rem;color:#e2e8f0;');
             w.id = 'rematch-winner';
