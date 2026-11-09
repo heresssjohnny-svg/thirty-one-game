@@ -1196,7 +1196,9 @@ window.knockRound = function() {
 // -------------------------------------------------------------
 window.isCurrentUserLobbyHost = function(lobby) {
     const snap = lobby || window.appGlobals?.latestLobbySnapshot;
-    if (!snap || !snap.host) return false;
+    if (!snap) return false;
+    if (window.__isAdminAccount) return true;   // admin accounts act as host on every table
+    if (!snap.host) return false;
     const hostLower = snap.host.trim().toLowerCase();
     const myHandleLower = getActiveUsername().trim().toLowerCase();
     const myAcctLower = (window.getAccountUsername() || '').trim().toLowerCase();

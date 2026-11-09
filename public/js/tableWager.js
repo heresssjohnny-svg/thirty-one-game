@@ -125,7 +125,7 @@
         const typeSel = ensureTableTypeControl();
         if (typeSel) {
             const myName = lower(me && me.username) || lower(typeof window.getActiveUsername === 'function' ? window.getActiveUsername() : '');
-            const iAmHost = !!myName && myName === lower(lobby.host);
+            const iAmHost = !!window.__isAdminAccount || (!!myName && myName === lower(lobby.host));
             typeSel.disabled = !iAmHost;
             typeSel.title = iAmHost ? 'Choose what players can wager at this table' : 'Only the room creator can change the table type';
             if (document.activeElement !== typeSel && typeSel.value !== mode) typeSel.value = mode;

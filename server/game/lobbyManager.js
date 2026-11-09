@@ -1426,8 +1426,25 @@ function handleStandUp(lobby, ws, username, accountUsernameArg) {
 // ROOM CREATOR ADMIN CONTROLS: KICK & MUTE
 // -------------------------------------------------------------
 
+// Admin accounts (users.is_admin) always have host-level control of every table, alongside the real host.
+function isAdminSocket(ws) {
+    try {
+        if (!ws || !db) return false;
+        const uid = ws.userId || (ws.user && ws.user.userId) || null;
+        if (!uid || /^gst_/.test(String(uid)) || String(uid).startsWith('usr_guest_')) return false;
+        const now = Date.now();
+        if (ws.__adminChk && ws.__adminChk.uid === uid && now - ws.__adminChk.t < 30000) return ws.__adminChk.v;
+        const row = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(uid);
+        const v = !!(row && row.is_admin);
+        ws.__adminChk = { uid, v, t: now };
+        return v;
+    } catch (e) { return false; }
+}
+
 function isLobbyHost(lobby, ws, username) {
-    if (!lobby || !lobby.host) return false;
+    if (!lobby) return false;
+    if (isAdminSocket(ws)) return true;
+    if (!lobby.host) return false;
     const hostLower = lobby.host.trim().toLowerCase();
     const reqName = (username || extractSocketUsername(ws) || '').trim().toLowerCase();
     const reqAcct = (extractSocketAccountUsername(ws) || '').trim().toLowerCase();
