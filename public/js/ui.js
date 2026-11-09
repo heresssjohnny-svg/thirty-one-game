@@ -701,15 +701,15 @@ const SOUNDBOARD_ITEMS = {
     sad:      { emoji: '🎺', label: 'Sad',      file: '/mp3s/Sad.mp3' },
     crickets: { emoji: '🦗', label: 'Crickets', file: '/mp3s/Cricket.mp3' },
     siren:    { emoji: '🚨', label: 'Hype',     file: '/mp3s/Hype.mp3' },
-    // Premium sounds: synthesized in the browser by premium.js (no audio files)
-    tada:     { emoji: '🎉', label: 'Ta-da',     synth: true, premium: true },
-    drumroll: { emoji: '🪘', label: 'Drumroll',  synth: true, premium: true },
-    boom:     { emoji: '💥', label: 'Boom',      synth: true, premium: true },
-    whoosh:   { emoji: '💨', label: 'Whoosh',    synth: true, premium: true },
-    doorbell: { emoji: '🔔', label: 'Ding-dong', synth: true, premium: true },
-    charge:   { emoji: '📯', label: 'Charge!',   synth: true, premium: true },
-    laser:    { emoji: '👽', label: 'Pew pew',   synth: true, premium: true },
-    powerup:  { emoji: '⭐', label: 'Power-up',  synth: true, premium: true }
+    // Premium sounds: MP3 files in /mp3s (Premium-*.mp3)
+    tada:     { emoji: '🎉', label: 'Ta-da',     premium: true, file: '/mp3s/Premium-tada.mp3' },
+    drumroll: { emoji: '🪘', label: 'Drumroll',  premium: true, file: '/mp3s/Premium-drumroll.mp3' },
+    boom:     { emoji: '💥', label: 'Boom',      premium: true, file: '/mp3s/Premium-boom.mp3' },
+    whoosh:   { emoji: '💨', label: 'Whoosh',    premium: true, file: '/mp3s/Premium-whoosh.mp3' },
+    doorbell: { emoji: '🔔', label: 'Ding-dong', premium: true, file: '/mp3s/Premium-doorbell.mp3' },
+    charge:   { emoji: '📯', label: 'Charge!',   premium: true, file: '/mp3s/Premium-charge.mp3' },
+    laser:    { emoji: '👽', label: 'Pew pew',   premium: true, file: '/mp3s/Premium-laser.mp3' },
+    powerup:  { emoji: '⭐', label: 'Power-up',  premium: true, file: '/mp3s/Premium-powerup.mp3' }
 };
 
 // Preload & cache <audio> elements so mobile browsers allow incoming WebSocket playback
