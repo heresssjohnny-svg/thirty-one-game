@@ -28,6 +28,7 @@ const { startLobbyPersistence } = require('./server/game/persistence');
 const { handleWagerMessage } = require('./server/game/wagerModes');
 const { handleDealSkipMessage } = require('./server/game/dealSkip');
 const { handleMuckMessage } = require('./server/game/muck');
+const { router: premiumRouter, handlePremiumGate } = require('./server/premium');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
 const { router: statsRouter, startStatsTracker } = require('./server/stats');
@@ -69,6 +70,7 @@ app.use('/api', friendsRouter);
 app.use('/api', termsRouter);
 // /api/push/* (server/push.js)
 app.use('/api', pushRouter);
+app.use('/api', premiumRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -464,6 +466,8 @@ wss.on('connection', (ws, req) => {
         if (handleDealSkipMessage(ws, parsed, lobbyManager)) return;
         // "Muck" after a knock (server/game/muck.js)
         if (handleMuckMessage(ws, parsed, lobbyManager)) return;
+        // Premium-only soundboard sounds (server/premium.js)
+        if (handlePremiumGate(ws, parsed)) return;
 
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);

@@ -1,0 +1,24 @@
+/* premium.css - Premium felt colours and card backs (set by public/js/premium.js) */
+body[data-pf-felt] #table-oval-container {
+    background: radial-gradient(ellipse at center, var(--pf-felt-a) 0%, var(--pf-felt-b) 70%, var(--pf-felt-c) 100%) !important;
+    border-color: var(--pf-rail) !important;
+}
+body[data-pf-back] .card-slot.back,
+body[data-pf-back] .playing-card.back,
+body[data-pf-back] .mini-card.back {
+    background: linear-gradient(135deg, var(--pf-back-a) 0%, var(--pf-back-b) 100%) !important;
+}
+
+/* Settings > Table Style */
+#pf-style-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(212, 175, 55, 0.25); }
+#pf-style-section .pf-title { color: #fbbf24; font-weight: 800; font-size: 0.85rem; margin-bottom: 6px; }
+#pf-style-section .pf-label { color: #cbd5e1; font-size: 0.72rem; margin: 6px 0 4px; }
+#pf-style-section .pf-row { display: flex; flex-wrap: wrap; gap: 8px; }
+#pf-style-section .pf-swatch {
+    position: relative; width: 38px; height: 38px; border-radius: 50%; padding: 0; cursor: pointer;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+}
+#pf-style-section .pf-swatch.pf-on { border-color: #fbbf24; box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.45); }
+#pf-style-section .pf-swatch.pf-locked { opacity: 0.55; }
+#pf-style-section .pf-lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+#pf-style-section .pf-note { margin-top: 8px; font-size: 0.7rem; color: #94a3b8; }

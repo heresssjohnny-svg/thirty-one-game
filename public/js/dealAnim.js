@@ -47,7 +47,7 @@
 
     // ---- styles -------------------------------------------------------
     // Card backs copy the table's deck: .card-slot.back in table.css
-    const DECK_BG = 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)';
+    const DECK_BG = 'linear-gradient(135deg, var(--pf-back-a, #1e3a8a) 0%, var(--pf-back-b, #0f172a) 100%)';
     const style = document.createElement('style');
     style.id = 'deal-anim-styles';
     style.textContent = `
