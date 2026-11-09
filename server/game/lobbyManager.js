@@ -1210,6 +1210,7 @@ function getSanitizedLobby(lobby, wsId) {
                 eliminated: p.eliminated,
                 isBot: !!p.isBot,
                 inVC: !!p.inVC,
+                celebration: (p.id && p.id.__cel) || null,
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
                 isOffline: Boolean(!p.isBot && !p.id),
                 peekIncoming: (wsId === p.id || isMe) ? mergedIncoming : {},

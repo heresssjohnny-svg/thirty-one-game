@@ -1,5 +1,6 @@
 // public/js/celebSound.js - pick your own celebration sound (Settings) for HIT 31 and winning the match.
-// Plays only on your own screen, only when YOU are the one celebrating; replaces the default Hype sound.
+// Your pick is sent to the server (SET_CELEBRATION) and shows up in the lobby snapshot, so the whole table
+// hears the celebrating player's chosen sound instead of the default Hype ('None' = silent for you only).
 (function () {
     'use strict';
     if (window.__celebSoundLoaded) return;
@@ -61,6 +62,7 @@
             var s = ev.target.closest && ev.target.closest('select[data-cs]');
             if (!s) return;
             set(KEYS[s.getAttribute('data-cs')], s.value);
+            syncPick(true);
             if (s.value !== 'default' && s.value !== 'none') play(s.value);
         });
         section.addEventListener('click', function (ev) {
@@ -91,7 +93,12 @@
         if (!c.__csWrapped) {
             var wc = function (winnerName, subtitle) {
                 var sub = String(subtitle || '');
-                ctx = { kind: /31/.test(sub) ? 'hit31' : 'win', mine: isMe(winnerName), t: Date.now() };
+                var kind = /31/.test(sub) ? 'hit31' : 'win', other = null;
+                var snap = window.appGlobals && window.appGlobals.latestLobbySnapshot;
+                var wn = String(winnerName || '').trim().toLowerCase();
+                var wp = snap && (snap.players || []).find(function (q) { return String(q.username || '').trim().toLowerCase() === wn; });
+                if (wp && wp.celebration && wp.celebration[kind] && wp.celebration[kind] !== 'default' && wp.celebration[kind] !== 'none' && items()[wp.celebration[kind]]) other = wp.celebration[kind];
+                ctx = { kind: kind, mine: isMe(winnerName), other: other, t: Date.now() };
                 return c.apply(this, arguments);
             };
             wc.__csWrapped = true; window.triggerWinnerCelebration = wc;
@@ -103,6 +110,8 @@
                     var pick = choice(ctx.kind); ctx = null;
                     if (pick === 'none') return;
                     if (pick !== 'default') { play(pick); return; }
+                } else if (name === 'win' && ctx && !ctx.mine && ctx.other && Date.now() - ctx.t < 1500) {
+                    var o = ctx.other; ctx = null; play(o); return;   // the winner's pick, heard by the whole table
                 }
                 return s.apply(this, arguments);
             };
@@ -111,6 +120,20 @@
         return true;
     }
     var tries = 0, t = setInterval(function () { if (wrap() || ++tries > 100) clearInterval(t); }, 200);
-    setInterval(function () { ensure(); paint(); }, 1000);
+    // keep the server's copy of my picks current (also after reconnects / server restarts)
+    var lastSent = 0;
+    function syncPick(force) {
+        var snap = window.appGlobals && window.appGlobals.latestLobbySnapshot;
+        if (!snap) return;
+        var me = (snap.players || []).find(function (q) { return q.isMe && !q.isBot; });
+        if (!me) return;
+        var want = { hit31: choice('hit31'), win: choice('win') };
+        var have = me.celebration || { hit31: 'default', win: 'default' };
+        if (!force && have.hit31 === want.hit31 && have.win === want.win) return;
+        if (!force && Date.now() - lastSent < 4000) return;
+        lastSent = Date.now();
+        if (typeof window.sendSocket === 'function') window.sendSocket({ type: 'SET_CELEBRATION', hit31: want.hit31, win: want.win });
+    }
+    setInterval(function () { ensure(); paint(); syncPick(false); }, 1000);
     window.__celebChoice = choice;   // tests
 })();
