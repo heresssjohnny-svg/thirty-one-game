@@ -712,9 +712,7 @@ const SOUNDBOARD_ITEMS = {
     powerup:  { emoji: '⭐', label: 'Power-up',  premium: true, file: '/mp3s/Premium-powerup.mp3' },
     machinegun: { emoji: '🔫', label: 'Machine gun', premium: true, file: '/mp3s/Premium-machinegun.mp3' },
     shotgun: { emoji: '🧨', label: 'Shotgun', premium: true, file: '/mp3s/Premium-shotgun.mp3' },
-    airhorn: { emoji: '📣', label: 'Air horn', premium: true, file: '/mp3s/Premium-airhorn.mp3' },
     applause: { emoji: '👏', label: 'Applause', premium: true, file: '/mp3s/Premium-applause.mp3' },
-    wahwah: { emoji: '😢', label: 'Wah-wah', premium: true, file: '/mp3s/Premium-wahwah.mp3' },
     gong: { emoji: '🥁', label: 'Gong', premium: true, file: '/mp3s/Premium-gong.mp3' },
     dundundun: { emoji: '🎬', label: 'Dun dun dun', premium: true, file: '/mp3s/Premium-dundundun.mp3' },
     buzzer: { emoji: '❌', label: 'Buzzer', premium: true, file: '/mp3s/Premium-buzzer.mp3' }
