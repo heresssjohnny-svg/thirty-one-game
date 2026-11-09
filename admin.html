@@ -806,6 +806,7 @@
                 <td>
                     <input type="text" id="uname-${u.id}" value="${escapeHtml(u.username)}" style="width: 135px; padding: 5px 8px; font-weight: 700;" />
                     ${Number(u.is_admin) === 1 ? '<span class="code-pill" style="color: var(--gold); margin-left: 6px;">ADMIN</span>' : ''}
+                    ${Number(u.is_premium) === 1 ? '<span class="code-pill" style="color: #a78bfa; margin-left: 6px;">PREMIUM</span>' : ''}
                 </td>
                 <td>
                     <input type="email" id="uemail-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="No email" style="width: 190px; padding: 5px 8px;" />
@@ -817,6 +818,7 @@
                         <button class="btn btn-green btn-sm" onclick="saveUserProfile('${u.id}')">💾 Save Info</button>
                         <button class="btn btn-gold btn-sm" onclick="promptResetPassword('${u.id}', '${escapeHtml(u.username)}')">🔑 Set Password</button>
                         <button class="btn btn-gold btn-sm" onclick="toggleUserAdmin('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_admin) === 1 ? 'false' : 'true'})">${Number(u.is_admin) === 1 ? '🚫 Revoke Admin' : '🛡️ Make Admin'}</button>
+                        <button class="btn btn-gold btn-sm" onclick="toggleUserPremium('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_premium) === 1 ? 'false' : 'true'})">${Number(u.is_premium) === 1 ? '✖ Remove Premium' : '💎 Give Premium'}</button>
                         <button class="btn btn-red btn-sm" onclick="deleteUserAccount('${u.id}', '${escapeHtml(u.username)}')">🗑️ Delete</button>
                     </div>
                 </td>
@@ -859,6 +861,20 @@
         try {
             await apiAdmin('user/admin', 'POST', { userId, isAdmin: makeAdmin });
             showToast(makeAdmin ? `🛡️ ${username} is now an admin.` : `🚫 ${username} is no longer an admin.`);
+            fetchAdminOverview();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function toggleUserPremium(userId, username, makePremium) {
+        const msg = makePremium
+            ? `Give "${username}" Premium (extra sounds, felt colours and card backs)?`
+            : `Remove Premium from "${username}"?`;
+        if (!confirm(msg)) return;
+        try {
+            await apiAdmin('user/premium', 'POST', { userId, isPremium: makePremium });
+            showToast(makePremium ? `💎 ${username} now has Premium.` : `${username} no longer has Premium.`);
             fetchAdminOverview();
         } catch (err) {
             showToast(err.message, true);

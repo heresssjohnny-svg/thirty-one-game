@@ -700,7 +700,16 @@ const SOUNDBOARD_ITEMS = {
     rimshot:  { emoji: '🥁', label: 'Ba-Dum',   file: '/mp3s/Ba-dum.mp3' },
     sad:      { emoji: '🎺', label: 'Sad',      file: '/mp3s/Sad.mp3' },
     crickets: { emoji: '🦗', label: 'Crickets', file: '/mp3s/Cricket.mp3' },
-    siren:    { emoji: '🚨', label: 'Hype',     file: '/mp3s/Hype.mp3' }
+    siren:    { emoji: '🚨', label: 'Hype',     file: '/mp3s/Hype.mp3' },
+    // Premium sounds: synthesized in the browser by premium.js (no audio files)
+    tada:     { emoji: '🎉', label: 'Ta-da',     synth: true, premium: true },
+    drumroll: { emoji: '🪘', label: 'Drumroll',  synth: true, premium: true },
+    boom:     { emoji: '💥', label: 'Boom',      synth: true, premium: true },
+    whoosh:   { emoji: '💨', label: 'Whoosh',    synth: true, premium: true },
+    doorbell: { emoji: '🔔', label: 'Ding-dong', synth: true, premium: true },
+    charge:   { emoji: '📯', label: 'Charge!',   synth: true, premium: true },
+    laser:    { emoji: '👽', label: 'Pew pew',   synth: true, premium: true },
+    powerup:  { emoji: '⭐', label: 'Power-up',  synth: true, premium: true }
 };
 
 // Preload & cache <audio> elements so mobile browsers allow incoming WebSocket playback
@@ -708,7 +717,7 @@ const soundboardAudioCache = {};
 
 function getOrCreateSoundboardAudio(soundId) {
     const item = SOUNDBOARD_ITEMS[soundId];
-    if (!item) return null;
+    if (!item || !item.file) return null;
 
     let audioEl = document.getElementById(`sound-sb-${soundId}`) || soundboardAudioCache[soundId];
     if (!audioEl) {
@@ -756,6 +765,11 @@ window.playSoundboardEffect = function(soundId) {
     const vol = (typeof window.getSfxVolume === 'function') ? window.getSfxVolume() : 1.0;
     if (vol <= 0) return;
 
+    if (item.synth) {
+        if (typeof window.playSynthSound === 'function') window.playSynthSound(soundId, vol);
+        return;
+    }
+
     try {
         const audioEl = getOrCreateSoundboardAudio(soundId);
         if (audioEl) {
@@ -784,6 +798,10 @@ window.playSoundboardSound = window.playSoundboardEffect;
 
 window.sendSoundboard = function(soundId) {
     if (!SOUNDBOARD_ITEMS[soundId]) return;
+    if (SOUNDBOARD_ITEMS[soundId].premium && !window.__isPremium) {
+        window.showCenterNotification('🔒 Premium sound');
+        return;
+    }
     if (typeof window.sendReaction === 'function') {
         window.sendReaction(`sb:${soundId}`);
     } else {
@@ -890,12 +908,15 @@ function ensureQuickReactionBar() {
             z-index: 9500;
             box-shadow: 0 6px 18px rgba(0,0,0,0.8);
         `;
-        sbPop.innerHTML = Object.entries(SOUNDBOARD_ITEMS).map(([key, item]) => `
-            <button type="button" onclick="sendSoundboard('${key}'); document.getElementById('soundboard-popover-menu').style.display='none';" style="background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.45); border-radius:8px; color:#f8fafc; font-size:0.74rem; font-weight:700; padding:5px 8px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+        sbPop.innerHTML = Object.entries(SOUNDBOARD_ITEMS).map(([key, item]) => {
+            const locked = Boolean(item.premium && !window.__isPremium);
+            return `
+            <button type="button" onclick="sendSoundboard('${key}'); document.getElementById('soundboard-popover-menu').style.display='none';" style="background:rgba(251,191,36,0.12); border:1px solid ${item.premium ? 'rgba(167,139,250,0.7)' : 'rgba(251,191,36,0.45)'}; border-radius:8px; color:#f8fafc; font-size:0.74rem; font-weight:700; padding:5px 8px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; ${locked ? 'opacity:0.6;' : ''}">
                 <span style="font-size:1rem;">${item.emoji}</span>
-                <span>${item.label}</span>
+                <span>${item.label}${locked ? ' 🔒' : (item.premium ? ' 💎' : '')}</span>
             </button>
-        `).join('');
+        `;
+        }).join('');
         document.body.appendChild(sbPop);
 
         document.addEventListener('click', (ev) => {

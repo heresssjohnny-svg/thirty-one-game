@@ -420,7 +420,7 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
     try {
         let users = [];
         try {
-            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
+            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin, COALESCE(is_premium, 0) AS is_premium FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         } catch (e) {
             users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         }
@@ -580,6 +580,21 @@ router.post('/admin/user/admin', requireAdminAuth, (req, res) => {
     }
     try {
         const info = sqlDb.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, userId);
+        if (!info.changes) return res.status(404).json({ error: 'User not found.' });
+        return res.json({ success: true });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// Grant or revoke Premium (cosmetics). Admin accounts always have it.
+router.post('/admin/user/premium', requireAdminAuth, (req, res) => {
+    const { userId, isPremium } = req.body;
+    if (!userId || typeof isPremium !== 'boolean') {
+        return res.status(400).json({ error: 'userId and isPremium (true/false) required.' });
+    }
+    try {
+        const info = sqlDb.prepare('UPDATE users SET is_premium = ? WHERE id = ?').run(isPremium ? 1 : 0, userId);
         if (!info.changes) return res.status(404).json({ error: 'User not found.' });
         return res.json({ success: true });
     } catch (err) {
