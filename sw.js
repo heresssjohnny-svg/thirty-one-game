@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v31';
+const CACHE_NAME = 'thirtyone-cache-v32';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -18,6 +18,7 @@ const ASSETS_TO_CACHE = [
     './js/declutter.js',
     './js/premium.js',
     './js/turnBanner.js',
+    './js/celebSound.js',
     './css/premium.css',
     './css/turnBanner.css',
     './css/declutter.css',
