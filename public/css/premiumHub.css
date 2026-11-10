@@ -1,0 +1,47 @@
+/* premiumHub.css - the 💎 Premium panel opened from Settings */
+#ph-open-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(212,175,55,0.25); }
+#ph-open {
+    width: 100%; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 0.9rem; color: #fff;
+    background: linear-gradient(180deg, #7c3aed, #5b21b6); border: 1px solid rgba(196,181,253,0.9);
+    display: flex; align-items: center; justify-content: space-between;
+}
+#ph-open small { font-weight: 600; opacity: 0.85; }
+#ph-panel {
+    position: fixed; inset: 0; z-index: 100000; display: none; background: rgba(2,6,23,0.82);
+    align-items: flex-end; justify-content: center;
+}
+#ph-panel.open { display: flex; }
+#ph-sheet {
+    width: 100%; max-width: 520px; max-height: 88vh; display: flex; flex-direction: column;
+    background: #0f172a; border: 1px solid rgba(167,139,250,0.6); border-bottom: none; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
+}
+#ph-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 6px; }
+#ph-head b { color: #e9d5ff; font-size: 1rem; }
+#ph-close { width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(148,163,184,0.5); background: #1e293b; color: #e2e8f0; cursor: pointer; }
+#ph-tabs { display: flex; gap: 4px; padding: 4px 10px 8px; overflow-x: auto; border-bottom: 1px solid rgba(167,139,250,0.3); }
+#ph-tabs button {
+    flex: 0 0 auto; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(167,139,250,0.45);
+    background: transparent; color: #cbd5e1; font-weight: 700; font-size: 0.78rem; cursor: pointer;
+}
+#ph-tabs button.on { background: #6d28d9; color: #fff; border-color: #a78bfa; }
+#ph-body { overflow-y: auto; padding: 10px 14px 18px; -webkit-overflow-scrolling: touch; }
+#ph-body .ph-tab { display: none; }
+#ph-body .ph-tab.on { display: block; }
+#ph-body .ph-h { color: #fbbf24; font-weight: 800; font-size: 0.85rem; margin: 10px 0 6px; }
+#ph-body .ph-note { color: #94a3b8; font-size: 0.72rem; margin-top: 6px; }
+.ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.ph-tile {
+    position: relative; border-radius: 10px; padding: 8px 6px; cursor: pointer; text-align: center; color: #f8fafc;
+    background: #1e293b; border: 1px solid rgba(148,163,184,0.35); font-size: 0.75rem; font-weight: 700;
+}
+.ph-tile.on { border-color: #fbbf24; box-shadow: 0 0 0 2px rgba(251,191,36,0.4); }
+.ph-tile.locked { opacity: 0.6; }
+.ph-tile .ph-ico { font-size: 1.4rem; display: block; margin-bottom: 2px; }
+.ph-tile .ph-lk { position: absolute; top: 4px; right: 6px; font-size: 0.7rem; }
+.ph-face-demo { display: inline-flex; gap: 3px; margin-bottom: 4px; }
+.ph-face-demo span { background: #fff; border-radius: 3px; padding: 1px 3px; font-weight: 800; font-size: 0.72rem; }
+#ph-body #pf-style-section { margin-top: 0; padding-top: 0; border-top: none; }
+#ph-body #pf-style-section .pf-title { display: none; }
+/* the moved sections never show in the main Settings list */
+#settings-modal .settings-content > #pf-style-section, #settings-modal .settings-content > #cs-section { display: none; }

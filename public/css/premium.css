@@ -22,3 +22,41 @@ body[data-pf-back] .mini-card.back {
 #pf-style-section .pf-swatch.pf-locked { opacity: 0.55; }
 #pf-style-section .pf-lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
 #pf-style-section .pf-note { margin-top: 8px; font-size: 0.7rem; color: #94a3b8; }
+
+/* ---- patterned / animated card backs ---- */
+body[data-pf-pattern="lattice"] .card-slot.back, body[data-pf-pattern="lattice"] .playing-card.back, body[data-pf-pattern="lattice"] .mini-card.back {
+    background: repeating-linear-gradient(45deg, rgba(255,255,255,0.14) 0 2px, transparent 2px 9px),
+                repeating-linear-gradient(-45deg, rgba(255,255,255,0.14) 0 2px, transparent 2px 9px),
+                linear-gradient(135deg, var(--pf-back-a), var(--pf-back-b)) !important;
+}
+body[data-pf-pattern="stripes"] .card-slot.back, body[data-pf-pattern="stripes"] .playing-card.back, body[data-pf-pattern="stripes"] .mini-card.back {
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,0.13) 0 3px, transparent 3px 10px),
+                linear-gradient(135deg, var(--pf-back-a), var(--pf-back-b)) !important;
+}
+body[data-pf-pattern="dots"] .card-slot.back, body[data-pf-pattern="dots"] .playing-card.back, body[data-pf-pattern="dots"] .mini-card.back {
+    background: radial-gradient(rgba(255,255,255,0.22) 1.5px, transparent 2px) 0 0 / 9px 9px,
+                linear-gradient(135deg, var(--pf-back-a), var(--pf-back-b)) !important;
+}
+body[data-pf-pattern="candy"] .card-slot.back, body[data-pf-pattern="candy"] .playing-card.back, body[data-pf-pattern="candy"] .mini-card.back {
+    background: repeating-linear-gradient(45deg, #fff 0 6px, var(--pf-back-a) 6px 14px) !important;
+}
+body[data-pf-pattern="holo"] .card-slot.back, body[data-pf-pattern="holo"] .playing-card.back, body[data-pf-pattern="holo"] .mini-card.back {
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.35) 45%, transparent 60%) 0 0 / 250% 100%,
+                linear-gradient(135deg, var(--pf-back-a), #db2777 50%, var(--pf-back-b)) !important;
+    animation: pf-holo 3.2s linear infinite;
+}
+@keyframes pf-holo { from { background-position: 150% 0, 0 0; } to { background-position: -100% 0, 0 0; } }
+@media (prefers-reduced-motion: reduce) { body[data-pf-pattern="holo"] .card-slot.back, body[data-pf-pattern="holo"] .playing-card.back { animation: none; } }
+
+/* ---- card face styles (data-suit set by premiumHub.js) ---- */
+body[data-pf-face="big"] .playing-card:not(.back) .corner-val { font-size: 1.35em !important; font-weight: 900 !important; }
+body[data-pf-face="big"] .playing-card:not(.back) .corner-suit { font-size: 1.15em !important; }
+body[data-pf-face="big"] .mini-card:not(.back) { font-size: 0.9rem !important; }
+body[data-pf-face="four"] [data-suit="♦"] { color: #2563eb !important; }
+body[data-pf-face="four"] [data-suit="♣"] { color: #15803d !important; }
+body[data-pf-face="four"] [data-suit="♥"] { color: #dc2626 !important; }
+body[data-pf-face="four"] [data-suit="♠"] { color: #0f172a !important; }
+body[data-pf-face="retro"] .playing-card:not(.back), body[data-pf-face="retro"] .mini-card:not(.back) {
+    font-family: Georgia, 'Times New Roman', serif !important; background: #f6efdc !important;
+}
+body[data-pf-face="retro"] .playing-card:not(.back) * { font-family: Georgia, 'Times New Roman', serif !important; }
