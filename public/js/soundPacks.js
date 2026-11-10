@@ -10,6 +10,10 @@
 
     var PACKS = [
         { id: 'classic', name: 'Classic', icon: '🃏', free: true },
+        { id: 'arcade', name: 'Arcade', icon: '👾' },
+        { id: 'casino', name: 'Casino', icon: '🎰' },
+        { id: 'sports', name: 'Sports', icon: '🏟️' },
+        { id: 'holiday', name: 'Holiday', icon: '🔔' },
         { id: 'spooky', name: 'Spooky', icon: '👻' }
     ];
     var VOICES = [
