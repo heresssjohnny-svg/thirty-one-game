@@ -122,6 +122,19 @@
     window.__phRefresh = function () { if (panel && panel.classList.contains('open')) refreshTab(); };
     window.closePremiumHub = close;
 
+    function trialLeft() {
+        var ms = (window.__premiumTrialEnds || 0) - Date.now();
+        if (ms <= 0) return 'ending';
+        var d = Math.floor(ms / 86400000), h = Math.ceil((ms % 86400000) / 3600000);
+        return d >= 1 ? d + ' day' + (d === 1 ? '' : 's') + ' left' : h + ' h left';
+    }
+    // trial line in the panel header
+    setInterval(function () {
+        var hd = document.querySelector('#ph-head b'); if (!hd) return;
+        var t = window.__premiumTrialEnds && !window.__isAdminAccount ? '💎 Premium & Style · trial: ' + trialLeft() : '💎 Premium & Style';
+        if (hd.textContent !== t) hd.textContent = t;
+    }, 1000);
+
     // ---------- Settings entry button ----------
     function ensureEntry() {
         var content = document.querySelector('#settings-modal .settings-content');
@@ -136,7 +149,7 @@
         } else if (row.nextSibling && row.parentNode === content) {
             content.appendChild(row);   // keep it last
         }
-        var sm = row.querySelector('small'), txt = window.__isAdminAccount ? 'Admin · all unlocked' : (prem() ? 'Unlocked' : 'Themes, cards, sounds ›');
+        var sm = row.querySelector('small'), txt = window.__isAdminAccount ? 'Admin · all unlocked' : (window.__premiumTrialEnds ? 'Free trial · ' + trialLeft() : (prem() ? 'Unlocked' : 'Themes, cards, sounds ›'));
         if (sm.textContent !== txt) sm.textContent = txt;
     }
 

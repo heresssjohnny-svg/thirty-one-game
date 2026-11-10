@@ -173,8 +173,31 @@
         lastTok = t;
         fetch('/api/premium/me', { headers: { Authorization: 'Bearer ' + t } })
             .then(function (r) { return r.ok ? r.json() : { premium: false, admin: false }; })
-            .then(function (d) { setStatus(!!d.premium, !!d.admin); })
+            .then(function (d) {
+                window.__premiumTrialEnds = d.trial && d.trialEndsAt ? Number(d.trialEndsAt) : null;
+                setStatus(!!d.premium, !!d.admin);
+                if (window.__premiumTrialEnds) {
+                    // re-check right after the trial ends so everything locks without a reload
+                    var wait = window.__premiumTrialEnds - Date.now() + 2000;
+                    if (wait > 0 && wait < 2147483000) { clearTimeout(window.__trialTimer); window.__trialTimer = setTimeout(function () { refresh(true); }, wait); }
+                    welcomeTrial();
+                }
+            })
             .catch(function () { lastTok = null; });
+    }
+    function welcomeTrial() {
+        try { if (localStorage.getItem('blitz31_trial_welcomed') === '1') return; localStorage.setItem('blitz31_trial_welcomed', '1'); } catch (e) { return; }
+        var days = Math.max(1, Math.ceil((window.__premiumTrialEnds - Date.now()) / 86400000));
+        var b = document.createElement('div');
+        b.id = 'pf-trial-welcome';
+        b.style.cssText = 'position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 14px);transform:translateX(-50%);z-index:100005;max-width:92vw;' +
+            'background:linear-gradient(180deg,#7c3aed,#4c1d95);color:#fff;border:1px solid #c4b5fd;border-radius:14px;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.6);' +
+            'font-weight:700;font-size:.85rem;display:flex;gap:10px;align-items:center;';
+        b.innerHTML = '<span>🎁 <b>' + days + ' days of Premium, free!</b><br><span style="font-weight:600">Themes, sounds, celebrations &amp; stats unlocked.</span></span>' +
+            '<button type="button" style="flex-shrink:0;border-radius:999px;border:1px solid #fff;background:#fff;color:#4c1d95;font-weight:800;padding:5px 10px;cursor:pointer;">Explore</button>';
+        b.querySelector('button').onclick = function () { b.remove(); if (typeof window.openPremiumHub === 'function') window.openPremiumHub('table'); };
+        document.body.appendChild(b);
+        setTimeout(function () { if (b.parentNode) b.remove(); }, 12000);
     }
     function setStatus(prem, admin) {
         var changed = (window.__isPremium !== prem) || (window.__isAdminAccount !== admin);
