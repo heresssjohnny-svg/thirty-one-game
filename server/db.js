@@ -151,7 +151,10 @@ module.exports = {
    * Nets balances out if the creditor already owes the debtor.
    */
   recordLifetimeDebt: (debtorId, creditorId, amount) => {
+    amount = Math.round((Number(amount) || 0) * 100) / 100;   // whole cents, no float drift
     if (!debtorId || !creditorId || debtorId === creditorId || amount <= 0) return;
+    // tidy any float leftovers from older rows before netting
+    try { db.prepare('DELETE FROM lifetime_ledger WHERE amount < 0.005').run(); } catch (e) {}
 
     // Check if the opposite debt exists (creditor owes debtor)
     const reverse = db.prepare(`
@@ -159,6 +162,7 @@ module.exports = {
     `).get(creditorId, debtorId);
 
     if (reverse) {
+      if (Math.abs(reverse.amount - amount) < 0.005) reverse.amount = amount;
       if (reverse.amount > amount) {
         // Reverse debt is larger: deduct from creditor's existing debt
         db.prepare(`

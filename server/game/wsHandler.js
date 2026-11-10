@@ -1219,8 +1219,23 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 if (!myUsername) break;
 
                 const { fromDebtor, toCreditor, amount } = data;
-                const transferAmt = Number(amount);
-                if (!fromDebtor || !toCreditor || transferAmt <= 0) break;
+                let transferAmt = Number(amount);
+                if (!fromDebtor || !toCreditor || !(transferAmt > 0)) break;
+                const lc = s => String(s || '').trim().toLowerCase();
+                if (lc(fromDebtor) === lc(toCreditor) || lc(fromDebtor) === lc(myUsername) || lc(toCreditor) === lc(myUsername)) break;
+                // Only move what is really owed: fromDebtor must owe me (net) and I must owe toCreditor (net).
+                const owed = (a, b) => {
+                    let t = 0;
+                    [lobby.mainGameLedger, lobby.sideBetLedger].forEach(L => {
+                        if (!L) return;
+                        for (const d in L) if (lc(d) === lc(a)) for (const c in L[d]) if (lc(c) === lc(b)) t += Number(L[d][c]) || 0;
+                    });
+                    return t;
+                };
+                const theyOweMe = owed(fromDebtor, myUsername) - owed(myUsername, fromDebtor);
+                const iOweThem = owed(myUsername, toCreditor) - owed(toCreditor, myUsername);
+                transferAmt = Math.round(Math.min(transferAmt, theyOweMe, iOweThem) * 100) / 100;
+                if (!(transferAmt > 0)) break;
 
                 recordDebt(lobby.mainGameLedger, myUsername, fromDebtor, transferAmt);
                 recordDebt(lobby.mainGameLedger, toCreditor, myUsername, transferAmt);
@@ -1247,7 +1262,15 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             const lobby = currentLobbyCode ? lobbies[currentLobbyCode] : null;
             const myUid = extractSocketUserId(ws, data, lobby) || data.myId;
             const { fromDebtorId, toCreditorId, amount } = data;
-            const transferAmt = Number(amount);
+            let transferAmt = Number(amount);
+            // Cap at what is really owed both ways (lifetime rows are already netted per pair)
+            if (dbModule && typeof dbModule.prepare === 'function' && myUid && fromDebtorId && toCreditorId) {
+                try {
+                    const row = (d, c) => (dbModule.prepare('SELECT amount FROM lifetime_ledger WHERE debtor_id = ? AND creditor_id = ?').get(d, c) || {}).amount || 0;
+                    transferAmt = Math.min(transferAmt, row(fromDebtorId, myUid), row(myUid, toCreditorId));
+                    if (fromDebtorId === toCreditorId || fromDebtorId === myUid || toCreditorId === myUid) transferAmt = 0;
+                } catch (e) { transferAmt = 0; }
+            }
 
             if (dbModule && typeof dbModule.recordLifetimeDebt === 'function' && myUid && fromDebtorId && toCreditorId && transferAmt > 0) {
                 dbModule.recordLifetimeDebt(myUid, fromDebtorId, transferAmt);

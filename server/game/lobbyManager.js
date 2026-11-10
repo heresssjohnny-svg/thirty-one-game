@@ -1892,6 +1892,7 @@ function handlePoolCardSelection(lobby, userOrWs, rawCardIndex) {
             setTimeout(() => {
                 if (!lobbies[lobby.code]) return;
                 const currentLobby = lobbies[lobby.code];
+                if (currentLobby.gameState !== 'tieBreaker') return;   // already resolved (e.g. a player left)
                 if (getActiveParticipants(currentLobby).length <= 1) {
                     awardTournamentWinner(currentLobby, getActiveParticipants(currentLobby)[0]);
                 } else {
@@ -2482,6 +2483,10 @@ function triggerRoundOver(lobby, msg) {
 }
 
 function awardTournamentWinner(lobby, winner) {
+    // Pay out a match exactly once. Several paths can end a match (last life lost, a player leaving or
+    // being kicked, the tie-breaker's 3 s timer, the round-over auto timer); without this guard two of
+    // them firing close together charged every loser twice.
+    if (!lobby || lobby.gameState === 'tournamentEnd' || lobby.gameState === 'lobby') return;
     clearRoundOverTimer(lobby);
     clearTurnTimer(lobby);
     if (!winner) return;

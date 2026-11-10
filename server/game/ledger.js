@@ -5,11 +5,11 @@
  */
 function recordDebt(ledger, debtor, creditor, amount) {
     if (!ledger || !debtor || !creditor || debtor.toLowerCase() === creditor.toLowerCase()) return;
-    const amt = Number(amount) || 0;
+    const amt = Math.round((Number(amount) || 0) * 100) / 100;
     if (amt <= 0) return;
 
     if (!ledger[debtor]) ledger[debtor] = {};
-    ledger[debtor][creditor] = (Number(ledger[debtor][creditor]) || 0) + amt;
+    ledger[debtor][creditor] = Math.round(((Number(ledger[debtor][creditor]) || 0) + amt) * 100) / 100;
 }
 
 /**
