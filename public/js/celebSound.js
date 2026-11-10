@@ -6,7 +6,7 @@
     if (window.__celebSoundLoaded) return;
     window.__celebSoundLoaded = true;
 
-    var KEYS = { hit31: 'blitz31_cel31', win: 'blitz31_celwin' };
+    var KEYS = { hit31: 'blitz31_cel31', win: 'blitz31_celwin', knock: 'blitz31_celknock' };
     var section = null, lastPaint = '';
 
     function get(k) { try { return localStorage.getItem(k) || 'default'; } catch (e) { return 'default'; } }
@@ -19,15 +19,18 @@
     // a saved premium pick falls back to default when the account is not premium
     function choice(kind) {
         var v = get(KEYS[kind]);
+        if (kind === 'knock') return (window.__isPremium && v !== 'none' && allowed(v)) ? v : 'default';
         if (v === 'default' || v === 'none') return v;
         return allowed(v) ? v : 'default';
     }
-    function options(sel) {
+    function options(sel, kind) {
         var it = items(), free = '', prem = '';
         Object.keys(it).forEach(function (id) {
             var o = '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + it[id].emoji + ' ' + it[id].label + '</option>';
             if (!it[id].premium) free += o; else if (window.__isPremium) prem += o;
         });
+        if (kind === 'knock') return '<option value="default"' + (sel === 'default' ? ' selected' : '') + '>Default (knock)</option>' + free +
+            (prem ? '<optgroup label="💎 Premium">' + prem + '</optgroup>' : '');
         return '<option value="default"' + (sel === 'default' ? ' selected' : '') + '>Default (Hype)</option>' +
             '<option value="none"' + (sel === 'none' ? ' selected' : '') + '>🔇 None</option>' + free +
             (prem ? '<optgroup label="💎 Premium">' + prem + '</optgroup>' : '');
@@ -37,18 +40,21 @@
     function row(kind, label) {
         return '<div style="margin:8px 0 4px;font-size:0.82rem;color:#cbd5e1;">' + label + '</div>' +
             '<div style="display:flex;gap:6px;align-items:center;">' +
-            '<select data-cs="' + kind + '" style="' + SEL + '">' + options(choice(kind)) + '</select>' +
+            '<select data-cs="' + kind + '" style="' + SEL + '">' + options(choice(kind), kind) + '</select>' +
             '<button type="button" data-cs-play="' + kind + '" style="' + BTN + '" aria-label="Preview">▶</button></div>';
     }
     function paint() {
         if (!section) return;
-        var key = (window.__isPremium ? 'p' : 'f') + '|' + choice('hit31') + '|' + choice('win');
+        var key = (window.__isPremium ? 'p' : 'f') + '|' + choice('hit31') + '|' + choice('win') + '|' + choice('knock');
         if (key === lastPaint && section.firstChild) return;
         lastPaint = key;
         section.innerHTML = '<div style="font-weight:800;color:#fbbf24;margin:14px 0 2px;">🎉 Celebration Sounds</div>' +
             row('hit31', 'When I hit 31') + row('win', 'When I win the match') +
-            '<div style="font-size:0.72rem;color:#94a3b8;margin-top:6px;">Plays on your device when you celebrate.' +
-            (window.__isPremium ? '' : ' 💎 Premium sounds unlock more choices.') + '</div>';
+            (window.__isPremium ? row('knock', '💎 My knock call') : '<div style="margin:8px 0 4px;font-size:0.82rem;color:#94a3b8;">🔒 My knock call (Premium)</div>') +
+            '<div style="font-size:0.72rem;color:#94a3b8;margin-top:6px;">The whole table hears your picks.' +
+            (window.__isPremium ? '' : ' 💎 Premium unlocks more sounds and a custom knock.') + '</div>' +
+            '<div data-cs-extra></div>';
+        if (typeof window.__celebExtraPaint === 'function') { try { window.__celebExtraPaint(section.querySelector('[data-cs-extra]')); } catch (e) {} }
     }
     function ensure() {
         if (section && document.body.contains(section)) return;
@@ -70,7 +76,8 @@
             if (!b) return;
             var c = choice(b.getAttribute('data-cs-play'));
             if (c === 'none') return;
-            if (c === 'default') playDefault(); else play(c);
+            if (c === 'default') { if (b.getAttribute('data-cs-play') === 'knock') { if (origSafe) origSafe('knock'); } else playDefault(); }
+            else play(c);
         });
         paint();
     }
@@ -127,13 +134,17 @@
         if (!snap) return;
         var me = (snap.players || []).find(function (q) { return q.isMe && !q.isBot; });
         if (!me) return;
-        var want = { hit31: choice('hit31'), win: choice('win') };
-        var have = me.celebration || { hit31: 'default', win: 'default' };
-        if (!force && have.hit31 === want.hit31 && have.win === want.win) return;
+        var ex = (typeof window.__celebExtraChoice === 'function') ? window.__celebExtraChoice() : { confetti: 'default', dance: 'default' };
+        var want = { hit31: choice('hit31'), win: choice('win'), knock: choice('knock'), confetti: ex.confetti, dance: ex.dance };
+        var have = me.celebration || {};
+        var same = Object.keys(want).every(function (k) { return (have[k] || 'default') === want[k]; });
+        if (!force && same) return;
         if (!force && Date.now() - lastSent < 4000) return;
         lastSent = Date.now();
-        if (typeof window.sendSocket === 'function') window.sendSocket({ type: 'SET_CELEBRATION', hit31: want.hit31, win: want.win });
+        if (typeof window.sendSocket === 'function') window.sendSocket({ type: 'SET_CELEBRATION', hit31: want.hit31, win: want.win, knock: want.knock, confetti: want.confetti, dance: want.dance });
     }
     setInterval(function () { ensure(); paint(); syncPick(false); }, 1000);
     window.__celebChoice = choice;   // tests
+    window.__celebSync = function () { syncPick(true); };
+    window.__celebRepaint = function () { lastPaint = ''; paint(); };
 })();
