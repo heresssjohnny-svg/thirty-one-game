@@ -27,7 +27,7 @@
     function renderTable(el) {
         var a = api(); if (!a) return;
         var cur = { felt: a.get('blitz31_felt'), back: a.get('blitz31_back'), face: a.get('blitz31_face') };
-        var html = '<div class="ph-h">Table themes</div><div class="ph-grid">' + a.THEMES.map(function (t) {
+        var html = '<div data-ph-slot="host"></div><div class="ph-h">Table themes</div><div class="ph-grid">' + a.THEMES.map(function (t) {
             var on = cur.felt === t.felt && cur.back === t.back && cur.face === t.face;
             var lk = !t.free && !prem();
             return '<button type="button" class="ph-tile' + (on ? ' on' : '') + (lk ? ' locked' : '') + '" data-theme="' + t.id + '">' +
@@ -37,6 +37,7 @@
         el.innerHTML = html;
         var sec = document.getElementById('pf-style-section');
         if (sec) el.querySelector('[data-ph-slot="style"]').appendChild(sec);
+        if (typeof window.__phTableExtra === 'function') { try { window.__phTableExtra(el.querySelector('[data-ph-slot="host"]')); } catch (e) {} }
     }
     function renderCards(el) {
         var a = api(); if (!a) return;
@@ -118,6 +119,7 @@
         ['pf-style-section', 'cs-section'].forEach(function (id) { var s = document.getElementById(id); if (s && content) content.appendChild(s); });
     }
     window.openPremiumHub = open;
+    window.__phRefresh = function () { if (panel && panel.classList.contains('open')) refreshTab(); };
     window.closePremiumHub = close;
 
     // ---------- Settings entry button ----------

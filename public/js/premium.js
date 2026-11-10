@@ -72,6 +72,12 @@
         var back = find(BACKS, getPref('blitz31_back'));
         if (!felt.free && !window.__isPremium) felt = FELTS[0];
         if (!back.free && !window.__isPremium) back = BACKS[0];
+        // a Premium host's table theme wins for everyone at that table (card faces stay personal)
+        var tt = (typeof window.__tableThemeNow === 'function') ? window.__tableThemeNow() : null;
+        if (tt) {
+            var th = find(THEMES, tt);
+            if (th && th.id === tt) { felt = find(FELTS, th.felt); back = find(BACKS, th.back); }
+        }
         if (felt.free) {
             body.removeAttribute('data-pf-felt');
         } else {
@@ -178,6 +184,7 @@
             // rebuild the soundboard popover so lock icons match
             var pop = document.getElementById('soundboard-popover-menu');
             if (pop && pop.parentNode) pop.parentNode.removeChild(pop);
+            if (typeof window.__phRefresh === 'function') setTimeout(window.__phRefresh, 0);
         }
         applyStyle();
     }

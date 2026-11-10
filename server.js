@@ -30,6 +30,8 @@ const { handleDealSkipMessage } = require('./server/game/dealSkip');
 const { handleMuckMessage } = require('./server/game/muck');
 const { router: premiumRouter, handlePremiumGate } = require('./server/premium');
 const { handleEmoteMessage } = require('./server/emotes');
+const { router: roundLogRouter, startRoundLog } = require('./server/roundLog');
+const { handleTableStyle } = require('./server/tableStyle');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
 const { router: statsRouter, startStatsTracker } = require('./server/stats');
@@ -72,6 +74,7 @@ app.use('/api', termsRouter);
 // /api/push/* (server/push.js)
 app.use('/api', pushRouter);
 app.use('/api', premiumRouter);
+app.use('/api', roundLogRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -470,6 +473,7 @@ wss.on('connection', (ws, req) => {
         // Premium-only soundboard sounds (server/premium.js)
         if (handlePremiumGate(ws, parsed)) return;
         if (handleEmoteMessage(ws, parsed, lobbyManager)) return;
+        if (handleTableStyle(ws, parsed, lobbyManager, broadcastLobbyList)) return;
 
         // Forward (sanitized) gameplay commands to room and lobby manager
         handleWebSocketMessage(ws, JSON.stringify(parsed), broadcastLobbyList);
@@ -556,3 +560,4 @@ startPrivateTables({ lobbyManager });
 
 // Rematch prompt after a match, plus push notifications for rematches and missed turns (see rematch.js)
 startRematch({ lobbyManager });
+startRoundLog({ lobbyManager });

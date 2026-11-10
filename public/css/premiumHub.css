@@ -45,3 +45,23 @@
 #ph-body #pf-style-section .pf-title { display: none; }
 /* the moved sections never show in the main Settings list */
 #settings-modal .settings-content > #pf-style-section, #settings-modal .settings-content > #cs-section { display: none; }
+/* stats tab */
+.ps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ps-tile { background: #1e293b; border: 1px solid rgba(148,163,184,0.3); border-radius: 10px; padding: 6px 4px; text-align: center; }
+.ps-tile b { display: block; color: #fde68a; font-size: 1.05rem; }
+.ps-tile span { color: #94a3b8; font-size: 0.65rem; }
+.ps-lock { color: #cbd5e1; font-size: 0.8rem; background: #1e293b; border: 1px dashed rgba(167,139,250,0.6); border-radius: 10px; padding: 10px; }
+.ps-h2h .ps-row { display: flex; flex-direction: column; background: #1e293b; border-radius: 8px; padding: 6px 8px; margin-bottom: 5px; font-size: 0.74rem; color: #cbd5e1; }
+.ps-h2h .ps-row b { color: #f8fafc; font-size: 0.82rem; }
+.ps-round { background: #111c33; border: 1px solid rgba(148,163,184,0.25); border-radius: 10px; padding: 6px 8px; margin-bottom: 6px; }
+.ps-rh { color: #94a3b8; font-size: 0.68rem; margin-bottom: 3px; }
+.ps-pl { display: grid; grid-template-columns: 1fr auto 30px 62px; gap: 6px; align-items: center; font-size: 0.74rem; color: #e2e8f0; padding: 2px 0; }
+.ps-pl.me .ps-n { color: #fbbf24; font-weight: 800; }
+.ps-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-sc { text-align: right; font-weight: 800; }
+.ps-tg { font-size: 0.66rem; color: #fca5a5; }
+.ps-card { display: inline-block; background: #fff; color: #0f172a; border-radius: 3px; padding: 0 3px; margin-right: 2px; font-weight: 800; font-size: 0.7rem; }
+.ps-card.r { color: #dc2626; }
+body[data-pf-face="four"] .ps-card[data-suit="♦"] { color: #2563eb; }
+body[data-pf-face="four"] .ps-card[data-suit="♣"] { color: #15803d; }
+.ps-btn { margin-top: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(251,191,36,0.5); background: #1e293b; color: #fde68a; font-weight: 700; cursor: pointer; }
