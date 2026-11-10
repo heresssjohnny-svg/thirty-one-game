@@ -20,21 +20,48 @@ body.pc-aiming [data-player-username] { outline: 2px dashed #f472b6; outline-off
 #pc-emote-pop .pc-ep-g { display: grid; grid-template-columns: repeat(6, 38px); gap: 4px; }
 #pc-emote-pop button { font-size: 1.45rem; background: transparent; border: none; cursor: pointer; padding: 2px; line-height: 1.2; }
 
-/* dance styles (body[data-cel-dance] set per celebration) */
-body[data-cel-dance="disco"] .cel-dancer .tw-hips { animation: pc-disco-hips 0.5s ease-in-out infinite alternate !important; }
-body[data-cel-dance="disco"] .cel-dancer .tw-upper { animation: pc-disco-upper 0.5s ease-in-out infinite alternate !important; }
-body[data-cel-dance="disco"] .cel-dancer .tw-arm-r { animation: pc-disco-point 1s ease-in-out infinite alternate !important; }
-body[data-cel-dance="disco"] .cel-dancer .tw-arm-l { animation: pc-disco-low 1s ease-in-out infinite alternate !important; }
-@keyframes pc-disco-hips { 0% { transform: translateX(-5px) rotate(-6deg); } 100% { transform: translateX(5px) rotate(6deg); } }
-@keyframes pc-disco-upper { 0% { transform: translateX(-4px) rotate(-5deg); } 100% { transform: translateX(4px) rotate(5deg); } }
-@keyframes pc-disco-point { 0% { transform: rotate(-35deg); } 100% { transform: rotate(25deg); } }
-@keyframes pc-disco-low { 0% { transform: rotate(40deg); } 100% { transform: rotate(70deg); } }
-body[data-cel-dance="robot"] .cel-dancer .tw-hips { animation: pc-robo-hips 0.8s steps(2) infinite !important; }
-body[data-cel-dance="robot"] .cel-dancer .tw-upper { animation: pc-robo-upper 0.8s steps(2) infinite !important; }
-body[data-cel-dance="robot"] .cel-dancer .tw-arm-l { animation: pc-robo-arm 0.8s steps(2) infinite !important; }
-body[data-cel-dance="robot"] .cel-dancer .tw-arm-r { animation: pc-robo-arm 0.8s steps(2) infinite reverse !important; }
-body[data-cel-dance="robot"] .cel-dancer .tw-knees { animation: none !important; }
-@keyframes pc-robo-hips { 0% { transform: translateY(0); } 100% { transform: translateY(-4px); } }
-@keyframes pc-robo-upper { 0% { transform: rotate(-8deg); } 100% { transform: rotate(8deg); } }
-@keyframes pc-robo-arm { 0% { transform: rotate(-60deg); } 100% { transform: rotate(30deg); } }
+/* dance styles (body[data-cel-dance] set per celebration). Part names come from celebration.js:
+   tw-body (whole figure) · tw-upper · tw-hips · tw-knees · tw-arm-l/r (upper arm) · dl-fore-l/r · dl-head · dl-leg-l/r */
+body[data-cel-dance] .cel-dancer * { animation-delay: 0s !important; }
+
+/* DISCO: point to the sky, hand on hip, step and sway */
+body[data-cel-dance="disco"] .cel-dancer .tw-body   { animation: dc-bounce .55s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .tw-upper  { animation: dc-lean 1.1s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .tw-hips   { animation: dc-hips 1.1s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .tw-arm-r  { animation: dc-point 1.1s cubic-bezier(.6,0,.4,1) infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .dl-fore-r { animation: none !important; transform: rotate(-12deg); }
+body[data-cel-dance="disco"] .cel-dancer .tw-arm-l  { animation: none !important; transform: rotate(-78deg); }
+body[data-cel-dance="disco"] .cel-dancer .dl-fore-l { animation: none !important; transform: rotate(-123deg); }
+body[data-cel-dance="disco"] .cel-dancer .tw-knees  { animation: none !important; }
+body[data-cel-dance="disco"] .cel-dancer .dl-leg-r  { animation: dc-step 1.1s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .dl-leg-l  { animation: dc-step2 1.1s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .dl-head   { animation: dc-head .55s ease-in-out infinite alternate !important; }
+@keyframes dc-bounce { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
+@keyframes dc-lean   { 0% { transform: rotate(-7deg); } 100% { transform: rotate(5deg); } }
+@keyframes dc-hips   { 0% { transform: translateX(-3px) rotate(-6deg); } 100% { transform: translateX(3px) rotate(6deg); } }
+@keyframes dc-point  { 0% { transform: rotate(-8deg); } 100% { transform: rotate(118deg); } }
+@keyframes dc-step   { 0% { transform: rotate(0deg); } 100% { transform: rotate(-22deg); } }
+@keyframes dc-step2  { 0% { transform: rotate(6deg); } 100% { transform: rotate(0deg); } }
+@keyframes dc-head   { 0% { transform: rotate(-6deg); } 100% { transform: rotate(4deg); } }
+
+/* ROBOT: stiff, snapping poses */
+body[data-cel-dance="robot"] .cel-dancer .tw-hips, body[data-cel-dance="robot"] .cel-dancer .tw-knees { animation: none !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-body   { animation: rb-body 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-upper  { animation: rb-upper 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-arm-l  { animation: rb-arm-l 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .dl-fore-l { animation: rb-fore-l 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-arm-r  { animation: rb-arm-r 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .dl-fore-r { animation: rb-fore-r 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .dl-head   { animation: rb-head 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .dl-leg-l  { animation: rb-leg-l 1.6s steps(1, end) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .dl-leg-r  { animation: rb-leg-r 1.6s steps(1, end) infinite !important; }
+@keyframes rb-body   { 0%,50% { transform: translateY(0); } 25%,75% { transform: translateY(-2px); } }
+@keyframes rb-upper  { 0% { transform: rotate(0); } 25% { transform: rotate(-5deg); } 50% { transform: rotate(0); } 75% { transform: rotate(5deg); } }
+@keyframes rb-arm-l  { 0% { transform: rotate(-55deg); } 25% { transform: rotate(-95deg); } 50% { transform: rotate(-55deg); } 75% { transform: rotate(-15deg); } }
+@keyframes rb-fore-l { 0% { transform: rotate(80deg); } 25% { transform: rotate(0deg); } 50% { transform: rotate(-80deg); } 75% { transform: rotate(80deg); } }
+@keyframes rb-arm-r  { 0% { transform: rotate(55deg); } 25% { transform: rotate(15deg); } 50% { transform: rotate(55deg); } 75% { transform: rotate(95deg); } }
+@keyframes rb-fore-r { 0% { transform: rotate(-80deg); } 25% { transform: rotate(-80deg); } 50% { transform: rotate(80deg); } 75% { transform: rotate(0deg); } }
+@keyframes rb-head   { 0% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 50% { transform: rotate(0); } 75% { transform: rotate(12deg); } }
+@keyframes rb-leg-l  { 0%,50%,75% { transform: rotate(0); } 25% { transform: rotate(12deg) translateY(-3px); } }
+@keyframes rb-leg-r  { 0%,25%,50% { transform: rotate(0); } 75% { transform: rotate(-12deg) translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .pc-emote, .pc-hit { animation: none !important; } }
