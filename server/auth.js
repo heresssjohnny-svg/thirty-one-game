@@ -424,6 +424,12 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
         } catch (e) {
             users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         }
+        // which recorded cues each user has (server/cues.js)
+        try {
+            const cues = {};
+            sqlDb.prepare('SELECT user_id, kind FROM user_cues').all().forEach(r => { (cues[r.user_id] = cues[r.user_id] || []).push(r.kind); });
+            users.forEach(u => { u.cues = cues[u.id] || []; });
+        } catch (e) { users.forEach(u => { u.cues = []; }); }
 
         const ledger = sqlDb.prepare(`
             SELECT 
@@ -602,6 +608,45 @@ router.post('/admin/user/premium', requireAdminAuth, (req, res) => {
     }
 });
 
+// Recorded cues: listen to and remove a player's recordings
+function scrubLiveCues(userId, kinds) {
+    // live sockets of that user stop advertising the removed recording to their table
+    try {
+        const wss = global.blitz31Wss;
+        if (!wss || !wss.clients) return;
+        wss.clients.forEach(ws => {
+            if (!ws || String(ws.userId) !== String(userId) || !ws.__cel) return;
+            if (kinds.includes('knock') && ws.__cel.knock === 'rec') { ws.__cel.knock = 'default'; delete ws.__cel.knockCue; }
+            if (kinds.includes('win')) {
+                if (ws.__cel.win === 'rec') ws.__cel.win = 'default';
+                if (ws.__cel.hit31 === 'rec') ws.__cel.hit31 = 'default';
+                delete ws.__cel.winCue;
+            }
+        });
+    } catch (e) {}
+}
+router.get('/admin/user/cue', requireAdminAuth, (req, res) => {
+    const userId = String(req.query.userId || ''), kind = String(req.query.kind || '');
+    if (!userId || !['knock', 'win'].includes(kind)) return res.status(400).json({ error: 'userId and kind required.' });
+    try {
+        const r = sqlDb.prepare('SELECT mime, data FROM user_cues WHERE user_id = ? AND kind = ?').get(userId, kind);
+        if (!r) return res.status(404).json({ error: 'No recording.' });
+        res.set('Content-Type', r.mime); res.set('Cache-Control', 'no-store'); res.set('X-Content-Type-Options', 'nosniff');
+        return res.send(Buffer.from(r.data));
+    } catch (err) { return res.status(500).json({ error: err.message }); }
+});
+router.post('/admin/user/cues/delete', requireAdminAuth, (req, res) => {
+    const { userId, kind } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId required.' });
+    const kinds = ['knock', 'win'].includes(kind) ? [kind] : ['knock', 'win'];
+    try {
+        let n = 0;
+        kinds.forEach(k => { n += sqlDb.prepare('DELETE FROM user_cues WHERE user_id = ? AND kind = ?').run(userId, k).changes; });
+        scrubLiveCues(userId, kinds);
+        return res.json({ success: true, removed: n });
+    } catch (err) { return res.status(500).json({ error: err.message }); }
+});
+
 router.post('/admin/user/delete', requireAdminAuth, (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required.' });
@@ -611,6 +656,7 @@ router.post('/admin/user/delete', requireAdminAuth, (req, res) => {
 
     try {
         sqlDb.prepare(`DELETE FROM lifetime_ledger WHERE debtor_id = ? OR creditor_id = ?`).run(userId, userId);
+        try { sqlDb.prepare('DELETE FROM user_cues WHERE user_id = ?').run(userId); scrubLiveCues(userId, ['knock', 'win']); } catch (e) {}
         sqlDb.prepare(`DELETE FROM users WHERE id = ?`).run(userId);
         return res.json({ success: true });
     } catch (err) {
