@@ -1,0 +1,19 @@
+#fc-modal { position: fixed; inset: 0; z-index: 100000; display: none; align-items: flex-end; justify-content: center; background: rgba(2,6,23,0.8); }
+#fc-modal.open { display: flex; }
+#fc-sheet { width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto; background: #0f172a; border: 1px solid rgba(212,175,55,0.5); border-bottom: none; border-radius: 16px 16px 0 0; padding: 0 14px 18px; }
+#fc-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 6px; position: sticky; top: 0; background: #0f172a; }
+#fc-head b { color: #fde68a; }
+#fc-close { width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(148,163,184,0.5); background: #1e293b; color: #e2e8f0; cursor: pointer; }
+.fc-names { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; text-align: center; font-weight: 800; color: #f8fafc; margin: 4px 0 8px; }
+.fc-names span:nth-child(2) { color: #94a3b8; font-weight: 600; }
+.fc-names span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-h2h { text-align: center; background: linear-gradient(180deg, #4c1d95, #2e1065); border: 1px solid #a78bfa; border-radius: 10px; padding: 8px; color: #ede9fe; font-size: 0.9rem; margin-bottom: 6px; }
+.fc-h2h b { font-size: 1.15rem; color: #fff; }
+.fc-h2h small { color: #c4b5fd; }
+.fc-sec { color: #fbbf24; font-weight: 800; font-size: 0.8rem; margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.fc-row { display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.fc-l { text-align: center; color: #94a3b8; font-size: 0.75rem; }
+.fc-v { text-align: center; color: #e2e8f0; font-weight: 800; font-size: 0.95rem; }
+.fc-v.win { color: #34d399; }
+.fc-note { color: #94a3b8; font-size: 0.78rem; text-align: center; margin: 10px 0; }
+.fc-lock { width: 100%; margin-top: 12px; padding: 10px; border-radius: 10px; border: 1px dashed rgba(167,139,250,0.7); background: #1e1b4b; color: #ddd6fe; font-size: 0.8rem; cursor: pointer; text-align: left; }

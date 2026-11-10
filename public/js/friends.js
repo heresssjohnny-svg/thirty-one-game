@@ -89,7 +89,11 @@
         }
         body.appendChild(section('Your friends (' + (d.friends ? d.friends.length : 0) + ')'));
         if (d.friends && d.friends.length) {
-            d.friends.forEach(function (f) { body.appendChild(line(f.username, [removeBtn(f.username)])); });
+            d.friends.forEach(function (f) {
+                var cmp = btn('📊', function () { if (typeof window.openFriendCompare === 'function') window.openFriendCompare(f.username); }, 'color:#fbbf24;', 'compare');
+                cmp.title = 'Compare stats'; cmp.setAttribute('aria-label', 'Compare stats with ' + f.username);
+                body.appendChild(line(f.username, [cmp, removeBtn(f.username)]));
+            });
         } else {
             body.appendChild(el('p', 'margin:4px 0;font-size:.82rem;color:#94a3b8;', 'No friends yet. Add one by username or share a private table’s invite link.'));
         }

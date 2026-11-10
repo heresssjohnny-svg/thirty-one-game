@@ -181,6 +181,24 @@ function deepStats(uid) {
     };
 }
 
+// head-to-head between two specific players (rounds they shared + matches they both played)
+function h2hBetween(a, b) {
+    const out = { rounds: 0, aLost: 0, bLost: 0, matches: 0, aWins: 0, bWins: 0 };
+    const rows = sql.prepare('SELECT l.data FROM round_user u JOIN round_log l ON l.id = u.round_id WHERE u.user_id = ? ORDER BY u.at DESC LIMIT 2000').all(a);
+    rows.forEach(r => {
+        let d; try { d = JSON.parse(r.data); } catch (e) { return; }
+        const pa = (d.players || []).find(p => p.uid === a), pb = (d.players || []).find(p => p.uid === b);
+        if (!pa || !pb) return;
+        out.rounds++; if (pa.lostLife) out.aLost++; if (pb.lostLife) out.bLost++;
+    });
+    sql.prepare('SELECT m.winner_uid, m.uids FROM match_user u JOIN match_log m ON m.id = u.match_id WHERE u.user_id = ? ORDER BY u.at DESC LIMIT 2000').all(a).forEach(m => {
+        let list; try { list = JSON.parse(m.uids); } catch (e) { return; }
+        if (!list.includes(b)) return;
+        out.matches++; if (m.winner_uid === a) out.aWins++; else if (m.winner_uid === b) out.bWins++;
+    });
+    return out;
+}
+
 const router = express.Router();
 const hits = new Map();
 function limited(key) {
@@ -205,4 +223,4 @@ router.get('/history', (req, res) => {
     });
 });
 
-module.exports = { router, startRoundLog, recordRound, deepStats, tick };
+module.exports = { router, startRoundLog, recordRound, deepStats, h2hBetween, tick };
