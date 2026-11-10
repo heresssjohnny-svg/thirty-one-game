@@ -16,6 +16,11 @@ const config = require('./config');
 
 const sql = typeof db.prepare === 'function' ? db : db.db;
 try { sql.prepare('ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0').run(); } catch (e) {}
+// Free trial: every real account gets TRIAL_DAYS of Premium, starting the first time the server
+// checks their status (opening the app / signing up). trial_until = ms timestamp; 0 = trial used/none.
+try { sql.prepare('ALTER TABLE users ADD COLUMN trial_until INTEGER').run(); } catch (e) {}
+const TRIAL_DAYS = Number(process.env.PREMIUM_TRIAL_DAYS || 7);
+const TRIAL_MS = TRIAL_DAYS * 24 * 3600 * 1000;
 
 const PREMIUM_SOUNDS = ['tada', 'drumroll', 'boom', 'whoosh', 'doorbell', 'charge', 'laser', 'powerup', 'machinegun', 'shotgun', 'applause', 'gong', 'dundundun', 'buzzer'];
 const PREMIUM_REACTIONS = PREMIUM_SOUNDS.map(s => 'sb:' + s);
@@ -25,10 +30,17 @@ function statusFor(userId) {
         return { premium: false, admin: false };
     }
     try {
-        const row = sql.prepare('SELECT is_premium, is_admin FROM users WHERE id = ?').get(userId);
+        const row = sql.prepare('SELECT is_premium, is_admin, trial_until, provider FROM users WHERE id = ?').get(userId);
         if (!row) return { premium: false, admin: false };
         const admin = Number(row.is_admin) === 1;
-        return { premium: admin || Number(row.is_premium) === 1, admin };
+        const paid = Number(row.is_premium) === 1;
+        let until = row.trial_until == null ? null : Number(row.trial_until) || 0;
+        if (until === null && row.provider !== 'guest' && TRIAL_MS > 0) {
+            until = Date.now() + TRIAL_MS;   // start the trial on first contact
+            try { sql.prepare('UPDATE users SET trial_until = ? WHERE id = ? AND trial_until IS NULL').run(until, userId); } catch (e) {}
+        }
+        const onTrial = !admin && !paid && until > Date.now();
+        return { premium: admin || paid || onTrial, admin, trial: onTrial, trialEndsAt: onTrial ? until : null };
     } catch (e) {
         return { premium: false, admin: false };
     }

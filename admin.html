@@ -807,6 +807,7 @@
                     <input type="text" id="uname-${u.id}" value="${escapeHtml(u.username)}" style="width: 135px; padding: 5px 8px; font-weight: 700;" />
                     ${Number(u.is_admin) === 1 ? '<span class="code-pill" style="color: var(--gold); margin-left: 6px;">ADMIN</span>' : ''}
                     ${Number(u.is_premium) === 1 ? '<span class="code-pill" style="color: #a78bfa; margin-left: 6px;">PREMIUM</span>' : ''}
+                    ${Number(u.is_premium) !== 1 && Number(u.trial_until) > Date.now() ? `<span class="code-pill" style="color: #c4b5fd; margin-left: 6px;">TRIAL ${Math.ceil((Number(u.trial_until) - Date.now()) / 86400000)}d</span>` : ''}
                 </td>
                 <td>
                     <input type="email" id="uemail-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="No email" style="width: 190px; padding: 5px 8px;" />

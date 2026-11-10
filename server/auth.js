@@ -420,7 +420,7 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
     try {
         let users = [];
         try {
-            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin, COALESCE(is_premium, 0) AS is_premium FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
+            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin, COALESCE(is_premium, 0) AS is_premium, trial_until FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         } catch (e) {
             users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         }
