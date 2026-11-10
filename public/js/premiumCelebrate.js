@@ -187,8 +187,13 @@
         var s = snap(); if (!s) return null;
         var who = s.knockedBy || null;
         var id = null;
-        if (!who || isMe(who)) id = (typeof window.__celebChoice === 'function') ? window.__celebChoice('knock') : null;
-        else { var p = playerByName(who); id = p && p.celebration && p.celebration.knock; }
+        if (!who || isMe(who)) {
+            id = (typeof window.__celebChoice === 'function') ? window.__celebChoice('knock') : null;
+            if (id === 'rec') { var mc = (window.__myCues || {}).knock; return mc ? { cue: mc.token, mine: true } : null; }
+        } else {
+            var p = playerByName(who); id = p && p.celebration && p.celebration.knock;
+            if (id === 'rec') return (p.celebration.knockCue) ? { cue: p.celebration.knockCue, mine: false } : null;
+        }
         if (!id || id === 'default' || id === 'none') return null;
         return (typeof SOUNDBOARD_ITEMS !== 'undefined' && SOUNDBOARD_ITEMS[id]) ? id : null;
     }
@@ -203,6 +208,10 @@
                     var now = Date.now();
                     if (now - lastKnockCall < 2500) return;
                     lastKnockCall = now;
+                    if (id.cue) {
+                        if (typeof window.playRecordedCue === 'function' && window.playRecordedCue(id.cue, id.mine)) return;
+                        lastKnockCall = 0; return sp.apply(this, arguments);   // recordings muted / unavailable -> normal knock
+                    }
                     if (typeof window.playSoundboardEffect === 'function') window.playSoundboardEffect(id);
                     return;
                 }

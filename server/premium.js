@@ -65,13 +65,21 @@ function handlePremiumGate(ws, msg) {
         if (ws) {
             const prem = statusFor(ws.userId).premium;
             const pick = (v, list) => (prem && list.includes(String(v))) ? String(v) : 'default';
+            // 'rec' = the player's own recording (server/cues.js); only the random token goes out to the table
+            let cueFor = null; try { cueFor = require('./cues').cueFor; } catch (e) {}
+            const recWin = prem && cueFor ? cueFor(ws.userId, 'win') : null;
+            const recKnock = prem && cueFor ? cueFor(ws.userId, 'knock') : null;
+            const celeb = v => (String(v) === 'rec' ? (recWin ? 'rec' : 'default') : cleanCelebration(ws.userId, v));
             ws.__cel = {
-                hit31: cleanCelebration(ws.userId, msg.hit31),
-                win: cleanCelebration(ws.userId, msg.win),
-                knock: (msg.knock && msg.knock !== 'default' && prem && (FREE_SOUNDS.includes(String(msg.knock)) || PREMIUM_SOUNDS.includes(String(msg.knock)))) ? String(msg.knock) : 'default',
+                hit31: celeb(msg.hit31),
+                win: celeb(msg.win),
+                knock: String(msg.knock) === 'rec' ? (recKnock ? 'rec' : 'default')
+                    : (msg.knock && msg.knock !== 'default' && prem && (FREE_SOUNDS.includes(String(msg.knock)) || PREMIUM_SOUNDS.includes(String(msg.knock)))) ? String(msg.knock) : 'default',
                 confetti: pick(msg.confetti, CONFETTI),
                 dance: pick(msg.dance, DANCES)
             };
+            if (ws.__cel.knock === 'rec') ws.__cel.knockCue = recKnock.token;
+            if (ws.__cel.win === 'rec' || ws.__cel.hit31 === 'rec') ws.__cel.winCue = recWin.token;
         }
         return true;
     }

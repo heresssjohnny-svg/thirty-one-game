@@ -32,6 +32,7 @@ const { router: premiumRouter, handlePremiumGate } = require('./server/premium')
 const { handleEmoteMessage } = require('./server/emotes');
 const { router: roundLogRouter, startRoundLog } = require('./server/roundLog');
 const { router: friendStatsRouter } = require('./server/friendStats');
+const { router: cuesRouter } = require('./server/cues');
 const { handleTableStyle } = require('./server/tableStyle');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
@@ -77,6 +78,7 @@ app.use('/api', pushRouter);
 app.use('/api', premiumRouter);
 app.use('/api', roundLogRouter);
 app.use('/api', friendStatsRouter);
+app.use('/api', cuesRouter);
 
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));

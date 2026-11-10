@@ -12,19 +12,23 @@
     function get(k) { try { return localStorage.getItem(k) || 'default'; } catch (e) { return 'default'; } }
     function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function items() { return (typeof SOUNDBOARD_ITEMS !== 'undefined') ? SOUNDBOARD_ITEMS : {}; }
-    function allowed(id) {
+    function cueKind(kind) { return kind === 'knock' ? 'knock' : 'win'; }
+    function myCue(kind) { var m = window.__myCues || {}; return m[cueKind(kind)] || null; }
+    function allowed(id, kind) {
+        if (id === 'rec') return !!window.__isPremium && !!myCue(kind);
         var it = items()[id];
         return !!it && (!it.premium || !!window.__isPremium);
     }
     // a saved premium pick falls back to default when the account is not premium
     function choice(kind) {
         var v = get(KEYS[kind]);
-        if (kind === 'knock') return (window.__isPremium && v !== 'none' && allowed(v)) ? v : 'default';
+        if (kind === 'knock') return (window.__isPremium && v !== 'none' && allowed(v, kind)) ? v : 'default';
         if (v === 'default' || v === 'none') return v;
-        return allowed(v) ? v : 'default';
+        return allowed(v, kind) ? v : 'default';
     }
     function options(sel, kind) {
         var it = items(), free = '', prem = '';
+        if (window.__isPremium && myCue(kind)) prem += '<option value="rec"' + (sel === 'rec' ? ' selected' : '') + '>🎙️ My recording</option>';
         Object.keys(it).forEach(function (id) {
             var o = '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + it[id].emoji + ' ' + it[id].label + '</option>';
             if (!it[id].premium) free += o; else if (window.__isPremium) prem += o;
@@ -53,7 +57,8 @@
             (window.__isPremium ? row('knock', '💎 My knock call') : '<div style="margin:8px 0 4px;font-size:0.82rem;color:#94a3b8;">🔒 My knock call (Premium)</div>') +
             '<div style="font-size:0.72rem;color:#94a3b8;margin-top:6px;">The whole table hears your picks.' +
             (window.__isPremium ? '' : ' 💎 Premium unlocks more sounds and a custom knock.') + '</div>' +
-            '<div data-cs-extra></div>';
+            '<div data-cs-rec></div><div data-cs-extra></div>';
+        if (typeof window.__celebRecPaint === 'function') { try { window.__celebRecPaint(section.querySelector('[data-cs-rec]')); } catch (e) {} }
         if (typeof window.__celebExtraPaint === 'function') { try { window.__celebExtraPaint(section.querySelector('[data-cs-extra]')); } catch (e) {} }
     }
     function ensure() {
@@ -69,7 +74,8 @@
             if (!s) return;
             set(KEYS[s.getAttribute('data-cs')], s.value);
             syncPick(true);
-            if (s.value !== 'default' && s.value !== 'none') play(s.value);
+            if (s.value === 'rec') playRec(myCue(s.getAttribute('data-cs')));
+            else if (s.value !== 'default' && s.value !== 'none') play(s.value);
         });
         section.addEventListener('click', function (ev) {
             var b = ev.target.closest && ev.target.closest('[data-cs-play]');
@@ -77,10 +83,12 @@
             var c = choice(b.getAttribute('data-cs-play'));
             if (c === 'none') return;
             if (c === 'default') { if (b.getAttribute('data-cs-play') === 'knock') { if (origSafe) origSafe('knock'); } else playDefault(); }
+            else if (c === 'rec') playRec(myCue(b.getAttribute('data-cs-play')));
             else play(c);
         });
         paint();
     }
+    function playRec(cue) { if (cue && typeof window.playRecordedCue === 'function') window.playRecordedCue(cue.token || cue, true); }
     function play(id) { if (typeof window.playSoundboardEffect === 'function') window.playSoundboardEffect(id); }
     var origSafe = null;
     function playDefault() { if (origSafe) origSafe('win'); else if (typeof window.safePlaySound === 'function') window.safePlaySound('win'); }
@@ -104,7 +112,8 @@
                 var snap = window.appGlobals && window.appGlobals.latestLobbySnapshot;
                 var wn = String(winnerName || '').trim().toLowerCase();
                 var wp = snap && (snap.players || []).find(function (q) { return String(q.username || '').trim().toLowerCase() === wn; });
-                if (wp && wp.celebration && wp.celebration[kind] && wp.celebration[kind] !== 'default' && wp.celebration[kind] !== 'none' && items()[wp.celebration[kind]]) other = wp.celebration[kind];
+                if (wp && wp.celebration && wp.celebration[kind] === 'rec' && wp.celebration.winCue) other = { cue: wp.celebration.winCue };
+                else if (wp && wp.celebration && wp.celebration[kind] && wp.celebration[kind] !== 'default' && wp.celebration[kind] !== 'none' && items()[wp.celebration[kind]]) other = wp.celebration[kind];
                 ctx = { kind: kind, mine: isMe(winnerName), other: other, t: Date.now() };
                 return c.apply(this, arguments);
             };
@@ -116,9 +125,12 @@
                 if (name === 'win' && ctx && ctx.mine && Date.now() - ctx.t < 1500) {
                     var pick = choice(ctx.kind); ctx = null;
                     if (pick === 'none') return;
+                    if (pick === 'rec') { playRec(myCue(ctx && ctx.kind || 'win')); return; }
                     if (pick !== 'default') { play(pick); return; }
                 } else if (name === 'win' && ctx && !ctx.mine && ctx.other && Date.now() - ctx.t < 1500) {
-                    var o = ctx.other; ctx = null; play(o); return;   // the winner's pick, heard by the whole table
+                    var o = ctx.other; ctx = null;
+                    if (o && o.cue) { if (typeof window.playRecordedCue === 'function' && window.playRecordedCue(o.cue, false)) return; return s.apply(this, arguments); }
+                    play(o); return;   // the winner's pick, heard by the whole table
                 }
                 return s.apply(this, arguments);
             };
