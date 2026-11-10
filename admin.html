@@ -819,6 +819,8 @@
                         <button class="btn btn-gold btn-sm" onclick="promptResetPassword('${u.id}', '${escapeHtml(u.username)}')">🔑 Set Password</button>
                         <button class="btn btn-gold btn-sm" onclick="toggleUserAdmin('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_admin) === 1 ? 'false' : 'true'})">${Number(u.is_admin) === 1 ? '🚫 Revoke Admin' : '🛡️ Make Admin'}</button>
                         <button class="btn btn-gold btn-sm" onclick="toggleUserPremium('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_premium) === 1 ? 'false' : 'true'})">${Number(u.is_premium) === 1 ? '✖ Remove Premium' : '💎 Give Premium'}</button>
+                        ${(u.cues || []).map(k => `<button class="btn btn-gold btn-sm" onclick="playUserCue('${u.id}', '${k}')">▶ ${k === 'knock' ? 'Knock rec' : 'Winner rec'}</button>`).join('')}
+                        ${(u.cues || []).length ? `<button class="btn btn-red btn-sm" onclick="removeUserCues('${u.id}', '${escapeHtml(u.username)}')">🎙️ Remove Recordings</button>` : ''}
                         <button class="btn btn-red btn-sm" onclick="deleteUserAccount('${u.id}', '${escapeHtml(u.username)}')">🗑️ Delete</button>
                     </div>
                 </td>
@@ -865,6 +867,28 @@
         } catch (err) {
             showToast(err.message, true);
         }
+    }
+
+    // Recorded cues (knock call / winner cue) - listen and remove
+    let cueAudio = null;
+    async function playUserCue(userId, kind) {
+        try {
+            const res = await fetch(`/auth/admin/user/cue?userId=${encodeURIComponent(userId)}&kind=${encodeURIComponent(kind)}`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
+            if (!res.ok) throw new Error(res.status === 404 ? 'No recording.' : `Request failed (${res.status})`);
+            const url = URL.createObjectURL(await res.blob());
+            if (cueAudio) { cueAudio.pause(); }
+            cueAudio = new Audio(url);
+            cueAudio.onended = () => URL.revokeObjectURL(url);
+            await cueAudio.play();
+        } catch (err) { showToast(err.message || 'Could not play it.', true); }
+    }
+    async function removeUserCues(userId, username) {
+        if (!confirm(`Remove all of "${username}"'s recordings (knock call and winner cue)? Their tables go back to the normal sounds right away.`)) return;
+        try {
+            const r = await apiAdmin('user/cues/delete', 'POST', { userId });
+            showToast(`🎙️ Removed ${r.removed || 0} recording(s) from ${username}.`);
+            fetchAdminOverview();
+        } catch (err) { showToast(err.message, true); }
     }
 
     async function toggleUserPremium(userId, username, makePremium) {
