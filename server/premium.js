@@ -47,6 +47,8 @@ router.get('/premium/me', (req, res) => {
     }
 });
 
+const CONFETTI = ['cash', 'coins', 'suits', 'fireworks', 'hearts'];
+const DANCES = ['disco', 'robot', 'none'];
 const FREE_SOUNDS = ['horn', 'cash', 'rimshot', 'sad', 'crickets', 'siren'];
 function cleanCelebration(userId, v) {
     v = String(v || 'default');
@@ -60,7 +62,17 @@ function handlePremiumGate(ws, msg) {
     // The player's chosen celebration sounds (hit 31 / win the match). Stored on the socket and shown to
     // the whole table in the lobby snapshot (player.celebration), so everyone hears the winner's pick.
     if (msg && msg.type === 'SET_CELEBRATION') {
-        if (ws) ws.__cel = { hit31: cleanCelebration(ws.userId, msg.hit31), win: cleanCelebration(ws.userId, msg.win) };
+        if (ws) {
+            const prem = statusFor(ws.userId).premium;
+            const pick = (v, list) => (prem && list.includes(String(v))) ? String(v) : 'default';
+            ws.__cel = {
+                hit31: cleanCelebration(ws.userId, msg.hit31),
+                win: cleanCelebration(ws.userId, msg.win),
+                knock: (msg.knock && msg.knock !== 'default' && prem && (FREE_SOUNDS.includes(String(msg.knock)) || PREMIUM_SOUNDS.includes(String(msg.knock)))) ? String(msg.knock) : 'default',
+                confetti: pick(msg.confetti, CONFETTI),
+                dance: pick(msg.dance, DANCES)
+            };
+        }
         return true;
     }
     if (!msg || !['SEND_REACTION', 'SEAT_REACTION', 'QUICK_REACTION'].includes(msg.type)) return false;

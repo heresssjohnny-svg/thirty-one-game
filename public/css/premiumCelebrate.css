@@ -1,0 +1,40 @@
+/* premiumCelebrate.css */
+.pc-emote { position: fixed; left: 0; top: 0; z-index: 100002; font-size: 40px; line-height: 40px; width: 40px; text-align: center; pointer-events: none; }
+.pc-emote.pc-splat { animation: pc-splat 0.9s ease-out forwards; }
+@keyframes pc-splat { 0% { scale: 1.3; opacity: 1; } 30% { scale: 2; opacity: 1; } 100% { scale: 2.6; opacity: 0; } }
+.pc-hit { animation: pc-shake 0.45s ease-in-out; }
+@keyframes pc-shake { 0%,100% { translate: 0 0; } 20% { translate: -6px 0; } 40% { translate: 6px 0; } 60% { translate: -4px 0; } 80% { translate: 4px 0; } }
+body.pc-aiming [data-player-username] { outline: 2px dashed #f472b6; outline-offset: 3px; cursor: crosshair; }
+#pc-aim-banner {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); transform: translateX(-50%); z-index: 100003;
+    background: #4c1d95; color: #fff; border: 1px solid #c4b5fd; border-radius: 999px; padding: 6px 8px 6px 14px;
+    display: flex; gap: 10px; align-items: center; font-weight: 800; font-size: 0.85rem; box-shadow: 0 6px 18px rgba(0,0,0,0.6); white-space: nowrap;
+}
+#pc-aim-banner button { border-radius: 999px; border: 1px solid #c4b5fd; background: transparent; color: #fff; padding: 4px 10px; font-weight: 700; cursor: pointer; }
+#pc-throw-btn { background: transparent; border: none; border-left: 1px solid rgba(251,191,36,0.4); font-size: 1.2rem; padding: 3px 6px 3px 9px; cursor: pointer; line-height: 1; }
+#pc-emote-pop {
+    position: fixed; top: 118px; left: 50%; transform: translateX(-50%); z-index: 9600;
+    background: rgba(30, 16, 60, 0.97); border: 1.5px solid #a78bfa; border-radius: 14px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+}
+#pc-emote-pop .pc-ep-h { color: #e9d5ff; font-weight: 800; font-size: 0.78rem; text-align: center; margin-bottom: 4px; }
+#pc-emote-pop .pc-ep-g { display: grid; grid-template-columns: repeat(6, 38px); gap: 4px; }
+#pc-emote-pop button { font-size: 1.45rem; background: transparent; border: none; cursor: pointer; padding: 2px; line-height: 1.2; }
+
+/* dance styles (body[data-cel-dance] set per celebration) */
+body[data-cel-dance="disco"] .cel-dancer .tw-hips { animation: pc-disco-hips 0.5s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .tw-upper { animation: pc-disco-upper 0.5s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .tw-arm-r { animation: pc-disco-point 1s ease-in-out infinite alternate !important; }
+body[data-cel-dance="disco"] .cel-dancer .tw-arm-l { animation: pc-disco-low 1s ease-in-out infinite alternate !important; }
+@keyframes pc-disco-hips { 0% { transform: translateX(-5px) rotate(-6deg); } 100% { transform: translateX(5px) rotate(6deg); } }
+@keyframes pc-disco-upper { 0% { transform: translateX(-4px) rotate(-5deg); } 100% { transform: translateX(4px) rotate(5deg); } }
+@keyframes pc-disco-point { 0% { transform: rotate(-35deg); } 100% { transform: rotate(25deg); } }
+@keyframes pc-disco-low { 0% { transform: rotate(40deg); } 100% { transform: rotate(70deg); } }
+body[data-cel-dance="robot"] .cel-dancer .tw-hips { animation: pc-robo-hips 0.8s steps(2) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-upper { animation: pc-robo-upper 0.8s steps(2) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-arm-l { animation: pc-robo-arm 0.8s steps(2) infinite !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-arm-r { animation: pc-robo-arm 0.8s steps(2) infinite reverse !important; }
+body[data-cel-dance="robot"] .cel-dancer .tw-knees { animation: none !important; }
+@keyframes pc-robo-hips { 0% { transform: translateY(0); } 100% { transform: translateY(-4px); } }
+@keyframes pc-robo-upper { 0% { transform: rotate(-8deg); } 100% { transform: rotate(8deg); } }
+@keyframes pc-robo-arm { 0% { transform: rotate(-60deg); } 100% { transform: rotate(30deg); } }
+@media (prefers-reduced-motion: reduce) { .pc-emote, .pc-hit { animation: none !important; } }
