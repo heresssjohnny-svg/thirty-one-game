@@ -1145,6 +1145,7 @@ function getSanitizedLobby(lobby, wsId) {
         sidePotTotal: (lobby.activeBets || []).reduce((sum, b) => sum + (b.wagerAmt || 0), 0),
         lastGameWinner: lobby.lastGameWinner || null,
         tournamentWinner: lobby.tournamentWinner || null,
+        tableTheme: lobby.tableTheme || null,
         hit31Player: lobby.hit31Player || null,
         myFedCardReminder: myFedReminder,
         sideBetLedger: lobby.sideBetLedger || {},
