@@ -175,16 +175,11 @@ function limited(req) {
     return rec.n > 90;
 }
 
-router.get('/stats/me', (req, res) => {
-    if (limited(req)) return res.status(429).json({ error: 'Too many requests.' });
-    const uid = userIdFromReq(req);
-    if (!uid) return res.status(401).json({ error: 'Unauthorized.' });
-    if (isGuestUserId(uid)) return res.json({ guest: true });
+function basicStats(uid) {
     const r = sql.prepare('SELECT * FROM user_stats WHERE user_id = ?').get(uid);
     const today = dayOf(Date.now());
     const alive = r && (r.last_play_day === today || r.last_play_day === prevDay(today));
-    res.set('Cache-Control', 'no-store');
-    res.json({
+    return {
         guest: false,
         games: r ? r.games : 0,
         wins: r ? r.wins : 0,
@@ -197,7 +192,16 @@ router.get('/stats/me', (req, res) => {
         bestDayStreak: r ? r.best_day_streak : 0,
         playedToday: !!r && r.last_play_day === today,
         streakAtRisk: !!r && r.last_play_day === prevDay(today) && r.day_streak > 0
-    });
+    };
+}
+
+router.get('/stats/me', (req, res) => {
+    if (limited(req)) return res.status(429).json({ error: 'Too many requests.' });
+    const uid = userIdFromReq(req);
+    if (!uid) return res.status(401).json({ error: 'Unauthorized.' });
+    if (isGuestUserId(uid)) return res.json({ guest: true });
+    res.set('Cache-Control', 'no-store');
+    res.json(basicStats(uid));
 });
 
 const boardCache = new Map(); // period -> { at, rows }
@@ -241,4 +245,4 @@ router.get('/leaderboard', (req, res) => {
     });
 });
 
-module.exports = { router, startStatsTracker, recordMatch, recordFinishedLobby, dayOf };
+module.exports = { router, startStatsTracker, recordMatch, recordFinishedLobby, dayOf, basicStats };
