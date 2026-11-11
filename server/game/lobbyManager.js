@@ -1216,7 +1216,8 @@ function getSanitizedLobby(lobby, wsId) {
                 isOffline: Boolean(!p.isBot && !p.id),
                 peekIncoming: (wsId === p.id || isMe) ? mergedIncoming : {},
                 peekAllowed: p.peekAllowed || {},
-                cards: (canSee || specAllowed) ? (p.cards || []) : []
+                mucked: !!p.mucked,
+                cards: ((canSee && !(p.mucked && !isMe)) || (specAllowed && !p.mucked)) ? (p.cards || []) : []
             };
         }),
         spectators: lobby.spectators.map(s => ({
@@ -1692,6 +1693,7 @@ function startRound(lobby) {
     lobby.knockedBy = null;
     lobby.hit31Player = null;
     lobby.tournamentWinner = null;
+    (lobby.players || []).forEach(p => { if (p) p.mucked = false; });
     lobby.gameState = 'playing';
     lobby.finalTurnsRemaining = 0;
     lobby.turnsTakenThisRound = 0;
@@ -2318,18 +2320,34 @@ function advanceTurnOrResolve(lobby) {
 // MUCK: after someone knocks, a player who has not yet taken their final turn can throw in
 // their hand. The round ends at once; the mucker takes the loss (one life) and nobody else does.
 function handleMuck(lobby, seat) {
+    // MUCK: after a knock, a player who hasn't taken their final turn throws their hand in.
+    // The round still plays out (everyone else takes their final turn). At the showdown, if nobody hit 31,
+    // each mucker loses a life and nobody else does; their cards are never shown to the table.
     if (!lobby || lobby.gameState !== 'finalTurn' || !seat) return false;
-    if (seat.eliminated || seat.isBot || seat.username === lobby.knockedBy) return false;
+    if (seat.eliminated || seat.isBot || seat.username === lobby.knockedBy || seat.mucked) return false;
     if (!getActiveParticipants(lobby).includes(seat)) return false;
     if (lobby.finalTurnsTaken && lobby.finalTurnsTaken[seat.username]) return false;
 
-    clearTurnTimer(lobby);
-    if (typeof resolveWinSideBets === 'function') {
-        try { resolveWinSideBets(lobby, null); } catch (e) {}
-    }
-    syncLifetimeLedgerBalances(lobby);
+    seat.mucked = true;
+    if (!lobby.finalTurnsTaken) lobby.finalTurnsTaken = {};
+    lobby.finalTurnsTaken[seat.username] = true;
+    // a 4th card (drew, then mucked) goes back in the hand count only; it is never revealed anyway
+    lobby.phaseMessage = `🗑️ ${seat.username} mucked.`;
 
-    const loser = seat;
+    const current = lobby.players[lobby.turnIndex];
+    if (current === seat) {
+        clearTurnTimer(lobby);
+        advanceTurnOrResolve(lobby);
+    } else {
+        // not their turn: the turn order will now skip them; resolve if everyone is done
+        const opp = getActiveParticipants(lobby).filter(p => p.username !== lobby.knockedBy);
+        if (opp.every(p => lobby.finalTurnsTaken[p.username])) resolveRoundEnd(lobby);
+        else broadcastLobbyUpdate(lobby.code);
+    }
+    return true;
+}
+
+function loseLife(lobby, loser) {
     loser.lives = Math.max(0, loser.lives - 1);
     if (loser.lives <= 0 && !loser.eliminated) {
         loser.eliminated = true;
@@ -2346,14 +2364,6 @@ function handleMuck(lobby, seat) {
             });
         }
     }
-
-    if (getActiveParticipants(lobby).length <= 1) {
-        awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
-    } else {
-        advanceDealerToNextActive(lobby);
-        triggerRoundOver(lobby, `🗑️ ${loser.username} mucked their hand and lost a life.`);
-    }
-    return true;
 }
 
 function resolveRoundEnd(lobby) {
@@ -2374,6 +2384,25 @@ function resolveRoundEnd(lobby) {
             p.cards = bestCards;
         }
     });
+
+    const muckers = getActiveParticipants(lobby).filter(p => p.mucked);
+    if (muckers.length) {
+        const live = getActiveParticipants(lobby).filter(p => !p.mucked);
+        const ls = live.map(p => ({ p, s: calculateScore(p.cards) })).sort((a, b) => b.s - a.s);
+        const winnerName = (ls.length && (ls.length === 1 || ls[0].s > ls[1].s)) ? ls[0].p.username : null;
+        if (typeof resolveWinSideBets === 'function') { try { resolveWinSideBets(lobby, winnerName); } catch (e) {} }
+        syncLifetimeLedgerBalances(lobby);
+        muckers.forEach(m => loseLife(lobby, m));
+        const names = muckers.map(m => m.username);
+        const who = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+        if (getActiveParticipants(lobby).length <= 1) {
+            awardTournamentWinner(lobby, getActiveParticipants(lobby)[0]);
+        } else {
+            advanceDealerToNextActive(lobby);
+            triggerRoundOver(lobby, `🗑️ ${who} mucked and lost a life.`);
+        }
+        return;
+    }
 
     const active = getActiveParticipants(lobby);
     const scores = active.map(p => ({ p, s: calculateScore(p.cards) })).sort((a, b) => a.s - b.s);
