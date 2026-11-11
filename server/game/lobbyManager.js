@@ -2320,30 +2320,18 @@ function advanceTurnOrResolve(lobby) {
 // MUCK: after someone knocks, a player who has not yet taken their final turn can throw in
 // their hand. The round ends at once; the mucker takes the loss (one life) and nobody else does.
 function handleMuck(lobby, seat) {
-    // MUCK: after a knock, a player who hasn't taken their final turn throws their hand in.
-    // The round still plays out (everyone else takes their final turn). At the showdown, if nobody hit 31,
-    // each mucker loses a life and nobody else does; their cards are never shown to the table.
+    // MUCK: after a knock, a player who hasn't taken their final turn throws their hand in. They still play
+    // their final turn and the round plays out. At the showdown, if nobody hit 31, each mucker loses a life
+    // and nobody else does; their cards are never shown to the table.
     if (!lobby || lobby.gameState !== 'finalTurn' || !seat) return false;
     if (seat.eliminated || seat.isBot || seat.username === lobby.knockedBy || seat.mucked) return false;
     if (!getActiveParticipants(lobby).includes(seat)) return false;
     if (lobby.finalTurnsTaken && lobby.finalTurnsTaken[seat.username]) return false;
 
+    // They still play their final turn as normal; the muck only decides the showdown.
     seat.mucked = true;
-    if (!lobby.finalTurnsTaken) lobby.finalTurnsTaken = {};
-    lobby.finalTurnsTaken[seat.username] = true;
-    // a 4th card (drew, then mucked) goes back in the hand count only; it is never revealed anyway
-    lobby.phaseMessage = `🗑️ ${seat.username} mucked.`;
-
-    const current = lobby.players[lobby.turnIndex];
-    if (current === seat) {
-        clearTurnTimer(lobby);
-        advanceTurnOrResolve(lobby);
-    } else {
-        // not their turn: the turn order will now skip them; resolve if everyone is done
-        const opp = getActiveParticipants(lobby).filter(p => p.username !== lobby.knockedBy);
-        if (opp.every(p => lobby.finalTurnsTaken[p.username])) resolveRoundEnd(lobby);
-        else broadcastLobbyUpdate(lobby.code);
-    }
+    lobby.phaseMessage = `🗑️ ${seat.username} mucked — they still take their turn.`;
+    broadcastLobbyUpdate(lobby.code);
     return true;
 }
 
