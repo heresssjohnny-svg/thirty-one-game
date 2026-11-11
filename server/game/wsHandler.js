@@ -38,6 +38,8 @@ try {
 // Reference to WebSocketServer instance & pending "Mark Paid" confirmation requests
 let activeWss = null;
 const pendingMarkPaidRequests = new Map();
+let paymentClaims = null;
+try { paymentClaims = require('../paymentClaims'); } catch (e) {}
 
 // -------------------------------------------------------------
 // 0. IDENTITY, HANDLE & ACCOUNT LEDGER RESOLUTION HELPERS
@@ -1375,6 +1377,16 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             };
 
             const creditorSockets = findTargetSockets(creditorId, creditorUsername, roomCode);
+            // Real accounts: keep the claim until the creditor answers (server/paymentClaims.js re-prompts them)
+            const saved = !!(paymentClaims && creditorId && !String(creditorId).startsWith('gst_') && paymentClaims.save(reqObj));
+            if (saved) pendingMarkPaidRequests.set(requestId, reqObj);
+            if (creditorSockets.length === 0 && saved) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'PAYMENT_CONFIRM_PENDING', requestId, scope, creditorId, creditorUsername,
+                        message: `⏳ ${creditorUsername || 'They'} will be asked to confirm as soon as they're back online.` }));
+                }
+                break;
+            }
             if (creditorSockets.length === 0) {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
@@ -1411,11 +1423,20 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
         }
 
         case 'RESPOND_MARK_PAID': {
-            const req = pendingMarkPaidRequests.get(data.requestId);
+            let req = pendingMarkPaidRequests.get(data.requestId);
+            if (!req && paymentClaims) req = paymentClaims.load(data.requestId);
             if (!req) break;
+            // only the creditor may answer
+            const answerUid = extractSocketUserId(ws, data, null);
+            if (req.creditorId && answerUid && String(answerUid) !== String(req.creditorId)) break;
             pendingMarkPaidRequests.delete(data.requestId);
 
             const confirmed = Boolean(data.confirm);
+            if (paymentClaims && !paymentClaims.resolve(req.requestId, confirmed) && paymentClaims.isResolved(req.requestId)) break;   // already answered elsewhere
+            // other devices of the creditor: drop the prompt
+            findTargetSockets(req.creditorId, req.creditorUsername, req.code).forEach(cWs => {
+                try { if (cWs !== ws) cWs.send(JSON.stringify({ type: 'PAYMENT_CONFIRM_CLOSED', requestId: req.requestId })); } catch (e) {}
+            });
             const debtorSockets = findTargetSockets(req.debtorId, req.debtorUsername, req.code);
             if (req.debtorWs && req.debtorWs.readyState === WebSocket.OPEN && !debtorSockets.includes(req.debtorWs)) {
                 debtorSockets.push(req.debtorWs);
@@ -1426,6 +1447,13 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             }
 
             if (!confirmed) {
+                const denyMsg = { type: 'PAYMENT_CONFIRM_RESULT', requestId: req.requestId, confirmed: false, scope: req.scope,
+                    creditorId: req.creditorId, creditorUsername: req.creditorUsername,
+                    message: `❌ ${req.creditorUsername || 'Creditor'} denied receiving your $${req.amount.toFixed(2)} payment.` };
+                if (!debtorSockets.length && paymentClaims && req.debtorId) {
+                    paymentClaims.notify(req.debtorId, denyMsg, `${req.creditorUsername || 'Your creditor'} denied receiving your $${req.amount.toFixed(2)} payment.`);
+                    break;
+                }
                 debtorSockets.forEach(dWs => {
                     try {
                         dWs.send(JSON.stringify({
@@ -1435,7 +1463,7 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                             scope: req.scope,
                             creditorId: req.creditorId,
                             creditorUsername: req.creditorUsername,
-                            message: `❌ ${req.creditorUsername || 'Creditor'} declined the $${req.amount.toFixed(2)} paid mark.`
+                            message: `❌ ${req.creditorUsername || 'Creditor'} denied receiving your $${req.amount.toFixed(2)} payment.`
                         }));
                     } catch (e) {}
                 });
@@ -1505,6 +1533,11 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 }
             }
 
+            if (!debtorSockets.length && paymentClaims && req.debtorId) {
+                paymentClaims.notify(req.debtorId, { type: 'PAYMENT_CONFIRM_RESULT', requestId: req.requestId, confirmed: true, scope: req.scope,
+                    creditorId: req.creditorId, creditorUsername: req.creditorUsername,
+                    message: `✅ ${req.creditorUsername || 'Creditor'} confirmed your $${req.amount.toFixed(2)} payment!` }, null);
+            }
             debtorSockets.forEach(dWs => {
                 try {
                     dWs.send(JSON.stringify({

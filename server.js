@@ -33,6 +33,7 @@ const { handleEmoteMessage } = require('./server/emotes');
 const { router: roundLogRouter, startRoundLog } = require('./server/roundLog');
 const { router: friendStatsRouter } = require('./server/friendStats');
 const { router: cuesRouter } = require('./server/cues');
+const { startPaymentClaims } = require('./server/paymentClaims');
 const { handleTableStyle } = require('./server/tableStyle');
 const { router: guestRouter, guestGate, afterGuestDispatch } = require('./server/guest');
 const { router: seoRouter, serveIndex } = require('./server/seo');
@@ -565,3 +566,4 @@ startPrivateTables({ lobbyManager });
 // Rematch prompt after a match, plus push notifications for rematches and missed turns (see rematch.js)
 startRematch({ lobbyManager });
 startRoundLog({ lobbyManager });
+startPaymentClaims();

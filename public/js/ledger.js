@@ -1266,6 +1266,23 @@ function respondToMarkPaid(requestId, confirmed) {
     });
 }
 
+// A denied payment needs a tap to dismiss, so it can't be missed
+function showPaymentDeniedNotice(message) {
+    let box = document.getElementById('pay-denied-notice');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'pay-denied-notice';
+        box.style.cssText = 'position:fixed;inset:0;z-index:100070;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);padding:16px;';
+        document.body.appendChild(box);
+    }
+    box.innerHTML = `<div style="background:#1f0a0a;border:2px solid #ef4444;border-radius:10px;max-width:360px;width:100%;padding:18px;text-align:center;color:#f8fafc;box-shadow:0 10px 35px rgba(0,0,0,.9);">
+        <div style="font-size:1.6rem;margin-bottom:6px;">❌</div>
+        <div style="font-weight:800;font-size:1rem;margin-bottom:8px;">Payment not confirmed</div>
+        <div style="font-size:0.9rem;color:#fecaca;margin-bottom:14px;">${escapeHtml(message.replace(/^❌\s*/, ''))}<br><span style="color:#cbd5e1;font-size:0.8rem;">The balance stays as it was. Sort it out with them, then mark it paid again.</span></div>
+        <button type="button" style="width:100%;background:#334155;color:#fff;border:1px solid #94a3b8;border-radius:6px;padding:10px;font-weight:700;cursor:pointer;">OK</button></div>`;
+    box.querySelector('button').onclick = () => box.remove();
+}
+
 function handlePaymentConfirmResult(payload) {
     if (!payload) return;
     if (payload.creditorId) {
@@ -1275,6 +1292,7 @@ function handlePaymentConfirmResult(payload) {
         delete window.pendingMarkedPaid[`session:::${String(payload.creditorUsername).toLowerCase()}`];
     }
 
+    if (payload.confirmed === false && payload.message && /denied/.test(payload.message)) showPaymentDeniedNotice(payload.message);
     if (payload.message && typeof window.showCenterNotification === 'function') {
         window.showCenterNotification(payload.message);
     } else if (payload.message) {
@@ -1328,3 +1346,5 @@ window.handlePaymentConfirmPrompt = handlePaymentConfirmPrompt;
 window.respondToMarkPaid = respondToMarkPaid;
 window.handlePaymentConfirmResult = handlePaymentConfirmResult;
 window.escapeHtml = escapeHtml;
+
+window.renderNextCreditorConfirmModal = renderNextCreditorConfirmModal;
