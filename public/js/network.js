@@ -442,6 +442,20 @@ window.connectSocket = function() {
                 break;
             }
 
+            case 'PAYMENT_CONFIRM_PENDING': {
+                if (data.message && typeof window.showCenterNotification === 'function') window.showCenterNotification(data.message);
+                break;
+            }
+
+            case 'PAYMENT_CONFIRM_CLOSED': {
+                // answered on another device
+                if (Array.isArray(window.incomingPayConfirmQueue)) {
+                    window.incomingPayConfirmQueue = window.incomingPayConfirmQueue.filter(r => r.requestId !== data.requestId);
+                    if (typeof window.renderNextCreditorConfirmModal === 'function') window.renderNextCreditorConfirmModal();
+                }
+                break;
+            }
+
             case 'PAYMENT_CONFIRM_RESULT': {
                 if (typeof window.handlePaymentConfirmResult === 'function') {
                     window.handlePaymentConfirmResult(data);
