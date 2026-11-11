@@ -1,5 +1,5 @@
 // public/js/muck.js - "Muck" button: after someone knocks, on your final turn you can throw in
-// your hand. The round still plays out; if nobody hits 31 you lose a life and your cards stay hidden.
+// your hand. You still play your final turn; if nobody hits 31 you lose a life and your cards stay hidden.
 // Mucked players get a 🗑️ MUCKED tag on their seat.
 (function () {
     'use strict';
@@ -25,7 +25,7 @@
         btn.title = 'Throw in your hand and take the loss';
         btn.style.cssText = 'display:none;margin-left:8px;background:#475569;';
         btn.addEventListener('click', function () {
-            if (!window.confirm('Muck your hand? The round plays out, then you lose a life (unless someone hits 31). Your cards stay hidden.')) return;
+            if (!window.confirm('Muck your hand? You still play this turn, then you lose a life at the end of the round unless someone hits 31. Your cards stay hidden.')) return;
             btn.style.display = 'none';
             send({ type: 'MUCK' });
         });
