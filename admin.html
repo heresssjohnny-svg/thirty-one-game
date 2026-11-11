@@ -808,6 +808,8 @@
                     ${Number(u.is_admin) === 1 ? '<span class="code-pill" style="color: var(--gold); margin-left: 6px;">ADMIN</span>' : ''}
                     ${Number(u.is_premium) === 1 ? '<span class="code-pill" style="color: #a78bfa; margin-left: 6px;">PREMIUM</span>' : ''}
                     ${Number(u.is_premium) !== 1 && Number(u.trial_until) > Date.now() ? `<span class="code-pill" style="color: #c4b5fd; margin-left: 6px;">TRIAL ${Math.ceil((Number(u.trial_until) - Date.now()) / 86400000)}d</span>` : ''}
+                    ${Number(u.premium_until) > Date.now() ? `<span class="code-pill" style="color: #f0abfc; margin-left: 6px;">EARNED ${Math.ceil((Number(u.premium_until) - Date.now()) / 86400000)}d</span>` : ''}
+                    ${Number(u.invited) > 0 ? `<span class="code-pill" style="color: #6ee7b7; margin-left: 6px;" title="joined from their invite / finished a match">👥 ${u.invited} invited · ${u.invitedRewarded} played</span>` : ''}
                 </td>
                 <td>
                     <input type="email" id="uemail-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="No email" style="width: 190px; padding: 5px 8px;" />

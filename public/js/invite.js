@@ -219,7 +219,7 @@
     }
 
     function inviteUrl(code) {
-        return location.origin + '/?join=' + encodeURIComponent(code);
+        return location.origin + '/?join=' + encodeURIComponent(code) + (window.__myRefCode ? '&ref=' + encodeURIComponent(window.__myRefCode) : '');
     }
 
     function copyText(text) {
