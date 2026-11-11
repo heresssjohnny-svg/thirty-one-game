@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v46';
+const CACHE_NAME = 'thirtyone-cache-v47';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -26,6 +26,7 @@ const ASSETS_TO_CACHE = [
     './js/soundPacks.js',
     './js/friendCompare.js',
     './js/recordedCues.js',
+    './js/referral.js',
     './css/premium.css',
     './css/turnBanner.css',
     './css/dragDrop.css',

@@ -66,6 +66,7 @@ router.post('/register', async (req, res) => {
             INSERT INTO users (id, provider, provider_id, username, email, password_hash, created_at)
             VALUES (?, 'local', ?, ?, ?, ?, datetime('now'))
         `).run(userId, providerId, cleanUser, cleanEmail, passwordHash);
+        try { require('./referrals').attach(userId, req.body && req.body.ref); } catch (e) {}
 
         const token = jwt.sign(
             { userId, username: cleanUser, isGuest: false },
@@ -420,10 +421,17 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
     try {
         let users = [];
         try {
-            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin, COALESCE(is_premium, 0) AS is_premium, trial_until FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
+            users = sqlDb.prepare(`SELECT id, provider, username, email, created_at, COALESCE(is_admin, 0) AS is_admin, COALESCE(is_premium, 0) AS is_premium, trial_until, premium_until FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         } catch (e) {
             users = sqlDb.prepare(`SELECT id, provider, username, created_at FROM users WHERE COALESCE(provider, 'local') != 'guest' ORDER BY created_at DESC`).all();
         }
+        // invites: how many accounts each user brought in / got rewarded for (server/referrals.js)
+        try {
+            const inv = {};
+            sqlDb.prepare('SELECT referred_by id, COUNT(*) n, SUM(CASE WHEN ref_rewarded = 1 THEN 1 ELSE 0 END) r FROM users WHERE referred_by IS NOT NULL GROUP BY referred_by').all()
+                .forEach(x => { inv[x.id] = { n: x.n, r: x.r || 0 }; });
+            users.forEach(u => { u.invited = (inv[u.id] || {}).n || 0; u.invitedRewarded = (inv[u.id] || {}).r || 0; });
+        } catch (e) {}
         // which recorded cues each user has (server/cues.js)
         try {
             const cues = {};

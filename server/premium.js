@@ -30,17 +30,21 @@ function statusFor(userId) {
         return { premium: false, admin: false };
     }
     try {
-        const row = sql.prepare('SELECT is_premium, is_admin, trial_until, provider FROM users WHERE id = ?').get(userId);
+        let row;
+        try { row = sql.prepare('SELECT is_premium, is_admin, trial_until, provider, premium_until FROM users WHERE id = ?').get(userId); }
+        catch (e) { row = sql.prepare('SELECT is_premium, is_admin, trial_until, provider FROM users WHERE id = ?').get(userId); }
         if (!row) return { premium: false, admin: false };
         const admin = Number(row.is_admin) === 1;
-        const paid = Number(row.is_premium) === 1;
+        const bonusUntil = Number(row.premium_until) || 0;   // earned time (invites), see server/referrals.js
+        const paid = Number(row.is_premium) === 1 || bonusUntil > Date.now();
         let until = row.trial_until == null ? null : Number(row.trial_until) || 0;
         if (until === null && row.provider !== 'guest' && TRIAL_MS > 0) {
             until = Date.now() + TRIAL_MS;   // start the trial on first contact
             try { sql.prepare('UPDATE users SET trial_until = ? WHERE id = ? AND trial_until IS NULL').run(until, userId); } catch (e) {}
         }
         const onTrial = !admin && !paid && until > Date.now();
-        return { premium: admin || paid || onTrial, admin, trial: onTrial, trialEndsAt: onTrial ? until : null };
+        return { premium: admin || paid || onTrial, admin, trial: onTrial, trialEndsAt: onTrial ? until : null,
+                 bonusUntil: bonusUntil > Date.now() && Number(row.is_premium) !== 1 ? bonusUntil : null };
     } catch (e) {
         return { premium: false, admin: false };
     }
