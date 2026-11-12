@@ -25,7 +25,7 @@ const {
 } = require('./lobbyManager');
 const { generateLiveKitToken } = require('../services/livekit');
 const { BOT_NAMES, syncBotReadiness } = require('./bot');
-const { clearDebts, recordDebt } = require('./ledger');
+const { recordDebt } = require('./ledger');
 const config = require('../config');
 
 let dbModule;

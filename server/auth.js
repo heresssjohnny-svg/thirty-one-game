@@ -1,6 +1,16 @@
 // server/auth.js - Local Email-Linked Authentication, Password Recovery & Developer Admin API
 const express = require('express');
 const router = express.Router();
+
+// Usernames are shown all over the table and admin panel, so characters that can break HTML or
+// quoted onclick handlers are not allowed. Returns an error message or null.
+const UNSAFE_NAME = /[<>"'`&\\\u0000-\u001f\u007f]/;
+function usernameProblem(name) {
+    if (!name) return 'Username required.';
+    if (name.length > 24) return 'Username must be 24 characters or fewer.';
+    if (UNSAFE_NAME.test(name)) return 'Usernames cannot contain < > " \' ` & or \\.';
+    return null;
+}
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
@@ -43,6 +53,8 @@ router.post('/register', async (req, res) => {
     if (!cleanUser || !password || password.length < 6) {
         return res.status(400).json({ error: 'Username required, and password must be at least 6 characters.' });
     }
+    const nameErr = usernameProblem(cleanUser);
+    if (nameErr) return res.status(400).json({ error: nameErr });
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
@@ -557,6 +569,7 @@ router.post('/admin/balance/wipe-all', requireAdminAuth, (req, res) => {
 router.post('/admin/user/update', requireAdminAuth, (req, res) => {
     const { userId, username, email } = req.body;
     if (!userId || !username) return res.status(400).json({ error: 'userId and username are required.' });
+    { const nameErr = usernameProblem(String(username).trim()); if (nameErr) return res.status(400).json({ error: nameErr }); }
 
     try {
         sqlDb.prepare(`UPDATE users SET username = ?, email = ? WHERE id = ?`)
@@ -585,6 +598,7 @@ router.post('/admin/user/password', requireAdminAuth, async (req, res) => {
 router.post('/admin/user/create', requireAdminAuth, async (req, res) => {
     const { username, email, password } = req.body;
     const cleanUser = (username || '').trim();
+    { const nameErr = usernameProblem(cleanUser); if (nameErr) return res.status(400).json({ error: nameErr }); }
     const cleanEmail = (email || '').trim().toLowerCase();
 
     if (!cleanUser || !password || password.length < 6) {

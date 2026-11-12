@@ -400,138 +400,17 @@ function formatShowdownScoreBadge(cards) {
 // -------------------------------------------------------------
 // 4. MODALS, NOTIFICATIONS, LOBBY LIST & CHAT DRAWER ENGINE
 // -------------------------------------------------------------
-window.toggleModal = function(modalId, forceState) {
-    const modal = document.getElementById(modalId);
-    if (!modal) return;
-    const isHidden = window.getComputedStyle(modal).display === 'none' || modal.classList.contains('hidden');
-    const shouldShow = (typeof forceState === 'boolean') ? forceState : isHidden;
-    if (shouldShow) {
-        modal.classList.remove('hidden');
-        modal.style.setProperty('display', 'flex', 'important');
-    } else {
-        modal.classList.add('hidden');
-        modal.style.setProperty('display', 'none', 'important');
-    }
-};
+// window.toggleModal lives in app.js (loaded after this file).
 
-window.toggleChatWindow = function(e) {
-    if (e && typeof e.stopPropagation === 'function') {
-        e.stopPropagation();
-    }
-    const chat = document.getElementById('chat-window') || document.getElementById('chat-drawer');
-    if (!chat) return;
+// window.toggleChatWindow lives in app.js (loaded after this file).
 
-    const computedDisplay = window.getComputedStyle(chat).display;
-    const isHidden = computedDisplay === 'none' || chat.classList.contains('hidden');
+// window.closeChatWindow lives in app.js (loaded after this file).
 
-    if (isHidden) {
-        chat.classList.remove('hidden', 'minimized');
-        chat.style.setProperty('display', 'flex', 'important');
-        chat.style.setProperty('z-index', '9998', 'important');
+// window.appendChatMessage lives in app.js (loaded after this file).
 
-        const chatBtn = document.getElementById('chat-toggle-btn');
-        if (chatBtn) {
-            chatBtn.classList.remove('unread');
-            chatBtn.innerText = '💬 Chat';
-        }
-        const box = document.getElementById('chat-messages') || document.getElementById('chat-box');
-        if (box) box.scrollTop = box.scrollHeight;
-        const inp = document.getElementById('chat-input') || document.getElementById('chat-text-input');
-        if (inp) setTimeout(() => inp.focus(), 80);
-    } else {
-        chat.classList.add('hidden');
-        chat.style.setProperty('display', 'none', 'important');
-    }
-};
+// window.syncChatHistory lives in app.js (loaded after this file).
 
-window.closeChatWindow = function(e) {
-    if (e && typeof e.stopPropagation === 'function') {
-        e.stopPropagation();
-    }
-    const chat = document.getElementById('chat-window') || document.getElementById('chat-drawer');
-    if (chat) {
-        chat.classList.add('hidden');
-        chat.style.setProperty('display', 'none', 'important');
-    }
-};
-
-window.appendChatMessage = function(userOrData, msgText) {
-    const chatBox = document.getElementById('chat-messages') || document.getElementById('chat-box');
-    if (!chatBox) return;
-
-    let sender = 'Player';
-    let text = '';
-
-    if (typeof userOrData === 'object' && userOrData !== null) {
-        sender = userOrData.user || userOrData.username || userOrData.sender || 'Player';
-        text = userOrData.text || userOrData.message || '';
-    } else {
-        sender = userOrData || 'Player';
-        text = msgText || '';
-    }
-
-    if (!text) return;
-
-    const div = document.createElement('div');
-    div.className = 'chat-line';
-    div.style.cssText = 'margin-bottom:4px; font-size:0.8rem;';
-    div.innerHTML = `<strong style="color:#fbbf24;">${escapeHtmlUI(sender)}:</strong> <span style="color:#f8fafc;">${escapeHtmlUI(text)}</span>`;
-    chatBox.appendChild(div);
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    const chatWin = document.getElementById('chat-window') || document.getElementById('chat-drawer');
-    const isVisible = chatWin && window.getComputedStyle(chatWin).display !== 'none' && !chatWin.classList.contains('hidden');
-    if (!isVisible) {
-        const chatBtn = document.getElementById('chat-toggle-btn');
-        if (chatBtn) {
-            chatBtn.classList.add('unread');
-            chatBtn.innerText = '💬 Chat (!)';
-        }
-    }
-};
-
-window.syncChatHistory = function(chatHistory) {
-    const chatBox = document.getElementById('chat-messages') || document.getElementById('chat-box');
-    if (!chatBox || !Array.isArray(chatHistory)) return;
-
-    const lastCount = window.appGlobals.lastChatCount || 0;
-    chatBox.innerHTML = chatHistory.map(msg => {
-        const sender = msg.user || msg.username || 'Player';
-        const text = msg.text || msg.message || '';
-        return `
-            <div class="chat-line" style="margin-bottom:4px; font-size:0.8rem;">
-                <strong style="color:#fbbf24;">${escapeHtmlUI(sender)}:</strong>
-                <span style="color:#f8fafc;">${escapeHtmlUI(text)}</span>
-            </div>
-        `;
-    }).join('');
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    const chatWin = document.getElementById('chat-window') || document.getElementById('chat-drawer');
-    const isVisible = chatWin && window.getComputedStyle(chatWin).display !== 'none' && !chatWin.classList.contains('hidden');
-    if (chatHistory.length > lastCount && !isVisible) {
-        const chatBtn = document.getElementById('chat-toggle-btn');
-        if (chatBtn) {
-            chatBtn.classList.add('unread');
-            chatBtn.innerText = '💬 Chat (!)';
-        }
-    }
-    window.appGlobals.lastChatCount = chatHistory.length;
-};
-
-window.sendChatMessage = function() {
-    const input = document.getElementById('chat-input') || document.getElementById('chat-text-input');
-    if (!input) return;
-    const text = input.value.trim();
-    if (!text) return;
-
-    sendSocket({
-        type: 'CHAT_MESSAGE',
-        message: text,
-        text: text
-    });
-    input.value = '';
-};
+// window.sendChatMessage lives in app.js (loaded after this file).
 
 window.showCenterNotification = function(message, durationMs = 3200) {
     if (!message) return;
@@ -601,59 +480,13 @@ window.renderLobbyList = window.renderPublicLobbies = function(lobbiesList) {
     }).join('');
 };
 
-window.openSpectatorListModal = function() {
-    const modal = document.getElementById('spectator-list-modal');
-    const body = document.getElementById('spectator-list-body') || document.getElementById('spectators-list') || document.getElementById('spectator-list-content');
-    const specs = window.clientState.spectatorsList || [];
-    const lobby = window.appGlobals?.latestLobbySnapshot;
-    if (body) {
-        if (specs.length === 0) {
-            body.innerHTML = `<div style="color:#94a3b8; text-align:center; padding:10px;">No spectators currently watching.</div>`;
-        } else {
-            body.innerHTML = specs.map(s => {
-                const sObj = (typeof s === 'object' && s !== null) ? s : { username: String(s) };
-                const vcBadge = sObj.inVC ? (sObj.isMuted ? ' 🔇' : ' 🎙️') : '';
-                const adminBtns = window.getHostAdminButtonsHTML(lobby, sObj);
-                return `<div style="padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;"><span><b>${escapeHtmlUI(sObj.username)}</b>${vcBadge}</span>${adminBtns}</div>`;
-            }).join('');
-        }
-    }
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-    }
-};
+// window.openSpectatorListModal lives in app.js (loaded after this file).
 
-window.closeSpectatorListModal = function() {
-    const modal = document.getElementById('spectator-list-modal');
-    if (modal) modal.style.display = 'none';
-};
+// window.closeSpectatorListModal lives in app.js (loaded after this file).
 
-window.closeSettingsModal = function() {
-    const modal = document.getElementById('settings-modal');
-    if (modal) modal.style.display = 'none';
-};
+// window.closeSettingsModal lives in app.js (loaded after this file).
 
-window.openActiveBetsModal = function() {
-    const modal = document.getElementById('active-bets-modal') || document.getElementById('bet-modal');
-    const list = document.getElementById('active-bets-list');
-    const bets = window.clientState.activeBetsList || [];
-    if (list) {
-        if (bets.length === 0) {
-            list.innerHTML = `<div style="color:#94a3b8; text-align:center; padding:10px;">No active side bets locked in right now.</div>`;
-        } else {
-            list.innerHTML = bets.map(b => `
-                <div style="background:rgba(0,0,0,0.35); padding:8px; border-radius:6px; margin-bottom:6px; font-size:0.82rem;">
-                    <b>${escapeHtmlUI(b.proposer)}</b> vs <b>${escapeHtmlUI(b.target)}</b> — <span style="color:#fbbf24; font-weight:700;">$${b.wagerAmt}</span>
-                </div>
-            `).join('');
-        }
-    }
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-    }
-};
+// window.openActiveBetsModal lives in app.js (loaded after this file).
 
 // -------------------------------------------------------------
 // 5. LIVE COUNTDOWN BARS, EMOJI POPOVER & TABLE SOUNDBOARD

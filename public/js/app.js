@@ -132,7 +132,7 @@ function openSpectatorListModal() {
                     const adminBtns = (typeof window.getHostAdminButtonsHTML === 'function')
                         ? window.getHostAdminButtonsHTML(lobby, sObj)
                         : '';
-                    return `<li style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;"><span><b>${sObj.username}</b>${vcBadge}</span>${adminBtns}</li>`;
+                    return `<li style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;"><span><b>${escChat(sObj.username)}</b>${vcBadge}</span>${adminBtns}</li>`;
                 }).join('') + '</ul>';
         }
     }
@@ -328,7 +328,8 @@ function syncChatHistory(history) {
 
         const win = getModalElement('chat-window') || getModalElement('chat-drawer');
         const isVisible = win && window.getComputedStyle(win).display !== 'none' && !win.classList.contains('hidden');
-        if (history.length > lastCount && !isVisible) {
+        // new line(s) arrived (at the 50-line cap the length stays the same but the newest line changes)
+        if (history.length >= lastCount && history.length > 0 && !isVisible) {
             const chatBtn = document.getElementById('chat-toggle-btn');
             if (chatBtn) {
                 chatBtn.classList.add('unread');
