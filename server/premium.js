@@ -57,6 +57,7 @@ router.get('/premium/me', (req, res) => {
     try {
         const d = jwt.verify(h.slice(7), config.JWT_SECRET);
         const uid = d && (d.userId || d.id);
+        try { require('./adminMetrics').touchActive(uid); } catch (e) {}
         return res.json(statusFor(uid));
     } catch (e) {
         return res.status(401).json({ error: 'Invalid session.' });

@@ -57,7 +57,8 @@ function recordRound(lobby, start, lm) {
     const info = sql.prepare('INSERT INTO round_log (code, table_name, at, data) VALUES (?,?,?,?)')
         .run(lobby.code || '', String(lobby.name || '').slice(0, 40), now, JSON.stringify({ players }));
     const ins = sql.prepare('INSERT INTO round_user (round_id, user_id, at) VALUES (?,?,?)');
-    players.forEach(p => { if (p.uid) ins.run(info.lastInsertRowid, p.uid, now); });
+    let touch = null; try { touch = require('./adminMetrics').touchActive; } catch (e) {}
+    players.forEach(p => { if (p.uid) { ins.run(info.lastInsertRowid, p.uid, now); if (touch) touch(p.uid); } });
     return info.lastInsertRowid;
 }
 function recordMatch(lobby, lm) {

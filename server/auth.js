@@ -361,6 +361,30 @@ const adminLoginFails = new Map(); // ip -> { count, resetAt }
 const ADMIN_LOGIN_MAX_FAILS = 10;
 const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
+// One-tap admin sign-in from the game: an admin account that is signed in to the game exchanges its game
+// session for a 12 h admin token (same as signing in on admin.html; is_admin is still re-checked on every call).
+router.post('/admin/sso', (req, res) => {
+    const h = String(req.headers.authorization || '');
+    if (!h.startsWith('Bearer ')) return res.status(401).json({ error: 'Sign in to the game first.' });
+    let d = null;
+    try { d = jwt.verify(h.slice(7), JWT_SECRET); } catch (e) { return res.status(401).json({ error: 'Game session expired. Sign in again.' }); }
+    const uid = d && (d.userId || d.id);
+    if (!uid || d.isAdmin) return res.status(400).json({ error: 'Use a game session.' });
+    const row = sqlDb.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(String(uid));
+    if (!row || Number(row.is_admin) !== 1) return res.status(403).json({ error: 'This account is not an admin.' });
+    const token = jwt.sign({ isAdmin: true, userId: row.id, username: row.username }, JWT_SECRET, { expiresIn: '12h' });
+    return res.json({ token, username: row.username });
+});
+
+// Growth dashboard numbers (server/adminMetrics.js)
+router.get('/admin/metrics', requireAdminAuth, (req, res) => {
+    try {
+        let lm = null; try { lm = require('./game/lobbyManager'); } catch (e) {}
+        res.set('Cache-Control', 'no-store');
+        return res.json(require('./adminMetrics').compute(lm));
+    } catch (err) { return res.status(500).json({ error: err.message }); }
+});
+
 router.post('/admin/login', async (req, res) => {
     const { username, password } = req.body || {};
     const ip = clientIp(req); // behind Caddy req.ip is always 127.0.0.1
