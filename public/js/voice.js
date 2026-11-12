@@ -242,6 +242,8 @@ async function connectToLiveKit(host, token, roomCode) {
                 audioElem.setAttribute('webkit-playsinline', '');
                 audioElem.classList.add('lk-remote-audio');
                 if (track.sid) audioElem.setAttribute('data-track-sid', track.sid);
+                try { audioElem.setAttribute('data-identity', String((participant && (participant.identity || participant.name)) || '')); } catch (e) {}
+                if (typeof window.isPlayerBlocked === 'function' && participant && window.isPlayerBlocked(participant.identity || participant.name)) { audioElem.muted = true; audioElem.setAttribute('data-sf-muted', '1'); }
 
                 if (selectedAudioOutputId && typeof audioElem.setSinkId === 'function') {
                     audioElem.setSinkId(selectedAudioOutputId).catch(() => {

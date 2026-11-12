@@ -2,6 +2,7 @@
 // -> every socket at the table gets EMOTE_THROWN {code, from, to, emote} and animates it.
 // Premium / admin only, 1 throw per 1.5 s per socket, only at seated players of your own table.
 const { statusFor } = require('./premium');
+const { hasBlocked } = require('./safety');
 
 const EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
 const COOLDOWN_MS = 1500;
@@ -33,9 +34,13 @@ function handleEmoteMessage(ws, msg, lobbyManager) {
     const target = (found.lobby.players || []).find(p => String(p.username || '').toLowerCase() === to);
     if (!target || target.username === found.name) return true;
     ws.__emoteAt = now;
+    // a player who blocked the thrower never gets hit (nobody sees it); viewers who blocked the thrower don't see it either
+    if (target.id && hasBlocked(target.id.userId, found.name)) return true;
+    if (target.id && ws.userId && hasBlocked(ws.userId, target.username)) return true;
+    const skip = (sock) => sock && sock.userId && hasBlocked(sock.userId, found.name);
     const out = { type: 'EMOTE_THROWN', code: found.lobby.code, from: found.name, to: target.username, emote };
-    (found.lobby.players || []).forEach(p => { if (!p.isBot) send(p.id, out); });
-    (found.lobby.spectators || []).forEach(s => send(s.idSocket, out));
+    (found.lobby.players || []).forEach(p => { if (!p.isBot && !skip(p.id)) send(p.id, out); });
+    (found.lobby.spectators || []).forEach(s => { if (!skip(s.idSocket)) send(s.idSocket, out); });
     return true;
 }
 

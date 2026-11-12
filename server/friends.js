@@ -138,6 +138,12 @@ router.post('/friends/request', (req, res) => {
     if (!target) return res.status(404).json({ error: 'No player with that username.' });
     if (String(target.id) === me) return res.status(400).json({ error: 'You cannot add yourself.' });
     if (areFriends(me, target.id)) return res.json({ ok: true, status: 'already_friends', ...listFor(me) });
+    // a player who blocked me silently never receives my requests; I can't request someone I blocked
+    try {
+        const safety = require('./safety');
+        if (safety.hasBlocked(me, target.username)) return res.status(400).json({ error: 'You blocked this player. Unblock them first (Settings → Blocked players).' });
+        if (safety.hasBlocked(String(target.id), nameOf(me) || '')) return res.json({ ok: true, status: 'sent', ...listFor(me) });
+    } catch (e) {}
 
     const reverse = sql.prepare('SELECT 1 FROM friend_requests WHERE from_id = ? AND to_id = ?').get(String(target.id), me);
     if (reverse) {
