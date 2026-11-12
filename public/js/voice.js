@@ -346,6 +346,7 @@ async function connectToLiveKit(host, token, roomCode) {
                 }
                 await livekitRoom.localParticipant.setMicrophoneEnabled(true);
                 isMicActive = true;
+                watchMicTrack();
                 sendVCStatusInternal(true, false);
             } catch (micErr) {
                 console.warn("[LiveKit] Reopen mic restore blocked by browser policy:", micErr);
@@ -375,6 +376,56 @@ async function connectToLiveKit(host, token, roomCode) {
 // -------------------------------------------------------------
 // 4. MICROPHONE TRANSMISSION, SOFT-MUTE & HOST FORCE-MUTE
 // -------------------------------------------------------------
+// Turning the mic off RELEASES the microphone (stops the track) instead of only muting it, so the phone
+// (a call, another app) can use it. The mic is also released automatically when the app goes to the
+// background or the system takes the mic (incoming call); it is NOT turned back on by itself.
+function micSourceName() {
+    const LK = getLiveKitSDK();
+    return (LK && LK.Track && LK.Track.Source) ? LK.Track.Source.Microphone : 'microphone';
+}
+async function releaseLocalMic() {
+    if (!livekitRoom || !livekitRoom.localParticipant) return;
+    const pub = livekitRoom.localParticipant.getTrackPublication(micSourceName());
+    const track = pub && pub.track;
+    if (!track) return;
+    try { await livekitRoom.localParticipant.unpublishTrack(track, true); } catch (e) {}
+    try { track.stop(); } catch (e) {}
+    try { if (track.mediaStreamTrack) track.mediaStreamTrack.stop(); } catch (e) {}
+}
+let micPausedNoticeShown = false;
+async function pauseMicForInterruption(reason) {
+    if (!isMicActive) { await releaseLocalMic(); return; }
+    console.log('[LiveKit] Releasing mic:', reason);
+    isMicActive = false;
+    localStorage.setItem('blitz31_mic_state', 'false');   // don't grab it again on a reconnect
+    await releaseLocalMic();
+    updateVoiceUI();
+    sendVCStatusInternal(isLiveKitConnected, true);
+    micPausedNoticeShown = false;
+    window.__micPausedForInterruption = true;
+}
+function watchMicTrack() {
+    try {
+        const pub = livekitRoom && livekitRoom.localParticipant.getTrackPublication(micSourceName());
+        const mst = pub && pub.track && pub.track.mediaStreamTrack;
+        if (!mst || mst.__blitzWatched) return;
+        mst.__blitzWatched = true;
+        // the OS took the microphone (phone call, Siri, another app recording)
+        mst.addEventListener('mute', () => { if (isMicActive) pauseMicForInterruption('track muted by system'); });
+        mst.addEventListener('ended', () => { if (isMicActive) pauseMicForInterruption('track ended'); });
+    } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        pauseMicForInterruption('app hidden');
+    } else if (window.__micPausedForInterruption && !micPausedNoticeShown && isLiveKitConnected) {
+        micPausedNoticeShown = true;
+        window.__micPausedForInterruption = false;
+        if (typeof window.showCenterNotification === 'function') window.showCenterNotification('🎙️ Your mic was turned off while you were away — tap Mic to turn it back on');
+    }
+});
+window.addEventListener('pagehide', () => { pauseMicForInterruption('page hidden'); });
+
 async function toggleVoiceOnOff() {
     voiceReconnectTimes = [];   // a manual tap always gets a fresh start
     startBackgroundKeepAliveOscillator();
@@ -396,16 +447,9 @@ async function toggleVoiceOnOff() {
 
     try {
         if (isMicActive) {
-            // 2. Soft-Mute: Disable the track and notify LiveKit publication without releasing hardware
-            const micPub = livekitRoom.localParticipant.getTrackPublication(micSource);
-            if (micPub) {
-                if (micPub.track && micPub.track.mediaStreamTrack) {
-                    micPub.track.mediaStreamTrack.enabled = false;
-                }
-                if (typeof micPub.mute === 'function') {
-                    await micPub.mute();
-                }
-            }
+            // 2. Mic off: release the microphone hardware so calls / other apps can use it
+            await releaseLocalMic();
+            window.__micPausedForInterruption = false;
 
             isMicActive = false;
             localStorage.setItem('blitz31_mic_state', 'false');
@@ -431,7 +475,9 @@ async function toggleVoiceOnOff() {
             }
 
             isMicActive = true;
+            window.__micPausedForInterruption = false;
             localStorage.setItem('blitz31_mic_state', 'true');
+            watchMicTrack();
             updateVoiceUI();
             sendVCStatusInternal(true, false);
         }
@@ -470,6 +516,7 @@ async function forceMuteLocalMicByAdmin(hostName) {
             if (typeof livekitRoom.localParticipant.setMicrophoneEnabled === 'function') {
                 await livekitRoom.localParticipant.setMicrophoneEnabled(false);
             }
+            await releaseLocalMic();
         }
     } catch (e) {
         console.warn("[LiveKit] Admin force-mute error:", e);
