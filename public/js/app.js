@@ -267,6 +267,10 @@ function closeChatWindow(e) {
     }
 }
 
+function escChat(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function appendChatMessage(userOrData, msgText) {
     const box = document.getElementById('chat-messages') || document.getElementById('chat-box');
     if (!box) return;
@@ -285,8 +289,9 @@ function appendChatMessage(userOrData, msgText) {
     if (!text) return;
 
     const div = document.createElement('div');
+    div.className = 'chat-line';
     div.style.marginBottom = '4px';
-    div.innerHTML = `<strong style="color:#fbbf24;">${sender}:</strong> <span style="color:#f8fafc;">${text}</span>`;
+    div.innerHTML = `<strong style="color:#fbbf24;">${escChat(sender)}:</strong> <span style="color:#f8fafc;">${escChat(text)}</span>`;
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
 
@@ -308,12 +313,16 @@ function syncChatHistory(history) {
 
     window.appGlobals = window.appGlobals || {};
     const lastCount = window.appGlobals.lastChatCount || 0;
+    // the server keeps the last 50 lines, so also compare the newest line (length alone stops changing at 50)
+    const tail = history.length ? history[history.length - 1] : null;
+    const key = history.length + '|' + (tail ? (tail.user || tail.username || '') + '|' + (tail.text || tail.message || '') : '') + '|' + (history[0] ? (history[0].text || '') : '');
 
-    if (history.length !== lastCount) {
+    if (key !== window.appGlobals.lastChatKey) {
+        window.appGlobals.lastChatKey = key;
         box.innerHTML = history.map(m => {
             const u = m.user || m.username || 'Player';
             const t = m.text || m.message || '';
-            return `<div style="margin-bottom:4px;"><strong style="color:#fbbf24;">${u}:</strong> <span style="color:#f8fafc;">${t}</span></div>`;
+            return `<div class="chat-line" style="margin-bottom:4px;"><strong style="color:#fbbf24;">${escChat(u)}:</strong> <span style="color:#f8fafc;">${escChat(t)}</span></div>`;
         }).join('');
         box.scrollTop = box.scrollHeight;
 
