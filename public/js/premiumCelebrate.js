@@ -209,7 +209,7 @@
                     if (now - lastKnockCall < 2500) return;
                     lastKnockCall = now;
                     if (id.cue) {
-                        if (typeof window.playRecordedCue === 'function' && window.playRecordedCue(id.cue, id.mine)) return;
+                        if (typeof window.playRecordedCue === 'function' && window.playRecordedCue(id.cue, id.mine, 'sound-knock')) return;
                         lastKnockCall = 0; return sp.apply(this, arguments);   // recordings muted / unavailable -> normal knock
                     }
                     if (typeof window.playSoundboardEffect === 'function') window.playSoundboardEffect(id);

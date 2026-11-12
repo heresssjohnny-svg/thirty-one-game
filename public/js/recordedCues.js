@@ -38,16 +38,63 @@
         return pending[tok];
     }
     // returns true when it will play (so the caller skips the default sound)
-    window.playRecordedCue = function (tok, mine) {
+    // fallbackId: an <audio> element to play instead if this phone can't play the recording
+    function playFallback(fallbackId) {
+        var el = fallbackId && document.getElementById(fallbackId);
+        if (!el) return;
+        try { el.currentTime = 0; el.volume = Math.max(0, Math.min(1, vol())); var p = el.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    }
+    window.playRecordedCue = function (tok, mine, fallbackId) {
         if (!tok || !/^[a-f0-9]{24}$/.test(String(tok))) return false;
         if (!mine && !othersOn()) return false;
         if (!sfxOn()) return true;
         fetchCue(tok).then(function (url) {
             var a = new Audio(url); a.volume = Math.max(0, Math.min(1, vol()));
-            var p = a.play(); if (p && p.catch) p.catch(function () {});
-        }).catch(function () {});
+            a.onerror = function () { playFallback(fallbackId); };
+            var p = a.play(); if (p && p.catch) p.catch(function (e) { if (e && e.name !== 'NotAllowedError') playFallback(fallbackId); });
+        }).catch(function () { playFallback(fallbackId); });
         return true;
     };
+
+    // ---------- convert any recording to WAV (plays on every phone and browser) ----------
+    // Decode -> mono 22.05 kHz -> trim silence -> normalise -> 16-bit WAV. 4 s ≈ 176 KB.
+    function encodeWav(samples, rate) {
+        var n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+        function str(o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); }
+        str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+        v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+        for (var i = 0; i < n; i++) { var x = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44 + i * 2, x < 0 ? x * 32768 : x * 32767, true); }
+        return new Blob([buf], { type: 'audio/wav' });
+    }
+    function toWav(blob) {
+        var AC = window.AudioContext || window.webkitAudioContext, OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!AC || !OAC) return Promise.reject(new Error('no audio'));
+        var RATE = 22050;
+        return blob.arrayBuffer().then(function (ab) {
+            var ctx = new AC();
+            return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej); }).then(function (decoded) { try { ctx.close(); } catch (e) {} return decoded; });
+        }).then(function (decoded) {
+            var len = Math.min(Math.ceil(decoded.duration * RATE), RATE * 4.2);
+            var off = new OAC(1, Math.max(1, len), RATE);
+            var src = off.createBufferSource(); src.buffer = decoded; src.connect(off.destination); src.start();
+            return off.startRendering();
+        }).then(function (rendered) {
+            var d = rendered.getChannelData(0), start = 0, end = d.length - 1, TH = 0.02;
+            while (start < d.length && Math.abs(d[start]) < TH) start++;
+            while (end > start && Math.abs(d[end]) < TH) end--;
+            start = Math.max(0, start - Math.round(RATE * 0.05)); end = Math.min(d.length - 1, end + Math.round(RATE * 0.15));
+            var out = d.slice(start, end + 1);
+            if (out.length < RATE * 0.1) out = d;   // nothing loud: keep it all
+            var peak = 0; for (var i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]));
+            var g = peak > 0.01 ? Math.min(4, 0.89 / peak) : 1;
+            if (g !== 1) for (var k = 0; k < out.length; k++) out[k] *= g;
+            var fade = Math.min(out.length, Math.round(RATE * 0.03));
+            for (var f = 0; f < fade; f++) out[out.length - 1 - f] *= f / fade;
+            return encodeWav(out, RATE);
+        });
+    }
+    window.__cueToWav = toWav;   // tests
     // preload the recordings of everyone at my table so they play instantly
     setInterval(function () {
         var s = window.appGlobals && window.appGlobals.latestLobbySnapshot;
@@ -117,9 +164,12 @@
                 var type = (mr.mimeType || mime || 'audio/webm').split(';')[0];
                 var blob = new Blob(r.chunks, { type: type });
                 if (blob.size < 200) { note('Nothing was recorded'); repaint(); return; }
-                if (draft[kind] && draft[kind].url) URL.revokeObjectURL(draft[kind].url);
-                draft[kind] = { blob: blob, url: URL.createObjectURL(blob), mime: type };
-                repaint();
+                var keep = function (b, m) {
+                    if (draft[kind] && draft[kind].url) URL.revokeObjectURL(draft[kind].url);
+                    draft[kind] = { blob: b, url: URL.createObjectURL(b), mime: m };
+                    repaint();
+                };
+                toWav(blob).then(function (w) { keep(w, 'audio/wav'); }).catch(function () { keep(blob, type); });
             };
             mr.start(250);
             rec.timer = setInterval(function () {
@@ -170,4 +220,28 @@
     var lastTok = null;
     setInterval(function () { var t = token(); if (t && t !== lastTok && prem()) { lastTok = t; loadMine(repaint); } if (!prem()) lastTok = null; }, 2000);
     window.__loadMyCues = loadMine;
+
+    // Recordings saved before conversion (webm/ogg/mp4 from one kind of phone): convert once and re-save as WAV
+    var upgrading = false;
+    function upgradeOld() {
+        if (upgrading || !prem() || !token()) return;
+        var m = window.__myCues || {};
+        ['knock', 'win'].forEach(function (kind) {
+            var c = m[kind];
+            if (!c || !c.token || /wav/.test(c.mime || '') || c.__tried) return;
+            c.__tried = true; upgrading = true;
+            fetchCue(c.token).then(function (url) { return fetch(url).then(function (r) { return r.blob(); }); })
+                .then(toWav)
+                .then(function (w) {
+                    return fetch('/api/cues/' + kind, { method: 'POST', headers: { Authorization: 'Bearer ' + token(), 'Content-Type': 'audio/wav' }, body: w })
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (j) {
+                            if (j && j.token) { window.__myCues[kind] = { token: j.token, mime: 'audio/wav' }; if (typeof window.__celebSync === 'function') window.__celebSync(); }
+                        });
+                })
+                .catch(function () {})
+                .then(function () { upgrading = false; });
+        });
+    }
+    setInterval(upgradeOld, 5000);
 })();

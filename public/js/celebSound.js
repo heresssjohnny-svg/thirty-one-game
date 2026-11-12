@@ -88,7 +88,7 @@
         });
         paint();
     }
-    function playRec(cue) { if (cue && typeof window.playRecordedCue === 'function') window.playRecordedCue(cue.token || cue, true); }
+    function playRec(cue) { if (cue && typeof window.playRecordedCue === 'function') window.playRecordedCue(cue.token || cue, true, 'sound-win'); }
     function play(id) { if (typeof window.playSoundboardEffect === 'function') window.playSoundboardEffect(id); }
     var origSafe = null;
     function playDefault() { if (origSafe) origSafe('win'); else if (typeof window.safePlaySound === 'function') window.safePlaySound('win'); }
@@ -129,7 +129,7 @@
                     if (pick !== 'default') { play(pick); return; }
                 } else if (name === 'win' && ctx && !ctx.mine && ctx.other && Date.now() - ctx.t < 1500) {
                     var o = ctx.other; ctx = null;
-                    if (o && o.cue) { if (typeof window.playRecordedCue === 'function' && window.playRecordedCue(o.cue, false)) return; return s.apply(this, arguments); }
+                    if (o && o.cue) { if (typeof window.playRecordedCue === 'function' && window.playRecordedCue(o.cue, false, 'sound-win')) return; return s.apply(this, arguments); }
                     play(o); return;   // the winner's pick, heard by the whole table
                 }
                 return s.apply(this, arguments);
