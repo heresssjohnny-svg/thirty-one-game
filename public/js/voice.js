@@ -377,8 +377,8 @@ async function connectToLiveKit(host, token, roomCode) {
 // 4. MICROPHONE TRANSMISSION, SOFT-MUTE & HOST FORCE-MUTE
 // -------------------------------------------------------------
 // Turning the mic off RELEASES the microphone (stops the track) instead of only muting it, so the phone
-// (a call, another app) can use it. The mic is also released automatically when the app goes to the
-// background or the system takes the mic (incoming call); it is NOT turned back on by itself.
+// (a call, another app) can use it. It stays on in the background, and is released automatically only when
+// the system takes the mic (incoming call); it is NOT turned back on by itself.
 function micSourceName() {
     const LK = getLiveKitSDK();
     return (LK && LK.Track && LK.Track.Source) ? LK.Track.Source.Microphone : 'microphone';
@@ -416,15 +416,14 @@ function watchMicTrack() {
     } catch (e) {}
 }
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        pauseMicForInterruption('app hidden');
-    } else if (window.__micPausedForInterruption && !micPausedNoticeShown && isLiveKitConnected) {
+    // The mic stays on in the background; it is only released when the phone takes it (track mute/ended)
+    // or when the player turns it off. On return, say so if the phone took it meanwhile.
+    if (!document.hidden && window.__micPausedForInterruption && !micPausedNoticeShown && isLiveKitConnected) {
         micPausedNoticeShown = true;
         window.__micPausedForInterruption = false;
-        if (typeof window.showCenterNotification === 'function') window.showCenterNotification('🎙️ Your mic was turned off while you were away — tap Mic to turn it back on');
+        if (typeof window.showCenterNotification === 'function') window.showCenterNotification('🎙️ Your phone needed the mic, so it was turned off — tap Mic to turn it back on');
     }
 });
-window.addEventListener('pagehide', () => { pauseMicForInterruption('page hidden'); });
 
 async function toggleVoiceOnOff() {
     voiceReconnectTimes = [];   // a manual tap always gets a fresh start
