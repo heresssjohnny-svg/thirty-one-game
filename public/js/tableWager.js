@@ -110,16 +110,51 @@
         });
     }
 
+    // The raw pot (sum of every seat's wager) is not what a winner collects: each loser pays the winner the
+    // LOWER of their two wagers, and the winner keeps their own stake. Show what *I* would win instead.
+    function winIfIWin(lobby, me) {
+        if (!me || isFree(me)) return 0;
+        const mine = Number(me.wager) || 0;
+        return lobby.players.reduce((sum, p) => {
+            if (!p || p === me || p.isMe || p.isBot) return sum;
+            return sum + Math.min(mine, isFree(p) ? 0 : (Number(p.wager) || 0));
+        }, 0);
+    }
+    function relabelPot(lobby, me) {
+        const pot = document.getElementById('pot-total-banner');
+        if (!pot) return;
+        let text;
+        if (lobby.potTotal === 0) text = 'Pot: Free';
+        else if (!me || me.eliminated) text = `Pot: $${lobby.potTotal}`;
+        else if (isFree(me)) text = 'You\'re playing Free';
+        else {
+            const w = winIfIWin(lobby, me);
+            text = w > 0 ? `You'd win $${w}` : 'Pot: Free';
+        }
+        if (pot.innerText !== text) pot.innerText = text;
+        pot.title = 'Each loser pays the winner the smaller of their two wagers. Tap for details.';
+        if (!pot.__potTap) {
+            pot.__potTap = true;
+            pot.style.cursor = 'pointer';
+            pot.addEventListener('click', () => {
+                const l = window.appGlobals && window.appGlobals.latestLobbySnapshot;
+                const m = l && (l.players || []).find(p => p.isMe);
+                const lines = l ? (l.players || []).filter(p => !p.isMe && !p.isBot).map(p => `${p.username}: ${isFree(p) ? 'Free' : '$' + (Number(p.wager) || 0)}`).join(' · ') : '';
+                const msg = m && !isFree(m)
+                    ? `💰 If you win, each loser pays you the smaller of their wager and yours ($${Number(m.wager) || 0}). ${lines}`
+                    : `💰 Each loser pays the winner the smaller of their two wagers. ${lines}`;
+                if (typeof window.showCenterNotification === 'function') window.showCenterNotification(msg);
+            });
+        }
+    }
+
     function afterRender(lobby) {
         if (!lobby || !Array.isArray(lobby.players)) return;
         const mode = lobby.wagerMode || 'mixed';
         const me = lobby.players.find(p => p.isMe);
 
         lobby.players.forEach(p => { if (isFree(p)) labelFreeSeat(p.username); });
-        if (lobby.potTotal === 0) {
-            const pot = document.getElementById('pot-total-banner');
-            if (pot) pot.innerText = 'Pot: Free';
-        }
+        relabelPot(lobby, me);
         if (lobby.gameState && lobby.gameState !== 'lobby') hideReadyMarks();
 
         const typeSel = ensureTableTypeControl();
