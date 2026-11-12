@@ -284,7 +284,7 @@ function privateGate(ws, msg, lobbies, lobbyManager) {
     // ---- public tables: free play only
     if (BET_TYPES.has(type) || type === 'UPDATE_WAGER' || type === 'SET_WAGER_MODE') {
         const lobby = lobbyFor(ws, msg, lobbies);
-        if (lobby && !lobby.isPrivate) {
+        if (lobby && (!lobby.isPrivate || lobby.isPractice)) {
             const harmless = (type === 'UPDATE_WAGER' && Number(msg.wager) === 0) ||
                 (type === 'SET_WAGER_MODE' && lower(msg.mode) === 'free');
             if (!harmless) { sendError(ws, PUBLIC_MSG); return false; }
@@ -297,7 +297,8 @@ function privateGate(ws, msg, lobbies, lobbyManager) {
     if (!uid) return true;   // guests (see guest.js) and unauthenticated sockets (see antiCheat.js)
 
     if (type === 'CREATE_LOBBY') {
-        if (msg.isPrivate && !hasAccepted(uid)) {
+        // a practice table (tutorial vs bots) is private but always free, so it needs no terms
+        if (msg.isPrivate && !msg.practice && !hasAccepted(uid)) {
             sendTo(ws, { type: 'TERMS_REQUIRED', action: 'CREATE_LOBBY' });
             return false;
         }
@@ -341,7 +342,11 @@ function afterPrivateDispatch(ws, msg, lobbies, broadcastLobbyUpdate, lobbyManag
             if (cleared && typeof broadcastLobbyUpdate === 'function') broadcastLobbyUpdate(lobby.code);
         }
 
-        if (!lobby.isPrivate && lobby.wagerMode !== 'free') {
+        if (msg.type === 'CREATE_LOBBY' && msg.practice === true && !lobby.isPractice) {
+            lobby.isPractice = true;
+            (lobby.players || []).forEach(p => { if (p) p.wager = 0; });
+        }
+        if ((!lobby.isPrivate || lobby.isPractice) && lobby.wagerMode !== 'free') {
             lobby.wagerMode = 'free';
             if (typeof broadcastLobbyUpdate === 'function') broadcastLobbyUpdate(lobby.code);
         }
@@ -370,7 +375,7 @@ function enforcePublicFree(lobbyManager) {
     const all = lobbyManager.lobbies || {};
     for (const code of Object.keys(all)) {
         const lobby = all[code];
-        if (lobby && !lobby.isPrivate && lobby.wagerMode !== 'free') {
+        if (lobby && (!lobby.isPrivate || lobby.isPractice) && lobby.wagerMode !== 'free') {
             lobby.wagerMode = 'free';
             try { if (typeof lobbyManager.broadcastLobbyUpdate === 'function') lobbyManager.broadcastLobbyUpdate(code); } catch (e) {}
         }

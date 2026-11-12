@@ -1,0 +1,28 @@
+#tu-modal { position: fixed; inset: 0; z-index: 100010; display: none; align-items: center; justify-content: center; background: rgba(2,6,23,.82); padding: 14px; }
+#tu-modal.open { display: flex; }
+#tu-modal .tu-sheet { position: relative; width: 100%; max-width: 380px; background: radial-gradient(circle at 50% 0%, #0b5d3b 0%, #04291b 75%); border: 2px solid #d4af37; border-radius: 16px; padding: 18px 16px 14px; color: #f8fafc; text-align: center; box-shadow: 0 14px 40px rgba(0,0,0,.8); }
+#tu-modal .tu-close { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.35); color: #fff; cursor: pointer; }
+#tu-modal .tu-step { color: #fbbf24; font-size: .72rem; font-weight: 800; letter-spacing: .08em; }
+#tu-modal .tu-x { min-height: 92px; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
+#tu-modal h3 { margin: 6px 0 6px; font-size: 1.15rem; color: #fde68a; }
+#tu-modal p { margin: 0 0 12px; font-size: .9rem; line-height: 1.45; color: #e2e8f0; }
+#tu-modal .tu-card { width: 46px; height: 66px; border-radius: 7px; background: #fff; color: #0f172a; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 3px 8px rgba(0,0,0,.5); font-family: Georgia, serif; }
+#tu-modal .tu-card b { font-size: 1.15rem; line-height: 1; }
+#tu-modal .tu-card i { font-style: normal; font-size: 1.3rem; line-height: 1; }
+#tu-modal .tu-card.r { color: #dc2626; }
+#tu-modal .tu-card.back { background: linear-gradient(135deg, #1e3a8a, #0f172a); border: 2px solid #fff; }
+#tu-modal .tu-arrow { font-size: 1.1rem; }
+#tu-modal .tu-eq { flex-basis: 100%; color: #fde68a; font-weight: 800; margin-top: 4px; }
+#tu-modal .tu-big { font-size: 2.2rem; font-weight: 900; color: #fde68a; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+#tu-modal .tu-dots { display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; }
+#tu-modal .tu-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.3); }
+#tu-modal .tu-dots span.on { background: #fbbf24; }
+#tu-modal .tu-btns { display: flex; gap: 8px; }
+#tu-modal .tu-btns button { flex: 1; padding: 10px; border-radius: 10px; font-weight: 800; cursor: pointer; font-size: .88rem; }
+#tu-modal .tu-main { background: linear-gradient(180deg, #fbbf24, #d97706); color: #1c1917; border: 1px solid #fde68a; }
+#tu-modal .tu-ghost { background: rgba(0,0,0,.3); color: #e2e8f0; border: 1px solid rgba(255,255,255,.3); }
+#tu-tip { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); transform: translateX(-50%); z-index: 9400; display: none; gap: 8px; align-items: center;
+  width: max-content; max-width: min(94vw, 460px); background: rgba(30, 27, 75, .95); border: 1px solid #a78bfa; border-radius: 12px; padding: 6px 8px 6px 12px; color: #ede9fe; font-size: .76rem; line-height: 1.35; box-shadow: 0 6px 18px rgba(0,0,0,.55); pointer-events: auto; }
+#tu-tip.on { display: flex; }
+#tu-tip button { flex-shrink: 0; border-radius: 999px; border: 1px solid #c4b5fd; background: transparent; color: #ddd6fe; font-size: .68rem; font-weight: 700; padding: 3px 8px; cursor: pointer; }
+body.da-hide-cards #tu-tip { bottom: calc(env(safe-area-inset-bottom, 0px) + 40px); }
