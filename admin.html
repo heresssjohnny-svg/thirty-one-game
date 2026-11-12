@@ -361,7 +361,7 @@
         </div>
         <div style="display: flex; gap: 8px;">
             <button class="btn btn-green btn-sm" onclick="fetchAdminOverview()">🔄 Refresh All Data</button>
-            <a href="/" class="btn btn-slate btn-sm" style="text-decoration: none;">🎮 Open Game</a>
+            <a href="/" class="btn btn-slate btn-sm" style="text-decoration: none;">← Back to Game</a>
             <button class="btn btn-red btn-sm" onclick="adminLogout()">🚪 Lock Console</button>
         </div>
     </header>
@@ -388,14 +388,26 @@
 
     <!-- NAVIGATION TABS -->
     <div class="nav-tabs">
-        <button class="tab-btn active" onclick="switchAdminTab('balances', this)">💰 Lifetime Balances</button>
+        <button class="tab-btn active" onclick="switchAdminTab('growth', this)">📈 Growth</button>
+        <button class="tab-btn" onclick="switchAdminTab('balances', this)">💰 Lifetime Balances</button>
         <button class="tab-btn" onclick="switchAdminTab('lobbies', this)">🃏 Live Tables & Session Ledgers</button>
         <button class="tab-btn" onclick="switchAdminTab('users', this)">👥 User Accounts & Passwords</button>
         <button class="tab-btn" onclick="switchAdminTab('devtools', this)">📢 Broadcast & SQLite Console</button>
     </div>
 
+    <!-- TAB 0: GROWTH DASHBOARD -->
+    <div id="tab-growth" class="panel-section active">
+        <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>📈 Growth &amp; activity <small id="growth-note" style="color:#94a3b8;font-weight:500;"></small></span>
+                <button class="btn btn-green btn-sm" onclick="fetchGrowth()">🔄 Refresh</button>
+            </div>
+            <div id="growth-body" style="padding:12px;">Loading…</div>
+        </div>
+    </div>
+
     <!-- TAB 1: LIFETIME LEDGER BALANCES -->
-    <div id="tab-balances" class="panel-section active">
+    <div id="tab-balances" class="panel-section">
         <div class="card">
             <div class="card-header">
                 <h3>➕ Set, Add, or Adjust Lifetime Balance Between Players</h3>
@@ -571,7 +583,55 @@
             .replace(/'/g, '&#39;');
     }
 
+    // ---------- 📈 Growth dashboard ----------
+    function gTile(v, label, color) {
+        return `<div style="background:#0f172a;border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:900;color:${color || '#fde68a'};">${escapeHtml(String(v ?? 0))}</div>
+            <div style="font-size:.72rem;color:#94a3b8;">${escapeHtml(label)}</div></div>`;
+    }
+    function gGrid(tiles) { return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:14px;">${tiles.join('')}</div>`; }
+    function gChart(title, values, days, color) {
+        const W = 600, H = 120, n = values.length, max = Math.max(1, ...values), bw = W / n;
+        const bars = values.map((v, i) => {
+            const h = Math.round((v / max) * (H - 18));
+            return `<rect x="${(i * bw + 1).toFixed(1)}" y="${H - h - 14}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h}" rx="2" fill="${color}"><title>${days[i]}: ${v}</title></rect>`;
+        }).join('');
+        const labels = [[0, 'start', 2], [Math.floor(n / 2), 'middle', Math.floor(n / 2) * bw + bw / 2], [n - 1, 'end', W - 2]].map(([i, anc, x]) => `<text x="${Number(x).toFixed(1)}" y="${H - 2}" font-size="10" fill="#94a3b8" text-anchor="${anc}">${days[i].slice(5)}</text>`).join('');
+        const total = values.reduce((a, b) => a + b, 0);
+        return `<div style="margin-bottom:14px;"><div style="font-size:.8rem;color:#e2e8f0;font-weight:700;margin-bottom:4px;">${escapeHtml(title)} <span style="color:#94a3b8;font-weight:500;">· 30-day total ${total} · best day ${total ? max : 0}</span></div>
+            <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:#0b1222;border-radius:8px;">${bars}${labels}</svg></div>`;
+    }
+    async function fetchGrowth() {
+        const box = document.getElementById('growth-body');
+        try {
+            const m = await apiAdmin('metrics');
+            document.getElementById('growth-note').textContent = `· days in New York time · updated ${new Date().toLocaleTimeString()}`;
+            const p = m.premium || {}, inv = m.invites || {}, g = m.games || {}, a = m.active || {}, su = m.signups || {}, live = m.live || {};
+            let html = '<div style="font-weight:800;color:#34d399;margin:0 0 6px;">● Right now</div>' +
+                gGrid([gTile(live.online, 'players online', '#34d399'), gTile(live.tables, 'open tables'), gTile(live.playing, 'tables mid-game'), gTile(live.seated, 'people seated')]);
+            html += '<div style="font-weight:800;color:#fbbf24;margin:0 0 6px;">Players</div>' +
+                gGrid([gTile(m.totalUsers, 'accounts'), gTile(su.today, 'new today'), gTile(su.last7d, 'new · 7 days'), gTile(su.last30d, 'new · 30 days'),
+                       gTile(a.today, 'active today', '#93c5fd'), gTile(a.last7d, 'active · 7 days', '#93c5fd'), gTile(a.last30d, 'active · 30 days', '#93c5fd'), gTile(a.returning7d, 'came back 2+ days (7d)', '#93c5fd')]);
+            html += gChart('New sign-ups per day', su.byDay || [], m.days, '#fbbf24');
+            html += gChart('Active players per day (opened the app or played)', a.byDay || [], m.days, '#60a5fa');
+            html += gChart('People who played per day', g.playersByDay || [], m.days, '#34d399');
+            html += gChart('Rounds played per day', g.roundsByDay || [], m.days, '#a78bfa');
+            html += '<div style="font-weight:800;color:#fbbf24;margin:0 0 6px;">Games</div>' +
+                gGrid([gTile(g.rounds7d, 'rounds · 7 days'), gTile(g.matches7d, 'matches vs people · 7d'), gTile(g.allTimePlayerGames, 'games played (all time, per player)')]);
+            html += '<div style="font-weight:800;color:#c4b5fd;margin:0 0 6px;">Premium &amp; invites</div>' +
+                gGrid([gTile(p.trialActive, 'on free trial', '#c4b5fd'), gTile(p.trialEnded, 'trial ended', '#94a3b8'), gTile(p.earned, 'earned via invites', '#f0abfc'), gTile(p.granted, 'given by admin', '#c4b5fd'), gTile(p.admins, 'admins', '#c4b5fd'),
+                       gTile(inv.joined, 'joined from invites', '#6ee7b7'), gTile(inv.played, 'invitees who played', '#6ee7b7'), gTile((m.push || {}).users, 'notifications on', '#93c5fd')]);
+            if (inv.top && inv.top.length) {
+                html += '<div style="font-size:.8rem;color:#e2e8f0;font-weight:700;margin-bottom:4px;">Top inviters</div>' +
+                    inv.top.map(t => `<div style="display:flex;justify-content:space-between;padding:6px 8px;margin-bottom:4px;background:#0f172a;border-radius:6px;font-size:.82rem;"><b>${escapeHtml(t.name)}</b><span style="color:#6ee7b7;">${t.n} joined · ${t.played || 0} played</span></div>`).join('');
+            }
+            if (a.since) html += `<div style="color:#64748b;font-size:.72rem;margin-top:10px;">Active-player tracking started ${escapeHtml(a.since)}; rounds/matches since 2026-11-10. Earlier days show 0.</div>`;
+            box.innerHTML = html;
+        } catch (err) { box.innerHTML = `<div style="color:#f87171;">Could not load: ${escapeHtml(err.message)}</div>`; }
+    }
+
     function switchAdminTab(tabName, btnEl) {
+        if (tabName === 'growth') fetchGrowth();
         document.querySelectorAll('.panel-section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         const target = document.getElementById('tab-' + tabName);
@@ -621,9 +681,7 @@
             }
             adminToken = data.token;
             sessionStorage.setItem('blitz31_admin_token', adminToken);
-            document.getElementById('admin-login-screen').style.display = 'none';
-            document.getElementById('admin-dashboard').style.display = 'block';
-            fetchAdminOverview();
+            openAdminDashboard();
         } catch (err) {
             errEl.textContent = 'Server error while authenticating.';
             errEl.style.display = 'block';
@@ -1042,11 +1100,30 @@
         }
     }
 
-    // Auto-unlock if admin token is already in sessionStorage
-    if (adminToken) {
+    function openAdminDashboard() {
         document.getElementById('admin-login-screen').style.display = 'none';
         document.getElementById('admin-dashboard').style.display = 'block';
         fetchAdminOverview();
+        fetchGrowth();
+    }
+    // Auto-unlock if admin token is already in sessionStorage
+    if (adminToken) {
+        openAdminDashboard();
+    } else {
+        // One-tap sign-in: an admin account already signed in to the game (same browser) gets in without a password
+        const gameToken = sessionStorage.getItem('31_jwt') || localStorage.getItem('31_jwt');
+        if (gameToken) {
+            fetch('/auth/admin/sso', { method: 'POST', headers: { 'Authorization': `Bearer ${gameToken}` } })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.token) return;
+                    adminToken = j.token;
+                    sessionStorage.setItem('blitz31_admin_token', adminToken);
+                    openAdminDashboard();
+                    showToast(`Signed in as ${j.username}`);
+                })
+                .catch(() => {});
+        }
     }
 </script>
 </body>
