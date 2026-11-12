@@ -491,7 +491,6 @@ async function toggleVoiceOnOff() {
     }
 }
 
-const toggleLiveKitVoice = toggleVoiceOnOff;
 
 /**
  * Invoked when the room creator (host) mutes this player's microphone
@@ -822,7 +821,7 @@ function refreshVoiceParticipantsList() {
     }
 
     listDiv.innerHTML = '<ul style="padding-left:14px; margin:0; font-size:0.8rem;">' + participants.map(u => `
-        <li style="margin-bottom:3px;"><b>${u.name}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>
+        <li style="margin-bottom:3px;"><b>${String(u.name).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</b> ${u.isMuted ? '🔇 (Muted)' : '🎙️ (Active)'}</li>
     `).join('') + '</ul>';
 }
 

@@ -25,7 +25,6 @@ const { sendToUser } = require('./push');
 const { isGuestUserId } = require('./guest');
 
 const MAX_AGE_MS = 10 * 60 * 1000;
-const lower = (s) => String(s || '').trim().toLowerCase();
 
 function userIdOf(lobbyManager, lobby, entry) {
     let uid = entry.userId || null;

@@ -225,6 +225,12 @@ function guardIncoming(ws, data, lobbies) {
         // Cap free-text sizes so nobody can balloon lobby state
         if (typeof clean.message === 'string') clean.message = clean.message.slice(0, 200);
         if (typeof clean.text === 'string') clean.text = clean.text.slice(0, 200);
+        // Names picked when sitting down / creating a table are shown to everyone (often via innerHTML or inside
+        // onclick="...('name')"), so characters that can break out of HTML or a quoted string are removed.
+        if (JOIN_TYPES.has(type)) {
+            if (typeof clean.username === 'string') clean.username = clean.username.replace(/[<>"'`&\\\u0000-\u001f\u007f]/g, '').trim();
+            if (typeof clean.lobbyName === 'string') clean.lobbyName = clean.lobbyName.replace(/[<>"`&\\\u0000-\u001f\u007f]/g, '').trim();
+        }
         if (typeof clean.username === 'string') clean.username = clean.username.slice(0, 24);
         if (typeof clean.lobbyName === 'string') clean.lobbyName = clean.lobbyName.slice(0, 40);
 

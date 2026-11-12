@@ -116,7 +116,6 @@ function renderOgImage() {
         }
         return cx;
     }
-    const textWidth = (str, s, gap) => str.length * (5 + (gap === undefined ? 1 : gap)) * s - (gap === undefined ? 1 : gap) * s;
 
     text('THE CLASSIC CARD GAME', 88, 88, 5, [167, 243, 208]);
     text('BLITZ', 84, 160, 17, [251, 191, 36]);
@@ -137,7 +136,7 @@ function renderOgImage() {
         const R = Math.ceil(Math.hypot(cw, ch) / 2) + 14;
         for (let py = Math.floor(cy - R); py < cy + R; py++) {
             for (let pxx = Math.floor(cx - R); pxx < cx + R; pxx++) {
-                let cardCov = 0, shadowCov = 0, ink = 0, edge = 0;
+                let cardCov = 0, shadowCov = 0, ink = 0;
                 for (let sy = 0; sy < 3; sy++) for (let sx = 0; sx < 3; sx++) {
                     const dx = pxx + (sx + 0.5) / 3 - cx, dy = pyy(py, sy) - cy;
                     // inverse-rotate into card space
@@ -154,7 +153,6 @@ function renderOgImage() {
                         const sx2 = (lx + cw / 2 - 40) / 15, sy2 = (-(ly + ch / 2 - 96)) / 15;
                         if (spadeCoverage(sx2, sy2)) ink++;
                     } else if (inRR(lx - 5, ly - 7)) shadowCov++;
-                    else if (inRR(lx, ly) === false && false) edge++;
                 }
                 if (shadowCov) set(pxx, py, [4, 22, 14], shadowCov / 9 * 0.7);
                 if (cardCov) {

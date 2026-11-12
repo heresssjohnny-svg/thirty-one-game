@@ -101,7 +101,7 @@ function renderIcon(size, maskable) {
         }
     }
     // "31" big, BLITZ small underneath; everything stays inside the central 80% (maskable safe zone)
-    const u1 = 26, w1 = 11 * u1 - u1 * 0; // two glyphs + 1 gap = 11 units
+    const u1 = 26; // two glyphs + 1 gap = 11 units
     text('31', (512 - (11 * u1)) / 2, 118, u1, GOLD);
     const u2 = 6;
     text('BLITZ', (512 - (29 * u2)) / 2, 118 + 7 * u1 + 34, u2, WHITE);
