@@ -85,6 +85,21 @@ app.use('/api', cuesRouter);
 app.use('/api', referralsRouter);
 app.use('/api', safetyRouter);
 
+// Version of the game page, so open games can refresh themselves after a deploy (public/js/autoUpdate.js).
+// A hash of the page files; re-read at most every 15 s.
+let pageVersion = { v: null, at: 0 };
+app.get('/api/version', (req, res) => {
+    if (!pageVersion.v || Date.now() - pageVersion.at > 15000) {
+        try {
+            const h = require('crypto').createHash('sha1');
+            [getIndexHtmlPath(), path.join(__dirname, 'sw.js')].forEach(f => { try { h.update(fs.readFileSync(f)); } catch (e) {} });
+            pageVersion = { v: h.digest('hex').slice(0, 12), at: Date.now() };
+        } catch (e) {}
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({ v: pageVersion.v });
+});
+
 // Serve static frontend assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
 
