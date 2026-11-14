@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thirtyone-cache-v57';
+const CACHE_NAME = 'thirtyone-cache-v58';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -29,6 +29,7 @@ const ASSETS_TO_CACHE = [
     './js/referral.js',
     './js/adminLink.js',
     './js/tutorial.js',
+    './js/drawTimer.js',
     './js/safety.js',
     './js/autoUpdate.js',
     './css/premium.css',

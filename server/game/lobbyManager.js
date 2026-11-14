@@ -1167,6 +1167,9 @@ function getSanitizedLobby(lobby, wsId) {
         })),
         drawResults: lobby.drawResults || {},
         drawOrderSequence: lobby.drawOrderSequence || [],
+        // ms left to pick (only while someone still has to pick); the client counts down from when it received this
+        drawMsLeft: (lobby.drawDeadline && drawPickersStillNeeded(lobby).length) ? Math.max(0, lobby.drawDeadline - Date.now()) : null,
+        drawAutoPicked: (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') ? (lobby.drawAutoPicked || []) : [],
         discardTop: lobby.discardPile ? (lobby.discardPile[lobby.discardPile.length - 1] || null) : null,
         knockedBy: lobby.knockedBy || null,
         chatHistory: lobby.chatHistory || [],
@@ -1676,6 +1679,7 @@ function startDealerDrawPhase(lobby) {
 
 function startRound(lobby) {
     clearRoundOverTimer(lobby);
+    clearDrawTimer(lobby);
     clearTurnTimer(lobby);
     clearDealingWindow(lobby);
     lobby.players.forEach(p => clearReadyCountdown(p));
@@ -2683,11 +2687,68 @@ function resetLobbyToReadyRoom(lobby, msg, broadcastLobbyList) {
     if (broadcastLobbyList) broadcastLobbyList();
 }
 
+// -------------------------------------------------------------
+// DRAW TIMER: dealer draw and tie-breaker draw. Each new pool of cards gets 30 seconds; anyone who still
+// hasn't picked when it runs out gets a random card picked for them. Started from scheduleBotActions(),
+// which every draw (dealer draw, tie-breaker, tie-breaker re-draw) already calls when it opens.
+// -------------------------------------------------------------
+const DRAW_PICK_MS = 30000;
+
+function drawPickersStillNeeded(lobby) {
+    if (!lobby || (lobby.gameState !== 'dealerDraw' && lobby.gameState !== 'tieBreaker')) return [];
+    const res = lobby.drawResults || {};
+    if (lobby.gameState === 'dealerDraw') {
+        return getActiveParticipants(lobby).map(p => p.username).filter(u => !res[u]);
+    }
+    return (lobby.tiedParticipantsList || []).filter(u => !res[u]);
+}
+
+function clearDrawTimer(lobby) {
+    if (lobby && lobby.drawTimer) { clearTimeout(lobby.drawTimer); lobby.drawTimer = null; }
+    if (lobby) { lobby.drawDeadline = null; lobby.drawTimerPool = null; }
+}
+
+function ensureDrawTimer(lobby) {
+    if (!lobby || (lobby.gameState !== 'dealerDraw' && lobby.gameState !== 'tieBreaker')) return;
+    if (lobby.drawTimerPool === lobby.drawPool) return;   // this pool already has (or had) its clock
+    if (lobby.drawTimer) clearTimeout(lobby.drawTimer);
+    lobby.drawTimerPool = lobby.drawPool;
+    lobby.drawDeadline = Date.now() + DRAW_PICK_MS;
+    lobby.drawAutoPicked = [];
+    const pool = lobby.drawPool;
+    lobby.drawTimer = setTimeout(() => {
+        const cur = lobbies[lobby.code];
+        if (!cur) return;
+        cur.drawTimer = null;
+        if (cur.drawPool !== pool || (cur.gameState !== 'dealerDraw' && cur.gameState !== 'tieBreaker')) {
+            // the draw moved on (or the table paused); a fresh 30 s starts next time the draw is scheduled
+            if (cur.drawPool !== pool) return;
+            cur.drawTimerPool = null; cur.drawDeadline = null;
+            return;
+        }
+        const late = drawPickersStillNeeded(cur);
+        if (!late.length) return;
+        cur.drawAutoPicked = late.slice();
+        late.forEach(u => {
+            const live = lobbies[cur.code];
+            if (!live || live.drawPool !== pool) return;
+            if (live.gameState !== 'dealerDraw' && live.gameState !== 'tieBreaker') return;
+            if (live.drawResults && live.drawResults[u]) return;
+            const open = (live.drawPool || []).map((c, i) => ({ i: (c && c.index !== undefined) ? c.index : i, c })).filter(x => x.c && x.c.chosenBy === null);
+            if (!open.length) return;
+            handlePoolCardSelection(live, u, open[Math.floor(Math.random() * open.length)].i);
+        });
+        const after = lobbies[cur.code];
+        if (after && after.drawPool === pool) broadcastLobbyUpdate(after.code);
+    }, DRAW_PICK_MS + 250);
+}
+
 function scheduleBotActions(lobby) {
     if (!lobby) return;
     if (!lobby.pendingBotDraw) lobby.pendingBotDraw = {};
 
     if (lobby.gameState === 'dealerDraw' || lobby.gameState === 'tieBreaker') {
+        ensureDrawTimer(lobby);
         lobby.players.forEach(p => {
             if (p.isBot && !p.eliminated) {
                 let needsPick = false;
