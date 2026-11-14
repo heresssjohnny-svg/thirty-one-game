@@ -1207,6 +1207,53 @@ window.tapSeat = function(targetUsername) {
     }
 };
 
+// Seat taps. The table is re-drawn on every game update, so with a plain onclick a tap that lands while an update
+// arrives (finger down on the old seat, up on the new one) was lost - often for spectators watching a busy table.
+// We remember which player was under the finger on pointerdown and, if no normal click got through, open the
+// seat menu ourselves a moment after the finger lifts.
+(function () {
+    let down = null, handledAt = 0;
+    const seatOf = (t) => {
+        if (!t || !t.closest) return null;
+        const area = t.closest('.seat-name-area');
+        const seat = area && area.closest('.seat[data-player-username]');
+        return seat ? seat.getAttribute('data-player-username') : null;
+    };
+    const open = (name) => {
+        if (!name || Date.now() - handledAt < 400) return;
+        handledAt = Date.now();
+        if (typeof window.tapSeat === 'function') window.tapSeat(name);
+    };
+    document.addEventListener('click', (ev) => {
+        if (document.body.classList.contains('pc-aiming')) return;   // emote aiming handles seat taps itself
+        const name = seatOf(ev.target);
+        if (name) open(name);
+    });
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        const name = seatOf(ev.target);
+        if (name) { ev.preventDefault(); open(name); }
+    });
+    document.addEventListener('pointerdown', (ev) => {
+        if (ev.pointerType === 'mouse' && ev.button !== 0) { down = null; return; }
+        const name = seatOf(ev.target);
+        down = name ? { name, x: ev.clientX, y: ev.clientY, t: Date.now(), id: ev.pointerId } : null;
+    }, true);
+    document.addEventListener('pointerup', (ev) => {
+        const d = down; down = null;
+        if (!d || ev.pointerId !== d.id) return;
+        if (Math.abs(ev.clientX - d.x) + Math.abs(ev.clientY - d.y) > 14 || Date.now() - d.t > 900) return;   // a scroll or long press
+        const startedAt = handledAt;
+        setTimeout(() => {
+            if (handledAt !== startedAt) return;                            // the normal click already opened it
+            if (document.body.classList.contains('pc-aiming')) return;
+            const still = document.querySelector('.seat[data-player-username]') &&
+                [...document.querySelectorAll('.seat[data-player-username]')].some(s => s.getAttribute('data-player-username') === d.name);
+            if (still) open(d.name);                                        // the seat was re-drawn under the finger
+        }, 120);
+    }, true);
+})();
+
 window.handleSeatClick = function(seatIndex) {
     const lobby = window.appGlobals?.latestLobbySnapshot;
     if (!lobby || !Array.isArray(lobby.players)) return;
@@ -2012,7 +2059,7 @@ window.updateUIFromLobby = function(lobby) {
             const attrUser = p.username.replace(/'/g, "\\'");
             html += `
                 <div class="seat seat-${p.seat}${isCurrent ? ' current-turn-seat' : ''}" data-player-username="${escapeHtmlUI(p.username)}">
-                    <div class="seat-name-area" onclick="tapSeat('${attrUser}')">
+                    <div class="seat-name-area" role="button" tabindex="0">
                         <span>${readyStatusIcon}</span> <b>${escapeHtmlUI(p.username)}${botBadge}${statusBadge}</b>${dealerBadgeHtml}${micIcon}<br>Lives: ${p.lives} | Wager: $${p.wager || 5}
                         ${countdownBarHtml}
                     </div>
