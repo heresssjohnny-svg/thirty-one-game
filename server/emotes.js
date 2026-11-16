@@ -6,6 +6,7 @@ const { hasBlocked } = require('./safety');
 
 const EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
 const SPECIAL = ['🍆', '💦'];            // admin accounts and "TheMan" only (premium.js specialEmotesFor)
+const ADMIN_ONLY = ['img:toy'];           // picture throwables (public/img/throw/<name>.png), admin accounts only
 const COOLDOWN_MS = 1500;
 
 function lobbyOf(lobbies, ws) {
@@ -26,8 +27,11 @@ function handleEmoteMessage(ws, msg, lobbyManager) {
     if (!msg || msg.type !== 'THROW_EMOTE') return false;
     const emote = String(msg.emote || '');
     const special = SPECIAL.includes(emote);
-    if (!special && !EMOTES.includes(emote)) return true;
-    if (special) {
+    const adminOnly = ADMIN_ONLY.includes(emote);
+    if (!special && !adminOnly && !EMOTES.includes(emote)) return true;
+    if (adminOnly) {
+        if (!statusFor(ws && ws.userId).admin) return true;
+    } else if (special) {
         if (!specialEmotesFor(ws && ws.userId)) return true;
     } else if (!statusFor(ws && ws.userId).premium) { send(ws, { type: 'ERROR', message: '🔒 Emotes are Premium.' }); return true; }
     const now = Date.now();
@@ -48,4 +52,4 @@ function handleEmoteMessage(ws, msg, lobbyManager) {
     return true;
 }
 
-module.exports = { handleEmoteMessage, EMOTES, SPECIAL };
+module.exports = { handleEmoteMessage, EMOTES, SPECIAL, ADMIN_ONLY };

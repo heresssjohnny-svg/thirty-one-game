@@ -25,6 +25,14 @@
     var EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
     var SPECIAL_EMOTES = ['🍆', '💦'];   // only admin accounts and "The Man" (server checks too)
     function special() { return !!window.__specialEmotes; }
+    var ADMIN_EMOTES = ['img:toy'];      // picture throwables, admin accounts only (server checks too)
+    function adminAcct() { return !!window.__isAdminAccount; }
+    // how a throwable looks: emoji text, or a picture for "img:<name>" (public/img/throw/<name>.png)
+    function emoteHtml(e) {
+        var m = /^img:([a-z0-9_-]+)$/.exec(String(e || ''));
+        if (m) return '<img class="pc-img" src="/img/throw/' + m[1] + '.png" alt="" draggable="false">';
+        return String(e || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+    }
 
     function prem() { return !!window.__isPremium; }
     function lsGet(k) { try { return localStorage.getItem(k) || 'default'; } catch (e) { return 'default'; } }
@@ -247,7 +255,7 @@
         var a = pointFor(d.from) || { x: window.innerWidth / 2, y: window.innerHeight };
         var b = pointFor(d.to); if (!b) return;
         var e = document.createElement('div');
-        e.className = 'pc-emote'; e.textContent = d.emote;
+        e.className = 'pc-emote'; e.innerHTML = emoteHtml(d.emote);
         document.body.appendChild(e);
         var mx = (a.x + b.x) / 2, my = Math.min(a.y, b.y) - 120;
         var kf = [];
@@ -274,7 +282,7 @@
         var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         var o = document.createElement('div');
         o.className = 'pc-hitme';
-        o.innerHTML = '<div class="pc-hitme-emote">' + d.emote + '</div><div class="pc-hitme-from">' +
+        o.innerHTML = '<div class="pc-hitme-emote">' + emoteHtml(d.emote) + '</div><div class="pc-hitme-from">' +
             String(d.from || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }) + ' got you!</div>';
         document.body.appendChild(o);
         if (!reduce) { document.body.classList.remove('pc-shake'); void document.body.offsetWidth; document.body.classList.add('pc-shake'); }
@@ -293,7 +301,7 @@
         document.body.classList.add('pc-aiming');
         var b = document.getElementById('pc-aim-banner') || document.createElement('div');
         b.id = 'pc-aim-banner';
-        b.innerHTML = '<span>' + emote + ' Tap a player to throw</span><button type="button" id="pc-aim-cancel">Cancel</button>';
+        b.innerHTML = '<span>' + emoteHtml(emote) + ' Tap a player to throw</span><button type="button" id="pc-aim-cancel">Cancel</button>';
         document.body.appendChild(b);
         if (aimTimer) clearTimeout(aimTimer);
         aimTimer = setTimeout(stopAim, 10000);
@@ -315,9 +323,9 @@
         if (pop) { pop.remove(); return; }
         pop = document.createElement('div');
         pop.id = 'pc-emote-pop';
-        var list = (prem() ? EMOTES : []).concat(special() ? SPECIAL_EMOTES : []);
+        var list = (prem() ? EMOTES : []).concat(special() ? SPECIAL_EMOTES : []).concat(adminAcct() ? ADMIN_EMOTES : []);
         pop.innerHTML = '<div class="pc-ep-h">💎 Throw at a player</div><div class="pc-ep-g">' +
-            list.map(function (e) { return '<button type="button" data-pc-emote="' + e + '">' + e + '</button>'; }).join('') + '</div>';
+            list.map(function (e) { return '<button type="button" data-pc-emote="' + e + '">' + emoteHtml(e) + '</button>'; }).join('') + '</div>';
         document.body.appendChild(pop);
         pop.addEventListener('click', function (ev) {
             var b = ev.target.closest && ev.target.closest('[data-pc-emote]');
@@ -333,7 +341,7 @@
         var pop = document.getElementById('reaction-popover-menu');
         if (!pop) return;
         var btn = document.getElementById('pc-throw-btn');
-        if (!prem() && !special()) { if (btn) btn.remove(); return; }
+        if (!prem() && !special() && !adminAcct()) { if (btn) btn.remove(); return; }
         if (btn) return;
         btn = document.createElement('button');
         btn.type = 'button'; btn.id = 'pc-throw-btn'; btn.title = 'Throw at a player'; btn.textContent = '🎯';
