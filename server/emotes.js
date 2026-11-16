@@ -5,8 +5,8 @@ const { statusFor, specialEmotesFor } = require('./premium');
 const { hasBlocked } = require('./safety');
 
 const EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
-const SPECIAL = ['🍆', '💦'];            // admin accounts and "TheMan" only (premium.js specialEmotesFor)
-const ADMIN_ONLY = ['img:toy'];           // picture throwables (public/img/throw/<name>.png), admin accounts only
+const SPECIAL = ['🍆', '💦', 'img:toy'];            // admin accounts and "TheMan" only (premium.js specialEmotesFor)
+const ADMIN_ONLY = [];                    // admin accounts only (none right now); 'img:<name>' = public/img/throw/<name>.png
 const COOLDOWN_MS = 1500;
 
 function lobbyOf(lobbies, ws) {

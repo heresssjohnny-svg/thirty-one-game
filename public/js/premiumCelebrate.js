@@ -23,9 +23,9 @@
         { id: 'none', name: 'No dancers', icon: '🚫' }
     ];
     var EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
-    var SPECIAL_EMOTES = ['🍆', '💦'];   // only admin accounts and "The Man" (server checks too)
+    var SPECIAL_EMOTES = ['🍆', '💦', 'img:toy'];   // only admin accounts and "The Man" (server checks too)
     function special() { return !!window.__specialEmotes; }
-    var ADMIN_EMOTES = ['img:toy'];      // picture throwables, admin accounts only (server checks too)
+    var ADMIN_EMOTES = [];      // picture throwables, admin accounts only (server checks too)
     function adminAcct() { return !!window.__isAdminAccount; }
     // how a throwable looks: emoji text, or a picture for "img:<name>" (public/img/throw/<name>.png)
     function emoteHtml(e) {
