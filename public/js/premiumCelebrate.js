@@ -23,10 +23,9 @@
         { id: 'none', name: 'No dancers', icon: '🚫' }
     ];
     var EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
-    var SPECIAL_EMOTES = ['🍆', '💦', 'img:toy'];   // only admin accounts and "The Man" (server checks too)
-    function special() { return !!window.__specialEmotes; }
-    var ADMIN_EMOTES = [];      // picture throwables, admin accounts only (server checks too)
-    function adminAcct() { return !!window.__isAdminAccount; }
+    // extra throwables this account may use (🍆 💦 pictures …): admins get all, others what an admin switched on.
+    // Comes from /api/premium/me (premium.js) and live THROWABLES messages; the server checks every throw too.
+    function extras() { return Array.isArray(window.__throwables) ? window.__throwables : []; }
     // how a throwable looks: emoji text, or a picture for "img:<name>" (public/img/throw/<name>.png)
     function emoteHtml(e) {
         var m = /^img:([a-z0-9_-]+)$/.exec(String(e || ''));
@@ -323,7 +322,7 @@
         if (pop) { pop.remove(); return; }
         pop = document.createElement('div');
         pop.id = 'pc-emote-pop';
-        var list = (prem() ? EMOTES : []).concat(special() ? SPECIAL_EMOTES : []).concat(adminAcct() ? ADMIN_EMOTES : []);
+        var list = (prem() ? EMOTES : []).concat(extras());
         pop.innerHTML = '<div class="pc-ep-h">💎 Throw at a player</div><div class="pc-ep-g">' +
             list.map(function (e) { return '<button type="button" data-pc-emote="' + e + '">' + emoteHtml(e) + '</button>'; }).join('') + '</div>';
         document.body.appendChild(pop);
@@ -341,7 +340,7 @@
         var pop = document.getElementById('reaction-popover-menu');
         if (!pop) return;
         var btn = document.getElementById('pc-throw-btn');
-        if (!prem() && !special() && !adminAcct()) { if (btn) btn.remove(); return; }
+        if (!prem() && !extras().length) { if (btn) btn.remove(); return; }
         if (btn) return;
         btn = document.createElement('button');
         btn.type = 'button'; btn.id = 'pc-throw-btn'; btn.title = 'Throw at a player'; btn.textContent = '🎯';
@@ -362,6 +361,7 @@
         ws.addEventListener('message', function (ev) {
             var d; try { d = JSON.parse(ev.data); } catch (e) { return; }
             if (d && d.type === 'EMOTE_THROWN') { var s = snap(); if (!s || !d.code || s.code === d.code) animateEmote(d); }
+            if (d && d.type === 'THROWABLES' && Array.isArray(d.list)) { window.__throwables = d.list; var pop = document.getElementById('pc-emote-pop'); if (pop) pop.remove(); }
         });
     }
 

@@ -1,12 +1,12 @@
 // server/emotes.js - Premium "throw an emote at a player": THROW_EMOTE {to, emote}
 // -> every socket at the table gets EMOTE_THROWN {code, from, to, emote} and animates it.
 // Premium / admin only, 1 throw per 1.5 s per socket, only at seated players of your own table.
-const { statusFor, specialEmotesFor } = require('./premium');
+const { statusFor } = require('./premium');
+const throwables = require('./throwables');
 const { hasBlocked } = require('./safety');
 
 const EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
-const SPECIAL = ['🍆', '💦', 'img:toy'];            // admin accounts and "TheMan" only (premium.js specialEmotesFor)
-const ADMIN_ONLY = [];                    // admin accounts only (none right now); 'img:<name>' = public/img/throw/<name>.png
+// extra throwables (🍆 💦 pictures …) live in server/throwables.js: admins always, others only when an admin grants them
 const COOLDOWN_MS = 1500;
 
 function lobbyOf(lobbies, ws) {
@@ -26,13 +26,10 @@ function send(ws, obj) { try { if (ws && ws.readyState === 1) ws.send(JSON.strin
 function handleEmoteMessage(ws, msg, lobbyManager) {
     if (!msg || msg.type !== 'THROW_EMOTE') return false;
     const emote = String(msg.emote || '');
-    const special = SPECIAL.includes(emote);
-    const adminOnly = ADMIN_ONLY.includes(emote);
-    if (!special && !adminOnly && !EMOTES.includes(emote)) return true;
-    if (adminOnly) {
-        if (!statusFor(ws && ws.userId).admin) return true;
-    } else if (special) {
-        if (!specialEmotesFor(ws && ws.userId)) return true;
+    const extra = throwables.IDS.includes(emote);
+    if (!extra && !EMOTES.includes(emote)) return true;
+    if (extra) {
+        if (!throwables.canThrow(ws && ws.userId, emote)) return true;
     } else if (!statusFor(ws && ws.userId).premium) { send(ws, { type: 'ERROR', message: '🔒 Emotes are Premium.' }); return true; }
     const now = Date.now();
     if (ws.__emoteAt && now - ws.__emoteAt < COOLDOWN_MS) return true;
@@ -52,4 +49,4 @@ function handleEmoteMessage(ws, msg, lobbyManager) {
     return true;
 }
 
-module.exports = { handleEmoteMessage, EMOTES, SPECIAL, ADMIN_ONLY };
+module.exports = { handleEmoteMessage, EMOTES };

@@ -942,6 +942,7 @@
                         <button class="btn btn-gold btn-sm" onclick="promptResetPassword('${u.id}', '${escapeHtml(u.username)}')">🔑 Set Password</button>
                         <button class="btn btn-gold btn-sm" onclick="toggleUserAdmin('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_admin) === 1 ? 'false' : 'true'})">${Number(u.is_admin) === 1 ? '🚫 Revoke Admin' : '🛡️ Make Admin'}</button>
                         <button class="btn btn-gold btn-sm" onclick="toggleUserPremium('${u.id}', '${escapeHtml(u.username)}', ${Number(u.is_premium) === 1 ? 'false' : 'true'})">${Number(u.is_premium) === 1 ? '✖ Remove Premium' : '💎 Give Premium'}</button>
+                        <button class="btn btn-gold btn-sm" onclick="openThrowables('${u.id}')">🎯 Throwables${Number(u.is_admin) === 1 ? ' (all)' : ((u.throwables || []).length ? ` (${u.throwables.length})` : '')}</button>
                         ${(u.cues || []).map(k => `<button class="btn btn-gold btn-sm" onclick="playUserCue('${u.id}', '${k}')">▶ ${k === 'knock' ? 'Knock rec' : 'Winner rec'}</button>`).join('')}
                         ${(u.cues || []).length ? `<button class="btn btn-red btn-sm" onclick="removeUserCues('${u.id}', '${escapeHtml(u.username)}')">🎙️ Remove Recordings</button>` : ''}
                         <button class="btn btn-red btn-sm" onclick="deleteUserAccount('${u.id}', '${escapeHtml(u.username)}')">🗑️ Delete</button>
@@ -1012,6 +1013,44 @@
             showToast(`🎙️ Removed ${r.removed || 0} recording(s) from ${username}.`);
             fetchAdminOverview();
         } catch (err) { showToast(err.message, true); }
+    }
+
+    // Extra throwables (🍆 💦 pictures …): admins always have all; switch them on for other players here
+    let throwCatalog = null;
+    function throwIcon(id) {
+        const m = /^img:([a-z0-9_-]+)$/.exec(id);
+        return m ? `<img src="/img/throw/${m[1]}.png" alt="" style="width:28px;height:28px;object-fit:contain;vertical-align:middle;">` : `<span style="font-size:1.5rem;vertical-align:middle;">${escapeHtml(id)}</span>`;
+    }
+    async function openThrowables(userId) {
+        const u = stateUsers.find(x => x.id === userId); if (!u) return;
+        try { if (!throwCatalog) throwCatalog = (await apiAdmin('throwables')).catalog || []; }
+        catch (err) { return showToast(err.message, true); }
+        const isAdm = Number(u.is_admin) === 1;
+        const have = new Set(u.throwables || []);
+        let m = document.getElementById('throw-modal');
+        if (m) m.remove();
+        m = document.createElement('div'); m.id = 'throw-modal';
+        m.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+        m.innerHTML = `<div style="background:#0f172a;border:1px solid #334155;border-radius:12px;padding:16px;width:100%;max-width:380px;color:#e2e8f0;">
+            <div style="font-weight:800;color:var(--gold);font-size:1.05rem;">🎯 Throwables for ${escapeHtml(u.username)}</div>
+            <div style="color:#94a3b8;font-size:.8rem;margin:4px 0 10px;">${isAdm ? 'Admin accounts can throw all of these already.' : 'Admin-only unless switched on here. Changes apply right away.'}</div>
+            ${throwCatalog.map(c => `<label style="display:flex;align-items:center;gap:10px;padding:8px;margin-top:6px;background:#1e293b;border-radius:8px;cursor:pointer;">
+                <input type="checkbox" data-throw="${escapeHtml(c.id)}" ${isAdm || have.has(c.id) ? 'checked' : ''} ${isAdm ? 'disabled' : ''} style="width:18px;height:18px;">
+                ${throwIcon(c.id)} <span>${escapeHtml(c.label)}</span></label>`).join('')}
+            <button class="btn btn-sm" style="margin-top:12px;width:100%;background:#475569;" onclick="document.getElementById('throw-modal').remove()">Done</button>
+        </div>`;
+        m.addEventListener('click', ev => { if (ev.target === m) m.remove(); });
+        m.querySelectorAll('input[data-throw]').forEach(cb => cb.addEventListener('change', async () => {
+            cb.disabled = true;
+            try {
+                const r = await apiAdmin('user/throwable', 'POST', { userId, emote: cb.getAttribute('data-throw'), on: cb.checked });
+                u.throwables = r.throwables || [];
+                showToast(`${cb.checked ? '✅ On' : '✖ Off'} for ${u.username}`);
+                renderUsersTable();
+            } catch (err) { cb.checked = !cb.checked; showToast(err.message, true); }
+            cb.disabled = false;
+        }));
+        document.body.appendChild(m);
     }
 
     async function toggleUserPremium(userId, username, makePremium) {

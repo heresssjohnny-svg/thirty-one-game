@@ -474,6 +474,9 @@ router.get('/admin/overview', requireAdminAuth, (req, res) => {
             sqlDb.prepare('SELECT user_id, kind FROM user_cues').all().forEach(r => { (cues[r.user_id] = cues[r.user_id] || []).push(r.kind); });
             users.forEach(u => { u.cues = cues[u.id] || []; });
         } catch (e) { users.forEach(u => { u.cues = []; }); }
+        // extra throwables switched on for each user (server/throwables.js)
+        try { const g = require('./throwables').allGrants(); users.forEach(u => { u.throwables = g[u.id] || []; }); }
+        catch (e) { users.forEach(u => { u.throwables = []; }); }
 
         const ledger = sqlDb.prepare(`
             SELECT 
@@ -651,6 +654,26 @@ router.post('/admin/user/premium', requireAdminAuth, (req, res) => {
         return res.json({ success: true });
     } catch (err) {
         return res.status(500).json({ error: err.message });
+    }
+});
+
+// Extra throwables (🍆 💦 pictures): admin-only unless switched on for a player here
+router.get('/admin/throwables', requireAdminAuth, (req, res) => {
+    const t = require('./throwables');
+    res.json({ catalog: t.CATALOG, grants: t.allGrants() });
+});
+router.post('/admin/user/throwable', requireAdminAuth, (req, res) => {
+    const { userId, emote, on } = req.body || {};
+    if (!userId || !emote || typeof on !== 'boolean') return res.status(400).json({ error: 'userId, emote and on (true/false) required.' });
+    try {
+        const row = sqlDb.prepare("SELECT id FROM users WHERE id = ? AND COALESCE(provider, 'local') != 'guest'").get(String(userId));
+        if (!row) return res.status(404).json({ error: 'User not found.' });
+        const t = require('./throwables');
+        t.setGrant(userId, String(emote), on, (req.admin && req.admin.username) || 'admin');
+        t.notifyUser(userId);
+        return res.json({ success: true, throwables: t.grantsFor(userId) });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
     }
 });
 
