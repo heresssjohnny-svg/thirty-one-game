@@ -1237,6 +1237,8 @@ window.tapSeat = function(targetUsername) {
     document.addEventListener('pointerdown', (ev) => {
         if (ev.pointerType === 'mouse' && ev.button !== 0) { down = null; return; }
         const name = seatOf(ev.target);
+        // a tap that picks an emote target is not a seat tap (the aim ends on click, before our fallback runs)
+        if (document.body.classList.contains('pc-aiming')) { down = null; return; }
         down = name ? { name, x: ev.clientX, y: ev.clientY, t: Date.now(), id: ev.pointerId } : null;
     }, true);
     document.addEventListener('pointerup', (ev) => {
