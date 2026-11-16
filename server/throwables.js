@@ -10,7 +10,8 @@ const sql = typeof db.prepare === 'function' ? db : db.db;
 const CATALOG = [
     { id: '🍆', label: 'Eggplant' },
     { id: '💦', label: 'Splash' },
-    { id: 'img:toy', label: 'Toy (picture)' }
+    { id: 'img:toy', label: 'Toy (picture)' },
+    { id: 'img:baby', label: 'Baby (picture)' }
 ];
 const IDS = CATALOG.map(c => c.id);
 
