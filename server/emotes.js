@@ -5,7 +5,7 @@ const { statusFor, specialEmotesFor } = require('./premium');
 const { hasBlocked } = require('./safety');
 
 const EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
-const SPECIAL = ['🍆', '💦'];            // admin accounts and "The Man" only (premium.js specialEmotesFor)
+const SPECIAL = ['🍆', '💦'];            // admin accounts and "TheMan" only (premium.js specialEmotesFor)
 const COOLDOWN_MS = 1500;
 
 function lobbyOf(lobbies, ws) {

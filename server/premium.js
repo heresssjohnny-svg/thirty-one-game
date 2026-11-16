@@ -51,8 +51,8 @@ function statusFor(userId) {
 }
 
 const router = express.Router();
-// 🍆 / 💦 throwables: admin accounts and the account named "The Man" only (see server/emotes.js).
-const SPECIAL_EMOTE_USERS = ['the man'];
+// 🍆 / 💦 throwables: admin accounts and the account named "TheMan" only (see server/emotes.js).
+const SPECIAL_EMOTE_USERS = ['theman'];
 function specialEmotesFor(userId) {
     if (!userId || String(userId).startsWith('gst_') || String(userId).startsWith('usr_guest_')) return false;
     try {
