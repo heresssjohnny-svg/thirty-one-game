@@ -64,4 +64,12 @@ body[data-cel-dance="robot"] .cel-dancer .dl-leg-r  { animation: rb-leg-r 1.6s s
 @keyframes rb-head   { 0% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 50% { transform: rotate(0); } 75% { transform: rotate(12deg); } }
 @keyframes rb-leg-l  { 0%,50%,75% { transform: rotate(0); } 25% { transform: rotate(12deg) translateY(-3px); } }
 @keyframes rb-leg-r  { 0%,25%,50% { transform: rotate(0); } 75% { transform: rotate(-12deg) translateY(-3px); } }
-@media (prefers-reduced-motion: reduce) { .pc-emote, .pc-hit { animation: none !important; } }
+/* got hit: the emote fills your screen */
+.pc-hitme { position: fixed; inset: 0; z-index: 100003; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pc-hitme-emote { font-size: min(46vw, 260px); line-height: 1; animation: pc-hitme 1.6s ease-out forwards; filter: drop-shadow(0 10px 30px rgba(0,0,0,.6)); }
+.pc-hitme-from { margin-top: 6px; padding: 5px 14px; border-radius: 999px; background: rgba(15,23,42,.85); color: #fbbf24; font-weight: 900; font-size: 1rem; animation: pc-hitme-txt 1.6s ease-out forwards; }
+@keyframes pc-hitme { 0% { transform: scale(.2) rotate(-25deg); opacity: 0; } 18% { transform: scale(1.15) rotate(6deg); opacity: 1; } 30% { transform: scale(1) rotate(0); } 75% { opacity: 1; } 100% { transform: scale(1.35) translateY(40px); opacity: 0; } }
+@keyframes pc-hitme-txt { 0%, 15% { opacity: 0; } 25%, 75% { opacity: 1; } 100% { opacity: 0; } }
+body.pc-shake #game-view { animation: pc-screenshake .5s linear; }
+@keyframes pc-screenshake { 0%,100% { transform: translate(0,0); } 15% { transform: translate(-9px,4px); } 30% { transform: translate(8px,-5px); } 45% { transform: translate(-6px,3px); } 60% { transform: translate(5px,-2px); } 75% { transform: translate(-3px,1px); } }
+@media (prefers-reduced-motion: reduce) { .pc-emote, .pc-hit, .pc-hitme-emote, .pc-hitme-from { animation: none !important; } body.pc-shake #game-view { animation: none !important; } }

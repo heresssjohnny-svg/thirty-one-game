@@ -164,11 +164,17 @@
             (b ? '<button type="button" class="sf-btn" data-sf-unblock>✅ Unblock</button>' : '<button type="button" class="sf-btn red" data-sf-block>🚫 Block</button>') +
             '<button type="button" class="sf-btn" data-sf-report>🚩 Report to admins</button>' +
             '<button type="button" class="sf-btn ghost" data-sf-close>Cancel</button>');
+        if (!b && typeof window.canNudge === 'function' && window.canNudge(name)) {
+            var nb = document.createElement('button'); nb.type = 'button'; nb.className = 'sf-btn'; nb.setAttribute('data-sf-nudge', '');
+            nb.textContent = '👋 Nudge ' + name;
+            var sh = m.querySelector('#sf-sheet'); sh.insertBefore(nb, sh.querySelector('button'));
+        }
         m.querySelector('#sf-sheet').addEventListener('click', function (ev) {
             var t = ev.target.closest ? ev.target.closest('button') : null; if (!t) return;
             if (t.hasAttribute('data-sf-block')) { block(name).then(function () { close(); note('🚫 Blocked ' + name); }).catch(function (e) { note(e.message); }); }
             else if (t.hasAttribute('data-sf-unblock')) { unblock(name).then(function () { close(); note('✅ Unblocked ' + name); }).catch(function (e) { note(e.message); }); }
             else if (t.hasAttribute('data-sf-report')) openReport(name);
+            else if (t.hasAttribute('data-sf-nudge')) { close(); if (typeof window.nudgePlayer === 'function') window.nudgePlayer(name); }
         });
     }
     window.openPlayerSafety = openActions;
@@ -217,7 +223,9 @@
                     if (!body.querySelector('.sf-row-actions')) {
                         css();
                         var row = document.createElement('div'); row.className = 'sf-row-actions';
-                        row.innerHTML = '<button type="button" style="background:#475569;" data-sf-seat="block">' + (isBlocked(name) ? '✅ Unblock' : '🚫 Block') + '</button>' +
+                        row.innerHTML = (!isBlocked(name) && typeof window.canNudge === 'function' && window.canNudge(name)
+                                ? '<button type="button" style="background:#b45309;" data-sf-seat="nudge">👋 Nudge</button>' : '') +
+                            '<button type="button" style="background:#475569;" data-sf-seat="block">' + (isBlocked(name) ? '✅ Unblock' : '🚫 Block') + '</button>' +
                             '<button type="button" style="background:#7f1d1d;" data-sf-seat="report">🚩 Report</button>';
                         row.setAttribute('data-sf-for', String(name));
                         body.appendChild(row);
@@ -234,7 +242,9 @@
         if (seatBtn) {
             var name = seatBtn.parentNode.getAttribute('data-sf-for');
             if (typeof window.toggleModal === 'function') { window.toggleModal('seat-action-modal', false); window.toggleModal('bet-modal', false); }
-            if (seatBtn.getAttribute('data-sf-seat') === 'report') openReport(name); else openActions(name);
+            var act = seatBtn.getAttribute('data-sf-seat');
+            if (act === 'nudge') { if (typeof window.nudgePlayer === 'function') window.nudgePlayer(name); }
+            else if (act === 'report') openReport(name); else openActions(name);
             return;
         }
         var chatName = t.closest('.chat-line strong[data-sf-name]');

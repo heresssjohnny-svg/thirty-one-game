@@ -259,11 +259,27 @@
             e.style.transform = 'translate(' + (b.x - 20) + 'px,' + (b.y - 20) + 'px)';
             if (b.el) { b.el.classList.remove('pc-hit'); void b.el.offsetWidth; b.el.classList.add('pc-hit'); setTimeout(function () { b.el && b.el.classList.remove('pc-hit'); }, 600); }
             setTimeout(function () { e.remove(); }, 900);
+            if (isMe(d.to)) hitMyScreen(d);
         };
         if (anim) anim.onfinish = land; else setTimeout(land, 750);
         if (typeof window.playSoundboardEffect === 'function' && Math.random() < 0) window.playSoundboardEffect('whoosh');
     }
     window.__emoteThrown = animateEmote;   // tests
+
+    // You got hit: the emote splats across your own screen, the screen shakes and the phone buzzes.
+    function hitMyScreen(d) {
+        try { if (navigator.vibrate) navigator.vibrate([90, 40, 160]); } catch (e) {}
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var o = document.createElement('div');
+        o.className = 'pc-hitme';
+        o.innerHTML = '<div class="pc-hitme-emote">' + d.emote + '</div><div class="pc-hitme-from">' +
+            String(d.from || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }) + ' got you!</div>';
+        document.body.appendChild(o);
+        if (!reduce) { document.body.classList.remove('pc-shake'); void document.body.offsetWidth; document.body.classList.add('pc-shake'); }
+        setTimeout(function () { document.body.classList.remove('pc-shake'); }, 600);
+        setTimeout(function () { o.remove(); }, 1700);
+    }
+    window.__emoteHitMe = hitMyScreen;     // tests
 
     function stopAim() {
         aim = null; document.body.classList.remove('pc-aiming');
