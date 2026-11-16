@@ -1,10 +1,11 @@
 // server/emotes.js - Premium "throw an emote at a player": THROW_EMOTE {to, emote}
 // -> every socket at the table gets EMOTE_THROWN {code, from, to, emote} and animates it.
 // Premium / admin only, 1 throw per 1.5 s per socket, only at seated players of your own table.
-const { statusFor } = require('./premium');
+const { statusFor, specialEmotesFor } = require('./premium');
 const { hasBlocked } = require('./safety');
 
 const EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
+const SPECIAL = ['🍆', '💦'];            // admin accounts and "The Man" only (premium.js specialEmotesFor)
 const COOLDOWN_MS = 1500;
 
 function lobbyOf(lobbies, ws) {
@@ -23,11 +24,14 @@ function send(ws, obj) { try { if (ws && ws.readyState === 1) ws.send(JSON.strin
 
 function handleEmoteMessage(ws, msg, lobbyManager) {
     if (!msg || msg.type !== 'THROW_EMOTE') return false;
-    if (!statusFor(ws && ws.userId).premium) { send(ws, { type: 'ERROR', message: '🔒 Emotes are Premium.' }); return true; }
+    const emote = String(msg.emote || '');
+    const special = SPECIAL.includes(emote);
+    if (!special && !EMOTES.includes(emote)) return true;
+    if (special) {
+        if (!specialEmotesFor(ws && ws.userId)) return true;
+    } else if (!statusFor(ws && ws.userId).premium) { send(ws, { type: 'ERROR', message: '🔒 Emotes are Premium.' }); return true; }
     const now = Date.now();
     if (ws.__emoteAt && now - ws.__emoteAt < COOLDOWN_MS) return true;
-    const emote = String(msg.emote || '');
-    if (!EMOTES.includes(emote)) return true;
     const found = lobbyOf(lobbyManager && lobbyManager.lobbies, ws);
     if (!found || !found.seated) return true;
     const to = String(msg.to || '').trim().toLowerCase();
@@ -44,4 +48,4 @@ function handleEmoteMessage(ws, msg, lobbyManager) {
     return true;
 }
 
-module.exports = { handleEmoteMessage, EMOTES };
+module.exports = { handleEmoteMessage, EMOTES, SPECIAL };

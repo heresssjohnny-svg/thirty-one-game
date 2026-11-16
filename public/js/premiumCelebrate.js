@@ -23,6 +23,8 @@
         { id: 'none', name: 'No dancers', icon: '🚫' }
     ];
     var EMOTES = ['🍅', '🥚', '💩', '🌹', '💋', '🔥', '❄️', '💣', '🎯', '🥧', '👟', '💎'];
+    var SPECIAL_EMOTES = ['🍆', '💦'];   // only admin accounts and "The Man" (server checks too)
+    function special() { return !!window.__specialEmotes; }
 
     function prem() { return !!window.__isPremium; }
     function lsGet(k) { try { return localStorage.getItem(k) || 'default'; } catch (e) { return 'default'; } }
@@ -313,8 +315,9 @@
         if (pop) { pop.remove(); return; }
         pop = document.createElement('div');
         pop.id = 'pc-emote-pop';
+        var list = (prem() ? EMOTES : []).concat(special() ? SPECIAL_EMOTES : []);
         pop.innerHTML = '<div class="pc-ep-h">💎 Throw at a player</div><div class="pc-ep-g">' +
-            EMOTES.map(function (e) { return '<button type="button" data-pc-emote="' + e + '">' + e + '</button>'; }).join('') + '</div>';
+            list.map(function (e) { return '<button type="button" data-pc-emote="' + e + '">' + e + '</button>'; }).join('') + '</div>';
         document.body.appendChild(pop);
         pop.addEventListener('click', function (ev) {
             var b = ev.target.closest && ev.target.closest('[data-pc-emote]');
@@ -330,7 +333,7 @@
         var pop = document.getElementById('reaction-popover-menu');
         if (!pop) return;
         var btn = document.getElementById('pc-throw-btn');
-        if (!prem()) { if (btn) btn.remove(); return; }
+        if (!prem() && !special()) { if (btn) btn.remove(); return; }
         if (btn) return;
         btn = document.createElement('button');
         btn.type = 'button'; btn.id = 'pc-throw-btn'; btn.title = 'Throw at a player'; btn.textContent = '🎯';

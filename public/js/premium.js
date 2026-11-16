@@ -168,13 +168,14 @@
     var lastTok = null;
     function refresh() {
         var t = token();
-        if (!t) { lastTok = null; setStatus(false, false); return; }
+        if (!t) { lastTok = null; window.__specialEmotes = false; setStatus(false, false); return; }
         if (t === lastTok && arguments[0] !== true) return;
         lastTok = t;
         fetch('/api/premium/me', { headers: { Authorization: 'Bearer ' + t } })
             .then(function (r) { return r.ok ? r.json() : { premium: false, admin: false }; })
             .then(function (d) {
                 window.__premiumTrialEnds = d.trial && d.trialEndsAt ? Number(d.trialEndsAt) : null;
+                window.__specialEmotes = !!d.specialEmotes;   // 🍆 / 💦 throwables
                 setStatus(!!d.premium, !!d.admin);
                 if (window.__premiumTrialEnds) {
                     // re-check right after the trial ends so everything locks without a reload
