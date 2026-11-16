@@ -73,3 +73,8 @@ body[data-cel-dance="robot"] .cel-dancer .dl-leg-r  { animation: rb-leg-r 1.6s s
 body.pc-shake #game-view { animation: pc-screenshake .5s linear; }
 @keyframes pc-screenshake { 0%,100% { transform: translate(0,0); } 15% { transform: translate(-9px,4px); } 30% { transform: translate(8px,-5px); } 45% { transform: translate(-6px,3px); } 60% { transform: translate(5px,-2px); } 75% { transform: translate(-3px,1px); } }
 @media (prefers-reduced-motion: reduce) { .pc-emote, .pc-hit, .pc-hitme-emote, .pc-hitme-from { animation: none !important; } body.pc-shake #game-view { animation: none !important; } }
+
+/* picture throwables (img:<name>) sized like the emoji ones */
+.pc-img { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.12em; pointer-events: none; -webkit-user-drag: none; }
+.pc-hitme-emote .pc-img { width: 1em; height: 1em; }
+#pc-aim-banner .pc-img { width: 1.3em; height: 1.3em; }
