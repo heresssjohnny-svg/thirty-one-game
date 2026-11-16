@@ -51,16 +51,8 @@ function statusFor(userId) {
 }
 
 const router = express.Router();
-// 🍆 / 💦 throwables: admin accounts and the account named "TheMan" only (see server/emotes.js).
-const SPECIAL_EMOTE_USERS = ['theman'];
-function specialEmotesFor(userId) {
-    if (!userId || String(userId).startsWith('gst_') || String(userId).startsWith('usr_guest_')) return false;
-    try {
-        const row = sql.prepare('SELECT username, is_admin FROM users WHERE id = ?').get(String(userId));
-        if (!row) return false;
-        return Number(row.is_admin) === 1 || SPECIAL_EMOTE_USERS.includes(String(row.username || '').trim().toLowerCase());
-    } catch (e) { return false; }
-}
+// extra throwables this player may use (server/throwables.js: admins always, others when an admin grants them)
+function throwablesFor(userId) { try { return require('./throwables').allowedFor(userId); } catch (e) { return []; } }
 
 router.get('/premium/me', (req, res) => {
     const h = req.headers.authorization || '';
@@ -69,7 +61,7 @@ router.get('/premium/me', (req, res) => {
         const d = jwt.verify(h.slice(7), config.JWT_SECRET);
         const uid = d && (d.userId || d.id);
         try { require('./adminMetrics').touchActive(uid); } catch (e) {}
-        return res.json(Object.assign({}, statusFor(uid), { specialEmotes: specialEmotesFor(uid) }));
+        return res.json(Object.assign({}, statusFor(uid), { throwables: throwablesFor(uid) }));
     } catch (e) {
         return res.status(401).json({ error: 'Invalid session.' });
     }
@@ -121,4 +113,4 @@ function handlePremiumGate(ws, msg) {
     return true;
 }
 
-module.exports = { router, statusFor, specialEmotesFor, handlePremiumGate, cleanCelebration, PREMIUM_SOUNDS, PREMIUM_REACTIONS };
+module.exports = { router, statusFor, handlePremiumGate, cleanCelebration, PREMIUM_SOUNDS, PREMIUM_REACTIONS };
