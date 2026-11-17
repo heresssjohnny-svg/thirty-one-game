@@ -1215,6 +1215,7 @@ function getSanitizedLobby(lobby, wsId) {
                 isBot: !!p.isBot,
                 inVC: !!p.inVC,
                 celebration: (p.id && p.id.__cel) || null,
+                flair: (p.id && p.id.__flair) || null,          // Premium avatar / frame / title … (server/flair.js)
                 isMuted: p.isMuted !== undefined ? p.isMuted : true,
                 isOffline: Boolean(!p.isBot && !p.id),
                 peekIncoming: (wsId === p.id || isMe) ? mergedIncoming : {},

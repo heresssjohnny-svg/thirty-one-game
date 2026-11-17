@@ -31,6 +31,7 @@ const { handleMuckMessage } = require('./server/game/muck');
 const { router: premiumRouter, handlePremiumGate } = require('./server/premium');
 const { handleEmoteMessage } = require('./server/emotes');
 const { handleNudgeMessage } = require('./server/nudge');
+const { handleFlairMessage } = require('./server/flair');
 const { router: roundLogRouter, startRoundLog } = require('./server/roundLog');
 const { router: friendStatsRouter } = require('./server/friendStats');
 const { router: cuesRouter } = require('./server/cues');
@@ -499,6 +500,7 @@ wss.on('connection', (ws, req) => {
         if (handlePremiumGate(ws, parsed)) return;
         if (handleEmoteMessage(ws, parsed, lobbyManager)) return;
         if (handleNudgeMessage(ws, parsed, lobbyManager)) return;
+        if (handleFlairMessage(ws, parsed, lobbyManager)) return;
         if (handleTableStyle(ws, parsed, lobbyManager, broadcastLobbyList)) return;
 
         // Forward (sanitized) gameplay commands to room and lobby manager
