@@ -1,5 +1,5 @@
 /* dragDrop.css - loaded last */
-.my-card, #deck-pile, #deck-center > .card-slot:not(#deck-pile) { touch-action: none; -webkit-user-select: none; user-select: none; }
+.my-card, #deck-pile, #deck-center > .card-slot:not(#deck-pile) { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .dd-ghost {
     position: fixed; left: 0; top: 0; z-index: 9800; pointer-events: none; margin: 0 !important;
     box-shadow: 0 14px 28px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(251, 191, 36, 0.9);
