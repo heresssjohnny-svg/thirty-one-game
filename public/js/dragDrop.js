@@ -8,7 +8,8 @@
     if (window.__dragDropLoaded) return;
     window.__dragDropLoaded = true;
 
-    var THRESH = 8;
+    var HOLD_MS = 500;      // a card must be held this long before it can be dragged (quick swipes/taps do nothing new)
+    var SLOP = 12;          // moving more than this before the hold ends cancels the drag
     var st = null;          // active gesture
     var suppressClick = false;
 
@@ -54,12 +55,25 @@
         return null;
     }
 
+    // the card's look depends on where it sits (hand / deck styles), so copy its computed styles onto the clone
+    function copyLook(src, dst) {
+        try {
+            var cs = getComputedStyle(src);
+            for (var i = 0; i < cs.length; i++) { var k = cs[i]; dst.style.setProperty(k, cs.getPropertyValue(k)); }
+        } catch (e) {}
+        var a = src.children, b = dst.children;
+        for (var j = 0; j < a.length && j < b.length; j++) copyLook(a[j], b[j]);
+    }
     function makeGhost(el, x, y) {
         var r = el.getBoundingClientRect();
         var g = el.cloneNode(true);
+        copyLook(el, g);
         g.removeAttribute('id'); g.removeAttribute('onclick');
         [].forEach.call(g.querySelectorAll('[id]'), function (n) { n.removeAttribute('id'); });
         g.classList.add('dd-ghost');
+        ['transition', 'animation', 'transform', 'opacity', 'margin'].forEach(function (k) { g.style.removeProperty(k); });
+        g.style.position = 'fixed'; g.style.zIndex = '9800'; g.style.pointerEvents = 'none';
+        g.style.boxSizing = 'border-box';
         g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
         g.style.left = '0px'; g.style.top = '0px';
         document.body.appendChild(g);
@@ -67,7 +81,7 @@
     }
     function moveGhost(x, y) {
         var o = st.ghost;
-        o.g.style.transform = 'translate(' + Math.round(x - o.dx) + 'px,' + Math.round(y - o.dy) + 'px) rotate(-4deg) scale(1.06)';
+        o.g.style.transform = 'translate(' + Math.round(x - o.dx) + 'px,' + Math.round(y - o.dy) + 'px)';   // same size as the card
     }
     function setTarget(on, over) {
         var z = zoneEl(st);
@@ -87,19 +101,31 @@
         if (ev.pointerType === 'mouse' && ev.button !== 0) return;
         var c = classify(ev.target);
         if (!c) return;
-        st = { kind: c.kind, el: c.el, index: c.index, id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, started: false, ghost: null };
-    }
-    function move(ev) {
-        if (!st || ev.pointerId !== st.id) return;
-        if (!st.started) {
-            if (Math.abs(ev.clientX - st.x0) + Math.abs(ev.clientY - st.y0) < THRESH) return;
+        st = { kind: c.kind, el: c.el, index: c.index, id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, x: ev.clientX, y: ev.clientY,
+               started: false, armed: false, ghost: null, timer: null };
+        var mine = st;
+        // pick the card up only after it has been held still for HOLD_MS
+        mine.timer = setTimeout(function () {
+            if (st !== mine) return;
+            mine.timer = null;
             if (!mode()) { st = null; return; }
-            st.started = true;
-            st.ghost = makeGhost(st.el, st.x0, st.y0);
-            st.el.classList.add('dd-dragging');
+            mine.armed = true;
+            mine.started = true;
+            mine.ghost = makeGhost(mine.el, mine.x0, mine.y0);
+            moveGhost(mine.x, mine.y);
+            mine.el.classList.add('dd-dragging');
             document.body.classList.add('dd-active');
             setTarget(true, false);
             try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+        }, HOLD_MS);
+    }
+    function move(ev) {
+        if (!st || ev.pointerId !== st.id) return;
+        st.x = ev.clientX; st.y = ev.clientY;
+        if (!st.started) {
+            // moved before the hold finished: not a drag (a tap/swipe as before)
+            if (Math.abs(ev.clientX - st.x0) + Math.abs(ev.clientY - st.y0) > SLOP) { if (st.timer) clearTimeout(st.timer); st = null; }
+            return;
         }
         ev.preventDefault();
         moveGhost(ev.clientX, ev.clientY);
@@ -109,6 +135,7 @@
     function up(ev) {
         if (!st || ev.pointerId !== st.id) return;
         var s = st; st = null;
+        if (s.timer) clearTimeout(s.timer);
         if (!s.started) return;                 // a plain tap: let the normal click run
         suppressClick = true; setTimeout(function () { suppressClick = false; }, 350);
         var zr = zoneRect(s);
@@ -121,6 +148,7 @@
     function cancel(ev) {
         if (!st || (ev && ev.pointerId !== st.id)) return;
         var s = st; st = null;
+        if (s.timer) clearTimeout(s.timer);
         if (s.started) clearAll(s);
     }
 
