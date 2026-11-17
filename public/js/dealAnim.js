@@ -36,7 +36,7 @@
     const DEAL_STAGGER_MS = 110;
     const CARD_FLIGHT_MS = 420;
     const FLIP_MS = 260;
-    const SHUFFLE_CARDS = 20;           // visual thickness of the pack
+    const SHUFFLE_CARDS = 24;           // visual thickness of the pack
     const REDUCED_SHUFFLE_MS = 2000;    // prefers-reduced-motion: static banner only
 
     let running = false;
@@ -61,24 +61,45 @@
         .da-sc {
             position: absolute; left: 0; top: 0; border-radius: 6px;
             background: ${DECK_BG};
-            border: 2px solid #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.55);
+            border: 3px solid #fdfdfb;
+            /* a thin dark edge per card reads as the side of the pack */
+            box-shadow: 0 0 0 0.5px rgba(15,23,42,0.6), 0 1px 1.5px rgba(0,0,0,0.4);
             will-change: transform; backface-visibility: hidden;
             transition: transform 300ms cubic-bezier(0.3, 0.7, 0.3, 1);
         }
+        /* printed back: fine diamond lattice inside a thin frame */
         .da-sc::after, .da-card:not(.da-face)::after {
-            content: ''; position: absolute; left: 9%; top: 9%; width: 82%; height: 82%;
-            border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;
+            content: ''; position: absolute; left: 5%; top: 7%; width: 90%; height: 86%;
+            border: 1px solid rgba(255,255,255,0.55); border-radius: 3px; box-sizing: border-box;
+            background:
+                repeating-linear-gradient(45deg, rgba(255,255,255,0.17) 0 1.5px, transparent 1.5px 6px),
+                repeating-linear-gradient(-45deg, rgba(255,255,255,0.17) 0 1.5px, transparent 1.5px 6px);
+        }
+        /* light on a bent-up edge during the riffle */
+        .da-sc::before {
+            content: ''; position: absolute; inset: 0; border-radius: 3px; opacity: 0;
+            transition: opacity 200ms ease; pointer-events: none;
+        }
+        .da-sc.da-bl::before { opacity: 1; background: linear-gradient(90deg, rgba(0,0,0,0.22), transparent 45%, rgba(255,255,255,0.32)); }
+        .da-sc.da-br::before { opacity: 1; background: linear-gradient(270deg, rgba(0,0,0,0.22), transparent 45%, rgba(255,255,255,0.32)); }
+        .da-shadow {
+            position: absolute; left: 0; top: 0; z-index: 1; border-radius: 12px;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.35) 45%, transparent 72%);
+            transform: translateY(7px); filter: blur(3px); will-change: transform, opacity;
         }
         .da-hand {
-            position: absolute; left: 0; top: 0; will-change: transform;
-            transition: transform 320ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity 200ms ease;
-            filter: drop-shadow(0 3px 4px rgba(0,0,0,0.45));
+            position: absolute; left: 0; top: 0; will-change: transform, opacity;
+            transform-origin: 50% 32.35%;   /* the knuckles, not the sleeve */
+            transition: transform 320ms cubic-bezier(0.3, 0.7, 0.3, 1), opacity 220ms ease;
+            filter: drop-shadow(0 7px 6px rgba(0,0,0,0.45));
         }
-        .da-hand svg { display: block; width: 100%; height: 100%; }
+        .da-hand svg { display: block; width: 100%; height: 100%; overflow: visible; }
+        .da-thumb { transform-origin: 36px 64px; }
+        .da-fingers { transform-origin: 58px 52px; }
         .da-card {
             position: fixed; width: 44px; height: 62px; border-radius: 5px;
             background: ${DECK_BG};
-            border: 2px solid #ffffff; box-shadow: 0 3px 8px rgba(0,0,0,0.6);
+            border: 2.5px solid #fdfdfb; box-shadow: 0 0 0 0.5px rgba(15,23,42,0.6), 0 3px 8px rgba(0,0,0,0.6);
             transform: translate(-50%, -50%); will-change: transform, opacity;
             transition: left ${CARD_FLIGHT_MS}ms cubic-bezier(0.22, 0.8, 0.3, 1),
                         top ${CARD_FLIGHT_MS}ms cubic-bezier(0.22, 0.8, 0.3, 1),
@@ -237,22 +258,83 @@
     }
 
     // ---- the shuffle stage ----------------------------------------------
-    // Top-down view. Cards lie horizontally (long edge left-right). Two hands
-    // hold the halves from the outside: fingers over the far edge, thumbs on
-    // the inner edges where the cards are released during the riffle.
+    // Top-down view from the dealer's side. Cards lie horizontally (long edge
+    // left-right). Two hands come in from below and hold the halves: fingers
+    // reach over the far edge, thumbs sit on the inner corners where the
+    // cards are released during the riffle. The hands are drawn with shaded
+    // skin, knuckles, creases, nails, a shirt cuff and a jacket sleeve; the
+    // thumb and the four fingers are separate groups so they can flick / curl.
+    function fingerSvg(bx, by, len, w, ang, uid) {
+        const wb = w / 2, wt = w * 0.41, tip = -len;
+        const d = `M${-wb} 8 C${-wb} ${tip * 0.5} ${-wt - 0.6} ${tip * 0.8} ${-wt} ${tip + wt} A${wt} ${wt} 0 0 1 ${wt} ${tip + wt} C${wt + 0.6} ${tip * 0.8} ${wb} ${tip * 0.5} ${wb} 8 Z`;
+        const nw = w * 0.56, nh = w * 0.6;
+        const c1 = tip * 0.36, c2 = tip * 0.66;
+        return `<g transform="translate(${bx} ${by}) rotate(${ang})">
+            <path d="${d}" fill="url(#skinF-${uid})" stroke="#8f5f40" stroke-opacity="0.75" stroke-width="0.9"/>
+            <path d="M${-wb * 0.7} ${c1} Q0 ${c1 - 1.8} ${wb * 0.7} ${c1} M${-wb * 0.55} ${c1 + 2.2} Q0 ${c1 + 0.8} ${wb * 0.55} ${c1 + 2.2}" fill="none" stroke="#9a6846" stroke-opacity="0.55" stroke-width="0.8" stroke-linecap="round"/>
+            <path d="M${-wt * 0.8} ${c2} Q0 ${c2 - 1.4} ${wt * 0.8} ${c2}" fill="none" stroke="#9a6846" stroke-opacity="0.5" stroke-width="0.7" stroke-linecap="round"/>
+            <rect x="${-nw / 2}" y="${tip + 1.6}" width="${nw}" height="${nh}" rx="${nw * 0.42}" fill="url(#nail-${uid})" stroke="#b98a72" stroke-opacity="0.6" stroke-width="0.5"/>
+            <path d="M${-nw * 0.28} ${tip + nh + 0.6} Q0 ${tip + nh - 1.6} ${nw * 0.28} ${tip + nh + 0.6}" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.6"/>
+        </g>`;
+    }
+
     function handSvg(side) {
-        // Right hand (fingers pointing up/away, thumb toward the centre on the left);
+        // Right hand (fingers pointing away, thumb toward the centre on the left);
         // the left hand is the mirror image.
+        const uid = side;
         const flip = side === 'left' ? 'transform="scale(-1,1) translate(-100,0)"' : '';
-        return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <g ${flip} fill="#e9b78f" stroke="#b8805a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-                <rect x="30" y="4" width="12" height="46" rx="6"/>
-                <rect x="45" y="0" width="12" height="50" rx="6"/>
-                <rect x="60" y="2" width="12" height="48" rx="6"/>
-                <rect x="75" y="8" width="12" height="42" rx="6"/>
-                <path d="M28 44 Q27 70 42 86 Q60 96 80 86 Q92 76 90 48 Z"/>
-                <path d="M30 52 Q14 60 6 78 Q4 90 14 90 Q24 88 34 70 Z"/>
-                <path d="M36 92 Q58 100 82 90" fill="none" stroke="#b8805a" stroke-width="2"/>
+        return `<svg viewBox="-10 -5 120 170" xmlns="http://www.w3.org/2000/svg" overflow="visible">
+            <defs>
+                <linearGradient id="skinF-${uid}" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0" stop-color="#bf8259"/><stop offset="0.28" stop-color="#e8b48c"/>
+                    <stop offset="0.55" stop-color="#f3c9a6"/><stop offset="1" stop-color="#c78b62"/>
+                </linearGradient>
+                <radialGradient id="skinP-${uid}" cx="0.55" cy="0.3" r="0.85">
+                    <stop offset="0" stop-color="#f4cba9"/><stop offset="0.55" stop-color="#e5b089"/><stop offset="1" stop-color="#b97c55"/>
+                </radialGradient>
+                <linearGradient id="nail-${uid}" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#fdf1ea"/><stop offset="1" stop-color="#eec4b4"/>
+                </linearGradient>
+                <linearGradient id="sleeve-${uid}" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#1f2937"/><stop offset="0.55" stop-color="#111827"/><stop offset="1" stop-color="#111827" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="cuff-${uid}" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0" stop-color="#cbd5e1"/><stop offset="0.35" stop-color="#ffffff"/><stop offset="1" stop-color="#d8dee8"/>
+                </linearGradient>
+            </defs>
+            <g ${flip}>
+                <path d="M20 134 L96 130 L104 165 L12 165 Z" fill="url(#sleeve-${uid})"/>
+                <g class="da-fingers">
+                    ${fingerSvg(37, 52, 40, 13, -5, uid)}
+                    ${fingerSvg(51.5, 49, 46, 13.5, -1.5, uid)}
+                    ${fingerSvg(66, 50, 42, 12.8, 2.5, uid)}
+                    ${fingerSvg(79.5, 55, 33, 11.2, 7, uid)}
+                </g>
+                <path d="M29 53 Q30 46 37 46.5 Q44 44 51.5 44 Q59 43.5 66 45 Q74 45.5 80 50 Q88 53 89 62 C91 84 87 104 82 126 L38 126 C33 106 26 82 29 53 Z"
+                      fill="url(#skinP-${uid})" stroke="#8f5f40" stroke-opacity="0.75" stroke-width="0.9" stroke-linejoin="round"/>
+                <g fill="#f8d6b8" fill-opacity="0.55">
+                    <ellipse cx="37.5" cy="52" rx="5" ry="3.6"/><ellipse cx="51.5" cy="49.5" rx="5.2" ry="3.8"/>
+                    <ellipse cx="66" cy="50.5" rx="5" ry="3.6"/><ellipse cx="79" cy="55.5" rx="4.3" ry="3.2"/>
+                </g>
+                <g fill="none" stroke="#9a6846" stroke-opacity="0.45" stroke-width="0.8" stroke-linecap="round">
+                    <path d="M33 56.5 Q37.5 59 42 56.5"/><path d="M47 54 Q51.5 56.5 56 54"/>
+                    <path d="M61.5 55 Q66 57.5 70.5 55"/><path d="M75 59.5 Q79 61.5 83 59.5"/>
+                </g>
+                <g fill="none" stroke="#fbe3cd" stroke-opacity="0.35" stroke-width="1.6" stroke-linecap="round">
+                    <path d="M39 60 Q44 86 52 112"/><path d="M52 58 Q55 86 58 112"/>
+                    <path d="M66 59 Q65 86 64 112"/><path d="M78 63 Q74 88 70 112"/>
+                </g>
+                <path d="M84 70 C86 90 83 108 80 124" fill="none" stroke="#8f5f40" stroke-opacity="0.25" stroke-width="3" stroke-linecap="round"/>
+                <g class="da-thumb">
+                    <path d="M33 58 C24 60 12 68 5 80 C1 88 6 95 14 92 C23 88 33 78 40 70 Z"
+                          fill="url(#skinP-${uid})" stroke="#8f5f40" stroke-opacity="0.75" stroke-width="0.9" stroke-linejoin="round"/>
+                    <path d="M18 71 Q21 76 26 78" fill="none" stroke="#9a6846" stroke-opacity="0.5" stroke-width="0.8" stroke-linecap="round"/>
+                    <path d="M5.5 81 C3 87 6.5 92.5 12.5 90.5 C15 88 13 82 9.5 79.5 Z" fill="url(#nail-${uid})" stroke="#b98a72" stroke-opacity="0.6" stroke-width="0.5"/>
+                </g>
+                <path d="M34 64 Q40 74 37 88" fill="none" stroke="#9a6846" stroke-opacity="0.3" stroke-width="1" stroke-linecap="round"/>
+                <path d="M33 119 Q60 114 86 117 L89 134 Q60 130 30 136 Z" fill="url(#cuff-${uid})" stroke="#94a3b8" stroke-width="0.7" stroke-linejoin="round"/>
+                <path d="M34 123.5 Q60 119 86.5 121.5" fill="none" stroke="#cbd5e1" stroke-width="0.6"/>
+                <circle cx="82" cy="126.5" r="1.7" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.5"/>
             </g>
         </svg>`;
     }
@@ -267,6 +349,16 @@
         // Landscape cards sized from the deck slot
         const cw = Math.max(64, Math.min(96, Math.round((origin.h || 126) * 0.72)));
         const ch = Math.round(cw * 0.68);
+
+        // soft shadow of the pack on the felt
+        const shadow = document.createElement('div');
+        shadow.className = 'da-shadow';
+        shadow.style.width = `${Math.round(cw * 1.16)}px`;
+        shadow.style.height = `${Math.round(ch * 1.12)}px`;
+        shadow.style.marginLeft = `${-Math.round(cw * 0.58)}px`;
+        shadow.style.marginTop = `${-Math.round(ch * 0.5)}px`;
+        stage.appendChild(shadow);
+
         const cards = [];
         for (let i = 0; i < SHUFFLE_CARDS; i++) {
             const c = document.createElement('div');
@@ -281,25 +373,37 @@
         }
         cards.forEach(c => applyCard(c, c.__st, 0));
 
-        const hs = Math.round(ch * 1.45);
+        // hands: the 100x100 hand sits in a 120x170 drawing (wrist, cuff and sleeve below)
+        const hs = Math.round(ch * 1.7);
         const hands = {};
         ['left', 'right'].forEach(side => {
             const h = document.createElement('div');
             h.className = 'da-hand';
-            h.style.width = `${hs}px`;
-            h.style.height = `${hs}px`;
-            h.style.marginLeft = `${-hs / 2}px`;
-            h.style.marginTop = `${-hs / 2}px`;
+            h.style.width = `${Math.round(hs * 1.2)}px`;
+            h.style.height = `${Math.round(hs * 1.7)}px`;
+            h.style.marginLeft = `${-Math.round(hs * 0.6)}px`;
+            h.style.marginTop = `${-Math.round(hs * 0.55)}px`;
             h.style.zIndex = '200';
             h.innerHTML = handSvg(side);
+            h.__thumb = h.querySelector('.da-thumb');
+            h.__fingers = h.querySelector('.da-fingers');
             const sign = side === 'left' ? -1 : 1;
-            h.__st = { x: sign * (cw * 0.62), y: ch * 0.12, rot: sign * 8 };
+            // start below the table edge of the stage and slide in
+            h.__st = { x: sign * (cw * 0.7), y: ch * 1.5, rot: sign * 8 };
             stage.appendChild(h);
             hands[side] = h;
             applyHand(h, h.__st, 0);
+            h.style.opacity = '0';
+        });
+        requestAnimationFrame(() => {
+            ['left', 'right'].forEach(side => {
+                const sign = side === 'left' ? -1 : 1;
+                hands[side].style.opacity = '1';
+                applyHand(hands[side], { x: sign * (cw * 0.56), y: -ch * 0.08, rot: sign * 8 }, 320);
+            });
         });
 
-        return { stage, cards, hands, cw, ch };
+        return { stage, cards, hands, shadow, cw, ch };
     }
 
     function applyCard(c, st, dur, ease) {
@@ -308,70 +412,107 @@
         c.style.transition = dur ? `transform ${dur}ms ${ease || 'cubic-bezier(0.3, 0.7, 0.3, 1)'}` : 'none';
         c.style.transform = `translate(${s.x}px, ${s.y}px) rotateY(${s.ry}deg) rotate(${s.rot}deg)`;
         if (typeof s.z === 'number') c.style.zIndex = String(10 + s.z);
+        // a lifted edge catches the light
+        c.classList.toggle('da-bl', s.ry < -8);
+        c.classList.toggle('da-br', s.ry > 8);
     }
 
     function applyHand(h, st, dur, ease) {
         Object.assign(h.__st, st);
         const s = h.__st;
-        h.style.transition = dur ? `transform ${dur}ms ${ease || 'cubic-bezier(0.3, 0.7, 0.3, 1)'}` : 'none';
-        h.style.transform = `translate(${s.x}px, ${s.y}px) rotate(${s.rot}deg)`;
+        h.style.transition = dur ? `transform ${dur}ms ${ease || 'cubic-bezier(0.3, 0.7, 0.3, 1)'}, opacity 220ms ease` : 'none';
+        // lifted toward the viewer so thumbs stay on top of the bent-up card edges
+        h.style.transform = `translate3d(${s.x}px, ${s.y}px, 34px) rotate(${s.rot}deg)`;
+    }
+    // thumb: degrees of lift (rotates about its base); fingers: 1 = flat, <1 = curled over the pack
+    function setThumb(h, deg, dur) {
+        if (!h.__thumb) return;
+        h.__thumb.style.transition = `transform ${dur || 120}ms ease-out`;
+        h.__thumb.style.transform = `rotate(${deg}deg)`;
+    }
+    function setFingers(h, curl, dur) {
+        if (!h.__fingers) return;
+        h.__fingers.style.transition = `transform ${dur || 200}ms ease`;
+        h.__fingers.style.transform = `scaleY(${curl})`;
+    }
+    function setShadow(sh, sx, op, dur) {
+        if (!sh) return;
+        sh.style.transition = `transform ${dur || 300}ms ease, opacity ${dur || 300}ms ease`;
+        sh.style.transform = `translateY(7px) scaleX(${sx})`;
+        sh.style.opacity = String(op);
     }
 
     // One dealer cycle: cut → riffle → bridge → square up.
     function shuffleCycle(stageObj, t0, cycleMs) {
-        const { cards, hands, cw, ch } = stageObj;
+        const { cards, hands, shadow, cw, ch } = stageObj;
         const n = cards.length;
         // Believable hand speed: at most ±15% stretch; leftover time rests squared up.
         const k = Math.max(0.85, Math.min(1.15, cycleMs / SHUFFLE_CYCLE_MS));
         const T = (ms) => Math.round(ms * k);
         const half = Math.round(cw * 0.56);
         const L = hands.left, R = hands.right;
+        const HY = -ch * 0.08;              // hands rest over the pack: fingers reach its far edge
 
-        // 1. CUT: hands pull the two halves apart; inner edges lift toward each other
+        // 1. CUT: hands pull the two halves apart; thumbs lift the inner edges toward each other
         later(() => {
             cards.forEach((c, i) => {
                 const left = i % 2 === 0;
                 const j = Math.floor(i / 2);
                 applyCard(c, {
                     x: left ? -half : half,
-                    y: -j * 1.0,
+                    y: -j * 1.1,
                     rot: left ? -3 : 3,
-                    ry: left ? -22 : 22,
+                    ry: left ? -(20 + j * 0.9) : (20 + j * 0.9),     // upper cards bend up more under the thumb
                     z: j
                 }, T(420), 'cubic-bezier(0.4, 0, 0.2, 1)');
             });
-            applyHand(L, { x: -(half + cw * 0.34), y: ch * 0.12, rot: -10 }, T(420));
-            applyHand(R, { x: (half + cw * 0.34), y: ch * 0.12, rot: 10 }, T(420));
+            applyHand(L, { x: -(half + cw * 0.2), y: HY, rot: -10 }, T(420));
+            applyHand(R, { x: (half + cw * 0.2), y: HY, rot: 10 }, T(420));
+            setThumb(L, -9, T(380)); setThumb(R, -9, T(380));
+            setFingers(L, 0.93, T(380)); setFingers(R, 0.93, T(380));
+            setShadow(shadow, 2.15, 0.8, T(420));
             playCardSound();
         }, t0);
 
-        // 2. RIFFLE: thumbs release cards alternately from each half into the centre, bottom-up
+        // 2. RIFFLE: thumbs let cards spring down from each half into the centre, bottom-up,
+        //    in uneven little clumps the way a real riffle falls
         const riffleStart = t0 + T(620);
-        const riffleStep = T(56);
+        const riffleStep = T(44);
         const order = [];
-        for (let i = 0; i < n / 2; i++) { order.push(i * 2); order.push(i * 2 + 1); }
+        let li = 0, ri = 0, side = Math.random() < 0.5 ? 0 : 1;
+        const per = n / 2;
+        while (li < per || ri < per) {
+            const take = Math.random() < 0.3 ? 2 : 1;
+            for (let q = 0; q < take; q++) {
+                if (side === 0 && li < per) order.push((li++) * 2);
+                else if (side === 1 && ri < per) order.push((ri++) * 2 + 1);
+            }
+            side = 1 - side;
+        }
         later(() => {
             // Hands lean in so the thumbs meet over the centre
-            applyHand(L, { x: -(half + cw * 0.22), y: ch * 0.16, rot: -5 }, T(300));
-            applyHand(R, { x: (half + cw * 0.22), y: ch * 0.16, rot: 5 }, T(300));
+            applyHand(L, { x: -(half + cw * 0.12), y: HY + ch * 0.04, rot: -5 }, T(300));
+            applyHand(R, { x: (half + cw * 0.12), y: HY + ch * 0.04, rot: 5 }, T(300));
         }, riffleStart - T(120));
         order.forEach((ci, j) => {
             later(() => {
                 applyCard(cards[ci], {
-                    x: (Math.random() - 0.5) * 4,
+                    x: (Math.random() - 0.5) * 5,
                     y: -j * 0.5 + (Math.random() - 0.5) * 2,
-                    rot: (Math.random() - 0.5) * 4,
+                    rot: (Math.random() - 0.5) * 5,
                     ry: 0,
                     z: j
-                }, T(220), 'cubic-bezier(0.2, 0.9, 0.3, 1)');
-                // thumb flick: tiny nudge of the hand that just released a card
+                }, T(170), 'cubic-bezier(0.45, 0, 0.9, 0.6)');      // snaps down, accelerating
+                // the thumb that just let a card go eases down a notch and springs back
                 const h = (ci % 2 === 0) ? L : R;
-                applyHand(h, { y: h.__st.y - 3 }, T(60));
-                later(() => applyHand(h, { y: ch * 0.16 }, T(90)), T(70));
-                if (j % 4 === 0) playCardSound();
+                const left = j / n;
+                setThumb(h, -9 + left * 7 + 3, T(40));
+                later(() => setThumb(h, -9 + left * 7, T(60)), T(45));
+                if (j % 3 === 0) playCardSound();
             }, riffleStart + j * riffleStep);
         });
         const riffleEnd = riffleStart + n * riffleStep + T(230);
+        later(() => { setShadow(shadow, 1.25, 1, T(260)); }, riffleStart + Math.round(n * riffleStep * 0.6));
 
         // 3. BRIDGE: hands push the ends together so the pack arches up along its
         //    length, then let go: the cards waterfall down from the top card.
@@ -387,11 +528,15 @@
                     rot: (f - 0.5) * 4
                 }, T(420), 'cubic-bezier(0.3, 0.6, 0.3, 1)');
             });
-            applyHand(L, { x: -(cw * 0.66), y: ch * 0.1, rot: -14 }, T(420));
-            applyHand(R, { x: (cw * 0.66), y: ch * 0.1, rot: 14 }, T(420));
+            applyHand(L, { x: -(cw * 0.6), y: HY - ch * 0.02, rot: -14 }, T(420));
+            applyHand(R, { x: (cw * 0.6), y: HY - ch * 0.02, rot: 14 }, T(420));
+            setThumb(L, 6, T(380)); setThumb(R, 6, T(380));
+            setFingers(L, 0.84, T(380)); setFingers(R, 0.84, T(380));      // fingers curl over the arch
+            setShadow(shadow, 1.05, 0.7, T(420));
             playCardSound();
         }, bowStart);
-        const cascadeStart = bowStart + T(600);
+        const cascadeStart = bowStart + T(520);
+        const cascadeStep = T(30);
         later(() => {
             const sorted = cards.slice().sort((a, b) => b.__st.z - a.__st.z); // top card first
             sorted.forEach((c, j) => {
@@ -401,26 +546,30 @@
                         x: (Math.random() - 0.5) * 4,
                         y: -c.__st.z * 0.5 + 1,
                         rot: (Math.random() - 0.5) * 3
-                    }, T(240), 'cubic-bezier(0.5, 0.05, 0.3, 1)');
-                    if (j % 5 === 0) playCardSound();
-                }, j * T(40));
+                    }, T(220), 'cubic-bezier(0.5, 0.05, 0.3, 1)');
+                    if (j % 4 === 0) playCardSound();
+                }, j * cascadeStep);
             });
-            // hands ease outward as the pack settles
-            applyHand(L, { x: -(half + cw * 0.26), y: ch * 0.12, rot: -8 }, T(n * 40 + 200));
-            applyHand(R, { x: (half + cw * 0.26), y: ch * 0.12, rot: 8 }, T(n * 40 + 200));
+            // hands ease outward and the fingers open as the pack settles
+            const d = n * cascadeStep + T(200);
+            applyHand(L, { x: -(half + cw * 0.14), y: HY, rot: -8 }, d);
+            applyHand(R, { x: (half + cw * 0.14), y: HY, rot: 8 }, d);
+            setFingers(L, 1, d); setFingers(R, 1, d);
+            setThumb(L, 0, d); setThumb(R, 0, d);
+            setShadow(shadow, 1, 1, d);
         }, cascadeStart);
-        const cascadeEnd = cascadeStart + n * T(40) + T(260);
+        const cascadeEnd = cascadeStart + n * cascadeStep + T(260);
 
         // 4. SQUARE UP: hands tap the pack neat from both sides
         later(() => {
             cards.forEach(c => applyCard(c, { x: 3, rot: c.__st.rot + 1 }, T(130), 'ease-out'));
-            applyHand(L, { x: -(cw * 0.6), rot: -3 }, T(130));
-            applyHand(R, { x: (cw * 0.68), rot: 3 }, T(130));
+            applyHand(L, { x: -(cw * 0.54), rot: -3 }, T(130));
+            applyHand(R, { x: (cw * 0.62), rot: 3 }, T(130));
         }, cascadeEnd + T(40));
         later(() => {
             cards.forEach(c => applyCard(c, { x: 0, rot: 0, y: -c.__st.z * 0.5 }, T(170), 'ease-in-out'));
-            applyHand(L, { x: -(cw * 0.62), y: ch * 0.12, rot: -8 }, T(170));
-            applyHand(R, { x: (cw * 0.62), y: ch * 0.12, rot: 8 }, T(170));
+            applyHand(L, { x: -(cw * 0.56), y: HY, rot: -8 }, T(170));
+            applyHand(R, { x: (cw * 0.56), y: HY, rot: 8 }, T(170));
             playCardSound();
         }, cascadeEnd + T(190));
     }
@@ -532,10 +681,13 @@
             const cycles = Math.max(1, Math.min(5, Math.round(shuffleMs / SHUFFLE_CYCLE_MS)));
             const cycleMs = Math.floor(shuffleMs / cycles);
             for (let i = 0; i < cycles; i++) shuffleCycle(stageObj, 120 + i * cycleMs, cycleMs - 60);
-            // hands leave just before the deal
+            // hands draw back toward the dealer just before the deal
             later(() => {
-                Object.values(stageObj.hands).forEach(h => { h.style.opacity = '0'; });
-            }, Math.max(0, shuffleMs - 260));
+                Object.values(stageObj.hands).forEach(h => {
+                    applyHand(h, { y: h.__st.y + stageObj.ch * 1.3 }, 260, 'ease-in');
+                    h.style.opacity = '0';
+                });
+            }, Math.max(0, shuffleMs - 280));
         } else if (startedWithWindow) {
             banner.innerHTML = 'Shuffling…<small>Dealing in a moment</small>';
         }
