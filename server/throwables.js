@@ -11,7 +11,8 @@ const CATALOG = [
     { id: '🍆', label: 'Eggplant' },
     { id: '💦', label: 'Splash' },
     { id: 'img:toy', label: 'Toy (picture)' },
-    { id: 'img:baby', label: 'Baby (picture)' }
+    { id: 'img:baby', label: 'Baby (picture)' },
+    { id: '🖕', label: 'Middle finger' }
 ];
 const IDS = CATALOG.map(c => c.id);
 
