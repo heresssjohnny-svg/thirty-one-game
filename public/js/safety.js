@@ -73,7 +73,7 @@
             if (Array.isArray(s.chatHistory)) s.chatHistory = s.chatHistory.filter(function (m) { return !isBlocked(m && (m.user || m.username)); });
             var rx = s.lastReaction;
             if (rx && rx.id && isBlocked(rx.username) && window.appGlobals) window.appGlobals.lastRenderedReactionId = rx.id;
-            (s.players || []).forEach(function (p) { if (p && isBlocked(p.username) && p.celebration) p.celebration = {}; });
+            (s.players || []).forEach(function (p) { if (p && isBlocked(p.username)) { if (p.celebration) p.celebration = {}; p.flair = null; } });
         } catch (e) {}
         return s;
     }
