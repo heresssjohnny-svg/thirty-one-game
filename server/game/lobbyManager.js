@@ -1933,10 +1933,7 @@ function refillDeckFromDiscard(lobby) {
         pile.forEach(c => skip.add(key(c)));
         fresh = createDeck().filter(c => !skip.has(key(c)));
     }
-    for (let i = fresh.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [fresh[i], fresh[j]] = [fresh[j], fresh[i]];
-    }
+    require('./deck').secureShuffle(fresh);
     lobby.discardPile = top ? [top] : [];
     lobby.deck = fresh;
 }
@@ -2737,7 +2734,7 @@ function ensureDrawTimer(lobby) {
             if (live.drawResults && live.drawResults[u]) return;
             const open = (live.drawPool || []).map((c, i) => ({ i: (c && c.index !== undefined) ? c.index : i, c })).filter(x => x.c && x.c.chosenBy === null);
             if (!open.length) return;
-            handlePoolCardSelection(live, u, open[Math.floor(Math.random() * open.length)].i);
+            handlePoolCardSelection(live, u, open[require('./deck').secureIndex(open.length)].i);
         });
         const after = lobbies[cur.code];
         if (after && after.drawPool === pool) broadcastLobbyUpdate(after.code);
@@ -2769,7 +2766,7 @@ function scheduleBotActions(lobby) {
 
                         const unchosen = cur.drawPool.map((c, i) => ({ i, chosen: c.chosenBy })).filter(c => c.chosen === null);
                         if (unchosen.length > 0) {
-                            const chosenIndex = unchosen[Math.floor(Math.random() * unchosen.length)].i;
+                            const chosenIndex = unchosen[require('./deck').secureIndex(unchosen.length)].i;
                             handlePoolCardSelection(cur, p.username, chosenIndex);
                         }
                     }, 500 + Math.random() * 600);

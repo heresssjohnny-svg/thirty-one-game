@@ -2,6 +2,19 @@
 const SUITS = ['♠', '♣', '♥', '♦'];
 const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
+// Shuffles use the operating system's cryptographic random source, not Math.random(): Math.random's
+// sequence can in theory be worked out from values the game shows (table codes, ids), which would let
+// someone predict the deck. crypto.randomInt cannot be predicted and has no modulo bias.
+const crypto = require('crypto');
+function secureShuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = crypto.randomInt(i + 1);
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+function secureIndex(n) { return n > 0 ? crypto.randomInt(n) : 0; }
+
 function createDeck() {
     const deck = [];
     for (const s of SUITS) {
@@ -14,11 +27,7 @@ function createDeck() {
             deck.push({ suit: s, val: v, points, drawVal });
         }
     }
-    for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    return deck;
+    return secureShuffle(deck);
 }
 
 function calculateScore(cards) {
@@ -50,5 +59,4 @@ module.exports = {
     VALUES,
     createDeck,
     calculateScore,
-    calculateBestFourCardScore
-};
+    calculateBestFourCardScore, secureShuffle, secureIndex };
