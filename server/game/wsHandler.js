@@ -538,6 +538,15 @@ function clearTurnTimer(lobby) {
     lobby.turnDeadline = null;
 }
 
+// A fingerprint of whose turn it is and how far along they are. Draw / discard / knock messages only restart
+// the turn clock when this changes, so a message that does nothing (not your turn, already drew, wrong table)
+// can't be used to keep resetting the 25-second timer.
+function turnSig(lobby) {
+    if (!lobby) return '';
+    const p = (lobby.players || [])[lobby.turnIndex];
+    return [lobby.gameState, lobby.turnIndex, p ? p.username : '', p && p.cards ? p.cards.length : 0, lobby.knockedBy || '', lobby.roundNumber || 0].join('|');
+}
+
 function resetTurnTimer(lobby) {
     if (!lobby) return;
     clearTurnTimer(lobby);
@@ -1158,8 +1167,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const isDiscard = (data.type === 'DRAW_DISCARD' || data.source === 'discard' || data.action === 'DRAW_DISCARD');
                 const actionType = isDiscard ? 'DRAW_DISCARD' : 'DRAW_DECK';
 
+                const sigBefore = turnSig(lobby);
                 handleTurnAction(lobby, ws, actionType);
-                resetTurnTimer(lobby);
+                if (turnSig(lobby) !== sigBefore) resetTurnTimer(lobby);
             }
             break;
         }
@@ -1172,8 +1182,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
                 const rawIdx = (data.index !== undefined) ? data.index : data.cardIndex;
                 const cardIdx = Number(rawIdx);
                 if (!isNaN(cardIdx)) {
+                    const sigBefore = turnSig(lobby);
                     handleDiscardAction(lobby, ws, cardIdx);
-                    resetTurnTimer(lobby);
+                    if (turnSig(lobby) !== sigBefore) resetTurnTimer(lobby);
                 }
             }
             break;
@@ -1184,8 +1195,9 @@ function handleWebSocketMessage(ws, message, broadcastLobbyList) {
             if (code && lobbies[code]) {
                 const lobby = lobbies[code];
                 touchLobbyActivity(lobby, broadcastLobbyList);
+                const sigBefore = turnSig(lobby);
                 handleKnock(lobby, ws);
-                resetTurnTimer(lobby);
+                if (turnSig(lobby) !== sigBefore) resetTurnTimer(lobby);
             }
             break;
         }
