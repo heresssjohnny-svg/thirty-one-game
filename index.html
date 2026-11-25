@@ -543,10 +543,11 @@
                         })();
                     </script>
                     <div class="setting-row" style="display: flex; flex-direction: column; gap: 6px;">
-                        <label for="setting-audio-output" style="font-size: 0.8rem; color: #cbd5e1; text-transform: uppercase;">Voice Audio Output</label>
+                        <label for="setting-audio-output" style="font-size: 0.8rem; color: #cbd5e1; text-transform: uppercase;">Audio Output</label>
                         <select id="setting-audio-output" onchange="if (typeof setAudioOutputDevice === 'function') setAudioOutputDevice(this.value); else if (typeof changeVoiceOutputDevice === 'function') changeVoiceOutputDevice(this.value);" style="background: #04160e; border: 1px solid rgba(212, 175, 55, 0.5); color: #fff; border-radius: 6px; padding: 8px; font-weight: 700;">
-                            <option value="default">Default Speaker</option>
+                            <option value="default">Automatic (phone decides)</option>
                         </select>
+                        <div id="audio-output-hint" style="font-size: 0.72rem; color: #94a3b8; line-height: 1.3;"></div>
                     </div>
                 </div>
                 <div class="modal-actions" style="margin-top: 16px; display: flex; justify-content: flex-end;">
@@ -680,7 +681,7 @@
     <script src="/js/celebration.js?v=81"></script>
     <script src="/js/network.js?v=87"></script>
     <script src="/js/ledger.js?v=87"></script>
-    <script src="/js/voice.js?v=98"></script>
+    <script src="/js/voice.js?v=111"></script>
     <script src="/js/ui.js?v=104"></script>
     <script src="/js/app.js?v=98"></script>
     <script src="/js/dealAnim.js?v=109"></script>

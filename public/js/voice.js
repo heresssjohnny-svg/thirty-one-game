@@ -245,7 +245,7 @@ async function connectToLiveKit(host, token, roomCode) {
                 try { audioElem.setAttribute('data-identity', String((participant && (participant.identity || participant.name)) || '')); } catch (e) {}
                 if (typeof window.isPlayerBlocked === 'function' && participant && window.isPlayerBlocked(participant.identity || participant.name)) { audioElem.muted = true; audioElem.setAttribute('data-sf-muted', '1'); }
 
-                if (selectedAudioOutputId && typeof audioElem.setSinkId === 'function') {
+                if (selectedAudioOutputId && selectedAudioOutputId !== 'default' && typeof audioElem.setSinkId === 'function') {
                     audioElem.setSinkId(selectedAudioOutputId).catch(() => {
                         selectedAudioOutputId = 'default';
                         audioElem.setSinkId('default').catch(() => {});
@@ -348,6 +348,7 @@ async function connectToLiveKit(host, token, roomCode) {
                 }
                 await livekitRoom.localParticipant.setMicrophoneEnabled(true);
                 isMicActive = true;
+                setTimeout(refreshAudioOutputDevices, 400);
                 watchMicTrack();
                 sendVCStatusInternal(true, false);
             } catch (micErr) {
@@ -476,6 +477,7 @@ async function toggleVoiceOnOff() {
             }
 
             isMicActive = true;
+                setTimeout(refreshAudioOutputDevices, 400);
             window.__micPausedForInterruption = false;
             localStorage.setItem('blitz31_mic_state', 'true');
             watchMicTrack();
@@ -720,68 +722,134 @@ function setVoiceChatVolume(val) {
     });
 }
 
-async function setAudioOutputDevice(deviceId) {
-    selectedAudioOutputId = deviceId || 'default';
-    const remoteAudios = document.querySelectorAll('.lk-remote-audio');
+// ---------------------------------------------------------------------------------------------
+// AUDIO OUTPUT (speaker / Bluetooth / earpiece)
+// What a web page may do differs by device:
+//   * Computers (and browsers that list speakers): real output devices -> setSinkId on every <audio>.
+//   * Android Chrome usually lists NO separate speakers. It does list the microphone routes
+//     ("Speakerphone", "Bluetooth headset", "Headset earpiece", "Wired headset"); choosing one of those
+//     as the mic moves the voice-chat sound with it. So there we offer those routes and switch the mic.
+//   * iPhone: the phone decides; nothing can be chosen from a web page.
+// Device names are only visible after microphone permission was given once.
+// Option values: 'default' | 'out:<deviceId>' | 'in:<deviceId>'. The choice is remembered by name.
+// ---------------------------------------------------------------------------------------------
+const AUDIO_ROUTE_KEY = 'blitz31_audio_route';
+let audioRouteValue = 'default';
+let audioRouteOptions = [];
+let lastBluetoothSeen = null;
 
-    for (const audioEl of remoteAudios) {
-        if (typeof audioEl.setSinkId === 'function') {
-            try {
-                await audioEl.setSinkId(selectedAudioOutputId);
-            } catch (err) {
-                try { await audioEl.setSinkId('default'); } catch (e) {}
-            }
-        }
+function audioRouteKind(label) {
+    const l = String(label || '').toLowerCase();
+    if (/bluetooth|airpods|buds|\bbt\b|wireless|hands-?free|a2dp|sco/.test(l)) return 'bt';
+    if (/speakerphone|speaker/.test(l)) return 'speaker';
+    if (/earpiece|receiver/.test(l)) return 'earpiece';
+    if (/wired|headphone|headset|usb/.test(l)) return 'wired';
+    return 'other';
+}
+function audioRouteLabel(kind, label, viaMic) {
+    const clean = String(label || '').replace(/[<>&"']/g, '');
+    if (kind === 'bt') return '🎧 Bluetooth' + (clean && !/^bluetooth( headset)?$/i.test(clean) ? ': ' + clean : '');
+    if (kind === 'speaker') return viaMic ? '🔊 Phone speaker' : '🔊 ' + (clean || 'Speaker');
+    if (kind === 'earpiece') return '📞 Earpiece (hold to ear)';
+    if (kind === 'wired') return '🎧 ' + (clean || 'Wired headset');
+    return '🔊 ' + (clean || 'Audio output');
+}
+function setAudioHint(text) {
+    const h = document.getElementById('audio-output-hint');
+    if (h) h.textContent = text || '';
+}
+
+async function applyAudioRoute() {
+    const v = audioRouteValue || 'default';
+    // 1. real speakers
+    const sink = v.indexOf('out:') === 0 ? v.slice(4) : 'default';
+    selectedAudioOutputId = sink;
+    for (const el of document.querySelectorAll('audio')) {
+        if (typeof el.setSinkId !== 'function') continue;
+        try { await el.setSinkId(sink === 'default' ? '' : sink); }
+        catch (err) { try { await el.setSinkId(''); } catch (e) {} }
     }
+    // 2. Android: the route follows the microphone
+    if (v.indexOf('in:') === 0 && livekitRoom && isLiveKitConnected && isMicActive && typeof livekitRoom.switchActiveDevice === 'function') {
+        try { await livekitRoom.switchActiveDevice('audioinput', v.slice(3)); }
+        catch (e) { console.warn('[LiveKit] could not switch audio route:', e); }
+    }
+}
 
+async function setAudioOutputDevice(value) {
+    let v = value || 'default';
+    if (v !== 'default' && v.indexOf('out:') !== 0 && v.indexOf('in:') !== 0) v = 'out:' + v;   // older callers pass a bare id
+    audioRouteValue = v;
+    const opt = audioRouteOptions.find(o => o.value === v);
+    try { localStorage.setItem(AUDIO_ROUTE_KEY, JSON.stringify({ value: v, label: opt ? opt.raw : '' })); } catch (e) {}
+    await applyAudioRoute();
     const select = document.getElementById('audio-output-select') || document.getElementById('setting-audio-output');
-    if (select && select.value !== selectedAudioOutputId) {
-        select.value = selectedAudioOutputId;
+    if (select && select.value !== v) select.value = v;
+    if (v.indexOf('in:') === 0 && !(isLiveKitConnected && isMicActive)) {
+        if (typeof window.showCenterNotification === 'function') window.showCenterNotification('Saved. It applies when voice chat is on and your mic is on.');
+    } else if (opt && v !== 'default' && typeof window.showCenterNotification === 'function') {
+        window.showCenterNotification('Audio: ' + opt.label);
     }
 }
 
 async function refreshAudioOutputDevices() {
     const select = document.getElementById('audio-output-select') || document.getElementById('setting-audio-output');
-    if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
-
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        setAudioHint('This browser lets the phone choose where sound plays.');
+        return;
+    }
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+        const named = (d) => d.label && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications';
+        const outs = devices.filter(d => d.kind === 'audiooutput' && named(d));
+        const ins = devices.filter(d => d.kind === 'audioinput' && named(d));
+        const anyLabel = devices.some(d => d.label);
 
-        let isSelectedDeviceStillConnected = false;
-        let optionsHtml = '<option value="default">Phone Speaker / Default</option>';
-
-        audioOutputs.forEach((d, i) => {
-            if (d.deviceId === 'default') return;
-
-            const isBluetooth = d.label && (
-                d.label.toLowerCase().includes('bluetooth') ||
-                d.label.toLowerCase().includes('airpods') ||
-                d.label.toLowerCase().includes('buds') ||
-                d.label.toLowerCase().includes('headset') ||
-                d.label.toLowerCase().includes('wireless')
-            );
-
-            const prefix = isBluetooth ? '🎧 Bluetooth: ' : '🔊 ';
-            const label = d.label ? `${prefix}${d.label}` : `Audio Output ${i + 1}`;
-
-            if (d.deviceId === selectedAudioOutputId) {
-                isSelectedDeviceStillConnected = true;
-            }
-
-            optionsHtml += `<option value="${d.deviceId}">${label}</option>`;
-        });
-
-        select.innerHTML = optionsHtml;
-
-        if (selectedAudioOutputId !== 'default' && !isSelectedDeviceStillConnected) {
-            await setAudioOutputDevice('default');
-            if (typeof window.showCenterNotification === 'function') {
-                window.showCenterNotification("Audio route switched to Phone Speaker");
-            }
+        const options = [];
+        if (outs.length) {
+            outs.forEach(d => { const k = audioRouteKind(d.label); options.push({ value: 'out:' + d.deviceId, kind: k, raw: d.label, label: audioRouteLabel(k, d.label, false) }); });
         } else {
-            select.value = selectedAudioOutputId;
+            // no speaker list (typical on Android): offer the phone's routes, which switch together with the mic
+            ins.forEach(d => {
+                const k = audioRouteKind(d.label);
+                if (k === 'other') return;
+                if (options.some(o => o.kind === k && k !== 'bt')) return;
+                options.push({ value: 'in:' + d.deviceId, kind: k, raw: d.label, label: audioRouteLabel(k, d.label, true) });
+            });
         }
+        audioRouteOptions = options;
+
+        // restore the remembered choice (ids can change between visits, so fall back to the name)
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(AUDIO_ROUTE_KEY) || 'null'); } catch (e) {}
+        let want = audioRouteValue !== 'default' ? audioRouteValue : (saved && saved.value) || 'default';
+        if (want !== 'default' && !options.some(o => o.value === want)) {
+            const byName = saved && saved.label ? options.find(o => o.raw === saved.label) : null;
+            const gone = audioRouteValue !== 'default' && !byName;
+            want = byName ? byName.value : 'default';
+            if (gone && typeof window.showCenterNotification === 'function') window.showCenterNotification('That audio device disconnected. Back to automatic.');
+        }
+        const changed = want !== audioRouteValue;
+        audioRouteValue = want;
+
+        if (select) {
+            select.innerHTML = '<option value="default">Automatic (phone decides)</option>' +
+                options.map(o => `<option value="${o.value.replace(/"/g, '&quot;')}">${o.label}</option>`).join('');
+            select.value = audioRouteValue;
+        }
+
+        const bt = options.some(o => o.kind === 'bt') || ins.some(d => audioRouteKind(d.label) === 'bt');
+        if (!anyLabel) setAudioHint('Turn voice chat on once (and allow the microphone) so the game can see your speakers and Bluetooth.');
+        else if (!options.length) setAudioHint('This browser lets the phone choose. Use your phone\'s own Bluetooth / media output control to switch.');
+        else if (!outs.length) setAudioHint((bt ? '🎧 Bluetooth found. ' : 'No Bluetooth found. ') + 'On this phone the choice applies to voice chat while your mic is on; with the mic off the phone decides.');
+        else setAudioHint(bt ? '🎧 Bluetooth found.' : 'No Bluetooth found. Connect it in your phone settings and it will show up here.');
+
+        if (lastBluetoothSeen !== null && bt !== lastBluetoothSeen && typeof window.showCenterNotification === 'function') {
+            window.showCenterNotification(bt ? '🎧 Bluetooth connected. Choose it in Settings → Audio Output.' : '🎧 Bluetooth disconnected.');
+        }
+        lastBluetoothSeen = anyLabel ? bt : lastBluetoothSeen;
+
+        if (changed || audioRouteValue !== 'default') await applyAudioRoute();
     } catch (e) {
         console.warn("[LiveKit] Device enumeration error:", e);
     }
@@ -825,11 +893,15 @@ function refreshVoiceParticipantsList() {
     `).join('') + '</ul>';
 }
 
-if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
-    navigator.mediaDevices.ondevicechange = () => {
+// Bluetooth / headphones connected or removed: phones often report it a moment late, so look twice
+if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+    navigator.mediaDevices.addEventListener('devicechange', () => {
         refreshAudioOutputDevices();
-    };
+        setTimeout(refreshAudioOutputDevices, 1500);
+    });
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAudioOutputDevices(); });
+setTimeout(refreshAudioOutputDevices, 2500);
 
 // -------------------------------------------------------------
 // 7. BACKGROUND RESILIENCE, SCREEN RESUME & RECONNECT LISTENERS
@@ -893,6 +965,7 @@ window.forceMuteLocalMicByAdmin = forceMuteLocalMicByAdmin;
 window.disconnectLiveKit = disconnectLiveKit;
 window.setAudioOutputDevice = setAudioOutputDevice;
 window.refreshAudioOutputDevices = refreshAudioOutputDevices;
+window.__audioRoute = { apply: applyAudioRoute, state: () => ({ value: audioRouteValue, options: audioRouteOptions }) };
 window.refreshVoiceParticipantsList = refreshVoiceParticipantsList;
 window.setVoiceChatVolume = setVoiceChatVolume;
 window.triggerVoiceReconnect = triggerVoiceReconnect;
