@@ -16,6 +16,8 @@ const CATALOG = [
     { id: 'img:bye', label: 'Bye! (word)' }
 ];
 const IDS = CATALOG.map(c => c.id);
+// Throwables everyone at a table can use: no Premium, no grant, guests too.
+const FREE = ['🦃', '🍗'];
 
 sql.exec(`CREATE TABLE IF NOT EXISTS user_throwables (
   user_id TEXT NOT NULL, emote TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL,
@@ -51,7 +53,7 @@ function allowedFor(userId) {
     const g = new Set(grantsFor(userId));
     return IDS.filter(id => g.has(id));
 }
-function canThrow(userId, emote) { return IDS.includes(emote) && allowedFor(userId).includes(emote); }
+function canThrow(userId, emote) { return FREE.includes(emote) || (IDS.includes(emote) && allowedFor(userId).includes(emote)); }
 function setGrant(userId, emote, on, by) {
     if (!IDS.includes(emote)) throw new Error('Unknown throwable.');
     if (on) sql.prepare('INSERT OR IGNORE INTO user_throwables (user_id, emote, granted_by, created_at) VALUES (?, ?, ?, ?)').run(String(userId), emote, by || 'admin', Date.now());
@@ -72,4 +74,4 @@ function notifyUser(userId) {
     } catch (e) {}
 }
 
-module.exports = { CATALOG, IDS, allowedFor, canThrow, setGrant, grantsFor, allGrants, notifyUser };
+module.exports = { CATALOG, IDS, FREE, allowedFor, canThrow, setGrant, grantsFor, allGrants, notifyUser };

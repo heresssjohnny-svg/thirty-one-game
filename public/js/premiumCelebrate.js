@@ -26,6 +26,7 @@
     // extra throwables this account may use (🍆 💦 pictures …): admins get all, others what an admin switched on.
     // Comes from /api/premium/me (premium.js) and live THROWABLES messages; the server checks every throw too.
     function extras() { return Array.isArray(window.__throwables) ? window.__throwables : []; }
+    var FREE_EMOTES = ['🦃', '🍗'];   // everyone can throw these (server/throwables.js FREE)
     // how a throwable looks: emoji text, or a picture for "img:<name>" (public/img/throw/<name>.png)
     function emoteHtml(e) {
         var m = /^img:([a-z0-9_-]+)$/.exec(String(e || ''));
@@ -322,8 +323,8 @@
         if (pop) { pop.remove(); return; }
         pop = document.createElement('div');
         pop.id = 'pc-emote-pop';
-        var list = (prem() ? EMOTES : []).concat(extras());
-        pop.innerHTML = '<div class="pc-ep-h">💎 Throw at a player</div><div class="pc-ep-g">' +
+        var list = FREE_EMOTES.concat(prem() ? EMOTES : []).concat(extras());
+        pop.innerHTML = '<div class="pc-ep-h">🎯 Throw at a player</div><div class="pc-ep-g">' +
             list.map(function (e) { return '<button type="button" data-pc-emote="' + e + '">' + emoteHtml(e) + '</button>'; }).join('') + '</div>';
         document.body.appendChild(pop);
         pop.addEventListener('click', function (ev) {
@@ -335,12 +336,12 @@
         });
     }
     window.openEmotePicker = openEmotePicker;
-    // a 🎯 button at the end of the 😀 reactions bar (Premium only; hidden otherwise)
+    // a 🎯 button at the end of the 😀 reactions bar (everyone has the free throwables)
     function ensureThrowButton() {
         var pop = document.getElementById('reaction-popover-menu');
         if (!pop) return;
         var btn = document.getElementById('pc-throw-btn');
-        if (!prem() && !extras().length) { if (btn) btn.remove(); return; }
+
         if (btn) return;
         btn = document.createElement('button');
         btn.type = 'button'; btn.id = 'pc-throw-btn'; btn.title = 'Throw at a player'; btn.textContent = '🎯';
