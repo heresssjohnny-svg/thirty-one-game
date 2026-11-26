@@ -26,7 +26,7 @@ function send(ws, obj) { try { if (ws && ws.readyState === 1) ws.send(JSON.strin
 function handleEmoteMessage(ws, msg, lobbyManager) {
     if (!msg || msg.type !== 'THROW_EMOTE') return false;
     const emote = String(msg.emote || '');
-    const extra = throwables.IDS.includes(emote);
+    const extra = throwables.IDS.includes(emote) || throwables.FREE.includes(emote);
     if (!extra && !EMOTES.includes(emote)) return true;
     if (extra) {
         if (!throwables.canThrow(ws && ws.userId, emote)) return true;
